@@ -9,6 +9,7 @@ import (
 	"github.com/simonhull/kitsune/internal/app"
 	"github.com/simonhull/kitsune/internal/config"
 	"github.com/simonhull/kitsune/internal/db"
+	"github.com/simonhull/kitsune/internal/subsonic"
 )
 
 func main() {
@@ -27,8 +28,21 @@ func main() {
 	}
 	defer database.Close()
 
+	// Create Subsonic client if configured.
+	var client *subsonic.Client
+	if cfg.HasSubsonic() {
+		client = subsonic.NewClient(cfg.Subsonic.URL, cfg.Subsonic.Username, cfg.Subsonic.Password)
+
+		// Quick connection check before entering the TUI.
+		if err := client.Ping(); err != nil {
+			fmt.Fprintf(os.Stderr, "subsonic connection failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "check your config at %s\n", config.Path())
+			os.Exit(1)
+		}
+	}
+
 	p := tea.NewProgram(
-		app.New(cfg, database),
+		app.New(cfg, database, client),
 		tea.WithAltScreen(),
 	)
 

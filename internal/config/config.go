@@ -11,19 +11,25 @@ import (
 
 // Config holds all Kitsune configuration.
 type Config struct {
-	Library LibraryConfig `toml:"library"`
-	UI      UIConfig      `toml:"ui"`
+	Subsonic SubsonicConfig `toml:"subsonic"`
+	Library  LibraryConfig  `toml:"library"`
+	UI       UIConfig       `toml:"ui"`
 }
 
-// LibraryConfig configures music sources.
+// SubsonicConfig configures the Subsonic server connection.
+type SubsonicConfig struct {
+	URL      string `toml:"url"`
+	Username string `toml:"username"`
+	Password string `toml:"password"`
+}
+
+// LibraryConfig configures local music sources (optional).
 type LibraryConfig struct {
-	// Path is the primary music directory.
 	Path string `toml:"path"`
 }
 
 // UIConfig configures the user interface.
 type UIConfig struct {
-	// AlbumArt controls terminal image rendering: auto, kitty, iterm2, sixel, off.
 	AlbumArt string `toml:"album_art"`
 }
 
@@ -66,27 +72,14 @@ func Load() (Config, error) {
 		return cfg, fmt.Errorf("parsing config: %w", err)
 	}
 
-	// Expand ~ in library path.
 	cfg.Library.Path = expandHome(cfg.Library.Path)
 
 	return cfg, nil
 }
 
-// Save writes the current config to disk, creating the directory if needed.
-func Save(cfg Config) error {
-	dir := Dir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("creating config dir: %w", err)
-	}
-
-	f, err := os.Create(Path())
-	if err != nil {
-		return fmt.Errorf("creating config file: %w", err)
-	}
-	defer f.Close()
-
-	encoder := toml.NewEncoder(f)
-	return encoder.Encode(cfg)
+// HasSubsonic reports whether a Subsonic server is configured.
+func (c Config) HasSubsonic() bool {
+	return c.Subsonic.URL != "" && c.Subsonic.Username != ""
 }
 
 // expandHome replaces a leading ~ with the user home directory.
