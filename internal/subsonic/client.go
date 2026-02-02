@@ -33,8 +33,13 @@ func NewClient(baseURL, user, password string) *Client {
 }
 
 // StreamURL returns the URL to stream a track by ID.
-func (c *Client) StreamURL(id string) string {
-	return c.buildURL("stream", url.Values{"id": {id}})
+// If format is non-empty, the server will transcode to that format.
+func (c *Client) StreamURL(id string, format string) string {
+	params := url.Values{"id": {id}}
+	if format != "" {
+		params.Set("format", format)
+	}
+	return c.buildURL("stream", params)
 }
 
 // CoverArtURL returns the URL for cover art by ID.

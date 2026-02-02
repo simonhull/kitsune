@@ -31,9 +31,12 @@ type AlbumNode struct {
 type TrackNode struct {
 	ID         string
 	Title      string
+	Artist     string
+	Album      string
 	TrackNum   int
 	DiscNum    int
 	DurationMs int
+	Format     string
 }
 
 // VisibleRow is a flattened entry in the visible tree.
@@ -340,9 +343,12 @@ func (l *Library) loadTracks(album *AlbumNode) {
 		album.Tracks[i] = &TrackNode{
 			ID:         t.ID,
 			Title:      t.Title,
+			Artist:     t.Artist,
+			Album:      album.Name,
 			TrackNum:   t.TrackNum,
 			DiscNum:    t.DiscNum,
 			DurationMs: t.DurationMs,
+			Format:     t.Format,
 		}
 	}
 }

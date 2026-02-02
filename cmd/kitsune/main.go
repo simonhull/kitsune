@@ -9,6 +9,7 @@ import (
 	"github.com/simonhull/kitsune/internal/app"
 	"github.com/simonhull/kitsune/internal/config"
 	"github.com/simonhull/kitsune/internal/db"
+	"github.com/simonhull/kitsune/internal/player"
 	"github.com/simonhull/kitsune/internal/subsonic"
 )
 
@@ -33,7 +34,6 @@ func main() {
 	if cfg.HasSubsonic() {
 		client = subsonic.NewClient(cfg.Subsonic.URL, cfg.Subsonic.Username, cfg.Subsonic.Password)
 
-		// Quick connection check before entering the TUI.
 		if err := client.Ping(); err != nil {
 			fmt.Fprintf(os.Stderr, "subsonic connection failed: %v\n", err)
 			fmt.Fprintf(os.Stderr, "check your config at %s\n", config.Path())
@@ -41,12 +41,19 @@ func main() {
 		}
 	}
 
-	p := tea.NewProgram(
-		app.New(cfg, database, client),
+	// Initialize audio player.
+	p, err := player.New(logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "audio init failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	prog := tea.NewProgram(
+		app.New(cfg, database, client, p),
 		tea.WithAltScreen(),
 	)
 
-	if _, err := p.Run(); err != nil {
+	if _, err := prog.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
