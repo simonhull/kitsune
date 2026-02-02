@@ -13,6 +13,7 @@ import (
 	"github.com/simonhull/kitsune/internal/config"
 	"github.com/simonhull/kitsune/internal/db"
 	"github.com/simonhull/kitsune/internal/subsonic"
+	"github.com/simonhull/kitsune/internal/ui"
 )
 
 type Model struct {
@@ -20,11 +21,7 @@ type Model struct {
 	db      *db.DB
 	client  *subsonic.Client
 	spinner spinner.Model
-
-	// Library stats.
-	artists int
-	albums  int
-	tracks  int
+	library *ui.Library
 
 	// Sync state.
 	syncing bool
@@ -47,7 +44,7 @@ func New(cfg config.Config, database *db.DB, client *subsonic.Client) Model {
 		db:      database,
 		client:  client,
 		spinner: s,
-		syncing: client != nil, // Start in syncing state if we have a server.
+		syncing: client != nil,
 	}
 }
 
@@ -55,8 +52,10 @@ func (m Model) Init() tea.Cmd {
 	if m.client != nil {
 		return tea.Batch(m.spinner.Tick, m.runSync)
 	}
-	// No Subsonic configured — just show what's in the DB.
-	return m.loadCounts
+	// No Subsonic — load library from existing DB.
+	return func() tea.Msg {
+		return syncDoneMsg{result: &subsonic.SyncResult{}}
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -66,10 +65,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
+		// Delegate to library when not syncing.
+		if !m.syncing && m.library != nil {
+			switch {
+			case key.Matches(msg, keys.Up):
+				m.library.MoveUp()
+			case key.Matches(msg, keys.Down):
+				m.library.MoveDown()
+			case key.Matches(msg, keys.Expand):
+				m.library.Expand()
+			case key.Matches(msg, keys.Collapse):
+				m.library.Collapse()
+			case key.Matches(msg, keys.Toggle):
+				m.library.Toggle()
+			case key.Matches(msg, keys.Top):
+				m.library.MoveTop()
+			case key.Matches(msg, keys.Bottom):
+				m.library.MoveBottom()
+			case key.Matches(msg, keys.HalfDown):
+				m.library.HalfPageDown()
+			case key.Matches(msg, keys.HalfUp):
+				m.library.HalfPageUp()
+			}
+		}
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ready = true
+		if m.library != nil {
+			m.library.SetSize(m.width, m.contentHeight())
+		}
 
 	case spinner.TickMsg:
 		if m.syncing {
@@ -80,21 +106,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case syncDoneMsg:
 		m.syncing = false
-		m.artists = msg.result.Artists
-		m.albums = msg.result.Albums
-		m.tracks = msg.result.Tracks
-		m.syncMsg = fmt.Sprintf("synced in %s", msg.result.Elapsed.Round(time.Millisecond))
+		if msg.result.Tracks > 0 {
+			m.syncMsg = fmt.Sprintf("%d artists · %d albums · %d tracks  %s",
+				msg.result.Artists, msg.result.Albums, msg.result.Tracks,
+				dimStyle.Render("(synced in "+msg.result.Elapsed.Round(time.Millisecond).String()+")"))
+		}
+		// Build the library tree from the DB.
+		m.library = ui.NewLibrary(m.db)
+		m.library.SetSize(m.width, m.contentHeight())
 
 	case syncErrMsg:
 		m.syncing = false
 		m.syncErr = msg.Error()
-		// Still load whatever's in the DB.
-		return m, m.loadCounts
-
-	case countsMsg:
-		m.artists = msg.artists
-		m.albums = msg.albums
-		m.tracks = msg.tracks
+		// Still try to load whatever's in the DB.
+		m.library = ui.NewLibrary(m.db)
+		m.library.SetSize(m.width, m.contentHeight())
 	}
 
 	return m, nil
@@ -107,36 +133,35 @@ func (m Model) View() string {
 
 	header := headerStyle.Width(m.width).Render("🦊 kitsune")
 
-	// Build content.
-	var lines string
-	if m.cfg.HasSubsonic() {
-		lines = dimStyle.Render(m.cfg.Subsonic.URL) + "\n\n"
-	} else {
-		lines = dimStyle.Render("no subsonic server — edit "+config.Path()) + "\n\n"
-	}
-
+	var content string
 	if m.syncing {
-		lines += m.spinner.View() + " syncing library..."
-	} else if m.syncErr != "" {
-		lines += errStyle.Render("sync error: "+m.syncErr) + "\n\n"
-		lines += fmt.Sprintf("%d artists · %d albums · %d tracks", m.artists, m.albums, m.tracks)
-	} else {
-		lines += fmt.Sprintf("%d artists · %d albums · %d tracks", m.artists, m.albums, m.tracks)
-		if m.syncMsg != "" {
-			lines += "  " + dimStyle.Render("("+m.syncMsg+")")
-		}
+		inner := m.spinner.View() + " syncing library..."
+		content = lipgloss.NewStyle().
+			Height(m.contentHeight()).
+			Padding(1, 2).
+			Render(inner)
+	} else if m.library != nil {
+		content = m.library.View()
 	}
 
-	contentHeight := m.height - 4
-	content := lipgloss.NewStyle().
-		Height(contentHeight).
-		Padding(1, 2).
-		Render(lines)
-
-	status := statusStyle.Width(m.width).
-		Render("q: quit")
+	// Status bar.
+	var statusText string
+	if m.syncErr != "" {
+		statusText = errStyle.Render("sync error: " + m.syncErr)
+	} else if m.syncMsg != "" {
+		statusText = m.syncMsg
+	} else {
+		statusText = "j/k: move  l: expand  h: collapse  q: quit"
+	}
+	status := statusStyle.Width(m.width).Render(statusText)
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, content, status)
+}
+
+// contentHeight returns the available height for the library panel.
+func (m Model) contentHeight() int {
+	// header (2 lines: text + border) + status (2 lines: border + text)
+	return max(1, m.height-4)
 }
 
 // --- Messages ---
@@ -146,10 +171,6 @@ type syncDoneMsg struct {
 }
 
 type syncErrMsg struct{ error }
-
-type countsMsg struct {
-	artists, albums, tracks int
-}
 
 // --- Commands ---
 
@@ -161,20 +182,30 @@ func (m Model) runSync() tea.Msg {
 	return syncDoneMsg{result: result}
 }
 
-func (m Model) loadCounts() tea.Msg {
-	return countsMsg{
-		artists: m.db.ArtistCount(),
-		albums:  m.db.AlbumCount(),
-		tracks:  m.db.TrackCount(),
-	}
-}
-
 // --- Keybindings ---
 
 var keys = struct {
-	Quit key.Binding
+	Quit     key.Binding
+	Up       key.Binding
+	Down     key.Binding
+	Expand   key.Binding
+	Collapse key.Binding
+	Toggle   key.Binding
+	Top      key.Binding
+	Bottom   key.Binding
+	HalfDown key.Binding
+	HalfUp   key.Binding
 }{
-	Quit: key.NewBinding(key.WithKeys("q", "ctrl+c")),
+	Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c")),
+	Up:       key.NewBinding(key.WithKeys("k", "up")),
+	Down:     key.NewBinding(key.WithKeys("j", "down")),
+	Expand:   key.NewBinding(key.WithKeys("l", "right")),
+	Collapse: key.NewBinding(key.WithKeys("h", "left")),
+	Toggle:   key.NewBinding(key.WithKeys("enter")),
+	Top:      key.NewBinding(key.WithKeys("g")),
+	Bottom:   key.NewBinding(key.WithKeys("G")),
+	HalfDown: key.NewBinding(key.WithKeys("ctrl+d")),
+	HalfUp:   key.NewBinding(key.WithKeys("ctrl+u")),
 }
 
 // --- Styles ---
