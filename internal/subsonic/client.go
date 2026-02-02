@@ -104,6 +104,24 @@ func (c *Client) GetAlbum(id string) (*AlbumDetail, error) {
 	return &resp.Response.Album, nil
 }
 
+// NowPlaying reports a track as currently being listened to.
+func (c *Client) NowPlaying(id string) error {
+	var resp pingResponse
+	if err := c.get("scrobble", url.Values{"id": {id}, "submission": {"false"}}, &resp); err != nil {
+		return fmt.Errorf("nowPlaying(%s): %w", id, err)
+	}
+	return nil
+}
+
+// Scrobble reports a track as fully played.
+func (c *Client) Scrobble(id string) error {
+	var resp pingResponse
+	if err := c.get("scrobble", url.Values{"id": {id}, "submission": {"true"}}, &resp); err != nil {
+		return fmt.Errorf("scrobble(%s): %w", id, err)
+	}
+	return nil
+}
+
 // --- HTTP plumbing ---
 
 func (c *Client) buildURL(endpoint string, params url.Values) string {

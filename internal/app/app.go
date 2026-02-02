@@ -139,12 +139,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case playStartedMsg:
 		m.paused = false
 		m.playErr = ""
+		// Report "now playing" to Subsonic (for Last.fm).
+		if m.client != nil {
+			if cur := m.queue.Current(); cur != nil {
+				go m.client.NowPlaying(cur.ID)
+			}
+		}
 		return m, m.waitForTrackEnd
 
 	case playErrMsg:
 		m.playErr = msg.Error()
 
 	case trackEndedMsg:
+		// Scrobble the finished track.
+		if m.client != nil {
+			if cur := m.queue.Current(); cur != nil {
+				go m.client.Scrobble(cur.ID)
+			}
+		}
 		// Advance queue.
 		next := m.queue.Next()
 		if next != nil {
