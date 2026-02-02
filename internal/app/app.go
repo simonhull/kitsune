@@ -1,19 +1,23 @@
 package app
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/simonhull/kitsune/internal/config"
 )
 
 type Model struct {
+	cfg    config.Config
 	width  int
 	height int
 	ready  bool
 }
 
-func New() Model {
-	return Model{}
+func New(cfg config.Config) Model {
+	return Model{cfg: cfg}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -43,11 +47,19 @@ func (m Model) View() string {
 
 	header := headerStyle.Width(m.width).Render("🦊 kitsune")
 
-	// Fill the content area
-	contentHeight := m.height - 3 // header + status
+	// Show config status in the content area.
+	var info string
+	if m.cfg.Library.Path != "" {
+		info = fmt.Sprintf("library: %s", m.cfg.Library.Path)
+	} else {
+		info = dimStyle.Render("no library path configured — edit " + config.Path())
+	}
+
+	contentHeight := m.height - 4 // header + info + status + borders
 	content := lipgloss.NewStyle().
 		Height(contentHeight).
-		Render("")
+		Padding(1, 2).
+		Render(info)
 
 	status := statusStyle.Width(m.width).
 		Render("q: quit")
@@ -76,4 +88,8 @@ var (
 		BorderTop(true).
 		BorderForeground(lipgloss.Color("#333333")).
 		Padding(0, 1)
+
+	dimStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#666666")).
+		Italic(true)
 )
