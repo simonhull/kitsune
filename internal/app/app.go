@@ -1,33 +1,46 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/simonhull/kitsune/internal/config"
 	"github.com/simonhull/kitsune/internal/db"
+	"github.com/simonhull/kitsune/internal/library"
 )
 
 type Model struct {
 	cfg      config.Config
 	db       *db.DB
+	spinner  spinner.Model
 	tracks   int
+	scanning bool
+	scanMsg  string
 	width    int
 	height   int
 	ready    bool
 }
 
 func New(cfg config.Config, database *db.DB) Model {
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B35"))
+
 	return Model{
-		cfg: cfg,
-		db:  database,
+		cfg:     cfg,
+		db:      database,
+		spinner: s,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return m.countTracks
+	return tea.Batch(m.spinner.Tick, m.startScan)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -42,8 +55,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.ready = true
 
-	case trackCountMsg:
-		m.tracks = int(msg)
+	case spinner.TickMsg:
+		if m.scanning {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+
+	case scanStartMsg:
+		m.scanning = true
+		return m, nil
+
+	case scanDoneMsg:
+		m.scanning = false
+		m.tracks = msg.tracks
+		m.scanMsg = fmt.Sprintf("scanned %d tracks in %s (%d errors)",
+			msg.tracks, msg.elapsed.Round(time.Millisecond), msg.errors)
 	}
 
 	return m, nil
@@ -56,14 +83,21 @@ func (m Model) View() string {
 
 	header := headerStyle.Width(m.width).Render("🦊 kitsune")
 
-	// Show config + db status.
+	// Status info.
 	var lines string
 	if m.cfg.Library.Path != "" {
-		lines = fmt.Sprintf("library: %s", m.cfg.Library.Path)
+		lines = fmt.Sprintf("library: %s\n", m.cfg.Library.Path)
 	} else {
-		lines = dimStyle.Render("no library path configured — edit " + config.Path())
+		lines = dimStyle.Render("no library path — edit "+config.Path()) + "\n"
 	}
-	lines += "\n" + fmt.Sprintf("tracks in db: %d", m.tracks)
+
+	if m.scanning {
+		lines += m.spinner.View() + " scanning library..."
+	} else if m.scanMsg != "" {
+		lines += m.scanMsg
+	} else {
+		lines += fmt.Sprintf("tracks: %d", m.tracks)
+	}
 
 	contentHeight := m.height - 4
 	content := lipgloss.NewStyle().
@@ -77,14 +111,29 @@ func (m Model) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, content, status)
 }
 
-// trackCountMsg carries the number of tracks in the database.
-type trackCountMsg int
+// Messages
+type scanStartMsg struct{}
 
-// countTracks queries the database for the total track count.
-func (m Model) countTracks() tea.Msg {
-	var count int
-	m.db.Conn.QueryRow("SELECT COUNT(*) FROM tracks").Scan(&count)
-	return trackCountMsg(count)
+type scanDoneMsg struct {
+	tracks  int
+	errors  int
+	elapsed time.Duration
+}
+
+// Commands
+func (m Model) startScan() tea.Msg {
+	if m.cfg.Library.Path == "" {
+		return scanDoneMsg{}
+	}
+
+	start := time.Now()
+	result, _ := library.Scan(context.Background(), m.db.Conn, m.cfg.Library.Path, slog.Default())
+
+	return scanDoneMsg{
+		tracks:  result.Added,
+		errors:  result.Errors,
+		elapsed: time.Since(start),
+	}
 }
 
 var keys = struct {
