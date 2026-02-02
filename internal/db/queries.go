@@ -23,6 +23,7 @@ type TrackRow struct {
 	ID             string
 	Title          string
 	Artist         string
+	Album          string
 	AlbumID        string
 	TrackNum       int
 	DiscNum        int
@@ -76,12 +77,41 @@ func (db *DB) AlbumsForArtist(artistID string) ([]AlbumRow, error) {
 	return albums, rows.Err()
 }
 
+// TracksForArtist returns all tracks for an artist, ordered by album year, disc, track.
+func (db *DB) TracksForArtist(artistID string) ([]TrackRow, error) {
+	rows, err := db.Conn.Query(`
+		SELECT t.id, t.title, t.artist, a.name, t.album_id, t.track_num, t.disc_num, t.duration_ms,
+			t.genre, t.format, t.shuffle_exclude, COALESCE(t.linked_next_id, '')
+		FROM tracks t
+		JOIN albums a ON t.album_id = a.id
+		WHERE t.artist_id = ?
+		ORDER BY a.year, a.name COLLATE NOCASE, t.disc_num, t.track_num
+	`, artistID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tracks []TrackRow
+	for rows.Next() {
+		var t TrackRow
+		if err := rows.Scan(&t.ID, &t.Title, &t.Artist, &t.Album, &t.AlbumID, &t.TrackNum, &t.DiscNum,
+			&t.DurationMs, &t.Genre, &t.Format, &t.ShuffleExclude, &t.LinkedNextID); err != nil {
+			return nil, err
+		}
+		tracks = append(tracks, t)
+	}
+	return tracks, rows.Err()
+}
+
 // TracksForAlbum returns all tracks for an album, sorted by disc and track number.
 func (db *DB) TracksForAlbum(albumID string) ([]TrackRow, error) {
 	rows, err := db.Conn.Query(`
-		SELECT id, title, artist, album_id, track_num, disc_num, duration_ms,
-			genre, format, shuffle_exclude, COALESCE(linked_next_id, '')
-		FROM tracks WHERE album_id = ? ORDER BY disc_num, track_num
+		SELECT t.id, t.title, t.artist, a.name, t.album_id, t.track_num, t.disc_num, t.duration_ms,
+			t.genre, t.format, t.shuffle_exclude, COALESCE(t.linked_next_id, '')
+		FROM tracks t
+		JOIN albums a ON t.album_id = a.id
+		WHERE t.album_id = ? ORDER BY t.disc_num, t.track_num
 	`, albumID)
 	if err != nil {
 		return nil, err
@@ -91,7 +121,7 @@ func (db *DB) TracksForAlbum(albumID string) ([]TrackRow, error) {
 	var tracks []TrackRow
 	for rows.Next() {
 		var t TrackRow
-		if err := rows.Scan(&t.ID, &t.Title, &t.Artist, &t.AlbumID, &t.TrackNum, &t.DiscNum,
+		if err := rows.Scan(&t.ID, &t.Title, &t.Artist, &t.Album, &t.AlbumID, &t.TrackNum, &t.DiscNum,
 			&t.DurationMs, &t.Genre, &t.Format, &t.ShuffleExclude, &t.LinkedNextID); err != nil {
 			return nil, err
 		}

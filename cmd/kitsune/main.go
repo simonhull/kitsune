@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/simonhull/kitsune/internal/app"
@@ -20,7 +21,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger := slog.Default()
+	// Log to file so it doesn't corrupt the TUI.
+	logger := setupLogger()
 
 	database, err := db.Open(logger)
 	if err != nil {
@@ -57,4 +59,20 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func setupLogger() *slog.Logger {
+	logDir := db.DataDir()
+	os.MkdirAll(logDir, 0o755)
+
+	logPath := filepath.Join(logDir, "kitsune.log")
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		// Fall back to discard if we can't open the log file.
+		return slog.New(slog.NewTextHandler(os.NewFile(0, os.DevNull), nil))
+	}
+
+	logger := slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+	return logger
 }
