@@ -53,6 +53,7 @@ func main() {
 	prog := tea.NewProgram(
 		app.New(cfg, database, client, p),
 		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
 	)
 
 	if _, err := prog.Run(); err != nil {

@@ -3,8 +3,6 @@ package ui
 import (
 	"fmt"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // QueueTrack is a track in the playback queue.
@@ -14,12 +12,14 @@ type QueueTrack struct {
 	Artist     string
 	Album      string
 	AlbumID    string
+	Year       int
 	DurationMs int
 	Format     string
 }
 
 // Queue is the playback queue panel.
 type Queue struct {
+	styles  *Styles
 	tracks  []QueueTrack
 	current int // index of currently playing track (-1 = nothing playing)
 	cursor  int
@@ -30,8 +30,8 @@ type Queue struct {
 }
 
 // NewQueue creates an empty queue.
-func NewQueue() *Queue {
-	return &Queue{current: -1}
+func NewQueue(styles *Styles) *Queue {
+	return &Queue{styles: styles, current: -1}
 }
 
 // SetSize updates the panel dimensions.
@@ -45,9 +45,28 @@ func (q *Queue) SetFocused(focused bool) {
 	q.focused = focused
 }
 
+// OffsetVal returns the current scroll offset (for mouse click mapping).
+func (q *Queue) OffsetVal() int {
+	return q.offset
+}
+
+// SetCursor sets the cursor to a specific index (clamped to valid range).
+func (q *Queue) SetCursor(idx int) {
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(q.tracks) {
+		idx = len(q.tracks) - 1
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	q.cursor = idx
+	q.scrollIntoView()
+}
+
 // --- Queue operations ---
 
-// Replace clears the queue and adds new tracks, starting playback at startIdx.
 func (q *Queue) Replace(tracks []QueueTrack, startIdx int) {
 	q.tracks = tracks
 	q.current = startIdx
@@ -55,12 +74,8 @@ func (q *Queue) Replace(tracks []QueueTrack, startIdx int) {
 	q.scrollIntoView()
 }
 
-// Len returns the number of tracks in the queue.
-func (q *Queue) Len() int {
-	return len(q.tracks)
-}
+func (q *Queue) Len() int        { return len(q.tracks) }
 
-// Current returns the currently playing track, or nil.
 func (q *Queue) Current() *QueueTrack {
 	if q.current >= 0 && q.current < len(q.tracks) {
 		return &q.tracks[q.current]
@@ -68,7 +83,6 @@ func (q *Queue) Current() *QueueTrack {
 	return nil
 }
 
-// Next advances to the next track and returns it, or nil if at end.
 func (q *Queue) Next() *QueueTrack {
 	if q.current+1 < len(q.tracks) {
 		q.current++
@@ -78,7 +92,6 @@ func (q *Queue) Next() *QueueTrack {
 	return nil
 }
 
-// JumpTo sets the current track to the cursor position and returns it.
 func (q *Queue) JumpTo() *QueueTrack {
 	if q.cursor >= 0 && q.cursor < len(q.tracks) {
 		q.current = q.cursor
@@ -87,7 +100,6 @@ func (q *Queue) JumpTo() *QueueTrack {
 	return nil
 }
 
-// Remove removes the track at the cursor. Returns true if currently playing track was removed.
 func (q *Queue) Remove() bool {
 	if q.cursor < 0 || q.cursor >= len(q.tracks) {
 		return false
@@ -96,15 +108,12 @@ func (q *Queue) Remove() bool {
 	removedCurrent := q.cursor == q.current
 	q.tracks = append(q.tracks[:q.cursor], q.tracks[q.cursor+1:]...)
 
-	// Adjust current index.
 	if q.current > q.cursor {
 		q.current--
 	} else if removedCurrent {
-		// Current was removed — don't advance, let caller handle.
 		q.current = -1
 	}
 
-	// Clamp cursor.
 	if q.cursor >= len(q.tracks) {
 		q.cursor = max(0, len(q.tracks)-1)
 	}
@@ -112,13 +121,11 @@ func (q *Queue) Remove() bool {
 	return removedCurrent
 }
 
-// MoveUp swaps the track at cursor with the one above it.
 func (q *Queue) MoveUp() {
 	if q.cursor <= 0 || q.cursor >= len(q.tracks) {
 		return
 	}
 	q.tracks[q.cursor], q.tracks[q.cursor-1] = q.tracks[q.cursor-1], q.tracks[q.cursor]
-	// Adjust current if it was one of the swapped tracks.
 	if q.current == q.cursor {
 		q.current--
 	} else if q.current == q.cursor-1 {
@@ -128,7 +135,6 @@ func (q *Queue) MoveUp() {
 	q.scrollIntoView()
 }
 
-// MoveDown swaps the track at cursor with the one below it.
 func (q *Queue) MoveDown() {
 	if q.cursor < 0 || q.cursor >= len(q.tracks)-1 {
 		return
@@ -163,20 +169,19 @@ func (q *Queue) CursorDown() {
 
 func (q *Queue) View() string {
 	if len(q.tracks) == 0 {
-		return queueDimStyle.Render("queue empty")
+		return q.styles.QueueDim.Render("queue empty")
 	}
 
-	titleWidth := q.width - 2 // padding
+	titleWidth := q.width - 2
 
 	var b strings.Builder
 
-	// Header.
-	header := queueHeaderStyle.Width(q.width).Render(
+	header := q.styles.QueueHeader.Width(q.width).Render(
 		fmt.Sprintf("Queue (%d)", len(q.tracks)-q.currentOrZero()))
 	b.WriteString(header)
 	b.WriteByte('\n')
 
-	listHeight := q.height - 2 // header + header newline
+	listHeight := q.height - 2
 	if listHeight < 1 {
 		return b.String()
 	}
@@ -199,7 +204,6 @@ func (q *Queue) View() string {
 }
 
 func (q *Queue) renderTrack(t QueueTrack, idx int, maxWidth int) string {
-	// Icon for current track.
 	prefix := "  "
 	if idx == q.current {
 		prefix = "▶ "
@@ -216,13 +220,13 @@ func (q *Queue) renderTrack(t QueueTrack, idx int, maxWidth int) string {
 		title = title[:availWidth-1] + "…"
 	}
 
-	line := fmt.Sprintf("%s%-*s %s", prefix, availWidth, title, queueDimStyle.Render(dur))
+	line := fmt.Sprintf("%s%-*s %s", prefix, availWidth, title, q.styles.QueueDim.Render(dur))
 
 	if idx == q.cursor && q.focused {
-		return queueCursorStyle.Width(q.width).Render(line)
+		return q.styles.QueueCursor.Width(q.width).Render(line)
 	}
 	if idx == q.current {
-		return queueNowStyle.Render(line)
+		return q.styles.QueueNow.Render(line)
 	}
 	return line
 }
@@ -235,7 +239,7 @@ func (q *Queue) currentOrZero() int {
 }
 
 func (q *Queue) scrollIntoView() {
-	if q.height <= 2 { // account for header
+	if q.height <= 2 {
 		return
 	}
 	listHeight := q.height - 2
@@ -246,23 +250,3 @@ func (q *Queue) scrollIntoView() {
 		q.offset = q.cursor - listHeight + 1
 	}
 }
-
-// --- Styles ---
-
-var (
-	queueHeaderStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("#FF6B35")).
-				Padding(0, 1)
-
-	queueCursorStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#333333")).
-				Foreground(lipgloss.Color("#FF6B35"))
-
-	queueNowStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF6B35")).
-			Bold(true)
-
-	queueDimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#666666"))
-)

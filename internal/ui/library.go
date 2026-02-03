@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/simonhull/kitsune/internal/db"
 )
 
@@ -52,6 +51,7 @@ type VisibleRow struct {
 // Library is the tree browser panel for the music library.
 type Library struct {
 	database *db.DB
+	styles   *Styles
 	artists  []*ArtistNode
 	visible  []VisibleRow
 	cursor   int
@@ -62,9 +62,10 @@ type Library struct {
 }
 
 // NewLibrary creates a library browser and loads artists from the database.
-func NewLibrary(database *db.DB) *Library {
+func NewLibrary(database *db.DB, styles *Styles) *Library {
 	lib := &Library{
 		database: database,
+		styles:   styles,
 		focused:  true,
 	}
 	lib.loadArtists()
@@ -91,9 +92,28 @@ func (l *Library) CursorRow() *VisibleRow {
 	return nil
 }
 
+// Offset returns the current scroll offset (for mouse click mapping).
+func (l *Library) Offset() int {
+	return l.offset
+}
+
+// SetCursor sets the cursor to a specific row index (clamped to valid range).
+func (l *Library) SetCursor(idx int) {
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(l.visible) {
+		idx = len(l.visible) - 1
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	l.cursor = idx
+	l.scrollIntoView()
+}
+
 // --- Navigation ---
 
-// MoveUp moves the cursor up one row.
 func (l *Library) MoveUp() {
 	if l.cursor > 0 {
 		l.cursor--
@@ -101,7 +121,6 @@ func (l *Library) MoveUp() {
 	}
 }
 
-// MoveDown moves the cursor down one row.
 func (l *Library) MoveDown() {
 	if l.cursor < len(l.visible)-1 {
 		l.cursor++
@@ -109,13 +128,11 @@ func (l *Library) MoveDown() {
 	}
 }
 
-// MoveTop moves the cursor to the first row.
 func (l *Library) MoveTop() {
 	l.cursor = 0
 	l.scrollIntoView()
 }
 
-// MoveBottom moves the cursor to the last row.
 func (l *Library) MoveBottom() {
 	if len(l.visible) > 0 {
 		l.cursor = len(l.visible) - 1
@@ -123,7 +140,6 @@ func (l *Library) MoveBottom() {
 	}
 }
 
-// HalfPageDown moves cursor down half a page.
 func (l *Library) HalfPageDown() {
 	l.cursor += l.height / 2
 	if l.cursor >= len(l.visible) {
@@ -132,7 +148,6 @@ func (l *Library) HalfPageDown() {
 	l.scrollIntoView()
 }
 
-// HalfPageUp moves cursor up half a page.
 func (l *Library) HalfPageUp() {
 	l.cursor -= l.height / 2
 	if l.cursor < 0 {
@@ -141,7 +156,6 @@ func (l *Library) HalfPageUp() {
 	l.scrollIntoView()
 }
 
-// Expand expands the node at the cursor (artists/albums) or is a no-op on tracks.
 func (l *Library) Expand() {
 	row := l.CursorRow()
 	if row == nil {
@@ -149,13 +163,13 @@ func (l *Library) Expand() {
 	}
 
 	switch row.Depth {
-	case 0: // Artist
+	case 0:
 		if !row.Artist.Expanded {
 			l.loadAlbums(row.Artist)
 			row.Artist.Expanded = true
 			l.rebuildVisible()
 		}
-	case 1: // Album
+	case 1:
 		if !row.Album.Expanded {
 			l.loadTracks(row.Album)
 			row.Album.Expanded = true
@@ -164,7 +178,6 @@ func (l *Library) Expand() {
 	}
 }
 
-// Collapse collapses the current node, or moves to parent if already collapsed/track.
 func (l *Library) Collapse() {
 	row := l.CursorRow()
 	if row == nil {
@@ -172,25 +185,23 @@ func (l *Library) Collapse() {
 	}
 
 	switch row.Depth {
-	case 0: // Artist
+	case 0:
 		if row.Artist.Expanded {
 			row.Artist.Expanded = false
 			l.rebuildVisible()
 		}
-	case 1: // Album
+	case 1:
 		if row.Album.Expanded {
 			row.Album.Expanded = false
 			l.rebuildVisible()
 		} else {
-			// Move to parent artist.
 			l.moveToCursorParent()
 		}
-	case 2: // Track — move to parent album.
+	case 2:
 		l.moveToCursorParent()
 	}
 }
 
-// Toggle expands if collapsed, collapses if expanded.
 func (l *Library) Toggle() {
 	row := l.CursorRow()
 	if row == nil {
@@ -211,16 +222,15 @@ func (l *Library) Toggle() {
 			l.Expand()
 		}
 	case 2:
-		// Tracks don't expand — Enter will eventually play.
+		// Tracks don't expand.
 	}
 }
 
 // --- View ---
 
-// View renders the tree panel.
 func (l *Library) View() string {
 	if len(l.visible) == 0 {
-		return dimStyle.Render("empty library")
+		return l.styles.Dim.Render("empty library")
 	}
 
 	var b strings.Builder
@@ -245,33 +255,32 @@ func (l *Library) renderRow(row VisibleRow, selected bool) string {
 	var line string
 
 	switch row.Depth {
-	case 0: // Artist
+	case 0:
 		arrow := "▸"
 		if row.Artist.Expanded {
 			arrow = "▾"
 		}
 		line = fmt.Sprintf("%s %s", arrow, row.Artist.Name)
 		if row.Artist.AlbumCount > 0 {
-			count := dimStyle.Render(fmt.Sprintf(" (%d)", row.Artist.AlbumCount))
+			count := l.styles.Dim.Render(fmt.Sprintf(" (%d)", row.Artist.AlbumCount))
 			line += count
 		}
 
-	case 1: // Album
+	case 1:
 		arrow := "▸"
 		if row.Album.Expanded {
 			arrow = "▾"
 		}
 		yearStr := ""
 		if row.Album.Year > 0 {
-			yearStr = dimStyle.Render(fmt.Sprintf(" %d", row.Album.Year))
+			yearStr = l.styles.Dim.Render(fmt.Sprintf(" %d", row.Album.Year))
 		}
 		line = fmt.Sprintf("  %s %s%s", arrow, row.Album.Name, yearStr)
 
-	case 2: // Track
+	case 2:
 		dur := formatDuration(row.Track.DurationMs)
 		num := fmt.Sprintf("%02d", row.Track.TrackNum)
-		// Right-align duration.
-		titleWidth := l.width - 10 // indent(4) + num(2) + spaces(2) + duration(~5)
+		titleWidth := l.width - 10
 		if titleWidth < 10 {
 			titleWidth = 10
 		}
@@ -279,11 +288,11 @@ func (l *Library) renderRow(row VisibleRow, selected bool) string {
 		if len(title) > titleWidth {
 			title = title[:titleWidth-1] + "…"
 		}
-		line = fmt.Sprintf("    %s  %-*s %s", num, titleWidth, title, dimStyle.Render(dur))
+		line = fmt.Sprintf("    %s  %-*s %s", num, titleWidth, title, l.styles.Dim.Render(dur))
 	}
 
 	if selected && l.focused {
-		return cursorStyle.Width(l.width).Render(line)
+		return l.styles.Cursor.Width(l.width).Render(line)
 	}
 	return line
 }
@@ -308,7 +317,7 @@ func (l *Library) loadArtists() {
 
 func (l *Library) loadAlbums(artist *ArtistNode) {
 	if len(artist.Albums) > 0 {
-		return // Already loaded.
+		return
 	}
 
 	albums, err := l.database.AlbumsForArtist(artist.ID)
@@ -330,7 +339,7 @@ func (l *Library) loadAlbums(artist *ArtistNode) {
 
 func (l *Library) loadTracks(album *AlbumNode) {
 	if len(album.Tracks) > 0 {
-		return // Already loaded.
+		return
 	}
 
 	tracks, err := l.database.TracksForAlbum(album.ID)
@@ -374,7 +383,6 @@ func (l *Library) rebuildVisible() {
 		}
 	}
 
-	// Clamp cursor.
 	if l.cursor >= len(l.visible) {
 		l.cursor = max(0, len(l.visible)-1)
 	}
@@ -419,14 +427,3 @@ func formatDuration(ms int) string {
 	s := totalSec % 60
 	return fmt.Sprintf("%d:%02d", m, s)
 }
-
-// --- Styles ---
-
-var (
-	cursorStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("#333333")).
-			Foreground(lipgloss.Color("#FF6B35"))
-
-	dimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#666666"))
-)

@@ -25,6 +25,14 @@ const (
 	focusQueue
 )
 
+type tickMsg time.Time
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
 type Model struct {
 	cfg     config.Config
 	db      *db.DB
@@ -34,6 +42,13 @@ type Model struct {
 	queue   *ui.Queue
 	player  *player.Player
 	focus   focus
+	styles  ui.Styles
+
+	// Now playing.
+	nowPlaying *ui.NowPlayingPanel
+	albumArt   *ui.AlbumArt
+	artData    []byte
+	artAlbumID string
 
 	// Sync state.
 	syncing bool
@@ -51,19 +66,25 @@ type Model struct {
 }
 
 func New(cfg config.Config, database *db.DB, client *subsonic.Client, p *player.Player) Model {
+	theme := ui.LoadTheme(cfg.Theme)
+	styles := ui.NewStyles(theme)
+
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B35"))
+	s.Style = lipgloss.NewStyle().Foreground(theme.Accent)
 
 	return Model{
-		cfg:     cfg,
-		db:      database,
-		client:  client,
-		spinner: s,
-		player:  p,
-		queue:   ui.NewQueue(),
-		syncing: client != nil,
-		focus:   focusLibrary,
+		cfg:        cfg,
+		db:         database,
+		client:     client,
+		spinner:    s,
+		player:     p,
+		styles:     styles,
+		queue:      ui.NewQueue(&styles),
+		nowPlaying: ui.NewNowPlayingPanel(&styles),
+		albumArt:   ui.NewAlbumArt(8),
+		syncing:    client != nil,
+		focus:      focusLibrary,
 	}
 }
 
@@ -82,6 +103,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, keys.Quit) {
 			if m.player != nil {
 				m.player.Stop()
+			}
+			if m.albumArt.Supported() {
+				m.albumArt.ClearAll()
 			}
 			return m, tea.Quit
 		}
@@ -106,6 +130,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -119,45 +146,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+	case tickMsg:
+		if m.queue.Current() != nil {
+			return m, tickCmd()
+		}
+
 	case syncDoneMsg:
 		m.syncing = false
 		if msg.result.Tracks > 0 {
 			m.syncMsg = fmt.Sprintf("%d artists · %d albums · %d tracks %s",
 				msg.result.Artists, msg.result.Albums, msg.result.Tracks,
-				dimStyle.Render("("+msg.result.Elapsed.Round(time.Millisecond).String()+")"))
+				m.styles.AppDim.Render("("+msg.result.Elapsed.Round(time.Millisecond).String()+")"))
 		}
-		m.library = ui.NewLibrary(m.db)
+		m.library = ui.NewLibrary(m.db, &m.styles)
 		m.library.SetFocused(m.focus == focusLibrary)
 		m.resizePanels()
 
 	case syncErrMsg:
 		m.syncing = false
 		m.syncErr = msg.Error()
-		m.library = ui.NewLibrary(m.db)
+		m.library = ui.NewLibrary(m.db, &m.styles)
 		m.resizePanels()
 
 	case playStartedMsg:
 		m.paused = false
 		m.playErr = ""
-		// Report "now playing" to Subsonic (for Last.fm).
 		if m.client != nil {
 			if cur := m.queue.Current(); cur != nil {
 				go m.client.NowPlaying(cur.ID)
 			}
 		}
-		return m, m.waitForTrackEnd
+		var artCmd tea.Cmd
+		if cur := m.queue.Current(); cur != nil && cur.AlbumID != m.artAlbumID {
+			artCmd = m.fetchCoverArt(cur.AlbumID)
+		}
+		return m, tea.Batch(m.waitForTrackEnd, tickCmd(), artCmd)
+
+	case coverArtMsg:
+		m.artData = msg.data
+		m.artAlbumID = msg.albumID
 
 	case playErrMsg:
 		m.playErr = msg.Error()
 
 	case trackEndedMsg:
-		// Scrobble the finished track.
 		if m.client != nil {
 			if cur := m.queue.Current(); cur != nil {
 				go m.client.Scrobble(cur.ID)
 			}
 		}
-		// Advance queue.
 		next := m.queue.Next()
 		if next != nil {
 			return m, m.playQueueTrack(next)
@@ -167,6 +204,71 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// --- Mouse handling ---
+
+func (m *Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
+	switch msg.Button {
+	case tea.MouseButtonLeft:
+		if msg.Action != tea.MouseActionRelease {
+			return *m, nil
+		}
+		return m.handleMouseClick(msg.X, msg.Y)
+
+	case tea.MouseButtonWheelUp:
+		if m.focus == focusLibrary && m.library != nil {
+			m.library.MoveUp()
+		} else if m.focus == focusQueue {
+			m.queue.CursorUp()
+		}
+
+	case tea.MouseButtonWheelDown:
+		if m.focus == focusLibrary && m.library != nil {
+			m.library.MoveDown()
+		} else if m.focus == focusQueue {
+			m.queue.CursorDown()
+		}
+	}
+
+	return *m, nil
+}
+
+func (m *Model) handleMouseClick(x, y int) (Model, tea.Cmd) {
+	if m.syncing || !m.ready {
+		return *m, nil
+	}
+
+	headerHeight := 2
+	contentTop := headerHeight
+	contentH := m.contentHeight()
+	contentBottom := contentTop + contentH
+
+	libWidth, _ := m.splitWidths()
+
+	if y >= contentTop && y < contentBottom && x < libWidth {
+		if m.focus != focusLibrary {
+			m.toggleFocus()
+		}
+		if m.library != nil {
+			row := y - contentTop + m.library.Offset()
+			m.library.SetCursor(row)
+		}
+		return *m, nil
+	}
+
+	if y >= contentTop && y < contentBottom && x > libWidth {
+		if m.focus != focusQueue {
+			m.toggleFocus()
+		}
+		row := y - contentTop - 2 + m.queue.OffsetVal()
+		if row >= 0 {
+			m.queue.SetCursor(row)
+		}
+		return *m, nil
+	}
+
+	return *m, nil
 }
 
 // --- Input handling per focus ---
@@ -207,7 +309,7 @@ func (m *Model) handleLibraryEnter() (Model, tea.Cmd) {
 	}
 
 	switch row.Depth {
-	case 0: // Artist — queue all artist tracks.
+	case 0:
 		tracks, err := m.db.TracksForArtist(row.Artist.ID)
 		if err != nil || len(tracks) == 0 {
 			return *m, nil
@@ -215,7 +317,7 @@ func (m *Model) handleLibraryEnter() (Model, tea.Cmd) {
 		m.replaceQueue(tracks, 0)
 		return *m, m.playQueueTrack(m.queue.Current())
 
-	case 1: // Album — expand if collapsed, or queue all album tracks.
+	case 1:
 		if !row.Album.Expanded {
 			m.library.Expand()
 			return *m, nil
@@ -227,12 +329,11 @@ func (m *Model) handleLibraryEnter() (Model, tea.Cmd) {
 		m.replaceQueue(tracks, 0)
 		return *m, m.playQueueTrack(m.queue.Current())
 
-	case 2: // Track — queue album from this track onward.
+	case 2:
 		tracks, err := m.db.TracksForAlbum(row.Album.ID)
 		if err != nil || len(tracks) == 0 {
 			return *m, nil
 		}
-		// Find the selected track's index in the album.
 		startIdx := 0
 		for i, t := range tracks {
 			if t.ID == row.Track.ID {
@@ -253,7 +354,7 @@ func (m *Model) updateQueue(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.queue.CursorUp()
 	case key.Matches(msg, keys.Down):
 		m.queue.CursorDown()
-	case key.Matches(msg, keys.Toggle): // Enter — jump to track.
+	case key.Matches(msg, keys.Toggle):
 		track := m.queue.JumpTo()
 		if track != nil {
 			return *m, m.playQueueTrack(track)
@@ -264,7 +365,6 @@ func (m *Model) updateQueue(msg tea.KeyMsg) (Model, tea.Cmd) {
 			if m.player != nil {
 				m.player.Stop()
 			}
-			// Play next if available.
 			next := m.queue.Current()
 			if next != nil {
 				return *m, m.playQueueTrack(next)
@@ -286,7 +386,7 @@ func (m Model) View() string {
 		return ""
 	}
 
-	header := headerStyle.Width(m.width).Render("🦊 kitsune")
+	header := m.styles.Header.Width(m.width).Render("🦊 kitsune")
 
 	var content string
 	if m.syncing {
@@ -299,23 +399,41 @@ func (m Model) View() string {
 		content = m.renderSplitPanels()
 	}
 
-	// Now playing bar.
+	// Now playing section.
 	var nowPlaying string
 	if cur := m.queue.Current(); cur != nil {
-		nowPlaying = m.renderNowPlaying(cur)
+		elapsed := 0.0
+		if m.player != nil {
+			elapsed = m.player.Elapsed()
+		}
+
+		hasArt := m.albumArt.Supported() && len(m.artData) > 0 && m.artAlbumID == cur.AlbumID
+
+		info := ui.NowPlayingInfo{
+			Title:      cur.Title,
+			Artist:     cur.Artist,
+			Album:      cur.Album,
+			Year:       cur.Year,
+			ElapsedSec: elapsed,
+			DurationMs: cur.DurationMs,
+			Paused:     m.paused,
+			HasArt:     hasArt,
+		}
+
+		nowPlaying = m.nowPlaying.View(info)
 	}
 
-	// Status bar — always show hotkey hints, with errors if present.
+	// Status bar.
 	hints := "j/k: move  enter: play  space: pause  tab: switch  q: quit"
 	var statusText string
 	if m.playErr != "" {
-		statusText = errStyle.Render(m.playErr) + "  " + dimStyle.Render(hints)
+		statusText = m.styles.Error.Render(m.playErr) + "  " + m.styles.AppDim.Render(hints)
 	} else if m.syncErr != "" {
-		statusText = errStyle.Render("sync: "+m.syncErr) + "  " + dimStyle.Render(hints)
+		statusText = m.styles.Error.Render("sync: "+m.syncErr) + "  " + m.styles.AppDim.Render(hints)
 	} else {
-		statusText = dimStyle.Render(hints)
+		statusText = m.styles.AppDim.Render(hints)
 	}
-	status := statusStyle.Width(m.width).Render(statusText)
+	status := m.styles.Status.Width(m.width).Render(statusText)
 
 	parts := []string{header, content}
 	if nowPlaying != "" {
@@ -336,31 +454,12 @@ func (m Model) renderSplitPanels() string {
 
 	queueView := m.queue.View()
 
-	// Divider.
-	divider := dividerStyle.Height(m.contentHeight()).Render("│")
+	divider := m.styles.Divider.Height(m.contentHeight()).Render("│")
 
 	left := lipgloss.NewStyle().Width(libWidth).Height(m.contentHeight()).Render(libView)
 	right := lipgloss.NewStyle().Width(queueWidth).Height(m.contentHeight()).Render(queueView)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, divider, right)
-}
-
-func (m Model) renderNowPlaying(cur *ui.QueueTrack) string {
-	icon := "▶"
-	if m.paused {
-		icon = "⏸"
-	}
-
-	dur := formatDuration(cur.DurationMs)
-	info := fmt.Sprintf("%s %s — %s", icon, cur.Title, cur.Artist)
-
-	padding := m.width - lipgloss.Width(info) - len(dur) - 4
-	if padding < 1 {
-		padding = 1
-	}
-
-	line := fmt.Sprintf("%s%s%s", info, strings.Repeat(" ", padding), dimStyle.Render(dur))
-	return nowPlayingStyle.Width(m.width).Render(line)
 }
 
 // --- Layout helpers ---
@@ -373,14 +472,14 @@ func (m Model) splitWidths() (int, int) {
 	if queueWidth > 50 {
 		queueWidth = 50
 	}
-	libWidth := m.width - queueWidth - 1 // 1 for divider
+	libWidth := m.width - queueWidth - 1
 	return libWidth, queueWidth
 }
 
 func (m Model) contentHeight() int {
-	h := m.height - 4 // header + status
+	h := m.height - 4
 	if m.queue.Current() != nil {
-		h -= 2 // now playing bar
+		h -= m.nowPlaying.Height()
 	}
 	return max(1, h)
 }
@@ -392,6 +491,11 @@ func (m *Model) resizePanels() {
 		m.library.SetSize(libWidth, ch)
 	}
 	m.queue.SetSize(queueWidth, ch)
+	m.nowPlaying.SetWidth(m.width)
+
+	if m.albumArt.Supported() {
+		m.nowPlaying.SetArtCols(m.albumArt.CellSize())
+	}
 }
 
 func (m *Model) toggleFocus() {
@@ -417,12 +521,13 @@ func (m *Model) replaceQueue(tracks []db.TrackRow, startIdx int) {
 			Artist:     t.Artist,
 			Album:      t.Album,
 			AlbumID:    t.AlbumID,
+			Year:       t.Year,
 			DurationMs: t.DurationMs,
 			Format:     t.Format,
 		}
 	}
 	m.queue.Replace(queueTracks, startIdx)
-	m.resizePanels() // now playing bar may appear
+	m.resizePanels()
 }
 
 // --- Messages ---
@@ -432,6 +537,11 @@ type syncErrMsg struct{ error }
 type playStartedMsg struct{}
 type playErrMsg struct{ error }
 type trackEndedMsg struct{}
+
+type coverArtMsg struct {
+	albumID string
+	data    []byte
+}
 
 // --- Commands ---
 
@@ -461,6 +571,8 @@ func (m Model) playQueueTrack(track *ui.QueueTrack) tea.Cmd {
 			Title:      track.Title,
 			Artist:     track.Artist,
 			Album:      track.Album,
+			AlbumID:    track.AlbumID,
+			Year:       track.Year,
 			DurationMs: track.DurationMs,
 			Format:     track.Format,
 		}
@@ -469,6 +581,20 @@ func (m Model) playQueueTrack(track *ui.QueueTrack) tea.Cmd {
 			return playErrMsg{err}
 		}
 		return playStartedMsg{}
+	}
+}
+
+func (m Model) fetchCoverArt(albumID string) tea.Cmd {
+	return func() tea.Msg {
+		if m.client == nil || albumID == "" {
+			return coverArtMsg{}
+		}
+		data, err := m.client.GetCoverArt(albumID, 256)
+		if err != nil {
+			slog.Debug("cover art fetch failed", "albumID", albumID, "err", err)
+			return coverArtMsg{albumID: albumID}
+		}
+		return coverArtMsg{albumID: albumID, data: data}
 	}
 }
 
@@ -522,40 +648,3 @@ var keys = struct {
 	MoveUp:   key.NewBinding(key.WithKeys("K")),
 	MoveDown: key.NewBinding(key.WithKeys("J")),
 }
-
-// --- Styles ---
-
-var (
-	headerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FF6B35")).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderBottom(true).
-			BorderForeground(lipgloss.Color("#333333")).
-			Padding(0, 1)
-
-	statusStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#666666")).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderTop(true).
-			BorderForeground(lipgloss.Color("#333333")).
-			Padding(0, 1)
-
-	nowPlayingStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF6B35")).
-			Bold(true).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderTop(true).
-			BorderForeground(lipgloss.Color("#FF6B35")).
-			Padding(0, 1)
-
-	dividerStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#333333"))
-
-	dimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#666666")).
-			Italic(true)
-
-	errStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF4444"))
-)

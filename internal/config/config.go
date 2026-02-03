@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/simonhull/kitsune/internal/ui"
 )
 
 // Config holds all Kitsune configuration.
@@ -14,6 +15,7 @@ type Config struct {
 	Subsonic SubsonicConfig `toml:"subsonic"`
 	Library  LibraryConfig  `toml:"library"`
 	UI       UIConfig       `toml:"ui"`
+	Theme    ui.ThemeConfig `toml:"theme"`
 }
 
 // SubsonicConfig configures the Subsonic server connection.
