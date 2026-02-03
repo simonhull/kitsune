@@ -28,6 +28,7 @@ type TrackRow struct {
 	TrackNum       int
 	DiscNum        int
 	DurationMs     int
+	Year           int
 	Genre          string
 	Format         string
 	ShuffleExclude bool
@@ -81,7 +82,7 @@ func (db *DB) AlbumsForArtist(artistID string) ([]AlbumRow, error) {
 func (db *DB) TracksForArtist(artistID string) ([]TrackRow, error) {
 	rows, err := db.Conn.Query(`
 		SELECT t.id, t.title, t.artist, a.name, t.album_id, t.track_num, t.disc_num, t.duration_ms,
-			t.genre, t.format, t.shuffle_exclude, COALESCE(t.linked_next_id, '')
+			a.year, t.genre, t.format, t.shuffle_exclude, COALESCE(t.linked_next_id, '')
 		FROM tracks t
 		JOIN albums a ON t.album_id = a.id
 		WHERE t.artist_id = ?
@@ -96,7 +97,7 @@ func (db *DB) TracksForArtist(artistID string) ([]TrackRow, error) {
 	for rows.Next() {
 		var t TrackRow
 		if err := rows.Scan(&t.ID, &t.Title, &t.Artist, &t.Album, &t.AlbumID, &t.TrackNum, &t.DiscNum,
-			&t.DurationMs, &t.Genre, &t.Format, &t.ShuffleExclude, &t.LinkedNextID); err != nil {
+			&t.DurationMs, &t.Year, &t.Genre, &t.Format, &t.ShuffleExclude, &t.LinkedNextID); err != nil {
 			return nil, err
 		}
 		tracks = append(tracks, t)
@@ -108,7 +109,7 @@ func (db *DB) TracksForArtist(artistID string) ([]TrackRow, error) {
 func (db *DB) TracksForAlbum(albumID string) ([]TrackRow, error) {
 	rows, err := db.Conn.Query(`
 		SELECT t.id, t.title, t.artist, a.name, t.album_id, t.track_num, t.disc_num, t.duration_ms,
-			t.genre, t.format, t.shuffle_exclude, COALESCE(t.linked_next_id, '')
+			a.year, t.genre, t.format, t.shuffle_exclude, COALESCE(t.linked_next_id, '')
 		FROM tracks t
 		JOIN albums a ON t.album_id = a.id
 		WHERE t.album_id = ? ORDER BY t.disc_num, t.track_num
@@ -122,7 +123,7 @@ func (db *DB) TracksForAlbum(albumID string) ([]TrackRow, error) {
 	for rows.Next() {
 		var t TrackRow
 		if err := rows.Scan(&t.ID, &t.Title, &t.Artist, &t.Album, &t.AlbumID, &t.TrackNum, &t.DiscNum,
-			&t.DurationMs, &t.Genre, &t.Format, &t.ShuffleExclude, &t.LinkedNextID); err != nil {
+			&t.DurationMs, &t.Year, &t.Genre, &t.Format, &t.ShuffleExclude, &t.LinkedNextID); err != nil {
 			return nil, err
 		}
 		tracks = append(tracks, t)

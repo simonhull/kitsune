@@ -23,6 +23,8 @@ type NowPlaying struct {
 	Title      string
 	Artist     string
 	Album      string
+	AlbumID    string
+	Year       int
 	DurationMs int
 	Format     string
 }
@@ -35,7 +37,7 @@ type Player struct {
 	ctrl     *beep.Ctrl
 	streamer beep.StreamSeekCloser
 	body     io.ReadCloser // HTTP response body
-	position int           // samples played
+	tracker  *positionTracker
 	playing  bool
 	done     chan struct{} // signals track ended
 }
@@ -99,8 +101,8 @@ func (p *Player) Play(streamURL string, format string, info NowPlaying) error {
 	p.ctrl = ctrl
 	p.streamer = streamer
 	p.body = resp.Body
+	p.tracker = tracker
 	p.playing = true
-	p.position = 0
 
 	// Drain the done channel in case of a leftover signal.
 	select {
@@ -164,6 +166,22 @@ func (p *Player) Current() *NowPlaying {
 	return p.current
 }
 
+// Elapsed returns how many seconds of audio have played.
+func (p *Player) Elapsed() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.tracker == nil {
+		return 0
+	}
+
+	speaker.Lock()
+	pos := p.tracker.pos
+	speaker.Unlock()
+
+	return float64(pos) / float64(sampleRate)
+}
+
 // Done returns a channel that signals when the current track ends.
 func (p *Player) Done() <-chan struct{} {
 	return p.done
@@ -181,6 +199,7 @@ func (p *Player) cleanup() {
 	}
 	p.ctrl = nil
 	p.current = nil
+	p.tracker = nil
 	p.playing = false
 }
 
