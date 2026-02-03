@@ -50,6 +50,9 @@ type Model struct {
 	artData    []byte
 	artAlbumID string
 
+	// Command palette.
+	palette *ui.Palette
+
 	// Sync state.
 	syncing bool
 	syncMsg string
@@ -83,6 +86,7 @@ func New(cfg config.Config, database *db.DB, client *subsonic.Client, p *player.
 		queue:      ui.NewQueue(&styles),
 		nowPlaying: ui.NewNowPlayingPanel(&styles),
 		albumArt:   ui.NewAlbumArt(8),
+		palette:    ui.NewPalette(database, &styles),
 		syncing:    client != nil,
 		focus:      focusLibrary,
 	}
@@ -100,6 +104,11 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Command palette captures all input when open.
+		if m.palette.IsOpen() {
+			return m.updatePalette(msg)
+		}
+
 		if key.Matches(msg, keys.Quit) {
 			if m.player != nil {
 				m.player.Stop()
@@ -108,6 +117,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.albumArt.ClearAll()
 			}
 			return m, tea.Quit
+		}
+
+		if key.Matches(msg, keys.Palette) && !m.syncing {
+			m.palette.SetSize(m.width, m.contentHeight())
+			m.palette.Open()
+			return m, nil
 		}
 
 		if key.Matches(msg, keys.Pause) && m.player != nil && m.queue.Current() != nil {
@@ -138,6 +153,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.ready = true
 		m.resizePanels()
+		m.palette.SetSize(m.width, m.contentHeight())
 
 	case spinner.TickMsg:
 		if m.syncing {
@@ -293,6 +309,94 @@ func (m *Model) handleMouseClick(x, y int) (Model, tea.Cmd) {
 	return *m, nil
 }
 
+// --- Command palette ---
+
+func (m *Model) updatePalette(msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEscape:
+		m.palette.Close()
+		return *m, nil
+
+	case tea.KeyEnter:
+		sel := m.palette.Selected()
+		if sel == nil {
+			return *m, nil
+		}
+		m.palette.Close()
+		return m.handlePaletteSelect(sel)
+
+	case tea.KeyUp, tea.KeyCtrlK:
+		m.palette.CursorUp()
+		return *m, nil
+
+	case tea.KeyDown, tea.KeyCtrlJ:
+		m.palette.CursorDown()
+		return *m, nil
+
+	case tea.KeyCtrlN:
+		m.palette.CursorDown()
+		return *m, nil
+
+	case tea.KeyCtrlP:
+		m.palette.CursorUp()
+		return *m, nil
+
+	case tea.KeyBackspace:
+		m.palette.Backspace()
+		return *m, nil
+
+	case tea.KeySpace:
+		m.palette.Type(" ")
+		return *m, nil
+
+	case tea.KeyRunes:
+		m.palette.Type(string(msg.Runes))
+		return *m, nil
+	}
+
+	return *m, nil
+}
+
+func (m *Model) handlePaletteSelect(sel *ui.PaletteResult) (Model, tea.Cmd) {
+	switch sel.Kind {
+	case "artist":
+		// Queue all tracks by this artist.
+		tracks, err := m.db.TracksForArtist(sel.ArtistID)
+		if err != nil || len(tracks) == 0 {
+			return *m, nil
+		}
+		m.replaceQueue(tracks, 0)
+		return *m, m.playQueueTrack(m.queue.Current())
+
+	case "album":
+		// Queue all tracks in this album.
+		tracks, err := m.db.TracksForAlbum(sel.AlbumID)
+		if err != nil || len(tracks) == 0 {
+			return *m, nil
+		}
+		m.replaceQueue(tracks, 0)
+		return *m, m.playQueueTrack(m.queue.Current())
+
+	case "track":
+		// Queue album from this track onward.
+		tracks, err := m.db.TracksForAlbum(sel.AlbumID)
+		if err != nil || len(tracks) == 0 {
+			return *m, nil
+		}
+		startIdx := 0
+		for i, t := range tracks {
+			if t.ID == sel.ID {
+				startIdx = i
+				break
+			}
+		}
+		m.replaceQueue(tracks, startIdx)
+		return *m, m.playQueueTrack(m.queue.Current())
+	}
+
+	return *m, nil
+}
+
 // --- Input handling per focus ---
 
 func (m *Model) updateLibrary(msg tea.KeyMsg) (Model, tea.Cmd) {
@@ -411,7 +515,9 @@ func (m Model) View() string {
 	header := m.styles.Header.Width(m.width).Render("🦊 kitsune")
 
 	var content string
-	if m.syncing {
+	if m.palette.IsOpen() {
+		content = m.palette.View()
+	} else if m.syncing {
 		inner := m.spinner.View() + " syncing library..."
 		content = lipgloss.NewStyle().
 			Height(m.contentHeight()).
@@ -446,7 +552,7 @@ func (m Model) View() string {
 	}
 
 	// Status bar.
-	hints := "j/k: move  enter: play  space: pause  tab: switch  q: quit"
+	hints := "j/k: move  enter: play  space: pause  tab: switch  ctrl+p: search  q: quit"
 	var statusText string
 	if m.playErr != "" {
 		statusText = m.styles.Error.Render(m.playErr) + "  " + m.styles.AppDim.Render(hints)
@@ -640,6 +746,7 @@ func formatDuration(ms int) string {
 var keys = struct {
 	Quit     key.Binding
 	Pause    key.Binding
+	Palette  key.Binding
 	Tab      key.Binding
 	Up       key.Binding
 	Down     key.Binding
@@ -656,6 +763,7 @@ var keys = struct {
 }{
 	Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c")),
 	Pause:    key.NewBinding(key.WithKeys(" ")),
+	Palette:  key.NewBinding(key.WithKeys("ctrl+p")),
 	Tab:      key.NewBinding(key.WithKeys("tab")),
 	Up:       key.NewBinding(key.WithKeys("k", "up")),
 	Down:     key.NewBinding(key.WithKeys("j", "down")),

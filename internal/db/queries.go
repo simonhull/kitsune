@@ -105,6 +105,96 @@ func (db *DB) TracksForArtist(artistID string) ([]TrackRow, error) {
 	return tracks, rows.Err()
 }
 
+// SearchResult holds a single search hit with its type.
+type SearchResult struct {
+	Kind     string // "artist", "album", "track"
+	ID       string
+	Title    string // name for artists, name for albums, title for tracks
+	Artist   string
+	Album    string
+	AlbumID  string
+	ArtistID string
+	Year     int
+}
+
+// Search performs a fuzzy search across the library using FTS5.
+// Returns up to `limit` results, grouped by type.
+func (db *DB) Search(query string, limit int) ([]SearchResult, error) {
+	if query == "" {
+		return nil, nil
+	}
+
+	// FTS5 prefix search: append * for partial matching.
+	ftsQuery := query + "*"
+
+	rows, err := db.Conn.Query(`
+		SELECT
+			t.id, t.title, t.artist, t.album, t.album_id, t.artist_id, a.year
+		FROM tracks_fts fts
+		JOIN tracks t ON t.rowid = fts.rowid
+		JOIN albums a ON t.album_id = a.id
+		WHERE tracks_fts MATCH ?
+		ORDER BY fts.rank
+		LIMIT ?
+	`, ftsQuery, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Deduplicate into artists, albums, and tracks.
+	seenArtists := make(map[string]bool)
+	seenAlbums := make(map[string]bool)
+	var results []SearchResult
+
+	for rows.Next() {
+		var id, title, artist, album, albumID, artistID string
+		var year int
+		if err := rows.Scan(&id, &title, &artist, &album, &albumID, &artistID, &year); err != nil {
+			return nil, err
+		}
+
+		// Emit unique artists.
+		if !seenArtists[artistID] {
+			seenArtists[artistID] = true
+			results = append(results, SearchResult{
+				Kind:     "artist",
+				ID:       artistID,
+				Title:    artist,
+				ArtistID: artistID,
+			})
+		}
+
+		// Emit unique albums.
+		if !seenAlbums[albumID] {
+			seenAlbums[albumID] = true
+			results = append(results, SearchResult{
+				Kind:     "album",
+				ID:       albumID,
+				Title:    album,
+				Artist:   artist,
+				AlbumID:  albumID,
+				ArtistID: artistID,
+				Year:     year,
+			})
+		}
+
+		// Emit track.
+		results = append(results, SearchResult{
+			Kind:     "track",
+			ID:       id,
+			Title:    title,
+			Artist:   artist,
+			Album:    album,
+			AlbumID:  albumID,
+			ArtistID: artistID,
+			Year:     year,
+		})
+	}
+
+	return results, rows.Err()
+}
+
 // TracksForAlbum returns all tracks for an album, sorted by disc and track number.
 func (db *DB) TracksForAlbum(albumID string) ([]TrackRow, error) {
 	rows, err := db.Conn.Query(`
