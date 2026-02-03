@@ -253,6 +253,23 @@ func (m *Model) handleMouseClick(x, y int) (Model, tea.Cmd) {
 		if m.library != nil {
 			row := y - contentTop + m.library.Offset()
 			m.library.SetCursor(row)
+
+			// Artists/albums: expand (click again won't collapse — use h/left for that).
+			// Tracks: play from here.
+			if cur := m.library.CursorRow(); cur != nil {
+				switch cur.Depth {
+				case 0: // Artist — expand if collapsed.
+					if !cur.Artist.Expanded {
+						m.library.Expand()
+					}
+				case 1: // Album — expand if collapsed.
+					if !cur.Album.Expanded {
+						m.library.Expand()
+					}
+				case 2: // Track — play from here.
+					return m.handleLibraryEnter()
+				}
+			}
 		}
 		return *m, nil
 	}
@@ -264,6 +281,11 @@ func (m *Model) handleMouseClick(x, y int) (Model, tea.Cmd) {
 		row := y - contentTop - 2 + m.queue.OffsetVal()
 		if row >= 0 {
 			m.queue.SetCursor(row)
+			// Jump to and play the clicked track.
+			track := m.queue.JumpTo()
+			if track != nil {
+				return *m, m.playQueueTrack(track)
+			}
 		}
 		return *m, nil
 	}

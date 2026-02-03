@@ -280,9 +280,11 @@ func (l *Library) renderRow(row VisibleRow, selected bool) string {
 	case 2:
 		dur := formatDuration(row.Track.DurationMs)
 		num := fmt.Sprintf("%02d", row.Track.TrackNum)
-		titleWidth := l.width - 10
-		if titleWidth < 10 {
-			titleWidth = 10
+		// 4 (indent) + 2 (num) + 2 (gap) + title + 1 (space) + dur
+		overhead := 4 + 2 + 2 + 1 + len(dur)
+		titleWidth := l.width - overhead
+		if titleWidth < 5 {
+			titleWidth = 5
 		}
 		title := row.Track.Title
 		if len(title) > titleWidth {
