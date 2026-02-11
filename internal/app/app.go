@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"math/rand/v2"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -135,6 +136,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if key.Matches(msg, keys.Tab) && !m.syncing {
 			m.cycleFocus()
+			return m, nil
+		}
+
+		if key.Matches(msg, keys.Shuffle) && !m.syncing {
+			tracks := m.content.AllVisibleTracks()
+			if len(tracks) > 0 {
+				rand.Shuffle(len(tracks), func(i, j int) { tracks[i], tracks[j] = tracks[j], tracks[i] })
+				m.replaceQueue(tracks, 0)
+				return m, m.playQueueTrack(m.queue.Current())
+			}
 			return m, nil
 		}
 
@@ -612,7 +623,7 @@ func (m Model) View() string {
 	}
 
 	// Status bar.
-	hints := "j/k: move  enter: play  space: pause  tab: switch  ctrl+p: search  q: quit"
+	hints := "j/k: move  enter: play  space: pause  s: shuffle  tab: switch  ctrl+p: search  q: quit"
 	var statusText string
 	if m.playErr != "" {
 		statusText = m.styles.Error.Render(m.playErr) + "  " + m.styles.AppDim.Render(hints)
@@ -852,6 +863,7 @@ var keys = struct {
 	MoveUp   key.Binding
 	MoveDown key.Binding
 	Escape   key.Binding
+	Shuffle  key.Binding
 }{
 	Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c")),
 	Pause:    key.NewBinding(key.WithKeys(" ")),
@@ -870,4 +882,5 @@ var keys = struct {
 	MoveUp:   key.NewBinding(key.WithKeys("K")),
 	MoveDown: key.NewBinding(key.WithKeys("J")),
 	Escape:   key.NewBinding(key.WithKeys("esc", "backspace")),
+	Shuffle:  key.NewBinding(key.WithKeys("s")),
 }

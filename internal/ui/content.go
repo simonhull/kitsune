@@ -319,3 +319,26 @@ func (cb *ContentBrowser) scrollIntoView() {
 		cb.offset = cb.cursor - cb.height + 1
 	}
 }
+
+// AllVisibleTracks returns all track rows currently visible in the content browser
+// as db.TrackRow values suitable for queue operations.
+func (cb *ContentBrowser) AllVisibleTracks() []db.TrackRow {
+	var tracks []db.TrackRow
+	for _, row := range cb.visible {
+		if row.Kind != ContentTrack {
+			continue
+		}
+		tracks = append(tracks, db.TrackRow{
+			ID:         row.TrackID,
+			Title:      row.TrackTitle,
+			Artist:     row.ArtistName,
+			Album:      row.AlbumName,
+			AlbumID:    row.AlbumID,
+			TrackNum:   row.TrackNum,
+			DurationMs: row.DurationMs,
+			Year:       row.AlbumYear,
+			Format:     row.Format,
+		})
+	}
+	return tracks
+}
