@@ -21,7 +21,8 @@ import (
 type focus int
 
 const (
-	focusLibrary focus = iota
+	focusArtistNav focus = iota
+	focusContent
 	focusQueue
 )
 
@@ -38,7 +39,8 @@ type Model struct {
 	db      *db.DB
 	client  *subsonic.Client
 	spinner spinner.Model
-	library *ui.Library
+	nav     *ui.ArtistNav
+	content *ui.ContentBrowser
 	queue   *ui.Queue
 	player  *player.Player
 	focus   focus
@@ -88,7 +90,7 @@ func New(cfg config.Config, database *db.DB, client *subsonic.Client, p *player.
 		albumArt:   ui.NewAlbumArt(8),
 		palette:    ui.NewPalette(database, &styles),
 		syncing:    client != nil,
-		focus:      focusLibrary,
+		focus:      focusContent,
 	}
 }
 
@@ -132,14 +134,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if key.Matches(msg, keys.Tab) && !m.syncing {
-			m.toggleFocus()
+			m.cycleFocus()
 			return m, nil
 		}
 
 		if !m.syncing {
 			switch m.focus {
-			case focusLibrary:
-				return m.updateLibrary(msg)
+			case focusArtistNav:
+				return m.updateArtistNav(msg)
+			case focusContent:
+				return m.updateContent(msg)
 			case focusQueue:
 				return m.updateQueue(msg)
 			}
@@ -174,14 +178,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				msg.result.Artists, msg.result.Albums, msg.result.Tracks,
 				m.styles.AppDim.Render("("+msg.result.Elapsed.Round(time.Millisecond).String()+")"))
 		}
-		m.library = ui.NewLibrary(m.db, &m.styles)
-		m.library.SetFocused(m.focus == focusLibrary)
+		m.nav = ui.NewArtistNav(m.db, &m.styles)
+		m.nav.SetFocused(m.focus == focusArtistNav)
+		m.content = ui.NewContentBrowser(m.db, &m.styles)
+		m.content.SetFocused(m.focus == focusContent)
 		m.resizePanels()
 
 	case syncErrMsg:
 		m.syncing = false
 		m.syncErr = msg.Error()
-		m.library = ui.NewLibrary(m.db, &m.styles)
+		m.nav = ui.NewArtistNav(m.db, &m.styles)
+		m.content = ui.NewContentBrowser(m.db, &m.styles)
 		m.resizePanels()
 
 	case playStartedMsg:
@@ -233,16 +240,30 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 		return m.handleMouseClick(msg.X, msg.Y)
 
 	case tea.MouseButtonWheelUp:
-		if m.focus == focusLibrary && m.library != nil {
-			m.library.MoveUp()
-		} else if m.focus == focusQueue {
+		switch m.focus {
+		case focusArtistNav:
+			if m.nav != nil {
+				m.nav.MoveUp()
+			}
+		case focusContent:
+			if m.content != nil {
+				m.content.MoveUp()
+			}
+		case focusQueue:
 			m.queue.CursorUp()
 		}
 
 	case tea.MouseButtonWheelDown:
-		if m.focus == focusLibrary && m.library != nil {
-			m.library.MoveDown()
-		} else if m.focus == focusQueue {
+		switch m.focus {
+		case focusArtistNav:
+			if m.nav != nil {
+				m.nav.MoveDown()
+			}
+		case focusContent:
+			if m.content != nil {
+				m.content.MoveDown()
+			}
+		case focusQueue:
 			m.queue.CursorDown()
 		}
 	}
@@ -260,52 +281,55 @@ func (m *Model) handleMouseClick(x, y int) (Model, tea.Cmd) {
 	contentH := m.contentHeight()
 	contentBottom := contentTop + contentH
 
-	libWidth, _ := m.splitWidths()
+	navWidth, contentWidth, _ := m.tripleWidths()
 
-	if y >= contentTop && y < contentBottom && x < libWidth {
-		if m.focus != focusLibrary {
-			m.toggleFocus()
+	if y < contentTop || y >= contentBottom {
+		return *m, nil
+	}
+
+	if x < navWidth {
+		// Artist nav click.
+		if m.focus != focusArtistNav {
+			m.setFocus(focusArtistNav)
 		}
-		if m.library != nil {
-			row := y - contentTop + m.library.Offset()
-			m.library.SetCursor(row)
-
-			// Artists/albums: expand (click again won't collapse — use h/left for that).
-			// Tracks: play from here.
-			if cur := m.library.CursorRow(); cur != nil {
-				switch cur.Depth {
-				case 0: // Artist — expand if collapsed.
-					if !cur.Artist.Expanded {
-						m.library.Expand()
-					}
-				case 1: // Album — expand if collapsed.
-					if !cur.Album.Expanded {
-						m.library.Expand()
-					}
-				case 2: // Track — play from here.
-					return m.handleLibraryEnter()
-				}
+		if m.nav != nil {
+			row := y - contentTop + m.nav.Offset()
+			m.nav.SetCursor(row)
+			artistID := m.nav.Select()
+			if artistID != "" && m.content != nil {
+				m.content.FilterByArtist(artistID)
 			}
 		}
 		return *m, nil
 	}
 
-	if y >= contentTop && y < contentBottom && x > libWidth {
-		if m.focus != focusQueue {
-			m.toggleFocus()
+	if x < navWidth+1+contentWidth {
+		// Content browser click.
+		if m.focus != focusContent {
+			m.setFocus(focusContent)
 		}
-		row := y - contentTop - 2 + m.queue.OffsetVal()
-		if row >= 0 {
-			m.queue.SetCursor(row)
-			// Jump to and play the clicked track.
-			track := m.queue.JumpTo()
-			if track != nil {
-				return *m, m.playQueueTrack(track)
+		if m.content != nil {
+			row := y - contentTop + m.content.Offset()
+			m.content.SetCursor(row)
+			if cur := m.content.CursorRow(); cur != nil && cur.Kind == ui.ContentTrack {
+				return m.handleContentEnter()
 			}
 		}
 		return *m, nil
 	}
 
+	// Queue click.
+	if m.focus != focusQueue {
+		m.setFocus(focusQueue)
+	}
+	row := y - contentTop - 2 + m.queue.OffsetVal()
+	if row >= 0 {
+		m.queue.SetCursor(row)
+		track := m.queue.JumpTo()
+		if track != nil {
+			return *m, m.playQueueTrack(track)
+		}
+	}
 	return *m, nil
 }
 
@@ -360,24 +384,35 @@ func (m *Model) updatePalette(msg tea.KeyMsg) (Model, tea.Cmd) {
 func (m *Model) handlePaletteSelect(sel *ui.PaletteResult) (Model, tea.Cmd) {
 	switch sel.Kind {
 	case "artist":
-		// Queue all tracks by this artist.
-		tracks, err := m.db.TracksForArtist(sel.ArtistID)
-		if err != nil || len(tracks) == 0 {
-			return *m, nil
+		// Navigate to artist (filter, don't play).
+		if m.nav != nil {
+			m.nav.SelectByID(sel.ArtistID)
 		}
-		m.replaceQueue(tracks, 0)
-		return *m, m.playQueueTrack(m.queue.Current())
+		if m.content != nil {
+			m.content.FilterByArtist(sel.ArtistID)
+		}
+		return *m, nil
 
 	case "album":
-		// Queue all tracks in this album.
-		tracks, err := m.db.TracksForAlbum(sel.AlbumID)
-		if err != nil || len(tracks) == 0 {
-			return *m, nil
+		// Filter to artist, scroll to album.
+		if m.nav != nil {
+			m.nav.SelectByID(sel.ArtistID)
 		}
-		m.replaceQueue(tracks, 0)
-		return *m, m.playQueueTrack(m.queue.Current())
+		if m.content != nil {
+			m.content.FilterByArtist(sel.ArtistID)
+			m.content.ScrollToAlbum(sel.AlbumID)
+		}
+		return *m, nil
 
 	case "track":
+		// Filter to artist, scroll to track, and play.
+		if m.nav != nil {
+			m.nav.SelectByID(sel.ArtistID)
+		}
+		if m.content != nil {
+			m.content.FilterByArtist(sel.ArtistID)
+			m.content.ScrollToTrack(sel.ID)
+		}
 		// Queue album from this track onward.
 		tracks, err := m.db.TracksForAlbum(sel.AlbumID)
 		if err != nil || len(tracks) == 0 {
@@ -399,70 +434,95 @@ func (m *Model) handlePaletteSelect(sel *ui.PaletteResult) (Model, tea.Cmd) {
 
 // --- Input handling per focus ---
 
-func (m *Model) updateLibrary(msg tea.KeyMsg) (Model, tea.Cmd) {
-	if m.library == nil {
+func (m *Model) updateArtistNav(msg tea.KeyMsg) (Model, tea.Cmd) {
+	if m.nav == nil {
 		return *m, nil
 	}
 
 	switch {
 	case key.Matches(msg, keys.Up):
-		m.library.MoveUp()
+		m.nav.MoveUp()
 	case key.Matches(msg, keys.Down):
-		m.library.MoveDown()
-	case key.Matches(msg, keys.Expand):
-		m.library.Expand()
-	case key.Matches(msg, keys.Collapse):
-		m.library.Collapse()
+		m.nav.MoveDown()
 	case key.Matches(msg, keys.Toggle):
-		return m.handleLibraryEnter()
+		artistID := m.nav.Select()
+		if artistID != "" && m.content != nil {
+			m.content.FilterByArtist(artistID)
+		}
+	case key.Matches(msg, keys.Collapse), key.Matches(msg, keys.Escape):
+		m.nav.ClearFilter()
+		if m.content != nil {
+			m.content.ClearFilter()
+		}
 	case key.Matches(msg, keys.Top):
-		m.library.MoveTop()
+		m.nav.MoveTop()
 	case key.Matches(msg, keys.Bottom):
-		m.library.MoveBottom()
+		m.nav.MoveBottom()
 	case key.Matches(msg, keys.HalfDown):
-		m.library.HalfPageDown()
+		m.nav.HalfPageDown()
 	case key.Matches(msg, keys.HalfUp):
-		m.library.HalfPageUp()
+		m.nav.HalfPageUp()
 	}
 
 	return *m, nil
 }
 
-func (m *Model) handleLibraryEnter() (Model, tea.Cmd) {
-	row := m.library.CursorRow()
+func (m *Model) updateContent(msg tea.KeyMsg) (Model, tea.Cmd) {
+	if m.content == nil {
+		return *m, nil
+	}
+
+	switch {
+	case key.Matches(msg, keys.Up):
+		m.content.MoveUp()
+	case key.Matches(msg, keys.Down):
+		m.content.MoveDown()
+	case key.Matches(msg, keys.Toggle):
+		return m.handleContentEnter()
+	case key.Matches(msg, keys.Top):
+		m.content.MoveTop()
+	case key.Matches(msg, keys.Bottom):
+		m.content.MoveBottom()
+	case key.Matches(msg, keys.HalfDown):
+		m.content.HalfPageDown()
+	case key.Matches(msg, keys.HalfUp):
+		m.content.HalfPageUp()
+	}
+
+	return *m, nil
+}
+
+func (m *Model) handleContentEnter() (Model, tea.Cmd) {
+	row := m.content.CursorRow()
 	if row == nil {
 		return *m, nil
 	}
 
-	switch row.Depth {
-	case 0:
-		tracks, err := m.db.TracksForArtist(row.Artist.ID)
+	switch row.Kind {
+	case ui.ContentArtist:
+		tracks, err := m.db.TracksForArtist(row.ArtistID)
 		if err != nil || len(tracks) == 0 {
 			return *m, nil
 		}
 		m.replaceQueue(tracks, 0)
 		return *m, m.playQueueTrack(m.queue.Current())
 
-	case 1:
-		if !row.Album.Expanded {
-			m.library.Expand()
-			return *m, nil
-		}
-		tracks, err := m.db.TracksForAlbum(row.Album.ID)
+	case ui.ContentAlbum:
+		tracks, err := m.db.TracksForAlbum(row.AlbumID)
 		if err != nil || len(tracks) == 0 {
 			return *m, nil
 		}
 		m.replaceQueue(tracks, 0)
 		return *m, m.playQueueTrack(m.queue.Current())
 
-	case 2:
-		tracks, err := m.db.TracksForAlbum(row.Album.ID)
+	case ui.ContentTrack:
+		tracks, err := m.db.TracksForAlbum(row.AlbumID)
 		if err != nil || len(tracks) == 0 {
 			return *m, nil
 		}
 		startIdx := 0
 		for i, t := range tracks {
-			if t.ID == row.Track.ID {
+			if t.ID == row.TrackID {
 				startIdx = i
 				break
 			}
@@ -524,7 +584,7 @@ func (m Model) View() string {
 			Padding(1, 2).
 			Render(inner)
 	} else {
-		content = m.renderSplitPanels()
+		content = m.renderTriplePanels()
 	}
 
 	// Now playing section.
@@ -572,27 +632,34 @@ func (m Model) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
-func (m Model) renderSplitPanels() string {
-	libWidth, queueWidth := m.splitWidths()
+func (m Model) renderTriplePanels() string {
+	navWidth, contentWidth, queueWidth := m.tripleWidths()
+	ch := m.contentHeight()
 
-	var libView string
-	if m.library != nil {
-		libView = m.library.View()
+	var navView string
+	if m.nav != nil {
+		navView = m.nav.View()
+	}
+
+	var contentView string
+	if m.content != nil {
+		contentView = m.content.View()
 	}
 
 	queueView := m.queue.View()
 
-	divider := m.styles.Divider.Height(m.contentHeight()).Render("│")
+	divider := m.styles.Divider.Height(ch).Render("│")
 
-	left := lipgloss.NewStyle().Width(libWidth).Height(m.contentHeight()).Render(libView)
-	right := lipgloss.NewStyle().Width(queueWidth).Height(m.contentHeight()).Render(queueView)
+	left := lipgloss.NewStyle().Width(navWidth).Height(ch).Render(navView)
+	middle := lipgloss.NewStyle().Width(contentWidth).Height(ch).Render(contentView)
+	right := lipgloss.NewStyle().Width(queueWidth).Height(ch).Render(queueView)
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, divider, right)
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, divider, middle, divider, right)
 }
 
 // --- Layout helpers ---
 
-func (m Model) splitWidths() (int, int) {
+func (m Model) tripleWidths() (int, int, int) {
 	queueWidth := m.width * 30 / 100
 	if queueWidth < 25 {
 		queueWidth = 25
@@ -600,8 +667,19 @@ func (m Model) splitWidths() (int, int) {
 	if queueWidth > 50 {
 		queueWidth = 50
 	}
-	libWidth := m.width - queueWidth - 1
-	return libWidth, queueWidth
+
+	navWidth := m.width * 20 / 100
+	if navWidth < 20 {
+		navWidth = 20
+	}
+
+	// 2 dividers.
+	contentWidth := m.width - navWidth - queueWidth - 2
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+
+	return navWidth, contentWidth, queueWidth
 }
 
 func (m Model) contentHeight() int {
@@ -613,10 +691,13 @@ func (m Model) contentHeight() int {
 }
 
 func (m *Model) resizePanels() {
-	libWidth, queueWidth := m.splitWidths()
+	navWidth, contentWidth, queueWidth := m.tripleWidths()
 	ch := m.contentHeight()
-	if m.library != nil {
-		m.library.SetSize(libWidth, ch)
+	if m.nav != nil {
+		m.nav.SetSize(navWidth, ch)
+	}
+	if m.content != nil {
+		m.content.SetSize(contentWidth, ch)
 	}
 	m.queue.SetSize(queueWidth, ch)
 	m.nowPlaying.SetWidth(m.width)
@@ -626,16 +707,26 @@ func (m *Model) resizePanels() {
 	}
 }
 
-func (m *Model) toggleFocus() {
-	if m.focus == focusLibrary {
-		m.focus = focusQueue
-	} else {
-		m.focus = focusLibrary
+func (m *Model) setFocus(f focus) {
+	m.focus = f
+	if m.nav != nil {
+		m.nav.SetFocused(f == focusArtistNav)
 	}
-	if m.library != nil {
-		m.library.SetFocused(m.focus == focusLibrary)
+	if m.content != nil {
+		m.content.SetFocused(f == focusContent)
 	}
-	m.queue.SetFocused(m.focus == focusQueue)
+	m.queue.SetFocused(f == focusQueue)
+}
+
+func (m *Model) cycleFocus() {
+	switch m.focus {
+	case focusArtistNav:
+		m.setFocus(focusContent)
+	case focusContent:
+		m.setFocus(focusQueue)
+	case focusQueue:
+		m.setFocus(focusArtistNav)
+	}
 }
 
 // --- Queue helpers ---
@@ -760,6 +851,7 @@ var keys = struct {
 	Remove   key.Binding
 	MoveUp   key.Binding
 	MoveDown key.Binding
+	Escape   key.Binding
 }{
 	Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c")),
 	Pause:    key.NewBinding(key.WithKeys(" ")),
@@ -777,4 +869,5 @@ var keys = struct {
 	Remove:   key.NewBinding(key.WithKeys("d")),
 	MoveUp:   key.NewBinding(key.WithKeys("K")),
 	MoveDown: key.NewBinding(key.WithKeys("J")),
+	Escape:   key.NewBinding(key.WithKeys("esc", "backspace")),
 }
