@@ -1,0 +1,111 @@
+version: "2"
+
+run:
+  modules-download-mode: readonly
+  tests: true
+
+linters:
+  default: all
+  disable:
+    # Demands every struct field be set explicitly; fights useful zero values.
+    - exhaustruct
+    - exhaustruct_v5
+    # Blank-line style rules that are not Go convention; gofumpt owns layout.
+    - wsl
+    - wsl_v5
+    - nlreturn
+    # Contradicts Go's short names in small scopes (i, r, w, ctx).
+    - varnamelen
+    # Bans the idiomatic `if err := f(); err != nil`.
+    - noinlineerr
+    # White-box tests in the same package are legitimate.
+    - testpackage
+    # Music metadata is multilingual by nature.
+    - gosmopolitan
+    # Line length and tag alignment belong to the formatter.
+    - lll
+    - tagalign
+    # Deprecated in golangci-lint 2.x; gomodguard_v2 stays enabled.
+    - gomodguard
+
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: io/ioutil
+              desc: use io and os
+            - pkg: math/rand$
+              desc: use math/rand/v2
+            - pkg: github.com/pkg/errors
+              desc: use errors and fmt.Errorf with %w
+            - pkg: golang.org/x/exp
+              desc: use the standard library equivalent
+            - pkg: log$
+              desc: use log/slog
+            - pkg: encoding/json$
+              desc: use encoding/json/v2
+            - pkg: github.com/stretchr/testify
+              desc: use the standard testing package
+            - pkg: github.com/onsi/gomega
+              desc: use the standard testing package
+            - pkg: github.com/onsi/ginkgo
+              desc: use the standard testing package
+    forbidigo:
+      # Match by package, not by source text, so aliased imports are caught.
+      analyze-types: true
+      forbid:
+        - pattern: ^(fmt\.Print(f|ln)?|print|println)$
+          msg: write to an io.Writer or use log/slog
+        - pattern: ^os\.(Stdout|Stderr)$
+          msg: take an io.Writer from the caller; only cmd/ touches the process streams
+    gocritic:
+      enable-all: true
+    nolintlint:
+      require-specific: true
+      require-explanation: true
+    misspell:
+      locale: US
+    govet:
+      enable-all: true
+      disable:
+        # Field order follows meaning, not padding.
+        - fieldalignment
+      settings:
+        shadow:
+          strict: true
+
+  exclusions:
+    generated: strict
+    # Report exclusion rules that no longer match anything.
+    warn-unused: true
+    rules:
+      # Tests may use literal numbers, long table functions and ad-hoc errors,
+      # and open fixture paths from variables.
+      - path: _test\.go$
+        linters: [mnd, funlen, err113]
+      - path: _test\.go$
+        linters: [gosec]
+        text: G304
+      # Commands talk to the terminal.
+      - path: ^cmd/
+        linters: [forbidigo]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # Show every finding on a line, not just the first.
+  uniq-by-line: false
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra:
+        group-params: true
+        clothe-returns: true
+    goimports:
+      local-prefixes:
+        - github.com/simonhull/kitsune

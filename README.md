@@ -1,11 +1,12 @@
-# Kitsune 🦊🎵
+# Kitsune
 
-A beautiful terminal music player with first-class Subsonic support.
+A self-hosted music server with a native API, an OpenSubsonic compatibility layer,
+a web UI and a terminal client.
 
-## Status
+**Status:** early rewrite. The previous Subsonic terminal client is preserved at the
+`legacy/subsonic-tui` tag.
 
-🚧 Early development
+## Development
 
-## License
-
-MIT
+    mise install
+    mise run check

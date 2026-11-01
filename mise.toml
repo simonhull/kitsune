@@ -1,0 +1,33 @@
+[tools]
+go = "1.27.3"
+golangci-lint = "2.15.0"
+
+[tasks.build]
+description = "Build everything, plus a race build (mirrors CI)"
+run = ["go build ./...", "go build -race ./..."]
+
+[tasks.test]
+description = "Race tests in shuffled order (mirrors CI)"
+run = "go test -race -shuffle=on ./..."
+
+[tasks.lint]
+description = "Lint config check, go.mod tidiness, golangci-lint (incl. formatters), go vet, go fix modernizers"
+run = [
+  "golangci-lint config verify",
+  "go mod tidy -diff",
+  "golangci-lint run ./...",
+  "go vet ./...",
+  "go fix -diff ./...",
+]
+
+[tasks.fmt]
+description = "Apply gofumpt and goimports"
+run = "golangci-lint fmt ./..."
+
+[tasks.vuln]
+description = "Known-vulnerability scan (CI runs this too)"
+run = "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./..."
+
+[tasks.check]
+description = "Everything CI checks, locally"
+depends = ["build", "test", "lint", "vuln"]
