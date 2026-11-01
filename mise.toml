@@ -11,9 +11,10 @@ description = "Race tests in shuffled order (mirrors CI)"
 run = "go test -race -shuffle=on ./..."
 
 [tasks.lint]
-description = "Lint config check, golangci-lint (incl. formatters), go vet, go fix modernizers"
+description = "Lint config check, go.mod tidiness, golangci-lint (incl. formatters), go vet, go fix modernizers"
 run = [
   "golangci-lint config verify",
+  "go mod tidy -diff",
   "golangci-lint run ./...",
   "go vet ./...",
   "go fix -diff ./...",
@@ -29,4 +30,4 @@ run = "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./..."
 
 [tasks.check]
 description = "Everything CI checks, locally"
-depends = ["build", "test", "lint"]
+depends = ["build", "test", "lint", "vuln"]
