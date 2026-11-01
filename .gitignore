@@ -1,0 +1,5 @@
+/kitsune-server
+/kitsune
+/dist/
+*.out
+*.test
