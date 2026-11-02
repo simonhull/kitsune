@@ -29,6 +29,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Accept interfaces where a consumer needs them; return concrete types.
 - US spelling in identifiers, API fields and log messages.
 
+## API
+- `api/openapi.yaml` is the contract; there is no code generator. Handlers live in
+  `internal/server`, wire types in `api`, and clients are written by hand.
+- Every route is one entry in `internal/server`'s route table; its pattern is the
+  spec's method and path verbatim. `TestRoutesMatchContract` enforces this.
+- API tests go through `openapitest` (strict request/response validation). A full
+  test run fails if any declared operation × status is never exercised.
+- Errors are RFC 9457 problems via `writeProblem`; never `http.Error`.
+
 ## Lint policy
 - golangci-lint runs with `default: all`. Every disabled linter in `.golangci.yml` has
   its reason next to it; do not add to that list without one.
