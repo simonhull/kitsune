@@ -1,0 +1,37 @@
+openapi: 3.1.0
+info:
+  title: Kitsune
+  version: 0.1.0
+  description: Native API of the Kitsune music server.
+security:
+  - bearer: []
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Report that the process is up.
+      security: []
+      responses:
+        "204":
+          description: The process is up.
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  responses:
+    Problem:
+      description: An RFC 9457 problem.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        requestId: { type: string }
