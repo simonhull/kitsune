@@ -61,12 +61,12 @@ func TestTransportCatches(t *testing.T) {
 		path     string
 		ctx      func(context.Context) context.Context
 		response canned
-		want     bool // Whether the validator reports a violation.
+		want     string // A substring of the reported violation; "" for none.
 	}{
-		{"health", healthPath, nil, canned{http.StatusNoContent, "", ""}, false},
-		{"undeclared status", healthPath, nil, canned{http.StatusOK, "", ""}, true},
-		{"unknown path", "/nope", nil, canned{http.StatusNotFound, "application/problem+json", problem}, true},
-		{"valid request expected invalid", healthPath, openapitest.ExpectInvalidRequest, canned{http.StatusNoContent, "", ""}, true},
+		{"health", healthPath, nil, canned{http.StatusNoContent, "", ""}, ""},
+		{"undeclared status", healthPath, nil, canned{http.StatusOK, "", ""}, "response 200 to GET"},
+		{"unknown path", "/nope", nil, canned{http.StatusNotFound, "application/problem+json", problem}, "request GET"},
+		{"valid request expected invalid", healthPath, openapitest.ExpectInvalidRequest, canned{http.StatusNoContent, "", ""}, "expected to break the contract"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -91,37 +91,52 @@ func TestTransportCatches(t *testing.T) {
 
 			rec.mu.Lock()
 			defer rec.mu.Unlock()
-			if got := len(rec.errs) > 0; got != tt.want {
-				t.Errorf("violation reported = %t, want %t; reports: %q", got, tt.want, rec.errs)
+			switch {
+			case tt.want == "" && len(rec.errs) > 0:
+				t.Errorf("reports = %q, want none", rec.errs)
+			case tt.want != "" && !slices.ContainsFunc(rec.errs, func(e string) bool { return strings.Contains(e, tt.want) }):
+				t.Errorf("reports = %q, want one containing %q", rec.errs, tt.want)
 			}
-			t.Logf("reports: %q", rec.errs)
 		})
 	}
 }
 
-func TestCoverage(t *testing.T) {
-	t.Parallel()
-	c := openapitest.Load(t)
-	if got := c.Unexercised(); !slices.Equal(got, []string{"GET /healthz 204"}) {
-		t.Errorf("before any request, Unexercised() = %q, want [GET /healthz 204]", got)
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	t.Cleanup(srv.Close)
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+healthPath, http.NoBody)
+// get sends a GET for url through client and closes the body.
+func get(t *testing.T, client *http.Client, url string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, http.NoBody)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	resp, err := c.Client(t).Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
 	if closeErr := resp.Body.Close(); closeErr != nil {
 		t.Fatalf("close: %v", closeErr)
 	}
+}
 
+func TestCoverage(t *testing.T) {
+	t.Parallel()
+	c := openapitest.Load(t)
+	want := []string{"GET /healthz 204"}
+	if got := c.Unexercised(); !slices.Equal(got, want) {
+		t.Errorf("before any request, Unexercised() = %q, want %q", got, want)
+	}
+
+	// A response outside the contract does not count.
+	offContract := &http.Client{Transport: c.Transport(&recorder{TB: t}, canned{http.StatusNoContent, "", ""})}
+	get(t, offContract, "http://kitsune.test/nope")
+	if got := c.Unexercised(); !slices.Equal(got, want) {
+		t.Errorf("after an off-contract response, Unexercised() = %q, want %q", got, want)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	get(t, c.Client(t), srv.URL+healthPath)
 	if got := c.Unexercised(); len(got) != 0 {
 		t.Errorf("after GET /healthz, Unexercised() = %q, want none", got)
 	}

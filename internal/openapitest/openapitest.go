@@ -43,6 +43,7 @@ var errInvalidContract = errors.New("contract is not valid OpenAPI")
 type Contract struct {
 	model     *v3.Document
 	validator validator.Validator
+	paths     *config.ValidationOptions // For resolving request paths; see [Contract.record].
 
 	mu   sync.Mutex
 	seen map[string]bool // Response keys exercised so far; see [Contract.Unexercised].
@@ -61,21 +62,16 @@ type Operation struct {
 // error.
 func Load(tb testing.TB) *Contract {
 	tb.Helper()
-	c, err := load()
+	c, err := New()
 	if err != nil {
 		tb.Fatal(err)
 	}
 	return c
 }
 
-// MustLoad is Load for TestMain, which has no testing.TB: it returns the
-// error instead of failing a test.
-func MustLoad() (*Contract, error) {
-	return load()
-}
-
-// load reads the contract, from [SpecEnv] if set, and builds its validator.
-func load() (*Contract, error) {
+// New reads the contract, from [SpecEnv] if set, and builds its validator.
+// It is Load for TestMain, which has no testing.TB.
+func New() (*Contract, error) {
 	spec := api.Spec
 	if path := os.Getenv(SpecEnv); path != "" {
 		b, err := os.ReadFile(path) //nolint:gosec // G304, G703: the developer names this file to test against it.
@@ -102,7 +98,12 @@ func load() (*Contract, error) {
 	if ok, errs := v.ValidateDocument(); !ok {
 		return nil, fmt.Errorf("%w:\n%s", errInvalidContract, describe(errs))
 	}
-	return &Contract{model: &model.Model, validator: v, seen: make(map[string]bool)}, nil
+	return &Contract{
+		model:     &model.Model,
+		validator: v,
+		paths:     config.NewValidationOptions(),
+		seen:      make(map[string]bool),
+	}, nil
 }
 
 // Operations lists every operation in the contract.
@@ -127,7 +128,7 @@ func (c *Contract) Client(tb testing.TB) *http.Client {
 	return &http.Client{Transport: c.Transport(tb, http.DefaultTransport)}
 }
 
-// Transport returns a [Transport] over base that reports violations to t. It
+// Transport returns a [Transport] over base that reports violations to tb. It
 // also fails t at cleanup if any response it returned was never validated,
 // which happens only to a streaming response whose body was not closed.
 func (c *Contract) Transport(tb testing.TB, base http.RoundTripper) *Transport {
@@ -216,14 +217,14 @@ func (tr *Transport) checkResponse(resp *http.Response, body []byte) {
 	tr.validated++
 	tr.mu.Unlock()
 
-	tr.contract.record(resp.Request, resp.StatusCode)
-
 	clone := *resp
 	clone.Body = io.NopCloser(bytes.NewReader(body))
 	if ok, errs := tr.contract.validator.ValidateHttpResponse(resp.Request, &clone); !ok {
 		tr.tb.Errorf("openapitest: response %d to %s %s breaks the contract:\n%s",
 			resp.StatusCode, resp.Request.Method, resp.Request.URL, describe(errs))
+		return
 	}
+	tr.contract.record(resp.Request, resp.StatusCode)
 }
 
 // validateOnClose records a streaming body and validates the response once
