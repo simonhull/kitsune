@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"mime"
 	"net/http"
 	"strings"
 
@@ -35,7 +36,11 @@ func writeBody(w http.ResponseWriter, status int, mediaType string, v any) {
 		return
 	}
 	h := w.Header()
-	h.Del("Content-Length")
+	// Headers that described the body the handler meant to send do not
+	// describe this one.
+	for _, k := range []string{"Content-Length", "Content-Encoding", "Content-Disposition", "ETag", "Last-Modified"} {
+		h.Del(k)
+	}
 	h.Set("Content-Type", mediaType)
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
@@ -75,12 +80,18 @@ func withProblems(next http.Handler) http.Handler {
 
 // WriteHeader implements [http.ResponseWriter].
 func (w *problemWriter) WriteHeader(status int) {
-	if w.wroteHeader {
+	switch {
+	case w.status != 0:
+		return // An error is being converted; finish writes its status.
+	case w.wroteHeader:
 		w.ResponseWriter.WriteHeader(status) // Let net/http report the superfluous call.
+		return
+	case status < http.StatusOK:
+		w.ResponseWriter.WriteHeader(status) // Informational; the final status follows.
 		return
 	}
 	w.wroteHeader = true
-	if status >= http.StatusBadRequest && w.Header().Get("Content-Type") != api.ProblemMediaType {
+	if status >= http.StatusBadRequest && !isProblem(w.Header().Get("Content-Type")) {
 		w.status = status
 		return
 	}
@@ -101,6 +112,13 @@ func (w *problemWriter) Write(p []byte) (int, error) {
 		return n, fmt.Errorf("write response: %w", err)
 	}
 	return n, nil
+}
+
+// isProblem reports whether contentType is the problem media type, with or
+// without parameters.
+func isProblem(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	return err == nil && mediaType == api.ProblemMediaType
 }
 
 // Unwrap lets [http.ResponseController] reach the underlying writer.

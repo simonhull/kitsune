@@ -56,12 +56,68 @@ func TestWithProblemsPassesSuccessThrough(t *testing.T) {
 	}
 }
 
-func TestProblemWriterUnwraps(t *testing.T) {
+func TestWithProblemsKeepsTheConvertedStatus(t *testing.T) {
 	t.Parallel()
-	rec := httptest.NewRecorder()
-	pw := &problemWriter{ResponseWriter: rec}
-	if got := pw.Unwrap(); got != rec {
-		t.Errorf("Unwrap() = %v, want the wrapped writer", got)
+	rec := serveWithProblems(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.WriteHeader(http.StatusOK)
+	})
+	if p := decodeProblem(t, rec); rec.Code != http.StatusNotFound || p.Status != http.StatusNotFound {
+		t.Errorf("got %d %+v, want a 404 problem", rec.Code, p)
+	}
+}
+
+func TestWithProblemsConvertsAfterInformational(t *testing.T) {
+	t.Parallel()
+	rec := serveWithProblems(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusEarlyHints)
+		http.Error(w, "nope", http.StatusNotFound)
+	})
+	if p := decodeProblem(t, rec); p.Status != http.StatusNotFound || p.Detail != "nope" {
+		t.Errorf("got %+v, want a 404 problem with detail \"nope\"", p)
+	}
+}
+
+func TestWithProblemsPassesParameterizedProblemsThrough(t *testing.T) {
+	t.Parallel()
+	const body = `{"type":"about:blank","title":"Not Found","status":404}`
+	rec := serveWithProblems(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", api.ProblemMediaType+"; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(body))
+	})
+	if rec.Body.String() != body {
+		t.Errorf("body = %s, want the handler's problem unchanged", rec.Body)
+	}
+}
+
+func TestWithProblemsDropsBodyHeaders(t *testing.T) {
+	t.Parallel()
+	rec := serveWithProblems(t, func(w http.ResponseWriter, _ *http.Request) {
+		h := w.Header()
+		h.Set("Content-Encoding", "gzip")
+		h.Set("Content-Disposition", "attachment")
+		h.Set("ETag", `"x"`)
+		h.Set("Last-Modified", "Mon, 02 Nov 2026 00:00:00 GMT")
+		http.Error(w, "nope", http.StatusNotFound)
+	})
+	decodeProblem(t, rec)
+	for _, k := range []string{"Content-Encoding", "Content-Disposition", "ETag", "Last-Modified"} {
+		if v := rec.Header().Get(k); v != "" {
+			t.Errorf("%s = %q on the problem, want it removed", k, v)
+		}
+	}
+}
+
+func TestWithProblemsUnwrapsForResponseController(t *testing.T) {
+	t.Parallel()
+	rec := serveWithProblems(t, func(w http.ResponseWriter, _ *http.Request) {
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			t.Errorf("Flush: %v", err)
+		}
+	})
+	if !rec.Flushed {
+		t.Error("the underlying writer was not flushed")
 	}
 }
 
