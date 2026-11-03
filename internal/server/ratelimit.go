@@ -76,11 +76,39 @@ func (l *loginLimiter) attempt(keys []string, now time.Time) (time.Duration, boo
 	return 0, true
 }
 
-// succeeded forgets key's failures.
-func (l *loginLimiter) succeeded(key string) {
+// succeeded records that the attempt counted on nameKey and ipKey logged in.
+// The name key is forgotten. The IP key only gets this attempt back: its
+// earlier failures stand, so one valid account cannot wipe its IP's count
+// between password-spray guesses, and many successful logins from one IP
+// never block it.
+func (l *loginLimiter) succeeded(nameKey, ipKey string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	delete(l.entries, key)
+	delete(l.entries, nameKey)
+	l.uncount(ipKey)
+}
+
+// refund gives back an attempt counted on keys that was neither a success nor
+// a failed guess, such as one that hit an internal error.
+func (l *loginLimiter) refund(keys ...string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, k := range keys {
+		l.uncount(k)
+	}
+}
+
+// uncount undoes one attempt counted on key, lifting a block that only that
+// attempt could have caused. The caller holds l.mu.
+func (l *loginLimiter) uncount(key string) {
+	e, ok := l.entries[key]
+	if !ok {
+		return
+	}
+	e.failures = max(e.failures-1, 0)
+	if e.failures <= maxFreeFailures {
+		e.blockedUntil = time.Time{}
+	}
 }
 
 // entry returns key's entry, adding it if needed. When the map is full it

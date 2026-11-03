@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+// ipA is a client IP key used across the limiter tests.
+const ipA = "ip:a"
+
 // epoch is the instant the limiter tests start at.
 func epoch() time.Time { return time.UnixMilli(1_762_000_000_000).UTC() }
 
@@ -26,10 +29,10 @@ func failN(l *loginLimiter, n int, now time.Time, keys ...string) int {
 func TestLimiterAllowsSixAttempts(t *testing.T) {
 	t.Parallel()
 	l := newLoginLimiter(100)
-	if got := failN(l, 6, epoch(), "ip:a"); got != 6 {
+	if got := failN(l, 6, epoch(), ipA); got != 6 {
 		t.Fatalf("allowed %d of the first 6 attempts, want 6", got)
 	}
-	wait, ok := l.attempt([]string{"ip:a"}, epoch())
+	wait, ok := l.attempt([]string{ipA}, epoch())
 	if ok || wait != time.Second {
 		t.Errorf("7th attempt = (%v, %t), want (1s, false)", wait, ok)
 	}
@@ -84,24 +87,41 @@ func TestLimiterDecay(t *testing.T) {
 	}
 }
 
-func TestLimiterSucceededResetsOnlyThatKey(t *testing.T) {
+func TestLimiterSucceededResetsNameAndRefundsIP(t *testing.T) {
 	t.Parallel()
 	l := newLoginLimiter(100)
-	failN(l, 5, epoch(), "ip:a", "name:x")
-	l.succeeded("name:x")
+	failN(l, 5, epoch(), ipA, "name:x")
+	// The successful attempt is counted up front, as the 6th, and blocks...
+	if _, ok := l.attempt([]string{ipA, "name:x"}, epoch()); !ok {
+		t.Fatal("6th attempt refused")
+	}
+	// ...until succeeded gives it back.
+	l.succeeded("name:x", ipA)
 	if _, ok := l.entries["name:x"]; ok {
 		t.Error("name:x still has an entry after succeeded")
 	}
-	if got := l.entries["ip:a"].failures; got != 5 {
-		t.Errorf("ip:a failures = %d, want 5", got)
+	e := l.entries[ipA]
+	if e.failures != 5 || !e.blockedUntil.IsZero() {
+		t.Errorf("ip:a = %d failures, blocked until %v; want its 5 earlier failures and no block", e.failures, e.blockedUntil)
+	}
+}
+
+func TestLimiterRefund(t *testing.T) {
+	t.Parallel()
+	l := newLoginLimiter(100)
+	failN(l, 6, epoch(), ipA) // The 6th sets a block.
+	l.refund(ipA, "ip:absent")
+	e := l.entries[ipA]
+	if e.failures != 5 || !e.blockedUntil.IsZero() {
+		t.Errorf("ip:a = %d failures, blocked until %v; want 5 and no block", e.failures, e.blockedUntil)
 	}
 }
 
 func TestLimiterAttemptIsAtomic(t *testing.T) {
 	t.Parallel()
 	l := newLoginLimiter(100)
-	failN(l, 7, epoch(), "ip:a") // The 7th is refused, but the 6th set a block.
-	if _, ok := l.attempt([]string{"ip:a", "name:x"}, epoch()); ok {
+	failN(l, 7, epoch(), ipA) // The 7th is refused, but the 6th set a block.
+	if _, ok := l.attempt([]string{ipA, "name:x"}, epoch()); ok {
 		t.Fatal("attempt over a blocked key was allowed")
 	}
 	if e, ok := l.entries["name:x"]; ok {

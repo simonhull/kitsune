@@ -44,8 +44,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, http.StatusBadRequest, badLoginDetail)
 		return
 	}
-	nk := nameKey(req.Name)
-	if !s.checkLimits(w, r, ipKey(s.clientIP(r)), nk) {
+	nk, ik := nameKey(req.Name), ipKey(s.clientIP(r))
+	if !s.checkLimits(w, r, ik, nk) {
 		return
 	}
 	res, err := s.auth.Login(r.Context(), req.Name, req.Password, r.UserAgent())
@@ -54,12 +54,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		s.limiter.refund(ik, nk) // Not a guess; don't count it.
 		s.internalError(w, r, "login", err)
 		return
 	}
-	// Only the name key resets: otherwise one valid account could wipe its IP's
-	// count between password-spray guesses.
-	s.limiter.succeeded(nk)
+	s.limiter.succeeded(nk, ik)
 
 	session := api.Session{ExpiresAt: res.ExpiresAt, User: toAPIUser(&res.User)}
 	if req.Cookie {

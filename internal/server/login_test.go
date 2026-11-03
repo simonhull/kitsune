@@ -271,6 +271,19 @@ func TestLoginSuccessDoesNotResetIP(t *testing.T) {
 		problem(t, http.StatusTooManyRequests)
 }
 
+// TestRepeatedSuccessDoesNotBlockIP guards the up-front counting: a household
+// behind one IP logging in many times must never be blocked by its own
+// successes.
+func TestRepeatedSuccessDoesNotBlockIP(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.seedUser(t, simonName, testPassword, store.RoleAdmin)
+	const ip = "192.0.2.1"
+	for range 3 * maxFreeFailures {
+		decodeSession(t, ts.send(t, loginCall(t, ip, api.LoginRequest{Name: simonName, Password: testPassword})))
+	}
+}
+
 func TestLoginParallelAttemptsAreCounted(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
