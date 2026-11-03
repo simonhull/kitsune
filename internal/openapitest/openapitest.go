@@ -31,6 +31,10 @@ import (
 // SpecEnv names the environment variable that overrides the contract file.
 const SpecEnv = "KITSUNE_OPENAPI_SPEC"
 
+// testClientIPHeader is the header the server tests use to choose the client
+// IP; strict mode must not report it as undeclared.
+const testClientIPHeader = "x-test-client-ip"
+
 // eventStreamMediaType is the media type of server-sent events, whose bodies
 // are validated on Close rather than read up front.
 const eventStreamMediaType = "text/event-stream"
@@ -88,12 +92,21 @@ func New() (*Contract, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build contract model: %w", err)
 	}
-	v := validator.NewValidatorFromV3Model(&model.Model,
+	opts := []config.Option{
 		// Strict mode reports undeclared properties, so a renamed or extra
 		// field fails even where the schema allows additional properties.
 		config.WithStrictMode(),
 		config.WithFormatAssertions(),
-	)
+		// The tests choose the client IP through this header; it is test
+		// plumbing, not part of the API.
+		config.WithStrictIgnoredHeadersExtra(testClientIPHeader),
+	}
+	// A session cookie is declared only as a security scheme, which strict
+	// mode does not count as a declared cookie.
+	if cookies := sessionCookies(&model.Model); len(cookies) > 0 {
+		opts = append(opts, config.WithStrictIgnorePaths(cookies...))
+	}
+	v := validator.NewValidatorFromV3Model(&model.Model, opts...)
 	v.SetDocument(doc)
 	if ok, errs := v.ValidateDocument(); !ok {
 		return nil, fmt.Errorf("%w:\n%s", errInvalidContract, describe(errs))
@@ -104,6 +117,21 @@ func New() (*Contract, error) {
 		paths:     config.NewValidationOptions(),
 		seen:      make(map[string]bool),
 	}, nil
+}
+
+// sessionCookies returns the strict-mode ignore path of every cookie the
+// contract declares as an apiKey security scheme.
+func sessionCookies(model *v3.Document) []string {
+	if model.Components == nil || model.Components.SecuritySchemes == nil {
+		return nil
+	}
+	var paths []string
+	for _, scheme := range model.Components.SecuritySchemes.FromOldest() {
+		if scheme.Type == "apiKey" && scheme.In == "cookie" {
+			paths = append(paths, "$.cookies."+scheme.Name)
+		}
+	}
+	return paths
 }
 
 // Operations lists every operation in the contract.

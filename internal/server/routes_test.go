@@ -17,7 +17,7 @@ var placeholder = regexp.MustCompile(`\{[^}]+\}`)
 // Every route must be in the contract.
 func TestRoutesMatchContract(t *testing.T) {
 	t.Parallel()
-	s := New(Config{})
+	s := newTestServer(t).Handle
 
 	routes := make(map[string]route)
 	for _, rt := range s.routes() {

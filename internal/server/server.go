@@ -7,20 +7,38 @@
 // contract has a route registered under exactly that pattern.
 package server
 
-import "net/http"
+import (
+	"log/slog"
+	"net"
+	"net/http"
+	"time"
 
-// Config holds the server's dependencies. There are none yet; they arrive
-// with the operations that need them.
-type Config struct{}
+	"github.com/simonhull/kitsune/internal/auth"
+)
+
+// Config holds the server's dependencies.
+type Config struct {
+	Auth          *auth.Service              // Required; New panics if nil.
+	Logger        *slog.Logger               // Nil discards.
+	Now           func() time.Time           // Nil means time.Now. Used by the login limiter.
+	ClientIP      func(*http.Request) string // Nil means the host part of RemoteAddr.
+	SecureCookies bool                       // Mark cookies Secure even without TLS (HTTPS proxy in front).
+}
 
 // Server serves the API. It is safe for concurrent use.
 type Server struct {
 	mux     *http.ServeMux
 	handler http.Handler
+
+	auth          *auth.Service
+	log           *slog.Logger
+	now           func() time.Time
+	clientIP      func(*http.Request) string
+	secureCookies bool
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
-// method and path, and whether it skips bearer auth (security: []).
+// method and path, and whether it skips authentication (security: []).
 type route struct {
 	pattern string
 	public  bool
@@ -29,17 +47,47 @@ type route struct {
 
 // New returns a server for cfg.
 //
-// New panics if a route needs bearer auth, which is not implemented yet.
-func New(Config) *Server {
-	s := &Server{mux: http.NewServeMux()}
+// New panics if cfg.Auth is nil, which is a programming error.
+func New(cfg Config) *Server {
+	if cfg.Auth == nil {
+		panic("server: Config.Auth is required")
+	}
+	s := &Server{
+		mux:           http.NewServeMux(),
+		auth:          cfg.Auth,
+		log:           cfg.Logger,
+		now:           cfg.Now,
+		clientIP:      cfg.ClientIP,
+		secureCookies: cfg.SecureCookies,
+	}
+	if s.log == nil {
+		s.log = slog.New(slog.DiscardHandler)
+	}
+	if s.now == nil {
+		s.now = time.Now
+	}
+	if s.clientIP == nil {
+		s.clientIP = remoteHost
+	}
 	for _, rt := range s.routes() {
-		if !rt.public {
-			panic("server: route " + rt.pattern + " needs auth, which is not implemented yet")
+		if rt.public {
+			s.mux.Handle(rt.pattern, rt.handle)
+			continue
 		}
-		s.mux.Handle(rt.pattern, rt.handle)
+		s.mux.Handle(rt.pattern, s.authenticate(rt.handle))
 	}
 	s.handler = withRequestID(withProblems(s.mux))
 	return s
+}
+
+// remoteHost returns the host part of r.RemoteAddr, or all of it when it has
+// no port.
+func remoteHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // ServeHTTP implements [http.Handler].

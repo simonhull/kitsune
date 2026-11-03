@@ -5,6 +5,7 @@ info:
   description: Native API of the Kitsune music server.
 security:
   - bearer: []
+  - cookie: []
 paths:
   /healthz:
     get:
@@ -19,6 +20,10 @@ components:
     bearer:
       type: http
       scheme: bearer
+    cookie:
+      type: apiKey
+      in: cookie
+      name: kitsune_session
   responses:
     Problem:
       description: An RFC 9457 problem.

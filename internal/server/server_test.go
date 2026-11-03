@@ -11,10 +11,9 @@ import (
 
 func TestHealth(t *testing.T) {
 	t.Parallel()
-	srv := httptest.NewServer(New(Config{}))
-	t.Cleanup(srv.Close)
+	ts := newTestServer(t)
 
-	status, header := get(t, contract.Client(t), srv.URL+"/healthz")
+	status, header := get(t, contract.Client(t), ts.URL+"/healthz")
 	if status != http.StatusNoContent {
 		t.Errorf("status = %d, want 204", status)
 	}
@@ -37,8 +36,9 @@ func TestOffContractErrorsAreProblems(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			t.Parallel()
+			h := newTestServer(t).Handle
 			rec := httptest.NewRecorder()
-			New(Config{}).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, http.NoBody))
+			h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, http.NoBody))
 			p := decodeProblem(t, rec)
 			if rec.Code != tt.want || p.Status != tt.want || p.Detail == "" || p.RequestID == "" {
 				t.Errorf("got %d %+v, want a %d problem with a detail and a request ID", rec.Code, p, tt.want)
