@@ -8,9 +8,11 @@
 package server
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/simonhull/kitsune/internal/auth"
@@ -18,11 +20,13 @@ import (
 
 // Config holds the server's dependencies.
 type Config struct {
-	Auth          *auth.Service              // Required; New panics if nil.
-	Logger        *slog.Logger               // Nil discards.
-	Now           func() time.Time           // Nil means time.Now. Used by the login limiter.
-	ClientIP      func(*http.Request) string // Nil means the host part of RemoteAddr.
-	SecureCookies bool                       // Mark cookies Secure even without TLS (HTTPS proxy in front).
+	Auth          *auth.Service               // Required; New panics if nil.
+	Logger        *slog.Logger                // Nil discards.
+	Now           func() time.Time            // Nil means time.Now. Used by the login limiter.
+	ClientIP      func(*http.Request) string  // Nil means the host part of RemoteAddr.
+	SecureCookies bool                        // Mark cookies Secure even without TLS (HTTPS proxy in front).
+	BasePath      string                      // "" or a path such as "/music": serve under it. New panics on a malformed one.
+	Ready         func(context.Context) error // Nil means always ready. Backs GET /readyz.
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -35,6 +39,8 @@ type Server struct {
 	now           func() time.Time
 	clientIP      func(*http.Request) string
 	secureCookies bool
+	basePath      string
+	ready         func(context.Context) error
 	limiter       *loginLimiter
 }
 
@@ -48,11 +54,10 @@ type route struct {
 
 // New returns a server for cfg.
 //
-// New panics if cfg.Auth is nil, which is a programming error.
+// New panics if cfg.Auth is nil or cfg.BasePath is malformed, which are
+// programming errors.
 func New(cfg Config) *Server {
-	if cfg.Auth == nil {
-		panic("server: Config.Auth is required")
-	}
+	checkConfig(&cfg)
 	s := &Server{
 		mux:           http.NewServeMux(),
 		auth:          cfg.Auth,
@@ -60,6 +65,8 @@ func New(cfg Config) *Server {
 		now:           cfg.Now,
 		clientIP:      cfg.ClientIP,
 		secureCookies: cfg.SecureCookies,
+		basePath:      cfg.BasePath,
+		ready:         cfg.Ready,
 		limiter:       newLoginLimiter(maxLimiterKeys),
 	}
 	if s.log == nil {
@@ -78,8 +85,18 @@ func New(cfg Config) *Server {
 		}
 		s.mux.Handle(rt.pattern, s.authenticate(rt.handle))
 	}
-	s.handler = withRequestID(withProblems(s.mux))
+	s.handler = withRequestID(s.withAccessLog(withProblems(s.withBasePath(s.mux))))
 	return s
+}
+
+// checkConfig panics on a Config that New can't use.
+func checkConfig(cfg *Config) {
+	if cfg.Auth == nil {
+		panic("server: Config.Auth is required")
+	}
+	if b := cfg.BasePath; b != "" && (!strings.HasPrefix(b, "/") || strings.HasSuffix(b, "/")) {
+		panic("server: Config.BasePath must be empty, or start with / and not end with /")
+	}
 }
 
 // remoteHost returns the host part of r.RemoteAddr, or all of it when it has
@@ -101,6 +118,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() []route {
 	return []route{
 		{pattern: "GET /healthz", public: true, handle: s.getHealth},
+		{pattern: "GET /readyz", public: true, handle: s.getReady},
 		{pattern: "POST /auth/login", public: true, handle: s.login},
 		{pattern: "POST /auth/logout", handle: s.logout},
 		{pattern: "GET /me", handle: s.getMe},
@@ -109,5 +127,18 @@ func (s *Server) routes() []route {
 
 // getHealth reports that the process is up.
 func (*Server) getHealth(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// getReady reports whether the server is ready to serve. A failure is logged
+// but never described to the client.
+func (s *Server) getReady(w http.ResponseWriter, r *http.Request) {
+	if s.ready != nil {
+		if err := s.ready(r.Context()); err != nil {
+			s.log.WarnContext(r.Context(), "not ready", "requestId", requestID(r.Context()), "err", err)
+			writeProblem(w, r, http.StatusServiceUnavailable, "not ready")
+			return
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

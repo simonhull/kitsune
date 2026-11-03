@@ -4,10 +4,12 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +38,8 @@ const (
 	musicRoot  = "/srv/music"
 	dataPath   = "/data"
 	baseURLKey = "server.base_url:"
+
+	baseURLPathProblem = "server.base_url: path must be plain segments"
 )
 
 // testDataDir is the default data directory in testPaths.
@@ -93,6 +97,7 @@ func TestLoadFile(t *testing.T) {
 [server]
 listen = "127.0.0.1:8080"
 base_url = "https://example.com/music"
+trusted_proxies = ["172.18.0.0/16", "192.168.1.5"]
 
 [library]
 roots = ["/srv/music/", "/srv/audiobooks", "/srv/musicals"]
@@ -110,7 +115,11 @@ level = "debug"
 		t.Fatalf("Load: %v", err)
 	}
 	want := Config{
-		Server: Server{Listen: "127.0.0.1:8080", BaseURL: "https://example.com/music"},
+		Server: Server{
+			Listen:         "127.0.0.1:8080",
+			BaseURL:        "https://example.com/music",
+			TrustedProxies: []Network{{netip.MustParsePrefix("172.18.0.0/16")}, {netip.MustParsePrefix("192.168.1.5/32")}},
+		},
 		Library: Library{
 			Roots:        []string{musicRoot, "/srv/audiobooks", "/srv/musicals"},
 			MissingGrace: 90 * time.Minute,
@@ -187,6 +196,49 @@ func TestKnownKeysMatchTags(t *testing.T) {
 	}
 }
 
+func TestBaseURLAccepts(t *testing.T) {
+	t.Parallel()
+	for _, u := range []string{
+		"https://h", "https://h/", "https://h/music", "https://h/music/", "http://h:8080/a/b-c_d.e~f",
+	} {
+		t.Run(u, func(t *testing.T) {
+			t.Parallel()
+			body := "[server]\nbase_url = " + strconv.Quote(u) + "\n"
+			if _, err := Load(writeConfig(t, body), testPaths(t)); err != nil {
+				t.Errorf("Load(base_url %q): %v", u, err)
+			}
+		})
+	}
+}
+
+func TestServerBasePathAndHTTPS(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		baseURL   string
+		wantPath  string
+		wantHTTPS bool
+	}{
+		{baseURL: "", wantPath: "", wantHTTPS: false},
+		{baseURL: "http://h", wantPath: "", wantHTTPS: false},
+		{baseURL: "https://h/", wantPath: "", wantHTTPS: true},
+		{baseURL: "https://h/music/", wantPath: "/music", wantHTTPS: true},
+		{baseURL: "HTTPS://h/music", wantPath: "/music", wantHTTPS: true},
+		{baseURL: "://bad", wantPath: "", wantHTTPS: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.baseURL, func(t *testing.T) {
+			t.Parallel()
+			s := Server{BaseURL: tt.baseURL}
+			if got := s.BasePath(); got != tt.wantPath {
+				t.Errorf("BasePath() = %q, want %q", got, tt.wantPath)
+			}
+			if got := s.HTTPS(); got != tt.wantHTTPS {
+				t.Errorf("HTTPS() = %t, want %t", got, tt.wantHTTPS)
+			}
+		})
+	}
+}
+
 func TestLoadRejects(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -214,6 +266,12 @@ func TestLoadRejects(t *testing.T) {
 		{name: "base_url with fragment", body: "[server]\nbase_url = \"https://x.test/#a\"\n", want: []string{baseURLKey}},
 		{name: "base_url with empty fragment", body: "[server]\nbase_url = \"https://x.test/#\"\n", want: []string{baseURLKey}},
 		{name: "base_url bad port", body: "[server]\nbase_url = \"https://x.test:99999/\"\n", want: []string{"server.base_url: port must be a number"}},
+		{name: "bad trusted_proxies", body: "[server]\ntrusted_proxies = [\"nope\"]\n", want: []string{"trusted_proxies", "want an IP address or CIDR network"}},
+		{name: "base_url empty segment", body: "[server]\nbase_url = \"https://h/a//b\"\n", want: []string{baseURLPathProblem}},
+		{name: "base_url dot-dot", body: "[server]\nbase_url = \"https://h/a/../b\"\n", want: []string{baseURLPathProblem}},
+		{name: "base_url escaped space", body: "[server]\nbase_url = \"https://h/a%20b\"\n", want: []string{baseURLPathProblem}},
+		{name: "base_url escaped UTF-8", body: "[server]\nbase_url = \"https://h/caf%C3%A9\"\n", want: []string{baseURLPathProblem}},
+		{name: "base_url double trailing slash", body: "[server]\nbase_url = \"https://h/music//\"\n", want: []string{baseURLPathProblem}},
 		{name: "relative root", body: "[library]\nroots = [\"/ok\", \"music\"]\n", want: []string{root1Key}},
 		{
 			name: "duplicate root",
@@ -257,6 +315,7 @@ func TestWriteTOMLRoundTrips(t *testing.T) {
 	cfg.Library.Roots = []string{musicRoot}
 	cfg.Storage.DataDir = dataPath
 	cfg.Log.Level = slog.LevelWarn
+	cfg.Server.TrustedProxies = []Network{{netip.MustParsePrefix("192.168.1.5/32")}, {netip.MustParsePrefix("fd00::/8")}}
 	var b strings.Builder
 	if err := cfg.WriteTOML(&b); err != nil {
 		t.Fatalf("WriteTOML: %v", err)

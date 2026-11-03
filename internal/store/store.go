@@ -116,6 +116,16 @@ func (s *Store) Close() error {
 	return errors.Join(s.r.Close(), s.w.Close())
 }
 
+// Ping checks that the read pool can reach the database. It pings readers
+// only: the writer has one connection, and a long write transaction would
+// stall readiness.
+func (s *Store) Ping(ctx context.Context) error {
+	if err := s.r.PingContext(ctx); err != nil {
+		return fmt.Errorf("store: ping: %w", err)
+	}
+	return nil
+}
+
 // createPrivate creates the database file and its shared-memory file with
 // mode 0600 when they are missing. An existing file, and its mode, are left
 // alone.

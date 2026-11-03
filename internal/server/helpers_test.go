@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json/v2"
 	"fmt"
 	"io"
@@ -23,6 +24,12 @@ import (
 
 // authorizationHeader is the credentials request header.
 const authorizationHeader = "Authorization"
+
+// Paths that several tests request.
+const (
+	healthPath = "/healthz"
+	nopePath   = "/nope"
+)
 
 // testClientIPHeader (X-Test-Client-IP, in canonical form) lets a test choose the client IP the server sees. Only
 // newTestServer installs the hook that reads it.
@@ -76,6 +83,9 @@ func (b *syncBuffer) String() string {
 type testServerOptions struct {
 	SecureCookies bool
 	Params        auth.Params // Zero means cheap parameters.
+	BasePath      string
+	Ready         func(context.Context) error
+	LogLevel      slog.Level // The zero value is Info.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -115,10 +125,12 @@ func newTestServer(t *testing.T, opts ...testServerOptions) *testServer {
 	logs := &syncBuffer{}
 	h := New(Config{
 		Auth:          svc,
-		Logger:        slog.New(slog.NewTextHandler(logs, nil)),
+		Logger:        slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: o.LogLevel})),
 		Now:           clock.Now,
 		ClientIP:      testClientIP,
 		SecureCookies: o.SecureCookies,
+		BasePath:      o.BasePath,
+		Ready:         o.Ready,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

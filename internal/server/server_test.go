@@ -13,7 +13,7 @@ func TestHealth(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
 
-	status, header := get(t, contract.Client(t), ts.URL+"/healthz")
+	status, header := get(t, contract.Client(t), ts.URL+healthPath)
 	if status != http.StatusNoContent {
 		t.Errorf("status = %d, want 204", status)
 	}
@@ -30,8 +30,8 @@ func TestOffContractErrorsAreProblems(t *testing.T) {
 		method, path string
 		want         int
 	}{
-		{http.MethodGet, "/nope", http.StatusNotFound},
-		{http.MethodPost, "/healthz", http.StatusMethodNotAllowed},
+		{http.MethodGet, nopePath, http.StatusNotFound},
+		{http.MethodPost, healthPath, http.StatusMethodNotAllowed},
 	}
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "github.com/ncruces/go-sqlite3/driver" // Registers the "sqlite3" driver for the raw handles below.
@@ -113,5 +114,23 @@ func TestOpenCreatesPrivateFile(t *testing.T) {
 		if perm := fi.Mode().Perm(); perm != 0o600 {
 			t.Errorf("%s mode = %o, want 600", filepath.Base(p), perm)
 		}
+	}
+}
+
+func TestPing(t *testing.T) {
+	t.Parallel()
+	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), store.FileName), store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Ping(t.Context()); err != nil {
+		t.Errorf("Ping on an open store: %v", err)
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	err = s.Ping(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "store: ping") {
+		t.Errorf("Ping after Close = %v, want an error containing %q", err, "store: ping")
 	}
 }

@@ -121,10 +121,14 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, token 
 // sessionCookie returns the session cookie with the given value and Max-Age.
 // A negative maxAge deletes the cookie.
 func (s *Server) sessionCookie(r *http.Request, value string, maxAge int) *http.Cookie {
+	cookiePath := s.basePath
+	if cookiePath == "" {
+		cookiePath = "/"
+	}
 	return &http.Cookie{ //nolint:gosec // G124: Secure follows TLS or Config.SecureCookies, because an HTTPS proxy may terminate TLS in front of the server.
 		Name:     sessionCookie,
 		Value:    value,
-		Path:     "/",
+		Path:     cookiePath,
 		MaxAge:   maxAge,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,

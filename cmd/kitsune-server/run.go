@@ -13,6 +13,7 @@ import (
 const usage = `Usage: kitsune-server <command> [flags]
 
 Commands:
+  serve     run the server (-config FILE)
   config    print the configuration in effect and exit
   users add NAME   create a user (-admin, -password-stdin, -config FILE)
   version   print the version and exit
@@ -59,6 +60,8 @@ func run(args []string, env config.Env, stdin io.Reader, stdout, stderr io.Write
 		return &usageError{msg: "no command given"}
 	}
 	switch cmd, rest := args[0], args[1:]; cmd {
+	case serveName:
+		return runServe(rest, env, stderr)
 	case "config":
 		return runConfig(rest, env, stdout)
 	case "users":
