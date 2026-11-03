@@ -19,10 +19,15 @@ description = "Lint config check, go.mod tidiness, golangci-lint (incl. formatte
 run = [
   "golangci-lint config verify",
   "go mod tidy -diff",
+  "go -C tools mod tidy -diff",
   "golangci-lint run ./...",
   "go vet ./...",
   "go fix -diff ./...",
 ]
+
+[tasks.generate]
+description = "Regenerate sqlc code with a cgo-free sqlc (tools/go.mod pins it)"
+run = "CGO_ENABLED=0 go -C tools tool sqlc generate -f ../internal/store/sqlc.yaml"
 
 [tasks.fmt]
 description = "Apply gofumpt and goimports"
