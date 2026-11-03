@@ -74,6 +74,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   only benchmarks use `auth.DefaultParams()`.
 - Changing `DefaultParams` is safe: hashes carry their parameters, and logins rehash.
 
+## Operations
+- `cmd/kitsune-server` is the only place that reads the environment, signals or flags;
+  `internal/server` takes everything through `server.Config`.
+- Logs are `log/slog` JSON. Log `r.URL.Path`, never the full URL or query: OpenSubsonic
+  clients send credentials in the query string.
+- `Config.Ready` backs `/readyz`; new readiness conditions (the scanner) join it there.
+
 ## Lint policy
 - golangci-lint runs with `default: all`. Every disabled linter in `.golangci.yml` has
   its reason next to it; do not add to that list without one.

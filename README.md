@@ -33,6 +33,34 @@ level = "info"           # debug, info, warn or error
 Unknown keys are errors, so a typo cannot be silently ignored. Paths must be
 absolute. `kitsune-server config` prints the configuration in effect.
 
+## Running
+
+Create an administrator first, then start the server:
+
+    kitsune-server users add -admin NAME
+    kitsune-server serve
+
+`serve` refuses to start while the database has no users, and prints the command above.
+
+Logs are JSON on stderr. `log.level = "debug"` adds one line per request; it records the
+path only, never the query. `GET /healthz` reports that the process is up, and
+`GET /readyz` that it is ready to serve. On SIGINT or SIGTERM the server stops accepting
+connections and drains in-flight requests for up to 8 seconds; a second signal quits at once.
+
+### Behind a reverse proxy
+
+- Set `base_url` to the public URL, such as `https://example.com/music`, and
+  `trusted_proxies` to the proxy's address or network. Kitsune believes
+  `X-Forwarded-For` only from those peers, which keeps the login rate limits per client
+  rather than per proxy. An `https://` `base_url` also marks cookies `Secure`.
+- Kitsune serves the whole API under the path of `base_url`, so the proxy must pass the
+  path through unchanged. In Caddy use `handle /music/*`, not `handle_path`. In nginx use
+  `location /music/ { proxy_pass http://127.0.0.1:4533; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }`
+  with no URI after the port. Caddy sets `X-Forwarded-For` by default; nginx does not.
+- After you add a base path, a browser may keep an old `kitsune_session` cookie at
+  `Path=/` until it expires. Signing in again works; clearing the site's cookies tidies it up.
+- Keep `trusted_proxies` narrow: a client inside a trusted network can claim any address.
+
 ## Development
 
     mise install
