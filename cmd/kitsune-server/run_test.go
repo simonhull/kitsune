@@ -118,7 +118,7 @@ func TestCLIConfig(t *testing.T) {
 		{name: "single-dash flag", args: []string{configCmd, configFlag, debug}, wantStdout: []string{`level = "DEBUG"`}},
 		{name: "double-dash flag", args: []string{configCmd, "--config", debug}, wantStdout: []string{`level = "DEBUG"`}},
 		{name: "missing file", args: []string{configCmd, configFlag, missing}, wantCode: exitFailure, wantStderr: "no such file"},
-		{name: "unknown key", args: []string{configCmd, configFlag, bogus}, wantCode: exitFailure, wantStderr: "unknown"},
+		{name: "unknown key", args: []string{configCmd, configFlag, bogus}, wantCode: exitFailure, wantStderr: "not a config key"},
 		{name: "unknown flag", args: []string{configCmd, "-nope"}, wantCode: exitUsage, wantStderr: usageHeader},
 		{name: "extra arguments", args: []string{configCmd, "extra"}, wantCode: exitUsage, wantStderr: "config takes no arguments"},
 	}
@@ -137,8 +137,15 @@ func TestCLIConfig(t *testing.T) {
 					t.Errorf("cli(%q) stdout = %q, want it to contain %q", tt.args, out, want)
 				}
 			}
-			if errOut := stderr.String(); !matches(errOut, tt.wantStderr, strings.Contains) {
+			errOut := stderr.String()
+			if !matches(errOut, tt.wantStderr, strings.Contains) {
 				t.Errorf("cli(%q) stderr = %q, want it to contain %q", tt.args, errOut, tt.wantStderr)
+			}
+			if tt.wantCode == exitUsage && !strings.Contains(errOut, usageHeader) {
+				t.Errorf("cli(%q) stderr = %q, want the usage text", tt.args, errOut)
+			}
+			if tt.wantCode != exitOK && out != "" {
+				t.Errorf("cli(%q) stdout = %q, want nothing on failure", tt.args, out)
 			}
 		})
 	}

@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,8 +26,19 @@ const (
 	defaultQuickScanMinute = 30
 )
 
-// errUnknownKey reports a config key Kitsune does not know.
-var errUnknownKey = errors.New("unknown keys")
+// errUnknownKey reports config keys Kitsune does not know.
+var errUnknownKey = errors.New("not a config key")
+
+// knownKeys lists every key a config file may hold, tables included. Keys
+// match exactly, case included.
+func knownKeys() []string {
+	return []string{
+		"server", "server.listen", "server.base_url",
+		"library", "library.roots", "library.missing_grace", "library.quick_scan",
+		"storage", "storage.data_dir",
+		"log", "log.level",
+	}
+}
 
 // Config is kitsune-server's configuration.
 type Config struct {
@@ -81,7 +94,8 @@ func Default() Config {
 }
 
 // Load reads the configuration. With path "", it reads paths.ConfigFile when
-// that exists and uses the defaults otherwise; a named path must exist. Keys a
+// that exists and uses the defaults otherwise; a named path must exist, and a
+// default file that exists but can't be read or is invalid is an error too. Keys a
 // file leaves out keep their [Default] values, and an empty data_dir becomes
 // paths.DataDir. Roots and data_dir are cleaned.
 //
@@ -117,23 +131,43 @@ func Load(path string, paths Paths) (Config, error) {
 	return cfg, nil
 }
 
-// decodeFile decodes the TOML file name into cfg, rejecting unknown keys.
+// decodeFile decodes the TOML file name into cfg, rejecting unknown keys and
+// values the decoder would misread.
 func decodeFile(name string, cfg *Config) error {
-	md, err := toml.DecodeFile(name, cfg)
-	if _, ok := errors.AsType[*fs.PathError](err); ok {
+	b, err := os.ReadFile(name) //nolint:gosec // G304: the operator names the config file.
+	if err != nil {
 		return fmt.Errorf("read config: %w", err) // The error already names the file.
 	}
+	md, err := toml.Decode(string(b), cfg)
 	if err != nil {
 		return fmt.Errorf("config %s: %w", name, err)
 	}
-	if undecoded := md.Undecoded(); len(undecoded) > 0 {
-		keys := make([]string, len(undecoded))
-		for i, k := range undecoded {
-			keys[i] = k.String()
-		}
-		return fmt.Errorf("config %s: %w: %s", name, errUnknownKey, strings.Join(keys, ", "))
+	if unknown := unknownKeys(&md); len(unknown) > 0 {
+		return fmt.Errorf("config %s: %w: %s", name, errUnknownKey, strings.Join(unknown, ", "))
+	}
+	// The decoder reads an integer duration as nanoseconds, so 86400 would
+	// mean 86.4µs, not a day.
+	if md.IsDefined("library", "missing_grace") && md.Type("library", "missing_grace") != "String" {
+		return fmt.Errorf("config %s: %w", name,
+			&invalidError{key: "library.missing_grace", reason: `want a duration string, such as "24h"`})
 	}
 	return nil
+}
+
+// unknownKeys lists the keys in md that are not in [knownKeys], leaving out
+// those under an unknown table. The decoder matches keys without regard to
+// case, so this exact check is what keeps "LISTEN" or a second "Listen" out.
+func unknownKeys(md *toml.MetaData) []string {
+	known := knownKeys()
+	var unknown []string
+	for _, k := range md.Keys() {
+		key := k.String()
+		under := slices.ContainsFunc(unknown, func(u string) bool { return strings.HasPrefix(key, u+".") })
+		if !under && !slices.Contains(known, key) {
+			unknown = append(unknown, key)
+		}
+	}
+	return unknown
 }
 
 // WriteTOML writes c to w as a config file that Load reads back to c.
@@ -214,8 +248,13 @@ func listenProblem(addr string) string {
 	if err != nil {
 		return `want host:port, such as ":4533"`
 	}
-	if _, parseErr := strconv.ParseUint(port, 10, 16); parseErr != nil {
-		return "port must be 0 to 65535"
+	return portProblem(port)
+}
+
+// portProblem describes what is wrong with a port number, or returns "".
+func portProblem(port string) string {
+	if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+		return "port must be a number from 0 to 65535"
 	}
 	return ""
 }
@@ -226,11 +265,19 @@ func baseURLProblem(s string) string {
 		return ""
 	}
 	u, err := url.Parse(s)
-	switch {
-	case err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "":
+	if err != nil || !isAbsoluteHTTP(u) {
 		return "want an absolute http or https URL"
-	case u.User != nil || u.RawQuery != "" || u.Fragment != "":
+	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(s, "#") {
 		return "must not have user info, a query or a fragment"
 	}
+	if port := u.Port(); port != "" {
+		return portProblem(port)
+	}
 	return ""
+}
+
+// isAbsoluteHTTP reports whether u is an http or https URL with a host.
+func isAbsoluteHTTP(u *url.URL) bool {
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }

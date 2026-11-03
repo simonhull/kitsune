@@ -7,9 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/BurntSushi/toml"
 )
 
 // writeConfig writes body to a server.toml in a new temp dir and returns its path.
@@ -26,6 +29,13 @@ func writeConfig(t *testing.T, body string) string {
 const (
 	listenKey = "server.listen:"
 	root1Key  = "library.roots[1]:"
+)
+
+// Values that several cases share.
+const (
+	musicRoot  = "/srv/music"
+	dataPath   = "/data"
+	baseURLKey = "server.base_url:"
 )
 
 // testDataDir is the default data directory in testPaths.
@@ -85,12 +95,12 @@ listen = "127.0.0.1:8080"
 base_url = "https://example.com/music"
 
 [library]
-roots = ["/srv/music/", "/srv/audiobooks"]
+roots = ["/srv/music/", "/srv/audiobooks", "/srv/musicals"]
 missing_grace = "1h30m"
 quick_scan = "04:15"
 
 [storage]
-data_dir = "/data/kitsune"
+data_dir = "/data/kitsune/"
 
 [log]
 level = "debug"
@@ -102,7 +112,7 @@ level = "debug"
 	want := Config{
 		Server: Server{Listen: "127.0.0.1:8080", BaseURL: "https://example.com/music"},
 		Library: Library{
-			Roots:        []string{"/srv/music", "/srv/audiobooks"},
+			Roots:        []string{musicRoot, "/srv/audiobooks", "/srv/musicals"},
 			MissingGrace: 90 * time.Minute,
 			QuickScan:    ClockTime{Hour: 4, Minute: 15},
 		},
@@ -134,6 +144,49 @@ func TestLoadMissingNamedFile(t *testing.T) {
 	}
 }
 
+func TestLoadBrokenDefaultFile(t *testing.T) {
+	t.Parallel()
+	tests := map[string]string{
+		"invalid file": writeConfig(t, "bogus = 1\n"),
+		"directory":    t.TempDir(),
+	}
+	for name, file := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := Load("", Paths{ConfigFile: file, DataDir: testDataDir}); err == nil {
+				t.Errorf("Load with a default file that is a %s succeeded, want an error", name)
+			}
+		})
+	}
+}
+
+// TestKnownKeysMatchTags keeps the key allowlist in step with the struct
+// tags: a fully populated config must write exactly the known keys.
+func TestKnownKeysMatchTags(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Server.BaseURL = "https://example.com"
+	cfg.Library.Roots = []string{musicRoot}
+	cfg.Storage.DataDir = dataPath
+	var b strings.Builder
+	if err := cfg.WriteTOML(&b); err != nil {
+		t.Fatalf("WriteTOML: %v", err)
+	}
+	md, err := toml.Decode(b.String(), new(Config))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	keys := md.Keys()
+	written := make([]string, 0, len(keys))
+	for _, k := range keys {
+		written = append(written, k.String())
+	}
+	got, want := slices.Sorted(slices.Values(written)), slices.Sorted(slices.Values(knownKeys()))
+	if !slices.Equal(got, want) {
+		t.Errorf("WriteTOML keys = %q, knownKeys() = %q; want equal", got, want)
+	}
+}
+
 func TestLoadRejects(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -143,16 +196,24 @@ func TestLoadRejects(t *testing.T) {
 		want    []string // Substrings the error must contain.
 	}{
 		{name: "unknown key", body: "[library]\nmissing_grase = \"1h\"\n", want: []string{"library.missing_grase"}},
-		{name: "unknown section", body: "[media]\nroots = []\n", want: []string{"media"}},
-		{name: "bad TOML", body: "[server\n", want: []string{"server.toml"}},
+		{name: "unknown section", body: "[media]\nroots = []\n", want: []string{"not a config key: media"}},
+		{name: "upper-case keys", body: "[Server]\nLISTEN = \":1\"\n", want: []string{"not a config key: Server"}},
+		{name: "keys differing in case", body: "[server]\nlisten = \":1\"\nListen = \":2\"\n", want: []string{"server.Listen"}},
+		{name: "bad TOML", body: "[server\n", want: []string{"toml: line"}},
+		{name: "integer grace", body: "[library]\nmissing_grace = 86400\n", want: []string{`library.missing_grace: want a duration string, such as "24h"`}},
 		{name: "wrong type", body: "[server]\nlisten = 4533\n", want: []string{"listen"}},
 		{name: "bad duration", body: "[library]\nmissing_grace = \"a day\"\n", want: []string{"missing_grace"}},
 		{name: "bad clock", body: "[library]\nquick_scan = \"25:00\"\n", want: []string{"quick_scan", "HH:MM"}},
 		{name: "bad level", body: "[log]\nlevel = \"loud\"\n", want: []string{"level"}},
 		{name: "listen without port", body: "[server]\nlisten = \"localhost\"\n", want: []string{listenKey}},
 		{name: "listen bad port", body: "[server]\nlisten = \":99999\"\n", want: []string{listenKey}},
-		{name: "relative base_url", body: "[server]\nbase_url = \"/music\"\n", want: []string{"server.base_url:"}},
-		{name: "base_url with query", body: "[server]\nbase_url = \"https://x.test/?a=1\"\n", want: []string{"server.base_url:"}},
+		{name: "relative base_url", body: "[server]\nbase_url = \"/music\"\n", want: []string{baseURLKey}},
+		{name: "base_url with query", body: "[server]\nbase_url = \"https://x.test/?a=1\"\n", want: []string{baseURLKey}},
+		{name: "base_url with empty query", body: "[server]\nbase_url = \"https://x.test/?\"\n", want: []string{baseURLKey}},
+		{name: "base_url with user info", body: "[server]\nbase_url = \"https://user@x.test/\"\n", want: []string{baseURLKey}},
+		{name: "base_url with fragment", body: "[server]\nbase_url = \"https://x.test/#a\"\n", want: []string{baseURLKey}},
+		{name: "base_url with empty fragment", body: "[server]\nbase_url = \"https://x.test/#\"\n", want: []string{baseURLKey}},
+		{name: "base_url bad port", body: "[server]\nbase_url = \"https://x.test:99999/\"\n", want: []string{"server.base_url: port must be a number"}},
 		{name: "relative root", body: "[library]\nroots = [\"/ok\", \"music\"]\n", want: []string{root1Key}},
 		{
 			name: "duplicate root",
@@ -167,7 +228,7 @@ func TestLoadRejects(t *testing.T) {
 		{
 			name: "every problem at once",
 			body: "[server]\nlisten = \"x\"\n[library]\nroots = [\"rel\"]\nmissing_grace = \"-1s\"\n",
-			want: []string{listenKey, "library.roots[0]:", "library.missing_grace:"},
+			want: []string{"server.toml: ", listenKey, "library.roots[0]:", "library.missing_grace:"},
 		},
 	}
 	for _, tt := range tests {
@@ -193,8 +254,8 @@ func TestLoadRejects(t *testing.T) {
 func TestWriteTOMLRoundTrips(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
-	cfg.Library.Roots = []string{"/srv/music"}
-	cfg.Storage.DataDir = "/data"
+	cfg.Library.Roots = []string{musicRoot}
+	cfg.Storage.DataDir = dataPath
 	cfg.Log.Level = slog.LevelWarn
 	var b strings.Builder
 	if err := cfg.WriteTOML(&b); err != nil {
