@@ -10,3 +10,6 @@ WHERE name = ?;
 
 -- name: CountUsers :one
 SELECT count(*) FROM users;
+
+-- name: SetPasswordHash :execrows
+UPDATE users SET password_hash = ? WHERE id = ?;

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -37,6 +38,12 @@ const (
 	minReaders = 2
 	maxReaders = 8
 )
+
+// FileName is the database's file name inside data_dir.
+const FileName = "kitsune.db"
+
+// privateFileMode is the mode of a database file Kitsune creates.
+const privateFileMode = 0o600
 
 // busyTimeoutMS is how long a connection waits on a lock before SQLITE_BUSY.
 const busyTimeoutMS = 5000
@@ -76,6 +83,9 @@ func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 		now = time.Now
 	}
 
+	if err := createPrivate(path); err != nil {
+		return nil, err
+	}
 	w, err := openWriter(ctx, path)
 	if err != nil {
 		return nil, err
@@ -104,6 +114,23 @@ func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 // Close closes both handles.
 func (s *Store) Close() error {
 	return errors.Join(s.r.Close(), s.w.Close())
+}
+
+// createPrivate creates a missing database file with mode 0600, so the WAL and
+// SHM files SQLite derives from it are private too. An existing file, and its
+// mode, are left alone.
+func createPrivate(path string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, privateFileMode) //nolint:gosec // path is the operator's configured data_dir.
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("open %s: create: %w", path, err)
+	}
+	if err = f.Close(); err != nil {
+		return fmt.Errorf("open %s: create: %w", path, err)
+	}
+	return nil
 }
 
 // openWriter opens the single-connection writer and checks it connects.
@@ -162,6 +189,9 @@ func dsn(path string, writer bool) string {
 	} else {
 		q.Add("_pragma", "query_only(1)")
 	}
+	// modeof makes the VFS copy the main file's mode onto the WAL and SHM it
+	// creates; without it they get 0666 minus the umask.
+	q.Set("modeof", path)
 	u := url.URL{Path: filepath.ToSlash(path)}
 	return "file:" + u.EscapedPath() + "?" + q.Encode()
 }

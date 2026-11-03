@@ -93,3 +93,25 @@ func TestOpenTwiceReuses(t *testing.T) {
 		t.Errorf("users table count = %d, want 1", n)
 	}
 }
+
+func TestOpenCreatesPrivateFile(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), store.FileName)
+	s, err := store.Open(t.Context(), path, store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if _, err = s.CreateUser(t.Context(), store.NewUser{Name: "simon", PasswordHash: "h", Role: store.RoleUser}); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{path, path + "-wal"} {
+		fi, statErr := os.Stat(p)
+		if statErr != nil {
+			t.Fatal(statErr)
+		}
+		if perm := fi.Mode().Perm(); perm != 0o600 {
+			t.Errorf("%s mode = %o, want 600", filepath.Base(p), perm)
+		}
+	}
+}
