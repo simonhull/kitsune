@@ -74,6 +74,11 @@ linters:
       settings:
         shadow:
           strict: true
+    tagliatelle:
+      case:
+        rules:
+          json: camel # The API's wire format.
+          toml: snake # server.toml keys, as in the spec.
 
   exclusions:
     generated: strict
