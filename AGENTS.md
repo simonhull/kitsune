@@ -65,6 +65,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   sqlc cgo-free from `tools/go.mod`; never use the release binary, which links C.
 - Dynamic queries (browse filters and sorts) are built in Go over allow-listed columns,
   with bound parameters only. Never interpolate request input into SQL.
+- Library writes go through `WriteBatch`, one transaction per batch. The store never
+  normalizes names or decides identity: callers pass match keys, group keys and ULIDs.
+- FTS rows are written in the same transaction as their track and through `foldSearch`;
+  a search query must fold the same way.
 
 ## Auth
 - `internal/auth` owns credentials. Passwords are Argon2id in PHC format; the store only
