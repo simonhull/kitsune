@@ -1,0 +1,471 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json/v2"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"maps"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/config"
+	"github.com/simonhull/kitsune/internal/store"
+)
+
+const (
+	serveCmd       = "serve"
+	listenAnyPort  = "127.0.0.1:0"
+	stopDeadline   = 10 * time.Second
+	pollDeadline   = 5 * time.Second
+	pollInterval   = 10 * time.Millisecond
+	loginURLPath   = "/auth/login"
+	healthURLPath  = "/healthz"
+	readyURLPath   = "/readyz"
+	forwardedFor   = "X-Forwarded-For"
+	proxiedAddr    = "198.51.100.7"
+	otherAddr      = "198.51.100.8"
+	publicBaseURL  = "https://example.com/music"
+	contentTypeKey = "Content-Type"
+	jsonMediaType  = "application/json"
+	hashSessionLen = 32
+	wrongLoginPass = "not the password"
+	failuresToCap  = 7
+)
+
+// syncBuffer is a bytes.Buffer that the server's goroutines and the test can
+// use at the same time.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p) //nolint:wrapcheck // bytes.Buffer never fails; pass it through.
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// serveEnv is a config file for serve, with a data_dir of its own.
+type serveEnv struct {
+	config  string
+	dataDir string
+}
+
+// newServeEnv writes a config that listens on a free local port. extra is
+// more TOML, placed in the [server] table.
+func newServeEnv(t *testing.T, extra string) serveEnv {
+	t.Helper()
+	dataDir := filepath.Join(t.TempDir(), "data")
+	body := fmt.Sprintf("[server]\nlisten = %q\n%s\n[storage]\ndata_dir = %q\n", listenAnyPort, extra, dataDir)
+	return serveEnv{config: writeFile(t, "server.toml", body), dataDir: dataDir}
+}
+
+func (e serveEnv) load(t *testing.T) config.Config {
+	t.Helper()
+	cfg, err := config.Load(e.config, config.DefaultPaths(noEnv))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	return cfg
+}
+
+func (e serveEnv) serveCLI() cliResult {
+	var out, errOut bytes.Buffer
+	code := cli([]string{serveCmd, "-config", e.config}, noEnv, strings.NewReader(""), &out, &errOut)
+	return cliResult{code: code, stdout: out.String(), stderr: errOut.String()}
+}
+
+func TestServeRefusesWithoutDatabase(t *testing.T) {
+	t.Parallel()
+	e := newServeEnv(t, "")
+	r := e.serveCLI()
+	want := "kitsune-server users add -config " + shellQuote(e.config) + " -admin NAME"
+	if r.code != exitFailure || !strings.Contains(r.stderr, "no users yet") || !strings.Contains(r.stderr, want) {
+		t.Errorf("result = %+v, want exit 1 and a message with %q", r, want)
+	}
+	if _, err := os.Stat(filepath.Join(e.dataDir, store.FileName)); err == nil {
+		t.Error("serve created the database")
+	}
+}
+
+func TestServeRefusesEmptyDatabase(t *testing.T) {
+	t.Parallel()
+	e := newServeEnv(t, "")
+	if err := os.MkdirAll(e.dataDir, dataDirMode); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(t.Context(), filepath.Join(e.dataDir, store.FileName), store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r := e.serveCLI()
+	want := "kitsune-server users add -config " + shellQuote(e.config) + " -admin NAME"
+	if r.code != exitFailure || !strings.Contains(r.stderr, "no users yet") || !strings.Contains(r.stderr, want) {
+		t.Errorf("result = %+v, want exit 1 and a message with %q", r, want)
+	}
+}
+
+func TestNoUsersErrorWithoutConfigFlag(t *testing.T) {
+	t.Parallel()
+	msg := (&noUsersError{}).Error()
+	if !strings.Contains(msg, "users add -admin NAME") || strings.Contains(msg, "-config") {
+		t.Errorf("message = %q, want the command without -config", msg)
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	t.Parallel()
+	tests := map[string]string{
+		"/etc/kitsune.toml":  "/etc/kitsune.toml",
+		"/tmp/my dir/s.toml": "'/tmp/my dir/s.toml'",
+		"it's":               `'it'\''s'`,
+		"":                   "''",
+	}
+	for in, want := range tests {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestServeListenError(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	held, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", listenAnyPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = held.Close() })
+	e := newServeEnv(t, "")
+	if err = createUser(e.dataDir, simonName, goodPassword, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	e.config = writeFile(t, "server.toml",
+		fmt.Sprintf("[server]\nlisten = %q\n[storage]\ndata_dir = %q\n", held.Addr().String(), e.dataDir))
+	r := e.serveCLI()
+	if r.code != exitFailure || !strings.Contains(r.stderr, "listen:") {
+		t.Errorf("result = %+v, want exit 1 and a listen error", r)
+	}
+}
+
+// runningApp is an app serving on a local port.
+type runningApp struct {
+	app    *app
+	ln     net.Listener
+	url    string
+	logs   *syncBuffer
+	client *http.Client
+	cancel context.CancelFunc
+	// finished is closed once serve has returned; err is its result.
+	finished chan struct{}
+	err      error
+}
+
+// reply is the part of a response the serve tests check.
+type reply struct {
+	status  int
+	cookies []string
+}
+
+// newApp opens an app over a config with a user simon. It does not serve.
+func newApp(t *testing.T, e serveEnv) (*app, *syncBuffer) {
+	t.Helper()
+	logs := &syncBuffer{}
+	log := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	cfg := e.load(t)
+	a, err := openApp(t.Context(), &cfg, e.config, log)
+	if err != nil {
+		t.Fatalf("openApp: %v", err)
+	}
+	return a, logs
+}
+
+// startApp creates simon, opens the app and serves it until stop.
+func startApp(t *testing.T, extra string) *runningApp {
+	t.Helper()
+	e := newServeEnv(t, extra)
+	if err := createUser(e.dataDir, simonName, goodPassword, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	return serveApp(t, e)
+}
+
+func serveApp(t *testing.T, e serveEnv) *runningApp {
+	t.Helper()
+	a, logs := newApp(t, e)
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", listenAnyPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	ra := &runningApp{
+		app: a, ln: ln, url: "http://" + ln.Addr().String(), logs: logs, cancel: cancel,
+		client: &http.Client{Transport: &http.Transport{}}, finished: make(chan struct{}),
+	}
+	go func() {
+		defer close(ra.finished)
+		ra.err = a.serve(ctx, ln)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-ra.finished:
+		case <-time.After(stopDeadline):
+			t.Error("serve did not return after cleanup")
+		}
+		_ = a.close()
+	})
+	return ra
+}
+
+// stop shuts the app down and returns serve's result, failing the test if it
+// takes too long.
+func (ra *runningApp) stop(t *testing.T) error {
+	t.Helper()
+	ra.client.CloseIdleConnections()
+	ra.cancel()
+	select {
+	case <-ra.finished:
+		return ra.err
+	case <-time.After(stopDeadline):
+		t.Fatalf("serve did not return within %v", stopDeadline)
+		return nil
+	}
+}
+
+// do sends one request.
+func (ra *runningApp) do(t *testing.T, method, path, body string, header http.Header) reply {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), method, ra.url+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(req.Header, header)
+	resp, err := ra.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = io.Copy(io.Discard, resp.Body); err != nil {
+		t.Fatal(err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return reply{status: resp.StatusCode, cookies: resp.Header.Values("Set-Cookie")}
+}
+
+// login posts a login for name with the given forwarded address and path prefix.
+func (ra *runningApp) login(t *testing.T, prefix, name, password, forwarded string, cookie bool) reply {
+	t.Helper()
+	body, err := json.Marshal(api.LoginRequest{Name: name, Password: password, Cookie: cookie})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := http.Header{contentTypeKey: {jsonMediaType}}
+	if forwarded != "" {
+		h.Set(forwardedFor, forwarded)
+	}
+	return ra.do(t, http.MethodPost, prefix+loginURLPath, string(body), h)
+}
+
+// logEntries parses the JSON log lines.
+func logEntries(t *testing.T, logs *syncBuffer) []map[string]any {
+	t.Helper()
+	var entries []map[string]any
+	for line := range strings.SplitSeq(strings.TrimSpace(logs.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Fatalf("log line %q is not JSON: %v", line, err)
+		}
+		entries = append(entries, m)
+	}
+	return entries
+}
+
+func TestServeRunsAndStops(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	ra := startApp(t, "")
+	ra.expectStatus(t, ra.do(t, http.MethodGet, healthURLPath, "", nil), http.StatusNoContent)
+	ra.expectStatus(t, ra.do(t, http.MethodGet, readyURLPath, "", nil), http.StatusNoContent)
+	ra.expectStatus(t, ra.login(t, "", simonName, goodPassword, "", false), http.StatusOK)
+	if err := ra.stop(t); err != nil {
+		t.Errorf("serve = %v, want nil", err)
+	}
+	if err := ra.app.close(); err != nil {
+		t.Errorf("close = %v, want nil", err)
+	}
+	seen := logMessages(t, ra.logs)
+	for _, msg := range []string{"listening", "shutting down", "stopped"} {
+		if seen[msg] == nil {
+			t.Errorf("no %q log line in %s", msg, ra.logs)
+		}
+	}
+	if got := seen["listening"]["addr"]; got != ra.ln.Addr().String() {
+		t.Errorf("listening addr = %v, want %s", got, ra.ln.Addr())
+	}
+}
+
+// expectStatus fails the test unless r has the given status.
+func (*runningApp) expectStatus(t *testing.T, r reply, want int) {
+	t.Helper()
+	if r.status != want {
+		t.Errorf("status = %d, want %d", r.status, want)
+	}
+}
+
+// logMessages maps each log message to its (last) entry.
+func logMessages(t *testing.T, logs *syncBuffer) map[string]map[string]any {
+	t.Helper()
+	seen := map[string]map[string]any{}
+	for _, m := range logEntries(t, logs) {
+		if msg, ok := m["msg"].(string); ok {
+			seen[msg] = m
+		}
+	}
+	return seen
+}
+
+func TestServeBehindProxy(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	ra := startApp(t, fmt.Sprintf("base_url = %q\ntrusted_proxies = [\"127.0.0.1\"]\n", publicBaseURL))
+	ra.expectStatus(t, ra.do(t, http.MethodGet, "/music"+healthURLPath, "", nil), http.StatusNoContent)
+	ra.expectStatus(t, ra.do(t, http.MethodGet, healthURLPath, "", nil), http.StatusNotFound)
+	ra.checkProxyCookie(t)
+	ra.checkForwardedLimits(t)
+}
+
+// checkProxyCookie checks the cookie of a login under the base path.
+func (ra *runningApp) checkProxyCookie(t *testing.T) {
+	t.Helper()
+	r := ra.login(t, "/music", simonName, goodPassword, "", true)
+	if r.status != http.StatusOK || len(r.cookies) != 1 {
+		t.Fatalf("cookie login = %d with cookies %q, want 200 and one cookie", r.status, r.cookies)
+	}
+	c, err := http.ParseSetCookie(r.cookies[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Secure || c.Path != "/music" {
+		t.Errorf("cookie = %+v, want Secure and Path /music", c)
+	}
+}
+
+// checkForwardedLimits checks that login failures are counted per forwarded
+// address, on the real clock.
+func (ra *runningApp) checkForwardedLimits(t *testing.T) {
+	t.Helper()
+	for i := 1; i <= failuresToCap; i++ {
+		want := http.StatusUnauthorized
+		if i == failuresToCap {
+			want = http.StatusTooManyRequests
+		}
+		got := ra.login(t, "/music", fmt.Sprintf("ghost%d", i), wrongLoginPass, proxiedAddr, false)
+		if got.status != want {
+			t.Fatalf("failed login %d = %d, want %d", i, got.status, want)
+		}
+	}
+	ra.expectStatus(t, ra.login(t, "/music", simonName, goodPassword, otherAddr, false), http.StatusOK)
+}
+
+func TestServeWarnsWithoutTrustedProxies(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	e := newServeEnv(t, fmt.Sprintf("base_url = %q\n", publicBaseURL))
+	if err := createUser(e.dataDir, simonName, goodPassword, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	a, logs := newApp(t, e)
+	t.Cleanup(func() { _ = a.close() })
+	if !strings.Contains(logs.String(), "trusted_proxies is empty") {
+		t.Errorf("log = %s, want the trusted_proxies warning", logs)
+	}
+}
+
+func TestServePurgesExpiredSessionsAtStart(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	e := newServeEnv(t, "")
+	if err := createUser(e.dataDir, simonName, goodPassword, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	hash := bytes.Repeat([]byte{1}, hashSessionLen)
+	st, err := store.Open(t.Context(), filepath.Join(e.dataDir, store.FileName), store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := st.UserByName(t.Context(), simonName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	err = st.CreateSession(t.Context(), &store.NewSession{
+		TokenHash: hash, UserID: u.ID, CreatedAt: now.Add(-2 * time.Hour), ExpiresAt: now.Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ra := serveApp(t, e)
+	deadline := time.Now().Add(pollDeadline)
+	for !strings.Contains(ra.logs.String(), "purged expired sessions") {
+		if time.Now().After(deadline) {
+			t.Fatalf("no purge logged within %v; log: %s", pollDeadline, ra.logs)
+		}
+		time.Sleep(pollInterval)
+	}
+	if _, err = ra.app.store.SessionByTokenHash(t.Context(), hash); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("SessionByTokenHash = %v, want store.ErrNotFound", err)
+	}
+}
+
+func TestServeStopsOnServeError(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	e := newServeEnv(t, "")
+	if err := createUser(e.dataDir, simonName, goodPassword, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := newApp(t, e)
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", listenAnyPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- a.serve(t.Context(), ln) }()
+	select {
+	case err = <-done:
+		if err == nil || !strings.Contains(err.Error(), "serve:") {
+			t.Errorf("serve = %v, want an error containing %q", err, "serve:")
+		}
+	case <-time.After(pollDeadline):
+		t.Fatal("serve did not return after its listener failed")
+	}
+	if err = a.close(); err != nil {
+		t.Errorf("close = %v, want nil", err)
+	}
+}
