@@ -116,19 +116,26 @@ func (s *Store) Close() error {
 	return errors.Join(s.r.Close(), s.w.Close())
 }
 
-// createPrivate creates a missing database file with mode 0600, so the WAL and
-// SHM files SQLite derives from it are private too. An existing file, and its
-// mode, are left alone.
+// createPrivate creates the database file and its shared-memory file with
+// mode 0600 when they are missing. An existing file, and its mode, are left
+// alone.
+//
+// The WAL gets the database's mode through modeof (see dsn). The VFS creates
+// the -shm file with 0666 minus the umask, ignoring modeof, and deletes it when
+// the last connection closes. The store holds connections open until Close, so
+// a -shm created here lasts as long as the store does.
 func createPrivate(path string) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, privateFileMode) //nolint:gosec // path is the operator's configured data_dir.
-	if errors.Is(err, os.ErrExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("open %s: create: %w", path, err)
-	}
-	if err = f.Close(); err != nil {
-		return fmt.Errorf("open %s: create: %w", path, err)
+	for _, p := range []string{path, path + "-shm"} {
+		f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, privateFileMode) //nolint:gosec // path is the operator's configured data_dir.
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("open %s: create: %w", p, err)
+		}
+		if err = f.Close(); err != nil {
+			return fmt.Errorf("open %s: create: %w", p, err)
+		}
 	}
 	return nil
 }
@@ -189,8 +196,8 @@ func dsn(path string, writer bool) string {
 	} else {
 		q.Add("_pragma", "query_only(1)")
 	}
-	// modeof makes the VFS copy the main file's mode onto the WAL and SHM it
-	// creates; without it they get 0666 minus the umask.
+	// modeof makes the VFS copy the main file's mode onto the WAL it creates;
+	// without it the WAL gets 0666 minus the umask. createPrivate covers -shm.
 	q.Set("modeof", path)
 	u := url.URL{Path: filepath.ToSlash(path)}
 	return "file:" + u.EscapedPath() + "?" + q.Encode()

@@ -105,7 +105,7 @@ func TestOpenCreatesPrivateFile(t *testing.T) {
 	if _, err = s.CreateUser(t.Context(), store.NewUser{Name: "simon", PasswordHash: "h", Role: store.RoleUser}); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{path, path + "-wal"} {
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
 		fi, statErr := os.Stat(p)
 		if statErr != nil {
 			t.Fatal(statErr)
