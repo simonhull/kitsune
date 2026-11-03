@@ -33,7 +33,7 @@ var errUnknownKey = errors.New("not a config key")
 // match exactly, case included.
 func knownKeys() []string {
 	return []string{
-		"server", "server.listen", "server.base_url",
+		"server", "server.listen", "server.base_url", "server.trusted_proxies",
 		"library", "library.roots", "library.missing_grace", "library.quick_scan",
 		"storage", "storage.data_dir",
 		"log", "log.level",
@@ -55,6 +55,25 @@ type Server struct {
 	// BaseURL is the server's public URL when it is behind a reverse proxy,
 	// such as "https://example.com/music"; "" when it is not.
 	BaseURL string `toml:"base_url"`
+	// TrustedProxies are the networks of the reverse proxies whose
+	// X-Forwarded-For header is believed. Empty means none.
+	TrustedProxies []Network `toml:"trusted_proxies"`
+}
+
+// BasePath is BaseURL's path without its trailing slash, such as "/music",
+// or "" when the server is at the root.
+func (s *Server) BasePath() string {
+	u, err := url.Parse(s.BaseURL)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSuffix(u.Path, "/")
+}
+
+// HTTPS reports whether BaseURL is an https URL.
+func (s *Server) HTTPS() bool {
+	u, err := url.Parse(s.BaseURL)
+	return err == nil && u.Scheme == "https"
 }
 
 // Library configures the music library.
@@ -83,7 +102,7 @@ type Log struct {
 // Storage.DataDir is empty; [Load] fills it from [Paths].
 func Default() Config {
 	return Config{
-		Server: Server{Listen: defaultListen},
+		Server: Server{Listen: defaultListen, TrustedProxies: []Network{}}, // Not nil, so the config shows trusted_proxies = [].
 		Library: Library{
 			Roots:        []string{}, // Not nil, so `kitsune-server config` shows roots = [].
 			MissingGrace: defaultMissingGrace,
@@ -271,10 +290,44 @@ func baseURLProblem(s string) string {
 	if u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(s, "#") {
 		return "must not have user info, a query or a fragment"
 	}
+	if reason := pathProblem(u); reason != "" {
+		return reason
+	}
 	if port := u.Port(); port != "" {
 		return portProblem(port)
 	}
 	return ""
+}
+
+// pathProblem describes what is wrong with the path of a base URL, or returns
+// "". The path must be plain segments, with at most one trailing slash.
+func pathProblem(u *url.URL) string {
+	const reason = "path must be plain segments of letters, digits and - . _ ~"
+	if u.RawPath != "" {
+		return reason
+	}
+	path := strings.TrimSuffix(u.Path, "/")
+	if path == "" {
+		return ""
+	}
+	if !strings.HasPrefix(path, "/") {
+		return reason
+	}
+	for seg := range strings.SplitSeq(path[1:], "/") {
+		if seg == "" || seg == "." || seg == ".." || strings.ContainsFunc(seg, notPlain) {
+			return reason
+		}
+	}
+	return ""
+}
+
+// notPlain reports whether r is outside A-Z a-z 0-9 - . _ ~.
+func notPlain(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return false
+	}
+	return !strings.ContainsRune("-._~", r)
 }
 
 // isAbsoluteHTTP reports whether u is an http or https URL with a host.

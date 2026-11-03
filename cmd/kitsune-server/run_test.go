@@ -113,7 +113,7 @@ func TestCLIConfig(t *testing.T) {
 		{
 			name:       "defaults",
 			args:       []string{configCmd},
-			wantStdout: []string{`listen = ":4533"`, `roots = []`, `quick_scan = "03:30"`, `data_dir = "HOME/.local/share/kitsune-server"`},
+			wantStdout: []string{`listen = ":4533"`, `roots = []`, `trusted_proxies = []`, `quick_scan = "03:30"`, `data_dir = "HOME/.local/share/kitsune-server"`},
 		},
 		{name: "single-dash flag", args: []string{configCmd, configFlag, debug}, wantStdout: []string{`level = "DEBUG"`}},
 		{name: "double-dash flag", args: []string{configCmd, "--config", debug}, wantStdout: []string{`level = "DEBUG"`}},

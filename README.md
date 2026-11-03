@@ -16,6 +16,7 @@ optional; these are the defaults:
 [server]
 listen = ":4533"         # host:port
 base_url = ""            # public URL when behind a reverse proxy, e.g. "https://example.com/music"
+trusted_proxies = []     # proxies whose X-Forwarded-For is believed: CIDRs or addresses
 
 [library]
 roots = []               # absolute directories to scan; they must not overlap
