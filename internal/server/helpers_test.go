@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json/v2"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -71,6 +72,12 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
+// testServerOptions configures newTestServer.
+type testServerOptions struct {
+	SecureCookies bool
+	Params        auth.Params // Zero means cheap parameters.
+}
+
 // testServer is a running API over a real store and auth service.
 type testServer struct {
 	Server *httptest.Server
@@ -82,8 +89,15 @@ type testServer struct {
 }
 
 // newTestServer starts a server over a temporary store.
-func newTestServer(t *testing.T) *testServer {
+func newTestServer(t *testing.T, opts ...testServerOptions) *testServer {
 	t.Helper()
+	var o testServerOptions
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	if o.Params == (auth.Params{}) {
+		o.Params = auth.Params{Time: 1, MemoryKiB: 64, Threads: 1}
+	}
 	clock := newTestClock()
 	st, err := store.Open(t.Context(), filepath.Join(t.TempDir(), store.FileName), store.Options{Now: clock.Now})
 	if err != nil {
@@ -94,16 +108,17 @@ func newTestServer(t *testing.T) *testServer {
 			t.Errorf("close store: %v", closeErr)
 		}
 	})
-	svc, err := auth.New(st, auth.Options{Params: auth.Params{Time: 1, MemoryKiB: 64, Threads: 1}, Now: clock.Now})
+	svc, err := auth.New(st, auth.Options{Params: o.Params, Now: clock.Now})
 	if err != nil {
 		t.Fatalf("auth.New: %v", err)
 	}
 	logs := &syncBuffer{}
 	h := New(Config{
-		Auth:     svc,
-		Logger:   slog.New(slog.NewTextHandler(logs, nil)),
-		Now:      clock.Now,
-		ClientIP: testClientIP,
+		Auth:          svc,
+		Logger:        slog.New(slog.NewTextHandler(logs, nil)),
+		Now:           clock.Now,
+		ClientIP:      testClientIP,
+		SecureCookies: o.SecureCookies,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -145,8 +160,20 @@ type response struct {
 	Body   []byte
 }
 
-// send sends c through a contract client and returns the response.
+// send sends c through a contract client and returns the response. It fails
+// the test on a transport error, so call it only from the test goroutine.
 func (ts *testServer) send(t *testing.T, c call) response {
+	t.Helper()
+	resp, err := ts.trySend(t, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
+// trySend is send for other goroutines: it reports a transport error instead
+// of failing the test.
+func (ts *testServer) trySend(t *testing.T, c call) (response, error) {
 	t.Helper()
 	ctx := t.Context()
 	if c.invalid {
@@ -154,7 +181,7 @@ func (ts *testServer) send(t *testing.T, c call) response {
 	}
 	req, err := http.NewRequestWithContext(ctx, c.method, ts.URL+c.path, strings.NewReader(c.body))
 	if err != nil {
-		t.Fatalf("new request: %v", err)
+		return response{}, fmt.Errorf("new request: %w", err)
 	}
 	maps.Copy(req.Header, c.header)
 	client := c.client
@@ -163,20 +190,20 @@ func (ts *testServer) send(t *testing.T, c call) response {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		t.Fatalf("%s %s: %v", c.method, c.path, err)
+		return response{}, fmt.Errorf("%s %s: %w", c.method, c.path, err)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if closeErr := resp.Body.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
-		t.Fatalf("read response: %v", err)
+		return response{}, fmt.Errorf("read response: %w", err)
 	}
-	return response{Status: resp.StatusCode, Header: resp.Header, Body: body}
+	return response{Status: resp.StatusCode, Header: resp.Header, Body: body}, nil
 }
 
 // problem decodes r as a problem and checks its status and type.
-func (r response) problem(t *testing.T, status int) {
+func (r response) problem(t *testing.T, status int) api.Problem {
 	t.Helper()
 	if got := r.Header.Get("Content-Type"); got != api.ProblemMediaType {
 		t.Errorf("Content-Type = %q, want %q", got, api.ProblemMediaType)
@@ -188,6 +215,7 @@ func (r response) problem(t *testing.T, status int) {
 	if r.Status != status || p.Status != status || p.Type != problemType(status) {
 		t.Errorf("got %d %+v, want a %d problem of type %s", r.Status, p, status, problemType(status))
 	}
+	return p
 }
 
 // bearer returns headers carrying token as a bearer credential.

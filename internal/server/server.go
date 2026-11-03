@@ -35,6 +35,7 @@ type Server struct {
 	now           func() time.Time
 	clientIP      func(*http.Request) string
 	secureCookies bool
+	limiter       *loginLimiter
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -59,6 +60,7 @@ func New(cfg Config) *Server {
 		now:           cfg.Now,
 		clientIP:      cfg.ClientIP,
 		secureCookies: cfg.SecureCookies,
+		limiter:       newLoginLimiter(maxLimiterKeys),
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
@@ -99,6 +101,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() []route {
 	return []route{
 		{pattern: "GET /healthz", public: true, handle: s.getHealth},
+		{pattern: "POST /auth/login", public: true, handle: s.login},
+		{pattern: "POST /auth/logout", handle: s.logout},
 		{pattern: "GET /me", handle: s.getMe},
 	}
 }

@@ -36,6 +36,13 @@ func currentUser(ctx context.Context) (store.User, bool) {
 	return info.user, ok
 }
 
+// currentToken returns the session token the request authenticated with. It
+// is empty outside [Server.authenticate].
+func currentToken(ctx context.Context) string {
+	info, _ := ctx.Value(authInfoKey{}).(authInfo) // Absent means no token.
+	return info.token
+}
+
 // authenticate wraps next so that it runs only for requests with a valid
 // session token, from the Authorization header or the session cookie. The
 // header wins over the cookie. A cookie-authenticated request that is not

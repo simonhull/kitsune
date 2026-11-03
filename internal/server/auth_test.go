@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
 const (
+	simonName    = "simon"
 	mePath       = "/me"
 	testPassword = "correct horse"
 	cookieHeader = "Cookie"
@@ -25,8 +27,8 @@ type session struct {
 // sessionFor seeds simon as an admin and logs him in through the service.
 func (ts *testServer) sessionFor(t *testing.T) session {
 	t.Helper()
-	u := ts.seedUser(t, "simon", testPassword, store.RoleAdmin)
-	res, err := ts.Auth.Login(t.Context(), "simon", testPassword, "test/1")
+	u := ts.seedUser(t, simonName, testPassword, store.RoleAdmin)
+	res, err := ts.Auth.Login(t.Context(), simonName, testPassword, "test/1")
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
@@ -53,7 +55,7 @@ func TestMeWithBearer(t *testing.T) {
 	}
 	want := map[string]any{
 		"id":        float64(u.ID),
-		"name":      "simon",
+		"name":      simonName,
 		"role":      "admin",
 		"createdAt": u.CreatedAt.Format(time.RFC3339Nano),
 	}
@@ -174,4 +176,22 @@ func TestOffContractNotFoundIsAProblem(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
 	ts.send(t, call{method: http.MethodGet, path: "/nope", client: http.DefaultClient}).problem(t, http.StatusNotFound)
+}
+
+func TestMeShowsTheRole(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.seedUser(t, "kit", "another password", store.RoleUser)
+	res, err := ts.Auth.Login(t.Context(), "kit", "another password", "test/1")
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	resp := ts.send(t, call{method: http.MethodGet, path: mePath, header: bearer(res.Token)})
+	var u api.User
+	if err = json.Unmarshal(resp.Body, &u); err != nil {
+		t.Fatalf("decode %q: %v", resp.Body, err)
+	}
+	if u.Name != "kit" || u.Role != "user" {
+		t.Errorf("user = %+v, want kit with role user", u)
+	}
 }
