@@ -72,6 +72,7 @@ func Default() Config {
 	return Config{
 		Server: Server{Listen: defaultListen},
 		Library: Library{
+			Roots:        []string{}, // Not nil, so `kitsune-server config` shows roots = [].
 			MissingGrace: defaultMissingGrace,
 			QuickScan:    ClockTime{Hour: defaultQuickScanHour, Minute: defaultQuickScanMinute},
 		},
