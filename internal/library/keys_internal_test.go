@@ -16,7 +16,7 @@ func TestMatchKey(t *testing.T) {
 		{"accent kept", "Sigur Rós", "sigur rós"},
 		{"only white space", "\t\n", ""},
 		{"inner tab and newline", "a\t\nb", "a b"},
-		{"feat kept", "A feat. B", "a feat. b"},
+		{"feat kept", featName, "a feat. b"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

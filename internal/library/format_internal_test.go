@@ -46,11 +46,11 @@ func TestRawKeysPerFormat(t *testing.T) {
 		artistIDs    []string // Written and expected for the artist MBID.
 	}{
 		{
-			name: "FLAC", sample: "sample.flac",
+			name: formatFLAC, sample: "sample.flac",
 			keys: rawKeys{
-				titleSort: "TITLESORT", artistSort: "ARTISTSORT", albumSort: "ALBUMSORT",
+				titleSort: "TITLESORT", artistSort: keyArtistSort, albumSort: "ALBUMSORT",
 				albumArtist: "ALBUMARTIST", albumArtistSort: "ALBUMARTISTSORT",
-				artistMBID: "MUSICBRAINZ_ARTISTID", albumArtistMBID: "MUSICBRAINZ_ALBUMARTISTID",
+				artistMBID: keyArtistMBID, albumArtistMBID: "MUSICBRAINZ_ALBUMARTISTID",
 				compilation: "COMPILATION", albumMBID: "MUSICBRAINZ_ALBUMID",
 			},
 			artistIDs: []string{mbArtist1, "mb-artist-2"},
@@ -60,7 +60,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 			keys: rawKeys{
 				titleSort: "TSOT", artistSort: "TSOP", albumSort: "TSOA",
 				albumArtist: "TPE2", albumArtistSort: "TSO2",
-				artistMBID: "MUSICBRAINZ ARTIST ID", albumArtistMBID: "MUSICBRAINZ ALBUM ARTIST ID",
+				artistMBID: keyID3ArtistID, albumArtistMBID: "MUSICBRAINZ ALBUM ARTIST ID",
 				compilation: "TCMP", albumMBID: "MUSICBRAINZ ALBUM ID",
 			},
 			artistIDs: []string{mbArtist1},
@@ -70,7 +70,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 			keys: rawKeys{
 				titleSort: "sonm", artistSort: "soar", albumSort: "soal",
 				albumArtist: "aART", albumArtistSort: "soaa",
-				artistMBID: "MUSICBRAINZ ARTIST ID", albumArtistMBID: "MUSICBRAINZ ALBUM ARTIST ID",
+				artistMBID: keyID3ArtistID, albumArtistMBID: "MUSICBRAINZ ALBUM ARTIST ID",
 				compilation: "cpil", albumMBID: "MUSICBRAINZ ALBUM ID",
 			},
 			artistIDs: []string{mbArtist1},
