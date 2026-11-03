@@ -6,9 +6,16 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 
 ## Toolchain
 - `mise install` installs the pinned Go and golangci-lint (`mise.toml`).
-- `mise run check` is the full local gate, the same as CI: build, race tests, lint
-  (`go mod tidy -diff`, golangci-lint with formatters, `go vet`, `go fix -diff`) and
-  `govulncheck`.
+- `mise run check` is the full local gate, the same as CI: build (`CGO_ENABLED=0`),
+  race tests, lint (`go mod tidy -diff`, golangci-lint with formatters, `go vet`,
+  `go fix -diff`), the no-C-interop check and `govulncheck`.
+- **Pure Go, no C interop.** No cgo in Kitsune or in any dependency, test-only ones
+  included: the binary is static (`CGO_ENABLED=0`) for scratch images and plain
+  `GOARCH` cross-builds. `scripts/nocgo.sh` (`mise run nocgo`, in `check` and CI) fails
+  if any non-standard package in the build graph, Kitsune's own included, has cgo, C
+  sources or `.syso` objects. Linters can't do this: Go silently skips cgo files when
+  `CGO_ENABLED=0`. Pure-Go assembly is fine. The race detector is toolchain, not a
+  dependency, and stays.
 - `mise run fmt` applies gofumpt and goimports. Always lint through mise: a global
   golangci-lint of another version reports different findings.
 
