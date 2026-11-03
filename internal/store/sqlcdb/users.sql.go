@@ -14,7 +14,7 @@ SELECT count(*) FROM users
 `
 
 func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countUsers)
+	row := q.queryRow(ctx, q.countUsersStmt, countUsers)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -34,7 +34,7 @@ type CreateUserParams struct {
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, createUser,
+	row := q.queryRow(ctx, q.createUserStmt, createUser,
 		arg.Name,
 		arg.PasswordHash,
 		arg.Role,
@@ -55,7 +55,7 @@ type SetPasswordHashParams struct {
 }
 
 func (q *Queries) SetPasswordHash(ctx context.Context, arg SetPasswordHashParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setPasswordHash, arg.PasswordHash, arg.ID)
+	result, err := q.exec(ctx, q.setPasswordHashStmt, setPasswordHash, arg.PasswordHash, arg.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -69,7 +69,7 @@ WHERE name = ?
 `
 
 func (q *Queries) UserByName(ctx context.Context, name string) (User, error) {
-	row := q.db.QueryRowContext(ctx, userByName, name)
+	row := q.queryRow(ctx, q.userByNameStmt, userByName, name)
 	var i User
 	err := row.Scan(
 		&i.ID,
