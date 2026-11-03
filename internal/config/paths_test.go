@@ -16,6 +16,9 @@ const (
 	dataHome   = "XDG_DATA_HOME"
 	home       = "HOME"
 	homeDir    = "/home/u"
+	// Defaults under homeDir.
+	homeConfigFile = "/home/u/.config/kitsune/server.toml"
+	homeDataDir    = "/home/u/.local/share/kitsune-server"
 )
 
 func TestDefaultPaths(t *testing.T) {
@@ -27,18 +30,23 @@ func TestDefaultPaths(t *testing.T) {
 	}{
 		{
 			name: "XDG set",
-			vars: map[string]string{configHome: "/cfg", dataHome: "/data", home: homeDir},
+			vars: map[string]string{configHome: "/cfg", dataHome: dataPath, home: homeDir},
 			want: Paths{ConfigFile: "/cfg/kitsune/server.toml", DataDir: "/data/kitsune-server"},
 		},
 		{
 			name: "HOME fallback",
 			vars: map[string]string{home: homeDir},
-			want: Paths{ConfigFile: "/home/u/.config/kitsune/server.toml", DataDir: "/home/u/.local/share/kitsune-server"},
+			want: Paths{ConfigFile: homeConfigFile, DataDir: homeDataDir},
 		},
 		{
 			name: "relative XDG ignored",
 			vars: map[string]string{configHome: "cfg", dataHome: "", home: homeDir},
-			want: Paths{ConfigFile: "/home/u/.config/kitsune/server.toml", DataDir: "/home/u/.local/share/kitsune-server"},
+			want: Paths{ConfigFile: homeConfigFile, DataDir: homeDataDir},
+		},
+		{
+			name: "relative XDG_DATA_HOME ignored",
+			vars: map[string]string{dataHome: "data", home: homeDir},
+			want: Paths{ConfigFile: homeConfigFile, DataDir: homeDataDir},
 		},
 		{
 			name: "nothing usable",
