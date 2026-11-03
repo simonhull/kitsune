@@ -119,6 +119,9 @@ func Load(path string, paths Paths) (Config, error) {
 // decodeFile decodes the TOML file name into cfg, rejecting unknown keys.
 func decodeFile(name string, cfg *Config) error {
 	md, err := toml.DecodeFile(name, cfg)
+	if _, ok := errors.AsType[*fs.PathError](err); ok {
+		return fmt.Errorf("read config: %w", err) // The error already names the file.
+	}
 	if err != nil {
 		return fmt.Errorf("config %s: %w", name, err)
 	}
