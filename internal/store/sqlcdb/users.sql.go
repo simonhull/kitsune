@@ -45,6 +45,23 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (int64, 
 	return id, err
 }
 
+const setPasswordHash = `-- name: SetPasswordHash :execrows
+UPDATE users SET password_hash = ? WHERE id = ?
+`
+
+type SetPasswordHashParams struct {
+	PasswordHash string
+	ID           int64
+}
+
+func (q *Queries) SetPasswordHash(ctx context.Context, arg SetPasswordHashParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setPasswordHash, arg.PasswordHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const userByName = `-- name: UserByName :one
 SELECT id, name, password_hash, role, created_at
 FROM users

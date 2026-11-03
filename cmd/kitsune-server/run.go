@@ -14,6 +14,7 @@ const usage = `Usage: kitsune-server <command> [flags]
 
 Commands:
   config    print the configuration in effect and exit
+  users add NAME   create a user (-admin, -password-stdin, -config FILE)
   version   print the version and exit
   help      print this help and exit
 
@@ -36,8 +37,8 @@ func (e *usageError) Error() string { return e.msg }
 // cli runs kitsune-server with args (without the program name) in the
 // environment env and returns the process exit status. Errors go to stderr,
 // followed by the usage text when the command line was wrong.
-func cli(args []string, env config.Env, stdout, stderr io.Writer) int {
-	err := run(args, env, stdout)
+func cli(args []string, env config.Env, stdin io.Reader, stdout, stderr io.Writer) int {
+	err := run(args, env, stdin, stdout, stderr)
 	if err == nil {
 		return exitOK
 	}
@@ -51,34 +52,46 @@ func cli(args []string, env config.Env, stdout, stderr io.Writer) int {
 }
 
 // run executes the command line args (without the program name) in the
-// environment env, writing normal output to stdout. A *usageError means the
-// command line was wrong.
-func run(args []string, env config.Env, stdout io.Writer) error {
+// environment env, reading from stdin and writing normal output to stdout.
+// Prompts go to stderr. A *usageError means the command line was wrong.
+func run(args []string, env config.Env, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		return &usageError{msg: "no command given"}
 	}
 	switch cmd, rest := args[0], args[1:]; cmd {
 	case "config":
 		return runConfig(rest, env, stdout)
+	case "users":
+		return runUsers(rest, env, stdin, stdout, stderr)
 	case "version":
-		if err := noArgs(cmd, rest); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintln(stdout, "kitsune-server", version()); err != nil {
-			return fmt.Errorf("write version: %w", err)
-		}
-		return nil
+		return runVersion(cmd, rest, stdout)
 	case "help", "-h", "--help":
-		if err := noArgs(cmd, rest); err != nil {
-			return err
-		}
-		if _, err := io.WriteString(stdout, usage); err != nil {
-			return fmt.Errorf("write usage: %w", err)
-		}
-		return nil
+		return runHelp(cmd, rest, stdout)
 	default:
 		return &usageError{msg: fmt.Sprintf("unknown command %q", cmd)}
 	}
+}
+
+// runVersion prints the version.
+func runVersion(cmd string, rest []string, stdout io.Writer) error {
+	if err := noArgs(cmd, rest); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(stdout, "kitsune-server", version()); err != nil {
+		return fmt.Errorf("write version: %w", err)
+	}
+	return nil
+}
+
+// runHelp prints the usage text.
+func runHelp(cmd string, rest []string, stdout io.Writer) error {
+	if err := noArgs(cmd, rest); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(stdout, usage); err != nil {
+		return fmt.Errorf("write usage: %w", err)
+	}
+	return nil
 }
 
 // runConfig prints the configuration in effect as TOML.

@@ -90,3 +90,16 @@ func (s *Store) CountUsers(ctx context.Context) (int, error) {
 	}
 	return int(n), nil
 }
+
+// SetPasswordHash replaces a user's password hash. It returns an error
+// wrapping [ErrNotFound] if no user has id.
+func (s *Store) SetPasswordHash(ctx context.Context, id int64, hash string) error {
+	n, err := s.wq.SetPasswordHash(ctx, sqlcdb.SetPasswordHashParams{PasswordHash: hash, ID: id})
+	if err != nil {
+		return fmt.Errorf("set password hash: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("user %d: %w", id, ErrNotFound)
+	}
+	return nil
+}

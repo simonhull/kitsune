@@ -4,6 +4,15 @@
 
 package sqlcdb
 
+type Session struct {
+	TokenHash []byte
+	UserID    int64
+	CreatedAt int64
+	LastSeen  int64
+	ExpiresAt int64
+	UserAgent string
+}
+
 type User struct {
 	ID           int64
 	Name         string
