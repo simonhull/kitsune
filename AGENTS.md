@@ -44,6 +44,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - API tests go through `openapitest` (strict request/response validation). A full
   test run fails if any declared operation × status is never exercised.
 - Errors are RFC 9457 problems via `writeProblem`; never `http.Error`.
+- Non-public routes run behind `authenticate`: `Authorization: Bearer` wins over the
+  `kitsune_session` cookie; cookie-authenticated unsafe methods must send
+  `X-Kitsune-Request: 1`. Handlers read the caller with `currentUser`.
+- Problem `type`s come from the status (`urn:kitsune:problem:<kind>`); write problems only
+  through `writeProblem`.
+- Responses carry `api` types built field by field (`toAPIUser`); never marshal a
+  `store` type, so a new store column can't leak.
+- Nothing the server writes (bodies, headers, logs) contains a password or token, except
+  login's response and `Set-Cookie`.
 
 ## Store
 - `internal/store` is the only package that speaks SQL. Writes go through the
