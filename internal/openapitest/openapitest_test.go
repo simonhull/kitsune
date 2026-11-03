@@ -120,16 +120,16 @@ func get(t *testing.T, client *http.Client, url string) {
 func TestCoverage(t *testing.T) {
 	t.Parallel()
 	c := openapitest.Load(t)
-	want := []string{"GET /healthz 204"}
-	if got := c.Unexercised(); !slices.Equal(got, want) {
-		t.Errorf("before any request, Unexercised() = %q, want %q", got, want)
+	const health = "GET /healthz 204"
+	if got := c.Unexercised(); !slices.Contains(got, health) {
+		t.Errorf("before any request, Unexercised() = %q, want it to list %q", got, health)
 	}
 
 	// A response outside the contract does not count.
 	offContract := &http.Client{Transport: c.Transport(&recorder{TB: t}, canned{http.StatusNoContent, "", ""})}
 	get(t, offContract, "http://kitsune.test/nope")
-	if got := c.Unexercised(); !slices.Equal(got, want) {
-		t.Errorf("after an off-contract response, Unexercised() = %q, want %q", got, want)
+	if got := c.Unexercised(); !slices.Contains(got, health) {
+		t.Errorf("after an off-contract response, Unexercised() = %q, want it to list %q", got, health)
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -137,7 +137,7 @@ func TestCoverage(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	get(t, c.Client(t), srv.URL+healthPath)
-	if got := c.Unexercised(); len(got) != 0 {
-		t.Errorf("after GET /healthz, Unexercised() = %q, want none", got)
+	if got := c.Unexercised(); slices.Contains(got, health) {
+		t.Errorf("after GET /healthz, Unexercised() = %q, want it not to list %q", got, health)
 	}
 }

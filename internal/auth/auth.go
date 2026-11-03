@@ -28,11 +28,14 @@ var (
 	errNegativeHashes = errors.New("want 0 or more")
 )
 
+// SessionMaxAge is the absolute lifetime of a session, counted from its
+// creation. A session also expires after 30 idle days.
+const SessionMaxAge = 365 * 24 * time.Hour
+
 // Session lifetime and limits.
 const (
-	sessionIdle                = 30 * 24 * time.Hour  // Sliding idle expiry.
-	sessionMaxAge              = 365 * 24 * time.Hour // Absolute cap from creation.
-	touchInterval              = time.Hour            // Minimum age of last_seen before it is rewritten.
+	sessionIdle                = 30 * 24 * time.Hour // Sliding idle expiry.
+	touchInterval              = time.Hour           // Minimum age of last_seen before it is rewritten.
 	maxUserAgentBytes          = 256
 	defaultMaxConcurrentHashes = 2
 )
@@ -164,7 +167,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (store.User, e
 		return store.User{}, ErrUnauthenticated
 	}
 	if now.Sub(sess.LastSeen) >= touchInterval {
-		expires := earlier(sess.CreatedAt.Add(sessionMaxAge), now.Add(sessionIdle))
+		expires := earlier(sess.CreatedAt.Add(SessionMaxAge), now.Add(sessionIdle))
 		// Best effort: the session is valid either way, and the next request
 		// older than touchInterval retries.
 		_ = s.store.TouchSession(ctx, hash, now, expires)

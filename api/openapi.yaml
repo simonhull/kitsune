@@ -5,6 +5,7 @@ info:
   description: Native API of the Kitsune music server.
 security:
   - bearer: []
+  - cookie: []
 paths:
   /healthz:
     get:
@@ -14,11 +15,96 @@ paths:
       responses:
         "204":
           description: The process is up.
+  /auth/login:
+    post:
+      operationId: login
+      summary: Exchange a name and password for a session.
+      description: >-
+        Failed attempts are rate limited per client IP and per account, with
+        exponential backoff after 5 consecutive failures.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: >-
+            The session. With `cookie: true` it is also set as the
+            kitsune_session cookie and the body carries no token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "429":
+          description: Too many failed logins.
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: End the current session.
+      description: Always clears the session cookie, even for a bearer logout.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      responses:
+        "204":
+          description: The session has ended.
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+  /me:
+    get:
+      operationId: getMe
+      summary: Return the authenticated user.
+      responses:
+        "200":
+          description: The authenticated user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 components:
   securitySchemes:
     bearer:
       type: http
       scheme: bearer
+    cookie:
+      type: apiKey
+      in: cookie
+      name: kitsune_session
+  parameters:
+    KitsuneRequest:
+      name: X-Kitsune-Request
+      in: header
+      required: false
+      description: >-
+        Must be `1` on cookie-authenticated requests that change state, so a
+        cross-site form cannot forge them.
+      schema: { type: string, enum: ["1"] }
   responses:
     Problem:
       description: An RFC 9457 problem.
@@ -35,3 +121,30 @@ components:
         status: { type: integer }
         detail: { type: string }
         requestId: { type: string }
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, name, role, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        role: { type: string, enum: [admin, user] }
+        createdAt: { type: string, format: date-time }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [name, password]
+      properties:
+        name: { type: string, minLength: 1 }
+        password: { type: string, minLength: 1 }
+        cookie: { type: boolean, default: false }
+    Session:
+      type: object
+      additionalProperties: false
+      required: [expiresAt, user]
+      properties:
+        token:
+          type: string
+          description: Present only when the login did not ask for a cookie.
+        expiresAt: { type: string, format: date-time }
+        user: { $ref: "#/components/schemas/User" }
