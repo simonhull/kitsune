@@ -15,6 +15,16 @@ paths:
       responses:
         "204":
           description: The process is up.
+  /readyz:
+    get:
+      operationId: getReady
+      summary: Report that the server is ready to serve.
+      security: []
+      responses:
+        "204":
+          description: The server is ready.
+        "503":
+          $ref: "#/components/responses/Problem"
   /auth/login:
     post:
       operationId: login

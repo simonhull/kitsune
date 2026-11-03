@@ -175,7 +175,7 @@ func TestUnauthorizedNeverEchoesToken(t *testing.T) {
 func TestOffContractNotFoundIsAProblem(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
-	ts.send(t, call{method: http.MethodGet, path: "/nope", client: http.DefaultClient}).problem(t, http.StatusNotFound)
+	ts.send(t, call{method: http.MethodGet, path: nopePath, client: http.DefaultClient}).problem(t, http.StatusNotFound)
 }
 
 func TestMeShowsTheRole(t *testing.T) {
