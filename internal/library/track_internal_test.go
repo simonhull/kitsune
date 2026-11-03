@@ -24,7 +24,7 @@ const (
 
 func testInfo() *FileInfo {
 	return &FileInfo{
-		Root: "/music", RelPath: "Artist/Album/03 Song.flac",
+		Root: rootMusic, RelPath: "Artist/Album/03 Song.flac",
 		Size: 1234, MTime: time.UnixMilli(1_700_000_000_000), Digest: [32]byte{1, 2, 3},
 	}
 }

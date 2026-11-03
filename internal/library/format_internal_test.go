@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/simonhull/audiometa"
+
+	"github.com/simonhull/kitsune/internal/store"
 )
 
 // copySample copies testdata/name into a new temp dir and returns its path.
@@ -66,7 +68,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 			artistIDs: []string{mbArtist1},
 		},
 		{
-			name: "M4A", sample: "sample.m4a",
+			name: formatM4A, sample: "sample.m4a",
 			keys: rawKeys{
 				titleSort: "sonm", artistSort: "soar", albumSort: "soal",
 				albumArtist: "aART", albumArtistSort: "soaa",
@@ -135,5 +137,95 @@ func TestRawKeysPerFormat(t *testing.T) {
 			wantSingle("compilation", keysCompilation, "1")
 			wantSingle("album MBID", keysAlbumMBID, "mb-album-1")
 		})
+	}
+}
+
+const (
+	rootMusic = "/music"
+	formatM4A = "M4A"
+)
+
+// mapSample tags a copy of a sample through audiometa's typed fields, reopens
+// it and maps it as a file in /music/X.
+func mapSample(t *testing.T, sample, compilationKey string) store.TrackWrite {
+	t.Helper()
+	path := copySample(t, sample)
+	err := audiometa.Write(path, func(f *audiometa.File) error {
+		f.Tags.Title = "Round Trip"
+		f.Tags.Artists = []string{"First Artist", "Second Artist"}
+		f.Tags.Album = "The Album"
+		f.Tags.AlbumArtist = "The Album Artist"
+		f.Tags.TrackNumber, f.Tags.TrackTotal = 3, 12
+		f.Tags.DiscNumber, f.Tags.DiscTotal = 1, 2
+		f.Tags.Year = 2001
+		f.Tags.Set(compilationKey, "1")
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	f, err := audiometa.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() {
+		if cerr := f.Close(); cerr != nil {
+			t.Error(cerr)
+		}
+	})
+	return NewTrackWrite(f, &FileInfo{Root: rootMusic, RelPath: "X/" + sample, Size: f.Size})
+}
+
+func TestNewTrackWriteFromFiles(t *testing.T) {
+	t.Parallel()
+	samples := []struct{ name, sample, compilationKey, format string }{
+		{"FLAC", "sample.flac", "COMPILATION", formatFLAC},
+		{"MP3 v2.4", "sample_v24.mp3", "TCMP", "MP3"},
+		{formatM4A, "sample.m4a", "cpil", formatM4A},
+	}
+	tws := make([]store.TrackWrite, len(samples))
+	for i, tt := range samples {
+		tws[i] = mapSample(t, tt.sample, tt.compilationKey)
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			checkRoundTrip(t, &tws[i], tt.format)
+		})
+	}
+	for i := 1; i < len(tws); i++ {
+		if got, want := tws[i].Album.GroupKey, tws[0].Album.GroupKey; got != want {
+			t.Errorf("GroupKey of %s = %q, want %q: the format must not change the album", samples[i].name, got, want)
+		}
+	}
+}
+
+func checkRoundTrip(t *testing.T, tw *store.TrackWrite, format string) {
+	t.Helper()
+	if tw.Format != format || tw.Title != "Round Trip" || !tw.Compilation {
+		t.Errorf("Format, Title, Compilation = %q, %q, %t", tw.Format, tw.Title, tw.Compilation)
+	}
+	checkRoundTripNumbers(t, tw)
+	checkRoundTripPeople(t, tw)
+}
+
+func checkRoundTripNumbers(t *testing.T, tw *store.TrackWrite) {
+	t.Helper()
+	if tw.TrackNo != 3 || tw.TrackTotal != 12 || tw.DiscNo != 1 || tw.DiscTotal != 2 || tw.Year != 2001 {
+		t.Errorf("numbers wrong: %+v", tw)
+	}
+	if len(tw.Tags) == 0 || tw.Duration <= 0 {
+		t.Errorf("Tags = %d, Duration = %v, want both non-empty", len(tw.Tags), tw.Duration)
+	}
+}
+
+func checkRoundTripPeople(t *testing.T, tw *store.TrackWrite) {
+	t.Helper()
+	if len(tw.Artists) != 2 || tw.Artists[0].MatchKey != "first artist" || tw.Artists[1].Name != "Second Artist" {
+		t.Errorf("Artists = %+v", tw.Artists)
+	}
+	if len(tw.AlbumArtists) != 1 || tw.AlbumArtists[0].MatchKey != "the album artist" {
+		t.Errorf("AlbumArtists = %+v", tw.AlbumArtists)
+	}
+	if a := tw.Album; a.Name != "The Album" || a.Year != 2001 || !a.Compilation || a.GroupKey == "" {
+		t.Errorf("Album = %+v", a)
 	}
 }
