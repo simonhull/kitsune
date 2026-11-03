@@ -99,6 +99,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() []route {
 	return []route{
 		{pattern: "GET /healthz", public: true, handle: s.getHealth},
+		{pattern: "GET /me", handle: s.getMe},
 	}
 }
 
