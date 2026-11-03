@@ -41,7 +41,7 @@ func TestCLI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var stdout, stderr bytes.Buffer
-			if code := cli(tt.args, noEnv, &stdout, &stderr); code != tt.wantCode {
+			if code := cli(tt.args, noEnv, strings.NewReader(""), &stdout, &stderr); code != tt.wantCode {
 				t.Errorf("cli(%q) = %d, want %d", tt.args, code, tt.wantCode)
 			}
 			if out := stdout.String(); !matches(out, tt.wantStdout, strings.HasPrefix) {
@@ -78,7 +78,7 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errWriteFailed }
 func TestCLI_WriteFailure(t *testing.T) {
 	t.Parallel()
 	var stderr bytes.Buffer
-	if code := cli([]string{versionCmd}, noEnv, failingWriter{}, &stderr); code != exitFailure {
+	if code := cli([]string{versionCmd}, noEnv, strings.NewReader(""), failingWriter{}, &stderr); code != exitFailure {
 		t.Errorf("cli = %d, want %d", code, exitFailure)
 	}
 	if !strings.Contains(stderr.String(), "write version: write failed") {
@@ -128,7 +128,7 @@ func TestCLIConfig(t *testing.T) {
 			home := t.TempDir()
 			env := config.Env(func(key string) (string, bool) { return home, key == "HOME" })
 			var stdout, stderr bytes.Buffer
-			if code := cli(tt.args, env, &stdout, &stderr); code != tt.wantCode {
+			if code := cli(tt.args, env, strings.NewReader(""), &stdout, &stderr); code != tt.wantCode {
 				t.Errorf("cli(%q) = %d, want %d; stderr: %s", tt.args, code, tt.wantCode, &stderr)
 			}
 			out := stdout.String()
