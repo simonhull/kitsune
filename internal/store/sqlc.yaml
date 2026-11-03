@@ -1,0 +1,10 @@
+version: "2"
+sql:
+  - engine: sqlite
+    schema: schema.sql
+    queries: queries/
+    gen:
+      go:
+        package: sqlcdb
+        out: sqlcdb
+        emit_pointers_for_null_types: true

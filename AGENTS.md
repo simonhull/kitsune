@@ -45,6 +45,18 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   test run fails if any declared operation × status is never exercised.
 - Errors are RFC 9457 problems via `writeProblem`; never `http.Error`.
 
+## Store
+- `internal/store` is the only package that speaks SQL. Writes go through the
+  single-connection writer (`_txlock=immediate`), reads through the `query_only` pool.
+- Until the first release the schema is one file, `internal/store/schema.sql`, edited in
+  place. Editing it changes the schema hash, and an existing development database is then
+  refused: delete it. Tables are `STRICT`; times are Unix ms UTC.
+- Fixed queries live in `internal/store/queries/*.sql` and are generated into
+  `internal/store/sqlcdb` (committed, never edited) by `mise run generate`. That builds
+  sqlc cgo-free from `tools/go.mod`; never use the release binary, which links C.
+- Dynamic queries (browse filters and sorts) are built in Go over allow-listed columns,
+  with bound parameters only. Never interpolate request input into SQL.
+
 ## Lint policy
 - golangci-lint runs with `default: all`. Every disabled linter in `.golangci.yml` has
   its reason next to it; do not add to that list without one.
