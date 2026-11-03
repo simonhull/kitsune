@@ -55,6 +55,13 @@ jobs:
         version: v2.15.0
     - name: go.mod tidy
       run: go mod tidy -diff
+    - name: tools go.mod tidy
+      run: go -C tools mod tidy -diff
+    - name: sqlc output is current
+      run: |
+        CGO_ENABLED=0 go -C tools tool sqlc generate -f ../internal/store/sqlc.yaml
+        git status --porcelain
+        test -z "$(git status --porcelain)"
     - name: go vet
       run: go vet ./...
     - name: Modernizers

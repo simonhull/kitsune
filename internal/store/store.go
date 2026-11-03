@@ -13,6 +13,8 @@ import (
 	"github.com/ncruces/go-sqlite3"
 	_ "github.com/ncruces/go-sqlite3/driver" // Registers the "sqlite3" database/sql driver.
 	"github.com/ncruces/go-sqlite3/ext/fts5"
+
+	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
 
 // Sentinels callers match with [errors.Is].
@@ -45,8 +47,9 @@ func init() { //nolint:gochecknoinits // FTS5 must be registered before any conn
 
 // Store is Kitsune's database. It is safe for concurrent use.
 type Store struct {
-	w, r *sql.DB
-	now  func() time.Time
+	w, r   *sql.DB
+	wq, rq *sqlcdb.Queries // Generated queries bound to w and r.
+	now    func() time.Time
 }
 
 // Options configures [Open]. The zero value is ready to use.
@@ -95,7 +98,7 @@ func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 		return nil, closeAfter(fmt.Errorf("open %s: readers: %w", path, err), w, r)
 	}
 
-	return &Store{w: w, r: r, now: now}, nil
+	return &Store{w: w, r: r, wq: sqlcdb.New(w), rq: sqlcdb.New(r), now: now}, nil
 }
 
 // Close closes both handles.
