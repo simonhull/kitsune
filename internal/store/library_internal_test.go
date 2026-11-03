@@ -371,3 +371,82 @@ func TestDeleteMissingBefore(t *testing.T) {
 		t.Error("FTS rows do not match the surviving track")
 	}
 }
+
+const (
+	benchTracks   = 500
+	benchAlbums   = 50
+	benchArtists  = 150
+	benchTagsEach = 25
+	benchTagKeys  = 12
+)
+
+func openBench(b *testing.B) *Store {
+	b.Helper()
+	s, err := Open(b.Context(), filepath.Join(b.TempDir(), "kitsune.db"), Options{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	return s
+}
+
+// benchBatch builds benchTracks synthetic tracks: benchAlbums albums, two
+// artists and one album artist each, and benchTagsEach tags each.
+func benchBatch() *Batch {
+	artist := func(i int) ArtistWrite {
+		n := i % benchArtists
+		return ArtistWrite{MatchKey: fmt.Sprintf("artist-%d", n), Name: fmt.Sprintf("Artist %d", n), SortName: fmt.Sprintf("Artist %d", n)}
+	}
+	b := &Batch{Tracks: make([]TrackWrite, benchTracks)}
+	for i := range b.Tracks {
+		w := newWrite(i)
+		album := i % benchAlbums
+		w.Album = AlbumWrite{
+			GroupKey: fmt.Sprintf("album-%d", album), Name: fmt.Sprintf("Album %d", album),
+			SortName: fmt.Sprintf("Album %d", album), Year: 2000 + album,
+		}
+		w.Artists = []ArtistWrite{artist(i), artist(i + 1)}
+		w.AlbumArtists = []ArtistWrite{artist(album)}
+		w.Tags = make([]Tag, benchTagsEach)
+		for k := range w.Tags {
+			w.Tags[k] = Tag{Key: fmt.Sprintf("TAG%d", k%benchTagKeys), Value: fmt.Sprintf("value %d of track %d", k, i)}
+		}
+		b.Tracks[i] = w
+	}
+	return b
+}
+
+func BenchmarkWriteBatch(b *testing.B) {
+	batch := benchBatch()
+	b.Run("insert", func(b *testing.B) {
+		for b.Loop() {
+			b.StopTimer()
+			s := openBench(b)
+			b.StartTimer()
+			if err := s.WriteBatch(b.Context(), batch); err != nil {
+				b.Fatal(err)
+			}
+			b.StopTimer()
+			if err := s.Close(); err != nil {
+				b.Fatal(err)
+			}
+			b.StartTimer()
+		}
+	})
+	b.Run("update", func(b *testing.B) {
+		s := openBench(b)
+		b.Cleanup(func() { _ = s.Close() })
+		if err := s.WriteBatch(b.Context(), batch); err != nil {
+			b.Fatal(err)
+		}
+		// A fresh database numbers its tracks 1..benchTracks in insert order.
+		upd := &Batch{Tracks: slices.Clone(batch.Tracks)}
+		for i := range upd.Tracks {
+			upd.Tracks[i].ID = int64(i + 1)
+		}
+		for b.Loop() {
+			if err := s.WriteBatch(b.Context(), upd); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
