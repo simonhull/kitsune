@@ -24,7 +24,7 @@ func TestWithProblemsConvertsPlainErrors(t *testing.T) {
 	})
 	p := decodeProblem(t, rec)
 	want := api.Problem{
-		Type:   "about:blank",
+		Type:   aboutBlank,
 		Title:  http.StatusText(http.StatusRequestedRangeNotSatisfiable),
 		Status: http.StatusRequestedRangeNotSatisfiable,
 		Detail: "nope",
@@ -131,5 +131,35 @@ func TestMarshalReplacesInvalidUTF8(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "bad � byte") {
 		t.Errorf("marshal = %s, want U+FFFD in place of the invalid byte", b)
+	}
+}
+
+func TestProblemTypes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		status int
+		want   string
+	}{
+		{http.StatusBadRequest, "urn:kitsune:problem:invalid-request"},
+		{http.StatusUnauthorized, "urn:kitsune:problem:unauthorized"},
+		{http.StatusForbidden, "urn:kitsune:problem:forbidden"},
+		{http.StatusNotFound, "urn:kitsune:problem:not-found"},
+		{http.StatusConflict, "urn:kitsune:problem:conflict"},
+		{http.StatusTooManyRequests, "urn:kitsune:problem:rate-limited"},
+		{http.StatusInternalServerError, "urn:kitsune:problem:internal"},
+		{http.StatusServiceUnavailable, "urn:kitsune:problem:unavailable"},
+		{http.StatusMethodNotAllowed, aboutBlank},
+		{http.StatusRequestEntityTooLarge, aboutBlank},
+		{http.StatusRequestedRangeNotSatisfiable, aboutBlank},
+	}
+	for _, tt := range tests {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			t.Parallel()
+			rec := httptest.NewRecorder()
+			writeProblem(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody), tt.status, "x")
+			if p := decodeProblem(t, rec); p.Type != tt.want || p.Status != tt.status {
+				t.Errorf("type = %q, want %q", p.Type, tt.want)
+			}
+		})
 	}
 }

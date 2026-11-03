@@ -15,10 +15,42 @@ import (
 // maxDetail caps how much of a converted error body becomes a problem detail.
 const maxDetail = 512
 
+// problemNS is the prefix of the problem types Kitsune defines. A URN is a
+// valid uri-reference and does not depend on the deployment's base URL.
+const problemNS = "urn:kitsune:problem:"
+
+// aboutBlank is the problem type for statuses with no Kitsune type.
+const aboutBlank = "about:blank"
+
+// problemType returns the stable problem type for an HTTP status. Statuses
+// without a Kitsune type, such as 405, 413 and 416, get "about:blank".
+func problemType(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return problemNS + "invalid-request"
+	case http.StatusUnauthorized:
+		return problemNS + "unauthorized"
+	case http.StatusForbidden:
+		return problemNS + "forbidden"
+	case http.StatusNotFound:
+		return problemNS + "not-found"
+	case http.StatusConflict:
+		return problemNS + "conflict"
+	case http.StatusTooManyRequests:
+		return problemNS + "rate-limited"
+	case http.StatusInternalServerError:
+		return problemNS + "internal"
+	case http.StatusServiceUnavailable:
+		return problemNS + "unavailable"
+	default:
+		return aboutBlank
+	}
+}
+
 // writeProblem writes an RFC 9457 problem with the given status and detail.
 func writeProblem(w http.ResponseWriter, r *http.Request, status int, detail string) {
 	p := api.Problem{
-		Type:      "about:blank",
+		Type:      problemType(status),
 		Title:     http.StatusText(status),
 		Status:    status,
 		Detail:    detail,
