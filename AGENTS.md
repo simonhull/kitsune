@@ -57,6 +57,14 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Dynamic queries (browse filters and sorts) are built in Go over allow-listed columns,
   with bound parameters only. Never interpolate request input into SQL.
 
+## Auth
+- `internal/auth` owns credentials. Passwords are Argon2id in PHC format; the store only
+  ever sees the encoded hash. Session tokens (`kss_…`) are shown to the client once and
+  stored as SHA-256 hashes. No password, token or hash appears in an error, log or response.
+- Tests hash with cheap parameters (`auth.Params{Time: 1, MemoryKiB: 64, Threads: 1}`);
+  only benchmarks use `auth.DefaultParams()`.
+- Changing `DefaultParams` is safe: hashes carry their parameters, and logins rehash.
+
 ## Lint policy
 - golangci-lint runs with `default: all`. Every disabled linter in `.golangci.yml` has
   its reason next to it; do not add to that list without one.
