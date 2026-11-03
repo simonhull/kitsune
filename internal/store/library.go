@@ -575,3 +575,123 @@ func (s *Store) FileStates(ctx context.Context, root string) (map[string]FileSta
 	}
 	return out, nil
 }
+
+// MissingTrack is a missing track that a new file might be.
+type MissingTrack struct {
+	ID            int64
+	Root, RelPath string
+}
+
+// Pruned counts what PruneOrphans deleted.
+type Pruned struct{ Albums, Artists int64 }
+
+// MissingByDigest returns the missing tracks whose audio digest is digest,
+// ordered by ID. An unknown digest gives an empty slice.
+func (s *Store) MissingByDigest(ctx context.Context, digest [32]byte) ([]MissingTrack, error) {
+	rows, err := s.rq.MissingByDigest(ctx, digest[:])
+	if err != nil {
+		return nil, fmt.Errorf("missing by digest: %w", err)
+	}
+	out := make([]MissingTrack, len(rows))
+	for i := range rows {
+		out[i] = MissingTrack{ID: rows[i].ID, Root: rows[i].Root, RelPath: rows[i].RelPath}
+	}
+	return out, nil
+}
+
+// MarkMissing marks the tracks missing as of at. A track that is already
+// missing keeps its original time. Unknown IDs are ignored.
+func (s *Store) MarkMissing(ctx context.Context, trackIDs []int64, at time.Time) error {
+	if len(trackIDs) == 0 {
+		return nil
+	}
+	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+		for _, id := range trackIDs {
+			if err := q.MarkMissing(ctx, sqlcdb.MarkMissingParams{MissingSince: new(ms(at)), ID: id}); err != nil {
+				return fmt.Errorf("track %d: %w", id, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("mark missing: %w", err)
+	}
+	return nil
+}
+
+// DeleteScanIssues removes the scan issues at relPaths under root. Unknown
+// paths are ignored.
+func (s *Store) DeleteScanIssues(ctx context.Context, root string, relPaths []string) error {
+	if len(relPaths) == 0 {
+		return nil
+	}
+	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+		for _, p := range relPaths {
+			if err := q.DeleteScanIssue(ctx, sqlcdb.DeleteScanIssueParams{Root: root, RelPath: p}); err != nil {
+				return fmt.Errorf("%s: %w", p, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("delete scan issues: %w", err)
+	}
+	return nil
+}
+
+// ftsDeleteMissingSQL is hand-written for the same reason as the other FTS
+// statements: sqlc can't express an FTS5 rowid write.
+const ftsDeleteMissingSQL = "DELETE FROM tracks_fts WHERE rowid IN (SELECT id FROM tracks WHERE missing_since < ?)"
+
+// DeleteMissingBefore deletes the tracks that have been missing since before
+// cutoff, with their tags, artist links and search rows, and returns how many
+// it deleted.
+func (s *Store) DeleteMissingBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	var n int64
+	err := s.inTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) error {
+		if _, ftsErr := tx.ExecContext(ctx, ftsDeleteMissingSQL, ms(cutoff)); ftsErr != nil {
+			return fmt.Errorf("delete fts rows: %w", ftsErr)
+		}
+		deleted, delErr := q.DeleteMissingBefore(ctx, new(ms(cutoff)))
+		if delErr != nil {
+			return fmt.Errorf("delete tracks: %w", delErr)
+		}
+		n = deleted
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("delete missing before %s: %w", cutoff.Format(time.RFC3339), err)
+	}
+	return n, nil
+}
+
+// PruneOrphans deletes the albums that no track uses and the artists that no
+// track links to, and returns how many of each.
+func (s *Store) PruneOrphans(ctx context.Context) (Pruned, error) {
+	var p Pruned
+	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+		albums, albumsErr := q.PruneAlbums(ctx)
+		if albumsErr != nil {
+			return fmt.Errorf("albums: %w", albumsErr)
+		}
+		artists, artistsErr := q.PruneArtists(ctx)
+		if artistsErr != nil {
+			return fmt.Errorf("artists: %w", artistsErr)
+		}
+		p = Pruned{Albums: albums, Artists: artists}
+		return nil
+	})
+	if err != nil {
+		return Pruned{}, fmt.Errorf("prune orphans: %w", err)
+	}
+	return p, nil
+}
+
+// KnownRoots returns every root that has a track or a scan issue.
+func (s *Store) KnownRoots(ctx context.Context) ([]string, error) {
+	roots, err := s.rq.KnownRoots(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("known roots: %w", err)
+	}
+	return roots, nil
+}

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -204,5 +205,150 @@ func TestWriteBatchEmpty(t *testing.T) {
 	s := openUsers(t)
 	if err := s.WriteBatch(t.Context(), &store.Batch{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func idOf(t *testing.T, s *store.Store, w *store.TrackWrite) int64 {
+	t.Helper()
+	st, ok := fileStates(t, s)[w.RelPath]
+	if !ok {
+		t.Fatalf("%s is not known", w.RelPath)
+	}
+	return st.TrackID
+}
+
+func TestMarkMissingFlagsTracks(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	a, b := newWrite(0), newWrite(1)
+	writeAll(t, s, a, b)
+	if err := s.MarkMissing(t.Context(), nil, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkMissing(t.Context(), []int64{idOf(t, s, &a)}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+	got := fileStates(t, s)
+	if !got[a.RelPath].Missing || got[b.RelPath].Missing {
+		t.Errorf("Missing = %v, %v; want true, false", got[a.RelPath].Missing, got[b.RelPath].Missing)
+	}
+}
+
+func TestWriteBatchMoveClearsMissing(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	w := newWrite(0)
+	writeAll(t, s, w)
+	id := idOf(t, s, &w)
+	if err := s.MarkMissing(t.Context(), []int64{id}, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+
+	moved := newWrite(0)
+	moved.ID = id
+	moved.RelPath = "b.flac"
+	writeAll(t, s, moved)
+	got := fileStates(t, s)
+	if _, ok := got[w.RelPath]; ok || got["b.flac"].TrackID != id || got["b.flac"].Missing {
+		t.Errorf("states after the move = %+v", got)
+	}
+}
+
+func TestMissingByDigest(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	a, b, c := newWrite(0), newWrite(1), newWrite(2)
+	b.Digest, c.Digest = a.Digest, a.Digest
+	writeAll(t, s, a, b, c)
+	ids := []int64{idOf(t, s, &a), idOf(t, s, &b)}
+	if err := s.MarkMissing(t.Context(), ids, fixedNow()); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.MissingByDigest(t.Context(), a.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []store.MissingTrack{
+		{ID: ids[0], Root: testRoot, RelPath: a.RelPath},
+		{ID: ids[1], Root: testRoot, RelPath: b.RelPath},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("MissingByDigest = %+v, want %+v", got, want)
+	}
+	none, err := s.MissingByDigest(t.Context(), [32]byte{0xff})
+	if err != nil || len(none) != 0 {
+		t.Errorf("unknown digest: %v, %v; want empty and nil", none, err)
+	}
+}
+
+func TestPruneOrphans(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	a, b := newWrite(0), newWrite(1)
+	writeAll(t, s, a, b)
+	aID, bID := idOf(t, s, &a), idOf(t, s, &b)
+
+	// Track 0 moves to track 1's album and artist.
+	moved := newWrite(1)
+	moved.ID = aID
+	moved.RelPath = a.RelPath
+	writeAll(t, s, moved)
+	if err := s.MarkMissing(t.Context(), []int64{bID}, fixedNow().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.DeleteMissingBefore(t.Context(), fixedNow()); err != nil || n != 1 {
+		t.Fatalf("DeleteMissingBefore = %d, %v; want 1, nil", n, err)
+	}
+
+	got, err := s.PruneOrphans(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (store.Pruned{Albums: 1, Artists: 1}); got != want {
+		t.Errorf("PruneOrphans = %+v, want %+v", got, want)
+	}
+	again, err := s.PruneOrphans(t.Context())
+	if err != nil || again != (store.Pruned{}) {
+		t.Errorf("second PruneOrphans = %+v, %v; want zero", again, err)
+	}
+}
+
+func TestKnownRoots(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	w := newWrite(0)
+	w.Root = "/a"
+	writeAll(t, s, w)
+	issue := store.ScanIssue{Root: "/b", RelPath: "x", Kind: store.IssueUnreadable, Message: "m"}
+	if err := s.WriteBatch(t.Context(), &store.Batch{Issues: []store.ScanIssue{issue}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.KnownRoots(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(got)
+	if want := []string{"/a", "/b"}; !slices.Equal(got, want) {
+		t.Errorf("KnownRoots = %v, want %v", got, want)
+	}
+}
+
+func TestDeleteScanIssues(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	issues := []store.ScanIssue{
+		{Root: testRoot, RelPath: "one", Kind: store.IssueCorrupted, Message: "m"},
+		{Root: testRoot, RelPath: "two", Kind: store.IssueUnsupported, Message: "m"},
+	}
+	if err := s.WriteBatch(t.Context(), &store.Batch{Issues: issues}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteScanIssues(t.Context(), testRoot, []string{"one", "unknown"}); err != nil {
+		t.Fatal(err)
+	}
+	got := fileStates(t, s)
+	if _, ok := got["one"]; ok || !got["two"].Issue {
+		t.Errorf("states = %+v, want only two", got)
 	}
 }

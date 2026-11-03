@@ -314,3 +314,60 @@ func TestWriteBatchFTSRow(t *testing.T) {
 		t.Error("MATCH someone finds nothing after the update")
 	}
 }
+
+func TestMarkMissing(t *testing.T) {
+	t.Parallel()
+	s := openTest(t)
+	w := newWrite(0)
+	writeAll(t, s, w)
+	id := trackID(t, s, w.RelPath)
+	t1 := time.UnixMilli(1_762_000_000_000).UTC()
+	for _, at := range []time.Time{t1, t1.Add(time.Hour)} {
+		if err := s.MarkMissing(t.Context(), []int64{id}, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := count(t, s, "SELECT missing_since FROM tracks WHERE id = ?", id); got != t1.UnixMilli() {
+		t.Errorf("missing_since = %d, want the first mark %d", got, t1.UnixMilli())
+	}
+	if err := s.MarkMissing(t.Context(), nil, t1); err != nil {
+		t.Errorf("empty MarkMissing: %v", err)
+	}
+	st, err := s.FileStates(t.Context(), testRoot)
+	if err != nil || !st[w.RelPath].Missing {
+		t.Errorf("FileStates = %+v, %v; want Missing", st, err)
+	}
+}
+
+func TestDeleteMissingBefore(t *testing.T) {
+	t.Parallel()
+	s := openTest(t)
+	old, recent := newWrite(0), newWrite(1)
+	old.Tags = []Tag{{"K", "v"}}
+	old.Title = "Oldsong"
+	recent.Title = "Recentsong"
+	writeAll(t, s, old, recent)
+	t0 := time.UnixMilli(1_762_000_000_000).UTC()
+	if err := s.MarkMissing(t.Context(), []int64{trackID(t, s, old.RelPath)}, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkMissing(t.Context(), []int64{trackID(t, s, recent.RelPath)}, t0.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := s.DeleteMissingBefore(t.Context(), t0.Add(time.Hour))
+	if err != nil || n != 1 {
+		t.Fatalf("DeleteMissingBefore = %d, %v; want 1, nil", n, err)
+	}
+	if got := count(t, s, "SELECT count(*) FROM tracks"); got != 1 {
+		t.Errorf("tracks = %d, want 1", got)
+	}
+	for _, table := range []string{"track_tags", "track_artists"} {
+		if got := count(t, s, "SELECT count(*) FROM "+table+" WHERE track_id = 1"); got != 0 {
+			t.Errorf("%s rows for the deleted track = %d", table, got)
+		}
+	}
+	if ftsHits(t, s, "oldsong") != 0 || ftsHits(t, s, "recentsong") != 1 {
+		t.Error("FTS rows do not match the surviving track")
+	}
+}
