@@ -3,8 +3,12 @@ package main
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/simonhull/kitsune/internal/config"
 )
 
 // Strings the tests look for in cli's output.
@@ -12,6 +16,9 @@ const (
 	versionCmd  = "version"
 	usageHeader = "Usage: kitsune-server"
 )
+
+// noEnv is an empty environment.
+func noEnv(string) (string, bool) { return "", false }
 
 func TestCLI(t *testing.T) {
 	t.Parallel()
@@ -34,7 +41,7 @@ func TestCLI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var stdout, stderr bytes.Buffer
-			if code := cli(tt.args, &stdout, &stderr); code != tt.wantCode {
+			if code := cli(tt.args, noEnv, &stdout, &stderr); code != tt.wantCode {
 				t.Errorf("cli(%q) = %d, want %d", tt.args, code, tt.wantCode)
 			}
 			if out := stdout.String(); !matches(out, tt.wantStdout, strings.HasPrefix) {
@@ -71,10 +78,75 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errWriteFailed }
 func TestCLI_WriteFailure(t *testing.T) {
 	t.Parallel()
 	var stderr bytes.Buffer
-	if code := cli([]string{versionCmd}, failingWriter{}, &stderr); code != exitFailure {
+	if code := cli([]string{versionCmd}, noEnv, failingWriter{}, &stderr); code != exitFailure {
 		t.Errorf("cli = %d, want %d", code, exitFailure)
 	}
 	if !strings.Contains(stderr.String(), "write version: write failed") {
 		t.Errorf("stderr = %q, want the wrapped write error", stderr.String())
+	}
+}
+
+// writeFile writes body to name in a new temp dir and returns its path.
+func writeFile(t *testing.T, name, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestCLIConfig(t *testing.T) {
+	t.Parallel()
+	const configCmd, configFlag = "config", "-config"
+	debug := writeFile(t, "debug.toml", "[log]\nlevel = \"debug\"\n")
+	bogus := writeFile(t, "bogus.toml", "bogus = 1\n")
+	missing := filepath.Join(t.TempDir(), "missing.toml")
+
+	tests := []struct {
+		name       string
+		args       []string
+		wantCode   int
+		wantStdout []string // Substrings of stdout.
+		wantStderr string   // Substring of stderr; "" means it must stay empty.
+	}{
+		{
+			name:       "defaults",
+			args:       []string{configCmd},
+			wantStdout: []string{`listen = ":4533"`, `roots = []`, `quick_scan = "03:30"`, `data_dir = "HOME/.local/share/kitsune-server"`},
+		},
+		{name: "single-dash flag", args: []string{configCmd, configFlag, debug}, wantStdout: []string{`level = "DEBUG"`}},
+		{name: "double-dash flag", args: []string{configCmd, "--config", debug}, wantStdout: []string{`level = "DEBUG"`}},
+		{name: "missing file", args: []string{configCmd, configFlag, missing}, wantCode: exitFailure, wantStderr: "no such file"},
+		{name: "unknown key", args: []string{configCmd, configFlag, bogus}, wantCode: exitFailure, wantStderr: "not a config key"},
+		{name: "unknown flag", args: []string{configCmd, "-nope"}, wantCode: exitUsage, wantStderr: usageHeader},
+		{name: "extra arguments", args: []string{configCmd, "extra"}, wantCode: exitUsage, wantStderr: "config takes no arguments"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			home := t.TempDir()
+			env := config.Env(func(key string) (string, bool) { return home, key == "HOME" })
+			var stdout, stderr bytes.Buffer
+			if code := cli(tt.args, env, &stdout, &stderr); code != tt.wantCode {
+				t.Errorf("cli(%q) = %d, want %d; stderr: %s", tt.args, code, tt.wantCode, &stderr)
+			}
+			out := stdout.String()
+			for _, want := range tt.wantStdout {
+				if want = strings.ReplaceAll(want, "HOME", home); !strings.Contains(out, want) {
+					t.Errorf("cli(%q) stdout = %q, want it to contain %q", tt.args, out, want)
+				}
+			}
+			errOut := stderr.String()
+			if !matches(errOut, tt.wantStderr, strings.Contains) {
+				t.Errorf("cli(%q) stderr = %q, want it to contain %q", tt.args, errOut, tt.wantStderr)
+			}
+			if tt.wantCode == exitUsage && !strings.Contains(errOut, usageHeader) {
+				t.Errorf("cli(%q) stderr = %q, want the usage text", tt.args, errOut)
+			}
+			if tt.wantCode != exitOK && out != "" {
+				t.Errorf("cli(%q) stdout = %q, want nothing on failure", tt.args, out)
+			}
+		})
 	}
 }

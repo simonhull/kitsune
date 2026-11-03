@@ -3,6 +3,7 @@ module github.com/simonhull/kitsune
 go 1.27.0
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/pb33f/libopenapi v0.41.8
 	github.com/pb33f/libopenapi-validator v0.16.2
 )

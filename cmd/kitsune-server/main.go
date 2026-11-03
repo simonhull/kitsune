@@ -4,5 +4,5 @@ package main
 import "os"
 
 func main() {
-	os.Exit(cli(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(cli(os.Args[1:], os.LookupEnv, os.Stdout, os.Stderr))
 }
