@@ -9,6 +9,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,11 +23,13 @@ const (
 	ifNoneMatch   = "If-None-Match"
 	unknownHash   = "0000000000000000000000000000000000000000000000000000000000000000"
 	artworkSquare = 700
+	// benchCoverSide is the side of the benchmark cover.
+	benchCoverSide = 1200
 )
 
 // coverPNG returns a size x size PNG.
-func coverPNG(t *testing.T, size int) []byte {
-	t.Helper()
+func coverPNG(tb testing.TB, size int) []byte {
+	tb.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	for y := range size {
 		for x := range size {
@@ -35,7 +38,7 @@ func coverPNG(t *testing.T, size int) []byte {
 	}
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	return buf.Bytes()
 }
@@ -288,5 +291,27 @@ func TestArtworkHashIsHexOfSHA256(t *testing.T) {
 	resp := as.get(t, artworkPath+hex.EncodeToString(sum[:]), nil)
 	if resp.Status != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.Status)
+	}
+}
+
+// BenchmarkServeArtwork times an authenticated request for a rendition
+// through the whole handler chain, without the network.
+func BenchmarkServeArtwork(b *testing.B) {
+	cache := artwork.NewCache(b.TempDir())
+	ts := newTestServer(b, testServerOptions{Artwork: cache})
+	img, err := cache.Put(b.Context(), coverPNG(b, benchCoverSide))
+	if err != nil {
+		b.Fatal(err)
+	}
+	target := artworkPath + hex.EncodeToString(img.Hash[:]) + "?size=512"
+	token := ts.sessionFor(b).token
+	for b.Loop() {
+		req := httptest.NewRequestWithContext(b.Context(), http.MethodGet, target, http.NoBody)
+		req.Header.Set(authorizationHeader, "Bearer "+token)
+		rec := httptest.NewRecorder()
+		ts.Handle.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			b.Fatalf("status = %d", rec.Code)
+		}
 	}
 }

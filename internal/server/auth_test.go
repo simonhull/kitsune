@@ -25,12 +25,12 @@ type session struct {
 }
 
 // sessionFor seeds simon as an admin and logs him in through the service.
-func (ts *testServer) sessionFor(t *testing.T) session {
-	t.Helper()
-	u := ts.seedUser(t, simonName, testPassword, store.RoleAdmin)
-	res, err := ts.Auth.Login(t.Context(), simonName, testPassword, "test/1")
+func (ts *testServer) sessionFor(tb testing.TB) session {
+	tb.Helper()
+	u := ts.seedUser(tb, simonName, testPassword, store.RoleAdmin)
+	res, err := ts.Auth.Login(tb.Context(), simonName, testPassword, "test/1")
 	if err != nil {
-		t.Fatalf("login: %v", err)
+		tb.Fatalf("login: %v", err)
 	}
 	return session{user: u, token: res.Token}
 }

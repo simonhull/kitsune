@@ -97,6 +97,19 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
   wait for the file to change.
 
+## Artwork
+- `internal/artwork` renders covers during the scan and knows nothing of the store or the
+  scanner. Renditions are JPEGs at `<data_dir>/artwork/<hh>/<hash>-<size>.jpg`, named by the
+  SHA-256 of the source image, so a request only ever reads a file and a file never changes.
+  The ladder is 128/512/1024 on the longest side and never upscales; `Path` returns the largest
+  rung at or below the request. A zero-size file counts as missing.
+- The scanner finds one cover per album per scan (`covers` in `internal/library/cover.go`).
+  A look that finds nothing releases its claim so the album's next track tries. Art never fails
+  a file: bad images become warnings, cache failures are logged. Folder art is read through
+  `os.Root`, never through `fs.FS` (it rejects non-UTF-8 names).
+- A cover's accent and ground colors come from the encoded 128 rendition, so a fresh render and
+  an idempotent `Put` agree.
+
 ## Operations
 - `cmd/kitsune-server` is the only place that reads the environment, signals or flags;
   `internal/server` takes everything through `server.Config`.

@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/config"
 	"github.com/simonhull/kitsune/internal/library"
@@ -170,6 +171,10 @@ func buildApp(cfg *config.Config, st *store.Store, log *slog.Logger) (*app, erro
 	if err != nil {
 		return nil, fmt.Errorf("start auth: %w", err)
 	}
+	covers, err := openArtworkCache(cfg.Storage.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	trusted := make([]netip.Prefix, 0, len(cfg.Server.TrustedProxies))
 	for _, n := range cfg.Server.TrustedProxies {
 		trusted = append(trusted, n.Prefix)
@@ -182,6 +187,7 @@ func buildApp(cfg *config.Config, st *store.Store, log *slog.Logger) (*app, erro
 			Roots:        cfg.Library.Roots,
 			MissingGrace: cfg.Library.MissingGrace,
 			Logger:       log,
+			Artwork:      covers,
 		}),
 		quickScan: cfg.Library.QuickScan,
 		basePath:  cfg.Server.BasePath(),
@@ -194,12 +200,28 @@ func buildApp(cfg *config.Config, st *store.Store, log *slog.Logger) (*app, erro
 		SecureCookies: cfg.Server.HTTPS(),
 		BasePath:      cfg.Server.BasePath(),
 		Ready:         a.ready,
+		Artwork:       covers,
 	})
 	a.http = newHTTPServer(handler, log)
 	if cfg.Server.BaseURL != "" && len(trusted) == 0 {
 		log.Warn("base_url is set but trusted_proxies is empty; every client will share the proxy's address for login rate limits")
 	}
 	return a, nil
+}
+
+// artworkDir is the cover cache's folder inside data_dir.
+const artworkDir = "artwork"
+
+// privateDirMode is the mode of the cover cache: only the server reads it.
+const privateDirMode = 0o700
+
+// openArtworkCache returns the cover cache under dataDir, creating its folder.
+func openArtworkCache(dataDir string) (*artwork.Cache, error) {
+	dir := filepath.Join(dataDir, artworkDir)
+	if err := os.MkdirAll(dir, privateDirMode); err != nil {
+		return nil, fmt.Errorf("create artwork cache: %w", err)
+	}
+	return artwork.NewCache(dir), nil
 }
 
 // ready backs /readyz: it fails with errScanning until the first scan has
