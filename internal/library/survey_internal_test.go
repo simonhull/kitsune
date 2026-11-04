@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sync"
 	"syscall"
@@ -645,7 +646,7 @@ func TestSurveyNoRootsTouchesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats != (Stats{}) {
+	if !reflect.DeepEqual(stats, Stats{}) {
 		t.Errorf("stats = %+v, want zero", stats)
 	}
 	st := l.states(root)

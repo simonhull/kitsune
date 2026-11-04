@@ -78,6 +78,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.pruneArtistsStmt, err = db.PrepareContext(ctx, pruneArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query PruneArtists: %w", err)
 	}
+	if q.pruneArtworkStmt, err = db.PrepareContext(ctx, pruneArtwork); err != nil {
+		return nil, fmt.Errorf("error preparing query PruneArtwork: %w", err)
+	}
 	if q.sessionByTokenHashStmt, err = db.PrepareContext(ctx, sessionByTokenHash); err != nil {
 		return nil, fmt.Errorf("error preparing query SessionByTokenHash: %w", err)
 	}
@@ -98,6 +101,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertArtistStmt, err = db.PrepareContext(ctx, upsertArtist); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertArtist: %w", err)
+	}
+	if q.upsertArtworkStmt, err = db.PrepareContext(ctx, upsertArtwork); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertArtwork: %w", err)
 	}
 	if q.upsertScanIssueStmt, err = db.PrepareContext(ctx, upsertScanIssue); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertScanIssue: %w", err)
@@ -200,6 +206,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing pruneArtistsStmt: %w", cerr)
 		}
 	}
+	if q.pruneArtworkStmt != nil {
+		if cerr := q.pruneArtworkStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing pruneArtworkStmt: %w", cerr)
+		}
+	}
 	if q.sessionByTokenHashStmt != nil {
 		if cerr := q.sessionByTokenHashStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing sessionByTokenHashStmt: %w", cerr)
@@ -233,6 +244,11 @@ func (q *Queries) Close() error {
 	if q.upsertArtistStmt != nil {
 		if cerr := q.upsertArtistStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertArtistStmt: %w", cerr)
+		}
+	}
+	if q.upsertArtworkStmt != nil {
+		if cerr := q.upsertArtworkStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertArtworkStmt: %w", cerr)
 		}
 	}
 	if q.upsertScanIssueStmt != nil {
@@ -302,6 +318,7 @@ type Queries struct {
 	missingByDigestStmt       *sql.Stmt
 	pruneAlbumsStmt           *sql.Stmt
 	pruneArtistsStmt          *sql.Stmt
+	pruneArtworkStmt          *sql.Stmt
 	sessionByTokenHashStmt    *sql.Stmt
 	setPasswordHashStmt       *sql.Stmt
 	touchSessionStmt          *sql.Stmt
@@ -309,6 +326,7 @@ type Queries struct {
 	updateTrackStmt           *sql.Stmt
 	upsertAlbumStmt           *sql.Stmt
 	upsertArtistStmt          *sql.Stmt
+	upsertArtworkStmt         *sql.Stmt
 	upsertScanIssueStmt       *sql.Stmt
 	userByNameStmt            *sql.Stmt
 }
@@ -335,6 +353,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		missingByDigestStmt:       q.missingByDigestStmt,
 		pruneAlbumsStmt:           q.pruneAlbumsStmt,
 		pruneArtistsStmt:          q.pruneArtistsStmt,
+		pruneArtworkStmt:          q.pruneArtworkStmt,
 		sessionByTokenHashStmt:    q.sessionByTokenHashStmt,
 		setPasswordHashStmt:       q.setPasswordHashStmt,
 		touchSessionStmt:          q.touchSessionStmt,
@@ -342,6 +361,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateTrackStmt:           q.updateTrackStmt,
 		upsertAlbumStmt:           q.upsertAlbumStmt,
 		upsertArtistStmt:          q.upsertArtistStmt,
+		upsertArtworkStmt:         q.upsertArtworkStmt,
 		upsertScanIssueStmt:       q.upsertScanIssueStmt,
 		userByNameStmt:            q.userByNameStmt,
 	}

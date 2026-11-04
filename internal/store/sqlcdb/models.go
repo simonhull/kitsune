@@ -12,6 +12,7 @@ type Album struct {
 	Mbid        *string
 	Year        *int64
 	Compilation int64
+	ArtworkHash []byte
 }
 
 type Artist struct {
@@ -20,6 +21,15 @@ type Artist struct {
 	Name     string
 	SortName string
 	Mbid     *string
+}
+
+type Artwork struct {
+	Hash   []byte
+	Width  int64
+	Height int64
+	Accent string
+	Ground string
+	Source string
 }
 
 type ScanIssue struct {

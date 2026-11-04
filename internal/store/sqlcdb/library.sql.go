@@ -319,6 +319,34 @@ func (q *Queries) PruneArtists(ctx context.Context) (int64, error) {
 	return result.RowsAffected()
 }
 
+const pruneArtwork = `-- name: PruneArtwork :many
+DELETE FROM artwork WHERE NOT EXISTS (SELECT 1 FROM albums WHERE albums.artwork_hash = artwork.hash)
+RETURNING hash
+`
+
+func (q *Queries) PruneArtwork(ctx context.Context) ([][]byte, error) {
+	rows, err := q.query(ctx, q.pruneArtworkStmt, pruneArtwork)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items [][]byte
+	for rows.Next() {
+		var hash []byte
+		if err := rows.Scan(&hash); err != nil {
+			return nil, err
+		}
+		items = append(items, hash)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const trackStates = `-- name: TrackStates :many
 SELECT id, rel_path, size, mtime, missing_since IS NOT NULL AS missing
 FROM tracks
@@ -445,14 +473,15 @@ func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (int64
 }
 
 const upsertAlbum = `-- name: UpsertAlbum :one
-INSERT INTO albums (group_key, name, sort_name, mbid, year, compilation)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO albums (group_key, name, sort_name, mbid, year, compilation, artwork_hash)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (group_key) DO UPDATE SET
     name = excluded.name,
     sort_name = excluded.sort_name,
     mbid = coalesce(excluded.mbid, albums.mbid),
     year = excluded.year,
-    compilation = excluded.compilation
+    compilation = excluded.compilation,
+    artwork_hash = coalesce(excluded.artwork_hash, albums.artwork_hash)
 RETURNING id
 `
 
@@ -463,6 +492,7 @@ type UpsertAlbumParams struct {
 	Mbid        *string
 	Year        *int64
 	Compilation int64
+	ArtworkHash []byte
 }
 
 func (q *Queries) UpsertAlbum(ctx context.Context, arg UpsertAlbumParams) (int64, error) {
@@ -473,6 +503,7 @@ func (q *Queries) UpsertAlbum(ctx context.Context, arg UpsertAlbumParams) (int64
 		arg.Mbid,
 		arg.Year,
 		arg.Compilation,
+		arg.ArtworkHash,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -506,6 +537,38 @@ func (q *Queries) UpsertArtist(ctx context.Context, arg UpsertArtistParams) (int
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const upsertArtwork = `-- name: UpsertArtwork :exec
+INSERT INTO artwork (hash, width, height, accent, ground, source)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (hash) DO UPDATE SET
+    width = excluded.width,
+    height = excluded.height,
+    accent = excluded.accent,
+    ground = excluded.ground,
+    source = excluded.source
+`
+
+type UpsertArtworkParams struct {
+	Hash   []byte
+	Width  int64
+	Height int64
+	Accent string
+	Ground string
+	Source string
+}
+
+func (q *Queries) UpsertArtwork(ctx context.Context, arg UpsertArtworkParams) error {
+	_, err := q.exec(ctx, q.upsertArtworkStmt, upsertArtwork,
+		arg.Hash,
+		arg.Width,
+		arg.Height,
+		arg.Accent,
+		arg.Ground,
+		arg.Source,
+	)
+	return err
 }
 
 const upsertScanIssue = `-- name: UpsertScanIssue :exec

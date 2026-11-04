@@ -7,15 +7,26 @@ ON CONFLICT (match_key) DO UPDATE SET
     mbid = coalesce(excluded.mbid, artists.mbid)
 RETURNING id;
 
--- name: UpsertAlbum :one
-INSERT INTO albums (group_key, name, sort_name, mbid, year, compilation)
+-- name: UpsertArtwork :exec
+INSERT INTO artwork (hash, width, height, accent, ground, source)
 VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (hash) DO UPDATE SET
+    width = excluded.width,
+    height = excluded.height,
+    accent = excluded.accent,
+    ground = excluded.ground,
+    source = excluded.source;
+
+-- name: UpsertAlbum :one
+INSERT INTO albums (group_key, name, sort_name, mbid, year, compilation, artwork_hash)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (group_key) DO UPDATE SET
     name = excluded.name,
     sort_name = excluded.sort_name,
     mbid = coalesce(excluded.mbid, albums.mbid),
     year = excluded.year,
-    compilation = excluded.compilation
+    compilation = excluded.compilation,
+    artwork_hash = coalesce(excluded.artwork_hash, albums.artwork_hash)
 RETURNING id;
 
 -- name: InsertTrack :one
@@ -94,6 +105,10 @@ DELETE FROM tracks WHERE missing_since < ?;
 
 -- name: PruneAlbums :execrows
 DELETE FROM albums WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE tracks.album_id = albums.id);
+
+-- name: PruneArtwork :many
+DELETE FROM artwork WHERE NOT EXISTS (SELECT 1 FROM albums WHERE albums.artwork_hash = artwork.hash)
+RETURNING hash;
 
 -- name: PruneArtists :execrows
 DELETE FROM artists WHERE NOT EXISTS (SELECT 1 FROM track_artists WHERE track_artists.artist_id = artists.id);
