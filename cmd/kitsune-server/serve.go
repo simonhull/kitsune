@@ -115,9 +115,6 @@ func serveConfig(ctx context.Context, cfg *config.Config, configPath string, log
 	return a.serve(ctx, ln)
 }
 
-// errScanning is why /readyz fails until the first library scan has finished.
-var errScanning = errors.New("initial scan not finished")
-
 // app is a server with the state it needs to run.
 type app struct {
 	log       *slog.Logger
@@ -226,11 +223,11 @@ func openArtworkCache(dataDir string) (*artwork.Cache, error) {
 	return artwork.NewCache(dir), nil
 }
 
-// ready backs /readyz: it fails with errScanning until the first scan has
-// finished, then with the database's error if it can't be reached.
+// ready backs /readyz: it fails with [server.ErrStarting] until the first scan
+// has finished, then with the database's error if it can't be reached.
 func (a *app) ready(ctx context.Context) error {
 	if !a.scanned.Load() {
-		return errScanning
+		return server.ErrStarting
 	}
 	return a.store.Ping(ctx) //nolint:wrapcheck // The store's error already says what failed.
 }

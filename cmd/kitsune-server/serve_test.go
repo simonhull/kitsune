@@ -20,6 +20,7 @@ import (
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/config"
+	"github.com/simonhull/kitsune/internal/server"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -549,8 +550,8 @@ func TestServeNotReadyUntilScanned(t *testing.T) { //nolint:paralleltest // over
 	}
 	a, _ := newApp(t, e)
 	t.Cleanup(func() { _ = a.close() })
-	if err := a.ready(t.Context()); !errors.Is(err, errScanning) {
-		t.Errorf("ready before the scan = %v, want errScanning", err)
+	if err := a.ready(t.Context()); !errors.Is(err, server.ErrStarting) {
+		t.Errorf("ready before the scan = %v, want server.ErrStarting", err)
 	}
 	a.scanned.Store(true)
 	if err := a.ready(t.Context()); err != nil {
