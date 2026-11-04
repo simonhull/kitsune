@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	testRoot = "/music"
-	badPath  = "bad.flac"
+	flacFormat = "flac"
+	testRoot   = "/music"
+	badPath    = "bad.flac"
 )
 
 // newWrite returns a distinct valid write: its own album and artist per index.
@@ -27,8 +28,8 @@ func newWrite(i int) store.TrackWrite {
 		Size:      1000 + int64(i),
 		MTime:     time.UnixMilli(1_761_000_000_000 + int64(i)).UTC().Add(456789 * time.Nanosecond),
 		Digest:    sha256.Sum256([]byte(strconv.Itoa(i))),
-		Format:    "flac",
-		Codec:     "flac",
+		Format:    flacFormat,
+		Codec:     flacFormat,
 		Duration:  200*time.Second + 123*time.Millisecond,
 		Title:     fmt.Sprintf("Title %d", i),
 		SortTitle: fmt.Sprintf("Title %d", i),

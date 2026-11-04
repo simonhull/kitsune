@@ -488,7 +488,7 @@ func TestAlbumIdentityKeptOnUpsert(t *testing.T) {
 func TestAlbumSchemaForBrowse(t *testing.T) {
 	t.Parallel()
 	s := openTest(t)
-	for _, name := range []string{"albums_sort", "albums_added", "tracks_live", "tracks_album"} {
+	for _, name := range []string{indexAlbumsSort, indexAlbumsAdded, "tracks_live", "tracks_album"} {
 		q := "SELECT count(*) FROM sqlite_schema WHERE type = 'index' AND name = '" + name + "'"
 		if got := rawInt(t, s.r, q); got != 1 {
 			t.Errorf("index %s: count = %d, want 1", name, got)
@@ -496,7 +496,7 @@ func TestAlbumSchemaForBrowse(t *testing.T) {
 	}
 	// The collation must sit on the column, or keyset seeks fall back to scans.
 	var coll string
-	q := "SELECT coll FROM pragma_index_xinfo('albums_sort') WHERE name = 'sort_name'"
+	q := "SELECT coll FROM pragma_index_xinfo('" + indexAlbumsSort + "') WHERE name = 'sort_name'"
 	if err := s.r.QueryRowContext(t.Context(), q).Scan(&coll); err != nil {
 		t.Fatal(err)
 	}
