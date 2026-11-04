@@ -20,6 +20,7 @@
 
 <a
 	class="tile"
+	data-morph-part="card"
 	href={resolve('/album/[id]', { id: album.id })}
 	style:background={palette.stage}
 	style:--tile-accent={palette.accent}

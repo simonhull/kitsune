@@ -14,7 +14,7 @@ import { markClick } from './hud.svelte.ts';
 import { pick, recordOrigins, type Origins } from './pairs.ts';
 import { registry, type MorphEntry } from './registry.ts';
 
-/** One navigation's plan, shared by both engines. */
+/** One navigation's plan. */
 export interface Journey {
 	choreography: Choreography;
 	/** The shared ids of this navigation; empty when nothing travels. */

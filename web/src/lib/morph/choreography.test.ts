@@ -6,6 +6,7 @@ import {
 	choreographyFor,
 	linearEasing,
 	parseTime,
+	rippleDelay,
 	settleTime,
 	springParams,
 	stepSpring,
@@ -154,6 +155,26 @@ describe('bloom', () => {
 	it('tolerates a spring overshooting either end', () => {
 		expect(bloomStrength(1.01, 0.9)).toBe(0);
 		expect(bloomStrength(-0.01, 0.9)).toBe(0);
+	});
+});
+
+describe('rippleDelay', () => {
+	const outward = { order: 'outward', speed: 2, limit: 150 } as const;
+	const inward = { order: 'inward', speed: 2, limit: 150 } as const;
+
+	it('starts at the cover and spreads, going out', () => {
+		expect(rippleDelay(outward, 0, 800)).toBe(0);
+		expect(rippleDelay(outward, 100, 800)).toBe(50);
+	});
+
+	it('starts at the edges and closes on the cover, coming back', () => {
+		expect(rippleDelay(inward, 800, 800)).toBe(0);
+		expect(rippleDelay(inward, 700, 800)).toBe(50);
+	});
+
+	it('never exceeds its limit', () => {
+		expect(rippleDelay(outward, 5000, 5000)).toBe(150);
+		expect(rippleDelay(inward, 0, 5000)).toBe(150);
 	});
 });
 

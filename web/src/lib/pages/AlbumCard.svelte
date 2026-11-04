@@ -11,7 +11,7 @@
 	let { album }: Props = $props();
 </script>
 
-<a class="card" href={resolve('/album/[id]', { id: album.id })}>
+<a class="card" data-morph-part="card" href={resolve('/album/[id]', { id: album.id })}>
 	<span class="art" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
 		><GeneratedCover albumId={album.id} /></span
 	>

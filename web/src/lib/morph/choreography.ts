@@ -99,6 +99,25 @@ export interface Pose {
 	scale?: number;
 }
 
+/**
+ * A wave across a page's units, centered on the cover. Outward starts at the cover and spreads:
+ * the way a page falls back. Inward starts at the edges and closes on it: the same fall, played
+ * in reverse.
+ */
+export interface Ripple {
+	order: 'outward' | 'inward';
+	/** How fast the wave crosses the page, in pixels per millisecond. */
+	speed: number;
+	/** The most it can add to a part's delay, in milliseconds. */
+	limit: number;
+}
+
+/** The delay a ripple adds at `distance` from the cover, on a page reaching out to `farthest`. */
+export function rippleDelay(ripple: Ripple, distance: number, farthest: number): number {
+	const steps = ripple.order === 'outward' ? distance : farthest - distance;
+	return Math.min(ripple.limit, Math.max(0, steps) / ripple.speed);
+}
+
 /** One thing that moves, from one pose to another, starting `delay` into the morph. */
 export interface Part {
 	from: Pose;
@@ -106,7 +125,11 @@ export interface Part {
 	/** Milliseconds after the morph starts. */
 	delay: number;
 	motion: MotionSpec;
+	ripple?: Ripple;
 }
+
+/** What a page's unit is, from `data-morph-part`. It decides how the unit arrives. */
+export type Role = 'card' | 'art' | 'words' | 'panel';
 
 export type RouteName = 'home' | 'album' | 'now-playing';
 
@@ -132,10 +155,10 @@ export interface Choreography {
 	/** The curve shared elements fly on. */
 	motion: MotionSpec;
 	travel: SharedTravel | null;
-	/** The outgoing page, as one layer. */
+	/** Every unit of the outgoing page. */
 	leaving: Part;
-	/** Elements of the incoming page, by their `data-morph-part`. */
-	arriving: Partial<Record<'page' | 'words' | 'panel', Part>>;
+	/** The incoming page's units, by role. */
+	arriving: Partial<Record<Role, Part>>;
 	/** The blurred album stage. */
 	stage: Part | null;
 	/** The light around the cover. */
@@ -157,7 +180,13 @@ const homeToAlbum: Choreography = {
 	name: 'home-to-album',
 	motion: slow,
 	travel: { subject: 'to', sourceSlots: ['card'], targetSlots: ['hero'] },
-	leaving: { from: {}, to: { opacity: 0, scale: 0.94 }, delay: 0, motion: quick },
+	leaving: {
+		from: {},
+		to: { opacity: 0, scale: 0.92 },
+		delay: 0,
+		motion: quick,
+		ripple: { order: 'outward', speed: 3, limit: 170 }
+	},
 	arriving: {
 		words: { from: { opacity: 0, y: 28 }, to: {}, delay: 200, motion: base },
 		panel: { from: { opacity: 0, y: 120 }, to: {}, delay: 140, motion: slow }
@@ -175,9 +204,16 @@ const albumToHome: Choreography = {
 	name: 'album-to-home',
 	motion: base,
 	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['card', 'island'] },
-	leaving: { from: {}, to: { opacity: 0, y: 48 }, delay: 0, motion: quick },
+	leaving: { from: {}, to: { opacity: 0, y: 56 }, delay: 0, motion: quick },
 	arriving: {
-		page: { from: { opacity: 0, scale: 0.94 }, to: {}, delay: 100, motion: base }
+		// Held back until the album has mostly gone, so two pages never compete.
+		card: {
+			from: { opacity: 0, scale: 0.92 },
+			to: {},
+			delay: 130,
+			motion: base,
+			ripple: { order: 'inward', speed: 5, limit: 100 }
+		}
 	},
 	stage: { from: {}, to: { opacity: 0 }, delay: 0, motion: base },
 	bloom: { direction: 'in', ...bloomShape }

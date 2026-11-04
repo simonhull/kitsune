@@ -14,7 +14,7 @@
 
 {#if home !== null}
 	<div class="home">
-		<div class="intro">
+		<div class="intro" data-morph-part="card">
 			<h1>{home.greeting}</h1>
 			<span class="summary">{home.summary}</span>
 		</div>
@@ -22,7 +22,7 @@
 		<section aria-label="Overview" class="overview">
 			<ContinueTile listening={home.continueListening} />
 
-			<div class="health">
+			<div class="health" data-morph-part="card">
 				<span class="fox-mark"><Icon name="fox" size={220} /></span>
 				<span class="label">Library health</span>
 				<span class="figure">
@@ -31,7 +31,7 @@
 				</span>
 			</div>
 
-			<div class="week">
+			<div class="week" data-morph-part="card">
 				<span class="label">This week</span>
 				<span class="figure">
 					<span class="number">{home.week.listened}</span>
@@ -39,7 +39,7 @@
 				</span>
 			</div>
 
-			<section aria-label="Recently added" class="recent">
+			<section aria-label="Recently added" class="recent" data-morph-part="card">
 				<div class="recent-head">
 					<h2>Recently added</h2>
 					<span class="more">See all</span>
@@ -53,7 +53,7 @@
 		</section>
 
 		<section aria-label="On repeat" class="repeat">
-			<div class="repeat-head">
+			<div class="repeat-head" data-morph-part="card">
 				<h2>On repeat</h2>
 				<span class="more">All albums</span>
 			</div>

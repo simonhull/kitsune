@@ -22,7 +22,11 @@
 </script>
 
 <section aria-label="Album" class="hero">
-	<div class="art" use:morph={{ id: `cover:${albumId}`, slot: 'hero', kind: 'cover' }}>
+	<div
+		class="art"
+		data-morph-part="art"
+		use:morph={{ id: `cover:${albumId}`, slot: 'hero', kind: 'cover' }}
+	>
 		<GeneratedCover {albumId} />
 	</div>
 	<div class="words" data-morph-part="words">

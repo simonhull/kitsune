@@ -4,9 +4,11 @@ import {
 	blendDuration,
 	bloomOpenness,
 	bloomStrength,
+	rippleDelay,
 	springParams,
 	type Choreography,
 	type Part,
+	type Role,
 	type SpringParams
 } from '../choreography.ts';
 import { reportStart } from '../hud.svelte.ts';
@@ -36,6 +38,11 @@ function hide(element: HTMLElement): void {
 
 function show(element: Element): void {
 	element.removeAttribute(hiddenAttribute);
+}
+
+interface Point {
+	x: number;
+	y: number;
 }
 
 interface CoverCapture {
@@ -73,7 +80,36 @@ function pictureOf(element: HTMLElement): Node {
 /** The outgoing page, as an inert picture of itself. */
 interface Ghost {
 	path: string;
-	layer: Layer;
+	element: HTMLElement;
+	/** One layer per unit, in document order, so the real page can take over unit by unit. */
+	layers: Layer[];
+}
+
+/** Finds the parts of a page that move on their own. */
+function unitsOf(root: Element): HTMLElement[] {
+	return [...root.querySelectorAll<HTMLElement>('[data-morph-part]')];
+}
+
+function roleOf(unit: HTMLElement): Role {
+	return unit.dataset['morphPart'] as Role;
+}
+
+function distance(unit: HTMLElement, from: { x: number; y: number }): number {
+	const { x, y } = centerOf(unit);
+	return Math.hypot(x - from.x, y - from.y);
+}
+
+/** Works out each unit's delay for a part, with its ripple if it has one. */
+function delays(units: HTMLElement[], part: (unit: HTMLElement) => Part, from: Point | null) {
+	const reach = from === null ? [] : units.map((unit) => distance(unit, from));
+	const farthest = Math.max(0, ...reach);
+	return units.map((unit, index) => {
+		const { delay, ripple } = part(unit);
+		const away = reach.at(index);
+		return ripple === undefined || away === undefined
+			? delay
+			: delay + rippleDelay(ripple, away, farthest);
+	});
 }
 
 /** The light around the cover, following it through the air. */
@@ -84,7 +120,8 @@ interface Bloom {
 	spec: NonNullable<Choreography['bloom']>;
 }
 
-function pivot(element: HTMLElement, around: { x: number; y: number }): void {
+function pivot(element: HTMLElement, around: Point): void {
+	element.style.transform = 'none';
 	const { left, top } = element.getBoundingClientRect();
 	element.style.transformOrigin = `${String(around.x - left)}px ${String(around.y - top)}px`;
 }
@@ -106,11 +143,10 @@ function thaw(stage: HTMLElement): void {
 /** The spring engine: real elements, a persistent overlay, and physics that can turn around. */
 export function createSpringEngine(): (navigation: OnNavigate) => void {
 	const fliers = new Map<string, Flier>();
-	const landing = new Set<Layer>();
+	const landing = new Map<HTMLElement, Layer>();
 	const ghosts: Ghost[] = [];
 	const inFlight = new Set<string>();
 	let flight: SpringParams = springParams({ duration: 420, bounce: 0 });
-	let page: Layer | null = null;
 	let stage: Layer | null = null;
 	let bloom: Bloom | null = null;
 	let frame = 0;
@@ -134,11 +170,6 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		if (main === null || under === null) {
 			return null;
 		}
-		// A page still arriving is at some pose: its ghost starts there, not at rest.
-		const inherited = page;
-		page?.release();
-		page = null;
-
 		for (const [id, { element }] of sources) {
 			element.setAttribute(sourceAttribute, id);
 			hide(element);
@@ -157,15 +188,30 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		clone.style.cssText = `position:absolute;left:${String(left)}px;top:${String(top)}px;width:${String(width)}px;height:${String(height)}px;z-index:auto`;
 		under.append(clone);
 
-		const layer = new Layer(clone, part);
-		if (inherited !== null) {
-			layer.adopt(inherited);
-		}
 		const cover = [...sources.values()].find((entry) => entry.kind === 'cover');
-		if (cover !== undefined) {
-			pivot(clone, centerOf(cover.element));
+		const center = cover === undefined ? null : centerOf(cover.element);
+		const real = unitsOf(main);
+		const units = unitsOf(clone);
+		// A page with no units yet, still loading say, leaves as one.
+		const movers = units.length > 0 ? units : [clone];
+		const waits = delays(movers, () => part, center);
+		const layers = movers.map((unit, index) => {
+			const realUnit = real.at(index);
+			// A unit still arriving is at some pose: its ghost starts there, not at rest.
+			const inherited = realUnit === undefined ? undefined : landing.get(realUnit);
+			if (center !== null) {
+				pivot(unit, center);
+			}
+			const layer = new Layer(unit, part, waits.at(index));
+			if (inherited !== undefined) {
+				layer.adopt(inherited);
+			}
+			return layer;
+		});
+		for (const unit of real) {
+			landing.delete(unit);
 		}
-		const ghost = { path, layer };
+		const ghost = { path, element: clone, layers };
 		ghosts.push(ghost);
 		return ghost;
 	}
@@ -194,11 +240,11 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			}
 			const flier = createFlier(source, target);
 			fliers.set(id, flier);
-			// Covers fly above titles, whichever launched first.
+			// Words stay in front of art, so a title never tucks behind the cover it travels with.
 			if (flier instanceof CoverFlier) {
-				air.append(flier.element);
-			} else {
 				air.prepend(flier.element);
+			} else {
+				air.append(flier.element);
 			}
 		}
 		// A flier whose page has gone has nowhere to land: it leaves with the ghost.
@@ -232,44 +278,50 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 
 	function arrive(journey: Journey, path: string, targets: Map<string, MorphEntry>): void {
 		const main = surfaceFor('main');
-		const { choreography } = journey;
-		const returning = ghosts.findIndex((ghost) => ghost.path === path);
+		if (main === null) {
+			return;
+		}
+		const { arriving, motion } = journey.choreography;
+		const units = unitsOf(main);
 		const cover = [...targets.values()].find((entry) => entry.kind === 'cover');
+		const center = cover === undefined ? null : centerOf(cover.element);
+		const flying = new Set([...targets.values()].map((entry) => entry.element));
 
-		// Going back mid-morph: the real page takes over from its own ghost, wherever it had got to.
+		// Going back mid-morph: the real page takes over from its own ghost, unit by unit.
+		const returning = ghosts.findIndex((ghost) => ghost.path === path);
 		const ghost = ghosts.at(returning);
-		if (returning >= 0 && ghost !== undefined && main !== null) {
+		if (returning >= 0 && ghost !== undefined) {
 			ghosts.splice(returning, 1);
-			const part = choreography.arriving.page ?? settle(choreography);
-			page = new Layer(main, part);
-			page.adopt(ghost.layer);
-			page.retarget({ ...part, to: {} });
-			if (cover !== undefined) {
-				pivot(main, centerOf(cover.element));
+			for (const [index, unit] of units.entries()) {
+				const from = ghost.layers.at(index);
+				if (from === undefined || flying.has(unit)) {
+					continue;
+				}
+				const part: Part = arriving[roleOf(unit)] ?? { from: {}, to: {}, delay: 0, motion };
+				if (center !== null) {
+					pivot(unit, center);
+				}
+				const layer = new Layer(unit, part);
+				layer.adopt(from);
+				layer.retarget(part);
+				landing.set(unit, layer);
 			}
-			ghost.layer.element.remove();
+			ghost.element.remove();
 			return;
 		}
 
-		for (const [name, part] of Object.entries(choreography.arriving)) {
-			const element = name === 'page' ? main : surfaceFor(`[data-morph-part="${name}"]`);
-			if (element === null) {
+		const moving = units.filter((unit) => arriving[roleOf(unit)] !== undefined);
+		const waits = delays(moving, (unit) => arriving[roleOf(unit)] as Part, center);
+		for (const [index, unit] of moving.entries()) {
+			const part = arriving[roleOf(unit)];
+			if (part === undefined || flying.has(unit)) {
 				continue;
 			}
-			const layer = new Layer(element, part);
-			if (name === 'page') {
-				page = layer;
-				if (cover !== undefined) {
-					pivot(element, centerOf(cover.element));
-				}
-			} else {
-				landing.add(layer);
+			if (center !== null) {
+				pivot(unit, center);
 			}
+			landing.set(unit, new Layer(unit, part, waits.at(index)));
 		}
-	}
-
-	function settle({ motion }: Choreography): Part {
-		return { from: {}, to: {}, delay: 0, motion };
 	}
 
 	function moveStage(journey: Journey, leaving: boolean, frozenTop: number): void {
@@ -341,8 +393,9 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		if (entry === null) {
 			return false;
 		}
-		const pose = [...landing, ...(page === null ? [] : [page])];
-		return pose.some((layer) => !layer.settled && layer.element.contains(entry.element));
+		return [...landing.values()].some(
+			(layer) => !layer.settled && layer.element.contains(entry.element)
+		);
 	}
 
 	function land(id: string, flier: Flier): void {
@@ -366,10 +419,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		for (const flier of fliers.values()) {
 			flier.measure();
 		}
-		const layers = [...landing, ...ghosts.map((ghost) => ghost.layer)];
-		if (page !== null) {
-			layers.push(page);
-		}
+		const layers = [...landing.values(), ...ghosts.flatMap((ghost) => ghost.layers)];
 		if (stage !== null) {
 			layers.push(stage);
 		}
@@ -397,26 +447,22 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 	}
 
 	function active(): boolean {
-		return fliers.size + landing.size + ghosts.length > 0 || page !== null || stage !== null;
+		return fliers.size + landing.size + ghosts.length > 0 || stage !== null;
 	}
 
 	/** Lets go of whatever has come to rest. */
 	function retire(): void {
-		for (const layer of landing) {
+		for (const [unit, layer] of landing) {
 			if (layer.settled) {
 				layer.release();
-				landing.delete(layer);
+				landing.delete(unit);
 			}
 		}
 		for (const ghost of [...ghosts]) {
-			if (ghost.layer.settled) {
-				ghost.layer.element.remove();
+			if (ghost.layers.every((layer) => layer.settled)) {
+				ghost.element.remove();
 				ghosts.splice(ghosts.indexOf(ghost), 1);
 			}
-		}
-		if (page?.settled === true) {
-			page.release();
-			page = null;
 		}
 		if (stage?.settled === true && fliers.size === 0) {
 			stage.release();
@@ -441,15 +487,13 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		for (const [id, flier] of fliers) {
 			land(id, flier);
 		}
-		for (const layer of landing) {
+		for (const layer of landing.values()) {
 			layer.release();
 		}
 		landing.clear();
 		for (const ghost of ghosts.splice(0)) {
-			ghost.layer.element.remove();
+			ghost.element.remove();
 		}
-		page?.release();
-		page = null;
 		if (stage !== null) {
 			stage.release();
 			thaw(stage.element);
@@ -487,7 +531,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		} catch {
 			// Superseded or failed: the newer navigation owns the stage now.
 			if (ghost !== null) {
-				ghost.layer.element.remove();
+				ghost.element.remove();
 				ghosts.splice(ghosts.indexOf(ghost), 1);
 			}
 			return;
@@ -504,7 +548,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		for (const id of ids) {
 			if (!targets.has(id)) {
 				inFlight.delete(id);
-				for (const element of ghost?.layer.element.querySelectorAll(
+				for (const element of ghost?.element.querySelectorAll(
 					`[${sourceAttribute}="${CSS.escape(id)}"]`
 				) ?? []) {
 					show(element);

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { flowingPill } from './flowingPill.ts';
 	import Icon from './Icon.svelte';
 
 	interface Props {
@@ -11,7 +12,8 @@
 </script>
 
 <header class="bar">
-	<nav aria-label="Main" class="nav" data-route={route}>
+	<nav aria-label="Main" class="nav" data-route={route} use:flowingPill={route}>
+		<span class="pill" aria-hidden="true"></span>
 		<a class="fox" href={resolve('/')} aria-label="Kitsune home" data-sveltekit-reset="false"
 			><Icon name="fox" size={22} /></a
 		>
@@ -70,6 +72,7 @@
 		box-shadow: var(--glass-shadow);
 		pointer-events: auto;
 		white-space: nowrap;
+		position: relative;
 		transition:
 			background var(--morph) var(--curve-morph),
 			border-color var(--morph) var(--curve-morph),
@@ -82,7 +85,23 @@
 		box-shadow: none;
 	}
 
+	/* One pill for the whole nav, so it can flow from item to item. */
+	.pill {
+		position: absolute;
+		left: 0;
+		top: 6px;
+		height: var(--target);
+		border-radius: var(--radius-pill);
+		background: rgb(255 255 255 / 10%);
+		transition: background var(--morph) var(--curve-morph);
+	}
+
+	[data-route='album'] .pill {
+		background: rgb(255 255 255 / 14%);
+	}
+
 	.fox {
+		position: relative;
 		flex: none;
 		width: var(--target);
 		height: var(--target);
@@ -95,6 +114,7 @@
 	}
 
 	.item {
+		position: relative;
 		height: var(--target);
 		padding: 0 16px;
 		border-radius: var(--radius-pill);
@@ -117,13 +137,11 @@
 
 	.item[aria-current='page'] {
 		padding: 0 18px;
-		background: rgb(255 255 255 / 10%);
 		color: var(--text);
 		font-weight: 600;
 	}
 
 	[data-route='album'] .item[aria-current='page'] {
-		background: rgb(255 255 255 / 14%);
 		color: var(--text);
 	}
 

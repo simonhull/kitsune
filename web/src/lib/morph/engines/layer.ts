@@ -17,7 +17,7 @@ export class Layer {
 	#params: SpringParams;
 	#wait: number;
 
-	constructor(element: HTMLElement, part: Part) {
+	constructor(element: HTMLElement, part: Part, delay = part.delay) {
 		const from = complete(part.from);
 		const to = complete(part.to);
 		this.element = element;
@@ -25,7 +25,7 @@ export class Layer {
 		this.y = new Channel(from.y, to.y);
 		this.scale = new Channel(from.scale, to.scale);
 		this.#params = springParams(motionOf(part.motion));
-		this.#wait = part.delay / 1000;
+		this.#wait = delay / 1000;
 		element.style.willChange = 'transform, opacity';
 		this.write();
 	}
