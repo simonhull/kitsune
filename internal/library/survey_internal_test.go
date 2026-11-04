@@ -30,6 +30,7 @@ const (
 	backFLAC     = "back.flac"
 	issueChanged = "issue-changed.wav"
 	issueSame    = "issue-same.wav"
+	aFLAC        = "a.flac"
 )
 
 // fakeClock is a settable clock. The scanner reads it from its writer
@@ -262,7 +263,7 @@ func TestSurveyFindsAudio(t *testing.T) {
 	l := newTestLib(t, 1)
 	root := l.roots[0]
 	audio := []string{
-		"a.flac", "B.MP3", "c.M4A", "d.m4b", "e.ogg", "f.oga", "g.Opus", "h.wav", "i.aif", "j.AIFF",
+		aFLAC, "B.MP3", "c.M4A", "d.m4b", "e.ogg", "f.oga", "g.Opus", "h.wav", "i.aif", "j.AIFF",
 		"deep/er/k.flac", "@music.flac", "x.flac.mp3",
 	}
 	other := []string{
@@ -452,7 +453,7 @@ func TestSurveyMissingRootIsSkipped(t *testing.T) {
 	t.Parallel()
 	l := newTestLib(t, 0)
 	gone := filepath.Join(t.TempDir(), "unmounted")
-	l.seed(gone, "a.flac", "b.flac")
+	l.seed(gone, aFLAC, "b.flac")
 	l.use(gone)
 	sv := l.survey(Quick)
 	if sv.SkippedRoots != 1 || len(sv.Mark) != 0 || len(sv.Jobs) != 0 || len(sv.IssueDeletes) != 0 {
@@ -478,9 +479,9 @@ func TestSurveyEmptyRootIsSkipped(t *testing.T) {
 			l := newTestLib(t, 1)
 			root := l.roots[0]
 			if tt.stored {
-				l.seed(root, "a.flac")
+				l.seed(root, aFLAC)
 				if tt.missing {
-					l.markMissing(root, l.clock.Now(), "a.flac")
+					l.markMissing(root, l.clock.Now(), aFLAC)
 				}
 			}
 			sv := l.survey(Quick)
@@ -545,8 +546,8 @@ func TestSurveyHoldsDeletes(t *testing.T) {
 		t.Parallel()
 		l := newTestLib(t, 0)
 		gone := filepath.Join(t.TempDir(), "unmounted")
-		l.seed(gone, "a.flac")
-		l.markMissing(gone, l.clock.Now(), "a.flac")
+		l.seed(gone, aFLAC)
+		l.markMissing(gone, l.clock.Now(), aFLAC)
 		l.use(gone)
 		if sv := l.survey(Quick); !sv.HoldDeletes {
 			t.Error("HoldDeletes = false, want true")
@@ -556,7 +557,7 @@ func TestSurveyHoldsDeletes(t *testing.T) {
 		t.Parallel()
 		l := newTestLib(t, 0)
 		gone := filepath.Join(t.TempDir(), "unmounted")
-		l.seed(gone, "a.flac")
+		l.seed(gone, aFLAC)
 		l.use(gone)
 		if sv := l.survey(Quick); sv.HoldDeletes || sv.SkippedRoots != 1 {
 			t.Errorf("HoldDeletes = %t, SkippedRoots = %d; want false and 1", sv.HoldDeletes, sv.SkippedRoots)
@@ -627,7 +628,7 @@ func TestSurveyNoRootsTouchesNothing(t *testing.T) {
 	t.Parallel()
 	l := newTestLib(t, 0)
 	root := t.TempDir()
-	l.seed(root, "a.flac", "b.flac")
+	l.seed(root, aFLAC, "b.flac")
 	l.markMissing(root, l.clock.Now().Add(-10*testGrace), "b.flac")
 	l.use()
 	stats, err := l.scanner.Scan(t.Context(), Quick)
@@ -638,7 +639,7 @@ func TestSurveyNoRootsTouchesNothing(t *testing.T) {
 		t.Errorf("stats = %+v, want zero", stats)
 	}
 	st := l.states(root)
-	if len(st) != 2 || st["a.flac"].Missing || !st["b.flac"].Missing {
+	if len(st) != 2 || st[aFLAC].Missing || !st["b.flac"].Missing {
 		t.Errorf("states = %+v, want both tracks untouched", st)
 	}
 }
@@ -675,7 +676,7 @@ func TestSurveyConfigTypoKeepsLibrary(t *testing.T) {
 			t.Parallel()
 			l := newTestLib(t, 1)
 			old := l.roots[0]
-			l.seed(old, "a.flac", "b.flac")
+			l.seed(old, aFLAC, "b.flac")
 			next := filepath.Join(t.TempDir(), "typo")
 			if name == "empty folder" {
 				if err := os.Mkdir(next, dirMode); err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"sync"
 	"time"
 
@@ -44,16 +45,25 @@ type Stats struct {
 // Scanner keeps the store in step with the library roots. It is safe for
 // concurrent use, but runs one scan at a time.
 type Scanner struct {
-	st    *store.Store
-	roots []string
-	log   *slog.Logger
-	now   func() time.Time
-	mu    sync.Mutex
+	st        *store.Store
+	roots     []string
+	grace     time.Duration
+	workers   int
+	batchSize int // Tracks plus issues per write; tests lower it.
+	log       *slog.Logger
+	now       func() time.Time
+	mu        sync.Mutex
 }
 
 // NewScanner returns a scanner that writes to st.
 func NewScanner(st *store.Store, opts Options) *Scanner {
-	s := &Scanner{st: st, roots: opts.Roots, log: opts.Logger, now: opts.Now}
+	s := &Scanner{
+		st: st, roots: opts.Roots, grace: opts.MissingGrace, workers: opts.Workers,
+		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now,
+	}
+	if s.workers <= 0 {
+		s.workers = runtime.NumCPU()
+	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}
@@ -91,5 +101,33 @@ func (s *Scanner) Scan(ctx context.Context, mode Mode) (Stats, error) {
 	if err = s.applySurvey(ctx, sv, &stats); err != nil {
 		return stats, fmt.Errorf("scan: %w", err)
 	}
+	hold, err := s.read(ctx, sv.Jobs, &stats)
+	if err != nil {
+		return stats, fmt.Errorf("scan: %w", err)
+	}
+	if err = s.finish(ctx, sv.HoldDeletes || hold, &stats); err != nil {
+		return stats, fmt.Errorf("scan: %w", err)
+	}
 	return stats, nil
+}
+
+// finish runs after a complete read: it deletes the tracks that have been
+// missing past the grace period, unless hold says an outage may be hiding
+// files, and prunes the albums and artists nothing uses.
+func (s *Scanner) finish(ctx context.Context, hold bool, stats *Stats) error {
+	if hold {
+		s.log.WarnContext(ctx, "not deleting missing tracks: a library root or folder was unreadable or a missing track's file is unreadable")
+	} else {
+		n, err := s.st.DeleteMissingBefore(ctx, s.now().Add(-s.grace))
+		if err != nil {
+			return fmt.Errorf("delete missing: %w", err)
+		}
+		stats.Deleted = n
+	}
+	pruned, err := s.st.PruneOrphans(ctx)
+	if err != nil {
+		return fmt.Errorf("prune: %w", err)
+	}
+	stats.Pruned = pruned
+	return nil
 }
