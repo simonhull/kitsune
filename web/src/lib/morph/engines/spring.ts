@@ -314,7 +314,8 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 
 	function createFlier(source: Capture, target: MorphEntry): Flier {
 		if (source.kind === 'bar') {
-			return new BarFlier(source.shape, target, source.color);
+			const glass = surfaceFor('[data-island-glass]') ?? target.element;
+			return new BarFlier(source.shape, target, source.color, glass);
 		}
 		if (source.kind === 'title') {
 			return new TitleFlier(
@@ -446,6 +447,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		keepColors(aside, stand);
 		stand.append(clone);
 		air.prepend(stand);
+		island.carryFromHere(stand);
 		const layer = new Layer(clone, part);
 		const inherited = landing.get(content);
 		if (inherited !== undefined) {
@@ -462,6 +464,8 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		const content = surfaceFor('[data-island-content]');
 		if (content !== null) {
 			landing.set(content, new Layer(content, part));
+			island?.carryHome(content);
+			island?.write();
 		}
 	}
 
@@ -542,10 +546,11 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		}
 
 		// All reads, then all writes: scrolling mid-flight still lands, without layout thrash.
-		for (const flier of fliers.values()) {
-			flier.measure();
-		}
 		island?.measure();
+		const carry = island?.offset ?? { x: 0, y: 0 };
+		for (const flier of fliers.values()) {
+			flier.measure(carry);
+		}
 		const layers = [
 			...landing.values(),
 			...ghosts.flatMap((ghost) => ghost.layers),
