@@ -44,8 +44,8 @@ Create an administrator first, then start the server:
 
 `serve` keeps the database in step with `library.roots`: a quick scan at startup and another
 daily at `library.quick_scan`. The first scan reads all the audio to fingerprint it, which on
-a large library takes a while. Tracks appear as it goes, and `GET /readyz` answers 503 until
-it finishes, so point health checks that restart containers at `GET /healthz`. A moved file
+a large library takes a while. Tracks appear as it goes, and `GET /api/v1/readyz` answers 503 until
+it finishes, so point health checks that restart containers at `GET /api/v1/healthz`. A moved file
 keeps its track; a vanished one is deleted after `library.missing_grace`. A root that is
 unreadable or suddenly empty is skipped, so an unmounted disk never deletes anything.
 
@@ -54,13 +54,13 @@ unreadable or suddenly empty is skipped, so an unmounted disk never deletes anyt
 The scan renders each album's cover once, from the first of: an embedded front cover, any
 other embedded picture, or `cover`, `folder`, `front` or `album` (`.jpg`, `.jpeg`, `.png`,
 `.webp`) in the track's folder or the parent of a disc folder. Renditions at 128, 512 and 1024
-pixels (never upscaled) go to `<data_dir>/artwork`, so `GET /artwork/{hash}?size=` is a file read,
+pixels (never upscaled) go to `<data_dir>/artwork`, so `GET /api/v1/artwork/{hash}?size=` is a file read,
 cached for a year. The cache is derived data, but it is only rebuilt when an audio file changes:
 a replaced `cover.jpg` is not noticed, and if you delete the folder you need a new database.
 
 Logs are JSON on stderr. `log.level = "debug"` adds one line per request; it records the
-path only, never the query. `GET /healthz` reports that the process is up, and
-`GET /readyz` that it is ready to serve. On SIGINT or SIGTERM the server stops accepting
+path only, never the query. `GET /api/v1/healthz` reports that the process is up, and
+`GET /api/v1/readyz` that it is ready to serve. On SIGINT or SIGTERM the server stops accepting
 connections and drains in-flight requests for up to 8 seconds; a second signal quits at once.
 
 ### Behind a reverse proxy
@@ -69,7 +69,9 @@ connections and drains in-flight requests for up to 8 seconds; a second signal q
   `trusted_proxies` to the proxy's address or network. Kitsune believes
   `X-Forwarded-For` only from those peers, which keeps the login rate limits per client
   rather than per proxy. An `https://` `base_url` also marks cookies `Secure`.
-- Kitsune serves the whole API under the path of `base_url`, so the proxy must pass the
+- Kitsune serves the whole API under `/api/v1`, after the path of `base_url` (so
+  `/music/api/v1/healthz`); everything outside is a 404. The session cookie stays at the base path, or `/`.
+  The proxy must pass the
   path through unchanged. In Caddy use `handle /music/*`, not `handle_path`. In nginx use
   `location /music/ { proxy_pass http://127.0.0.1:4533; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }`
   with no URI after the port. Caddy sets `X-Forwarded-For` by default; nginx does not.

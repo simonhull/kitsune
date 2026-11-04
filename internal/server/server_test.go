@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/simonhull/kitsune/api"
@@ -30,8 +31,9 @@ func TestOffContractErrorsAreProblems(t *testing.T) {
 		method, path string
 		want         int
 	}{
-		{http.MethodGet, nopePath, http.StatusNotFound},
-		{http.MethodPost, healthPath, http.StatusMethodNotAllowed},
+		{http.MethodGet, apiPrefix + nopePath, http.StatusNotFound},
+		{http.MethodPost, apiPrefix + healthPath, http.StatusMethodNotAllowed},
+		{http.MethodGet, healthPath, http.StatusNotFound},
 	}
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
@@ -79,4 +81,18 @@ func decodeProblem(t *testing.T, rec *httptest.ResponseRecorder) api.Problem {
 		t.Fatalf("decode problem %q: %v", rec.Body, err)
 	}
 	return p
+}
+
+// TestAPIOnlyUnderPrefix checks that bare paths, which the contract validator
+// would accept, are not served.
+func TestAPIOnlyUnderPrefix(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	for _, path := range []string{healthPath, "/readyz", "/artwork/" + strings.Repeat("a", 64), "/api/v1", apiPrefix + "x/healthz"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			resp := ts.send(t, call{method: http.MethodGet, path: path, client: plainClient(), raw: true})
+			resp.problem(t, http.StatusNotFound)
+		})
+	}
 }

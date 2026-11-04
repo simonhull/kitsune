@@ -24,14 +24,15 @@ import (
 )
 
 const (
+	apiPrefix      = "/api/v1"
 	serveCmd       = "serve"
 	listenAnyPort  = "127.0.0.1:0"
 	stopDeadline   = 10 * time.Second
 	pollDeadline   = 5 * time.Second
 	pollInterval   = 10 * time.Millisecond
-	loginURLPath   = "/auth/login"
-	healthURLPath  = "/healthz"
-	readyURLPath   = "/readyz"
+	loginURLPath   = apiPrefix + "/auth/login"
+	healthURLPath  = apiPrefix + "/healthz"
+	readyURLPath   = apiPrefix + "/readyz"
 	forwardedFor   = "X-Forwarded-For"
 	proxiedAddr    = "198.51.100.7"
 	otherAddr      = "198.51.100.8"
@@ -603,7 +604,7 @@ func (ra *runningApp) getArtwork(t *testing.T, hash string) artworkReply {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ra.url+"/artwork/"+hash+"?size=128", http.NoBody)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ra.url+apiPrefix+"/artwork/"+hash+"?size=128", http.NoBody)
 	if err != nil {
 		t.Fatal(err)
 	}

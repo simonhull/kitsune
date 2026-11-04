@@ -27,7 +27,7 @@ func TestAccessLogDebug(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("request lines = %q, want exactly one", lines)
 	}
-	for _, want := range []string{"method=GET", "path=/healthz", "status=204", "requestId=" + resp.Header.Get("X-Request-ID")} {
+	for _, want := range []string{"method=GET", "path=/api/v1/healthz", "status=204", "requestId=" + resp.Header.Get("X-Request-ID")} {
 		if !strings.Contains(lines[0], want) {
 			t.Errorf("line %q does not contain %q", lines[0], want)
 		}

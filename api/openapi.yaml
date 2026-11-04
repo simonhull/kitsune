@@ -3,6 +3,8 @@ info:
   title: Kitsune
   version: 0.1.0
   description: Native API of the Kitsune music server.
+servers:
+  - url: /api/v1
 security:
   - bearer: []
   - cookie: []

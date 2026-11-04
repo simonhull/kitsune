@@ -93,7 +93,7 @@ type testServerOptions struct {
 // testServer is a running API over a real store and auth service.
 type testServer struct {
 	Server *httptest.Server
-	URL    string
+	URL    string // The API root: the origin, the base path and /api/v1.
 	Clock  *testClock
 	Log    *syncBuffer
 	Auth   *auth.Service
@@ -137,7 +137,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)
-	return &testServer{Server: srv, URL: srv.URL, Clock: clock, Log: logs, Auth: svc, Handle: h}
+	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h}
 }
 
 // testClientIP reads the client IP from testClientIPHeader, falling back to
@@ -165,6 +165,7 @@ type call struct {
 	body         string
 	header       http.Header
 	client       *http.Client // Nil means a fresh contract client.
+	raw          bool         // The path is from the origin, outside the base path and /api/v1.
 	invalid      bool         // The request deliberately breaks the contract.
 }
 
@@ -194,7 +195,11 @@ func (ts *testServer) trySend(t *testing.T, c call) (response, error) {
 	if c.invalid {
 		ctx = openapitest.ExpectInvalidRequest(ctx)
 	}
-	req, err := http.NewRequestWithContext(ctx, c.method, ts.URL+c.path, strings.NewReader(c.body))
+	base := ts.URL
+	if c.raw {
+		base = ts.Server.URL
+	}
+	req, err := http.NewRequestWithContext(ctx, c.method, base+c.path, strings.NewReader(c.body))
 	if err != nil {
 		return response{}, fmt.Errorf("new request: %w", err)
 	}
