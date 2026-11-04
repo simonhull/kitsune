@@ -42,6 +42,13 @@ Create an administrator first, then start the server:
 
 `serve` refuses to start while the database has no users, and prints the command above.
 
+`serve` keeps the database in step with `library.roots`: a quick scan at startup and another
+daily at `library.quick_scan`. The first scan reads all the audio to fingerprint it, which on
+a large library takes a while. Tracks appear as it goes, and `GET /readyz` answers 503 until
+it finishes, so point health checks that restart containers at `GET /healthz`. A moved file
+keeps its track; a vanished one is deleted after `library.missing_grace`. A root that is
+unreadable or suddenly empty is skipped, so an unmounted disk never deletes anything.
+
 Logs are JSON on stderr. `log.level = "debug"` adds one line per request; it records the
 path only, never the query. `GET /healthz` reports that the process is up, and
 `GET /readyz` that it is ready to serve. On SIGINT or SIGTERM the server stops accepting

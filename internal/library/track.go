@@ -54,7 +54,8 @@ func NewTrackWrite(f *audiometa.File, fi *FileInfo) store.TrackWrite {
 	setNumbers(&tw, &f.Tags)
 	setAlbum(&tw, &f.Tags)
 	for _, w := range f.Warnings {
-		tw.Warnings = append(tw.Warnings, w.String())
+		// A warning can embed a file path that is not UTF-8, which the store's JSON encoding rejects.
+		tw.Warnings = append(tw.Warnings, strings.ToValidUTF8(w.String(), "\uFFFD"))
 	}
 	return tw
 }

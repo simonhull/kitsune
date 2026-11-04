@@ -111,6 +111,16 @@ func TestNewTrackWriteBasicsWarnings(t *testing.T) {
 	}
 }
 
+func TestNewTrackWriteWarningsAreValidUTF8(t *testing.T) {
+	t.Parallel()
+	f := basicsFile()
+	f.Warnings = []audiometa.Warning{{Stage: audiometa.StageMetadata, Message: "bad path caf\xe9.mp3"}}
+	got := NewTrackWrite(f, testInfo()).Warnings
+	if want := []string{"metadata: bad path caf\uFFFD.mp3"}; !slices.Equal(got, want) {
+		t.Errorf("Warnings = %q, want %q", got, want)
+	}
+}
+
 func TestNewTrackWriteOriginalYear(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
