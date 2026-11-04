@@ -31,12 +31,6 @@
 
 {#if playing !== null}
 	<div class="stage">
-		<div class="poster" aria-hidden="true" style:--chars={longest}>
-			{#each lines as line, index (line)}
-				<span data-morph-part={`line-${String(index + 1)}`}>{line}</span>
-			{/each}
-		</div>
-
 		<div class="column">
 			<div class="top" data-morph-part="chrome">
 				<a
@@ -65,16 +59,23 @@
 			</div>
 
 			<div class="center">
-				<a
-					class="art"
-					href={resolve('/album/[id]', { id: playing.album.id })}
-					aria-label={`Go to the album ${playing.album.title}`}
-					data-sveltekit-replacestate
-					onclick={goUp}
-					use:morph={{ id: `cover:${playing.album.id}`, slot: 'poster', kind: 'cover' }}
-				>
-					<GeneratedCover albumId={playing.album.id} />
-				</a>
+				<div class="stack">
+					<div class="poster" aria-hidden="true" style:--chars={longest}>
+						{#each lines as line, index (line)}
+							<span data-morph-part={`line-${String(index + 1)}`}>{line}</span>
+						{/each}
+					</div>
+					<a
+						class="art"
+						href={resolve('/album/[id]', { id: playing.album.id })}
+						aria-label={`Go to the album ${playing.album.title}`}
+						data-sveltekit-replacestate
+						onclick={goUp}
+						use:morph={{ id: `cover:${playing.album.id}`, slot: 'poster', kind: 'cover' }}
+					>
+						<GeneratedCover albumId={playing.album.id} />
+					</a>
+				</div>
 				<div class="names">
 					<h1 use:morph={{ id: 'song', slot: 'poster', kind: 'title' }}>{playing.track.title}</h1>
 					<span class="artist" data-morph-part="details">
@@ -107,15 +108,23 @@
 		overflow: hidden;
 	}
 
+	/* The cover and the title behind it share a center, so they can't drift apart with height. */
+	.stack {
+		position: relative;
+		display: flex;
+		justify-content: center;
+		width: 100%;
+	}
+
 	.poster {
 		position: absolute;
-		left: 0;
-		right: 0;
-		top: 170px;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		font-size: min(230px, calc((100cqw - 32px) / (var(--chars) * 0.5)));
+		font-size: min(230px, 25.6dvh, calc((100cqw - 32px) / (var(--chars) * 0.5)));
 		font-weight: 900;
 		letter-spacing: -0.075em;
 		line-height: 0.8;
@@ -132,6 +141,8 @@
 	}
 
 	.top {
+		position: relative;
+		z-index: 1;
 		display: flex;
 		align-items: center;
 		gap: 12px;
@@ -304,8 +315,17 @@
 			padding: 16px;
 		}
 
+		/* Too narrow to frame the cover, so the title stands on it, tucked in by a fixed amount. */
+		.stack {
+			flex-direction: column;
+			align-items: center;
+		}
+
 		.poster {
-			top: 96px;
+			position: static;
+			transform: none;
+			margin-bottom: -16px;
+			font-size: min(11dvh, calc((100cqw - 32px) / (var(--chars) * 0.5)));
 		}
 
 		.chips {
@@ -318,7 +338,7 @@
 		}
 
 		.art {
-			width: min(280px, 38dvh, 100%);
+			width: min(280px, 33dvh, 100%);
 		}
 
 		.center {
@@ -344,6 +364,17 @@
 
 		.more {
 			flex: none;
+		}
+	}
+
+	@media (max-width: 720px) and (max-height: 700px) {
+		.art {
+			width: min(280px, 28dvh, 100%);
+		}
+
+		.center {
+			gap: 12px;
+			padding: 8px 0 4px;
 		}
 	}
 </style>
