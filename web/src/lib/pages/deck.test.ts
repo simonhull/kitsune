@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dealInterval, expectedGap, openingFor, queueCap, seedGapMs, wobble } from './deck';
+import { dealInterval, expectedGap, openingFor, queueCap, restOf, seedGapMs, wobble } from './deck';
 
 describe('dealInterval', () => {
 	it('spreads a burst over the gap, within a quarter either side', () => {
@@ -36,6 +36,24 @@ describe('wobble', () => {
 
 	it('gives each salt its own value', () => {
 		expect(wobble('album', 'tilt')).not.toBe(wobble('album', 'x'));
+	});
+});
+
+describe('restOf', () => {
+	it('keeps every card within 9 degrees and 14 pixels', () => {
+		for (let index = 0; index < 200; index += 1) {
+			const [, x, y, tilt] =
+				/translate\((.+)px, (.+)px\) rotate\((.+)deg\)/.exec(restOf(`album-${String(index)}`)) ??
+				[];
+			expect(Math.abs(Number(x))).toBeLessThanOrEqual(14);
+			expect(Math.abs(Number(y))).toBeLessThanOrEqual(14);
+			expect(Math.abs(Number(tilt))).toBeLessThanOrEqual(9);
+		}
+	});
+
+	it('gives the same album the same place', () => {
+		expect(restOf('album-1')).toBe(restOf('album-1'));
+		expect(restOf('album-1')).not.toBe(restOf('album-2'));
 	});
 });
 

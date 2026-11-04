@@ -1,7 +1,7 @@
 import type { MorphSlot } from './registry.ts';
 
 /** The tokens in `tokens.css`, which stay the one place a morph's length is set. */
-export type MotionToken = '--morph-fast' | '--morph' | '--morph-slow';
+export type MotionToken = '--morph-fast' | '--morph' | '--morph-slow' | '--morph-drop';
 
 /** A curve as designers say it: how long it feels, and how much it overshoots (0 to 1). */
 export interface Motion {
@@ -235,6 +235,17 @@ const comeForward: Part = {
 	ripple: { spread: 0, floor: 0.08 }
 };
 
+/** A cover landing on the deck: it comes down onto the pile from just above it. */
+export const drop: Part = {
+	from: { opacity: 0, y: -28, scale: 1.08 },
+	to: {},
+	delay: 0,
+	motion: { token: '--morph-drop', bounce: 0 }
+};
+
+/** The same landing with nothing moving, for reduced motion. */
+export const crossfade: Part = { from: { opacity: 0 }, to: {}, delay: 0, motion: quick };
+
 function rise(y: number, delay: number, motion: MotionSpec = base): Part {
 	return { from: { opacity: 0, y }, to: {}, delay, motion };
 }
@@ -280,7 +291,7 @@ const playing = {
 const homeToAlbum: Choreography = {
 	name: 'home-to-album',
 	motion: slow,
-	travel: { subject: 'to', sourceSlots: ['card'], targetSlots: ['hero'] },
+	travel: { subject: 'to', sourceSlots: ['card', 'deck'], targetSlots: ['hero'] },
 	leaving: fallBack,
 	arriving: { words: rise(20, 160), panel: rise(96, 160, slow) },
 	stages: { album: { from: { opacity: 0, scale: 1.08 }, to: {}, delay: 120, motion: slow } },
@@ -296,7 +307,7 @@ const homeToAlbum: Choreography = {
 const albumToHome: Choreography = {
 	name: 'album-to-home',
 	motion: base,
-	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['card', 'island'] },
+	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['card', 'deck', 'island'] },
 	leaving: sink,
 	arriving: { intro: comeForward, card: comeForward },
 	stages: { album: fadeOut(0, base) },

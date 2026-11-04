@@ -4,12 +4,12 @@
 		greeting,
 		healthNote,
 		listeningTime,
-		scanLine,
 		summary,
 		trackCount
 	} from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import AlbumGrid from '#lib/pages/AlbumGrid.svelte';
+	import Deck from '#lib/pages/Deck.svelte';
 	import FeatureTile from '#lib/pages/FeatureTile.svelte';
 	import RecentCover from '#lib/pages/RecentCover.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
@@ -30,10 +30,10 @@
 			{#if facts.albums > 0 && !library.deck}<span class="summary">{summary(facts)}</span>{/if}
 		</div>
 
-		{#if library.deck && library.pile.length > 0}
-			<p class="empty" role="status">{scanLine(facts)}</p>
-		{:else if facts.albums === 0 || library.deck}
-			<p class="empty" role="status">{emptyLine(facts, library.deck)}</p>
+		{#if library.deck}
+			<Deck {facts} />
+		{:else if facts.albums === 0}
+			<p class="empty" role="status">{emptyLine(facts, false)}</p>
 		{:else}
 			<section aria-label="Overview" class="overview">
 				{#if feature !== undefined}<FeatureTile album={feature} />{/if}

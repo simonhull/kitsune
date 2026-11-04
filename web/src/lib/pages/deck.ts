@@ -11,6 +11,9 @@ const slowestMs = 3000;
 const jitter = 0.25;
 const smallestQueue = 40;
 const largestQueue = 100;
+/** A pile is loose: wider than the 4 degrees of the one cover at rest anywhere else. */
+const tiltDegrees = 9;
+const offsetPixels = 14;
 
 function clamp(value: number, low: number, high: number): number {
 	return Math.min(high, Math.max(low, value));
@@ -19,6 +22,13 @@ function clamp(value: number, low: number, high: number): number {
 /** A stable number from -1 to 1 for this album: the pile looks the same on every reload. */
 export function wobble(id: string, salt = ''): number {
 	return ((fnv1a(`${salt}${id}`) % 2001) - 1000) / 1000;
+}
+
+/** Where a card lies on the pile, always the same place for the same album. */
+export function restOf(id: string): string {
+	const x = (offsetPixels * wobble(id, 'x')).toFixed(1);
+	const y = (offsetPixels * wobble(id, 'y')).toFixed(1);
+	return `translate(${x}px, ${y}px) rotate(${(tiltDegrees * wobble(id, 'tilt')).toFixed(2)}deg)`;
 }
 
 /** Folds one measured gap between bursts into the expected one. */

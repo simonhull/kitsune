@@ -71,16 +71,20 @@ export function pick<C extends Candidate>(
 	return picked;
 }
 
-/** Records where each picked source sat, so the way back can land on the same element. */
+/**
+ * Records where each picked source sat, so the way back can land on the same element. An id with
+ * no source is put down against `usual`, the slot it would have left from.
+ */
 export function recordOrigins<C extends Candidate>(
 	candidates: C[],
 	ids: readonly string[],
-	slot: MorphSlot,
+	usual: MorphSlot,
 	sources: Map<string, C>,
 	origins: Origins
 ): void {
 	for (const id of ids) {
 		const source = sources.get(id);
+		const slot = source?.slot ?? usual;
 		const siblings = candidates.filter((c) => c.id === id && c.slot === slot);
 		const ordinal = source === undefined ? -1 : siblings.indexOf(source);
 		origins.set(id, { slot, ordinal: ordinal < 0 ? null : ordinal });
