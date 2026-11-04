@@ -1,6 +1,7 @@
 <script lang="ts">
 	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
 	import type { Album, AlbumEntry } from '#lib/library/source.ts';
+	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 
 	interface Props {
@@ -21,11 +22,18 @@
 </script>
 
 <section aria-label="Album" class="hero">
-	<div class="art"><GeneratedCover {albumId} /></div>
-	<div class="words">
+	<div class="art" use:morph={{ id: `cover:${albumId}`, slot: 'hero', kind: 'cover' }}>
+		<GeneratedCover {albumId} />
+	</div>
+	<div class="words" data-morph-part="words">
 		<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>
 		<!-- The fit divides by length so the first frame is final: nothing measures, nothing jumps. -->
-		<h1 style:--chars={entry?.title.length ?? 10}>{entry?.title ?? ''}&nbsp;</h1>
+		<h1
+			style:--chars={entry?.title.length ?? 10}
+			use:morph={{ id: `title:${albumId}`, slot: 'hero', kind: 'title' }}
+		>
+			{entry?.title ?? ''}
+		</h1>
 		<div class="actions">
 			<button type="button" class="play" aria-label={`Play ${entry?.title ?? 'album'}`}>
 				<Icon name="play" size={28} />

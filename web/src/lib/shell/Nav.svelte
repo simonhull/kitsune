@@ -12,8 +12,14 @@
 
 <header class="bar">
 	<nav aria-label="Main" class="nav" data-route={route}>
-		<a class="fox" href={resolve('/')} aria-label="Kitsune home"><Icon name="fox" size={22} /></a>
-		<a class="item" href={resolve('/')} aria-current={route === 'home' ? 'page' : undefined}>Home</a
+		<a class="fox" href={resolve('/')} aria-label="Kitsune home" data-sveltekit-noscroll
+			><Icon name="fox" size={22} /></a
+		>
+		<a
+			class="item"
+			href={resolve('/')}
+			aria-current={route === 'home' ? 'page' : undefined}
+			data-sveltekit-noscroll>Home</a
 		>
 		<span class="item" aria-disabled="true" aria-current={route === 'album' ? 'page' : undefined}
 			>Albums</span

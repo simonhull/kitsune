@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
 	import type { AlbumEntry } from '#lib/library/source.ts';
+	import { morph } from '#lib/morph/registry.ts';
 
 	interface Props {
 		album: AlbumEntry;
@@ -11,9 +12,13 @@
 </script>
 
 <a class="card" href={resolve('/album/[id]', { id: album.id })}>
-	<span class="art"><GeneratedCover albumId={album.id} /></span>
+	<span class="art" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
+		><GeneratedCover albumId={album.id} /></span
+	>
 	<span class="names">
-		<span class="title">{album.title}</span>
+		<span class="title" use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}
+			>{album.title}</span
+		>
 		<span class="artist">{album.artist}</span>
 	</span>
 </a>

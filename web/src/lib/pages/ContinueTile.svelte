@@ -4,6 +4,7 @@
 	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
 	import { clock } from '#lib/library/format.ts';
 	import type { Home } from '#lib/library/source.ts';
+	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import Wash from '#lib/shell/Wash.svelte';
 
@@ -26,10 +27,14 @@
 	style:--tile-wash={palette.wash}
 >
 	<Wash albumId={album.id} variant="tile" />
-	<span class="art"><GeneratedCover albumId={album.id} /></span>
+	<span class="art" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
+		><GeneratedCover albumId={album.id} /></span
+	>
 	<span class="words">
 		<span class="label">Continue listening</span>
-		<span class="title">{album.title}</span>
+		<span class="title" use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}
+			>{album.title}</span
+		>
 		<span class="detail"
 			>{album.artist} · track {listening.trackNumber} of {listening.trackCount} · {clock(
 				listening.positionSeconds

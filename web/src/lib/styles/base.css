@@ -47,3 +47,13 @@ button {
 	outline: 2px solid var(--fox);
 	outline-offset: 2px;
 }
+
+/* View transitions: while a cover flies, its group carries the corners and the shadow. */
+[data-morph-square=''] {
+	border-radius: 0 !important;
+	box-shadow: none !important;
+}
+
+[data-morph-square='flat'] {
+	backdrop-filter: none !important;
+}

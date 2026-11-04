@@ -11,7 +11,7 @@
 	let { album, playingNumber }: Props = $props();
 </script>
 
-<section aria-label="Tracks" class="panel">
+<section aria-label="Tracks" class="panel" data-morph-part="panel">
 	{#if album !== undefined}
 		<div class="rows">
 			{#each album.tracks as track (track.number)}

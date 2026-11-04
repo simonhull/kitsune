@@ -3,6 +3,7 @@
 	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
 	import { clock } from '#lib/library/format.ts';
 	import type { NowPlaying } from '#lib/library/source.ts';
+	import { morph } from '#lib/morph/registry.ts';
 	import Icon from './Icon.svelte';
 	import { islandSlot } from './slot.svelte.ts';
 
@@ -50,7 +51,11 @@
 		>
 	{:else}
 		<a class="now" href={resolve('/now-playing')}>
-			<span class="thumb"><GeneratedCover albumId={playing.album.id} /></span>
+			<span
+				class="thumb"
+				use:morph={{ id: `cover:${playing.album.id}`, slot: 'island', kind: 'cover' }}
+				><GeneratedCover albumId={playing.album.id} /></span
+			>
 			<span class="names">
 				<span class="song">{playing.track.title}</span>
 				<span class="artist">{playing.album.artist}</span>

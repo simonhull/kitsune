@@ -4,11 +4,13 @@
 	import '#lib/styles/tokens.css';
 	import '#lib/styles/base.css';
 	import { onMount } from 'svelte';
-	import { preloadCode } from '$app/navigation';
+	import { onNavigate, preloadCode } from '$app/navigation';
 	import { page } from '$app/state';
 	import favicon from '#lib/assets/favicon.svg';
 	import { coverFor } from '#lib/cover/cover.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import { currentEngine } from '#lib/morph/engine.ts';
+	import { watchInput } from '#lib/morph/journey.ts';
 	import Backdrop from '#lib/shell/Backdrop.svelte';
 	import Nav from '#lib/shell/Nav.svelte';
 	import PlayerIsland from '#lib/shell/PlayerIsland.svelte';
@@ -32,11 +34,14 @@
 
 	const palette = $derived(stageAlbum === null ? null : coverFor(stageAlbum).palette);
 
+	onNavigate((navigation) => currentEngine().navigate(navigation));
+
 	onMount(() => {
 		void library.loadShell();
 		void Promise.all(['/', '/album/[id]', '/now-playing'] as const).then((routes) =>
 			Promise.all(routes.map((route) => preloadCode(route)))
 		);
+		return watchInput();
 	});
 </script>
 
