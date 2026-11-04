@@ -308,7 +308,7 @@ func TestServeRunsAndStops(t *testing.T) { //nolint:paralleltest // overrides au
 	useCheapParams(t)
 	ra := startApp(t, "")
 	ra.expectStatus(t, ra.do(t, http.MethodGet, healthURLPath, "", nil), http.StatusNoContent)
-	ra.expectStatus(t, ra.do(t, http.MethodGet, readyURLPath, "", nil), http.StatusNoContent)
+	ra.waitReady(t)
 	ra.expectStatus(t, ra.login(t, "", simonName, goodPassword, "", false), http.StatusOK)
 	if err := ra.stop(t); err != nil {
 		t.Errorf("serve = %v, want nil", err)
@@ -324,6 +324,23 @@ func TestServeRunsAndStops(t *testing.T) { //nolint:paralleltest // overrides au
 	}
 	if got := seen["listening"]["addr"]; got != ra.ln.Addr().String() {
 		t.Errorf("listening addr = %v, want %s", got, ra.ln.Addr())
+	}
+}
+
+// waitReady polls /readyz until it answers 204, which happens once the first
+// scan has finished.
+func (ra *runningApp) waitReady(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(pollDeadline)
+	for {
+		got := ra.do(t, http.MethodGet, readyURLPath, "", nil)
+		if got.status == http.StatusNoContent {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("/readyz = %d after %v, want 204; log: %s", got.status, pollDeadline, ra.logs)
+		}
+		time.Sleep(pollInterval)
 	}
 }
 
@@ -466,6 +483,87 @@ func TestServeStopsOnServeError(t *testing.T) { //nolint:paralleltest // overrid
 		t.Fatal("serve did not return after its listener failed")
 	}
 	if err = a.close(); err != nil {
+		t.Errorf("close = %v, want nil", err)
+	}
+}
+
+// libraryFixture is a config with a library root, and that root.
+type libraryFixture struct {
+	env  serveEnv
+	root string
+}
+
+// libraryEnv returns a config whose library has one root holding n copies of
+// the sample FLAC, and a user simon.
+func libraryEnv(t *testing.T, n int) libraryFixture {
+	t.Helper()
+	sample, err := os.ReadFile(filepath.Join("..", "..", "internal", "library", "testdata", "sample.flac"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close() //nolint:errcheck // The files are written; nothing to report.
+	for i := range n {
+		if err = dir.WriteFile(fmt.Sprintf("%02d.flac", i), sample, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := newServeEnv(t, fmt.Sprintf("[library]\nroots = [%q]\n", root))
+	if err = createUser(e.dataDir, simonName, goodPassword, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	return libraryFixture{env: e, root: root}
+}
+
+func TestServeScansLibrary(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	lib := libraryEnv(t, 1)
+	ra := serveApp(t, lib.env)
+	ra.waitReady(t)
+	states, err := ra.app.store.FileStates(t.Context(), lib.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := states["00.flac"]; st.TrackID == 0 || len(states) != 1 {
+		t.Errorf("states = %+v, want the one track", states)
+	}
+	entry := logMessages(t, ra.logs)["scan finished"]
+	if entry == nil {
+		t.Fatalf("no \"scan finished\" log line in %s", ra.logs)
+	}
+	if added, ok := entry["added"].(float64); !ok || added != 1 {
+		t.Errorf("scan finished = %v, want added 1", entry)
+	}
+}
+
+func TestServeNotReadyUntilScanned(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	e := newServeEnv(t, "")
+	if err := createUser(e.dataDir, simonName, goodPassword, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := newApp(t, e)
+	t.Cleanup(func() { _ = a.close() })
+	if err := a.ready(t.Context()); !errors.Is(err, errScanning) {
+		t.Errorf("ready before the scan = %v, want errScanning", err)
+	}
+	a.scanned.Store(true)
+	if err := a.ready(t.Context()); err != nil {
+		t.Errorf("ready after the scan = %v, want nil", err)
+	}
+}
+
+func TestServeStopsDuringScan(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	ra := serveApp(t, libraryEnv(t, 40).env)
+	if err := ra.stop(t); err != nil {
+		t.Errorf("serve = %v, want nil", err)
+	}
+	if err := ra.app.close(); err != nil {
 		t.Errorf("close = %v, want nil", err)
 	}
 }

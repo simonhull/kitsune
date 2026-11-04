@@ -17,11 +17,13 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/config"
+	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/server"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -112,14 +114,20 @@ func serveConfig(ctx context.Context, cfg *config.Config, configPath string, log
 	return a.serve(ctx, ln)
 }
 
+// errScanning is why /readyz fails until the first library scan has finished.
+var errScanning = errors.New("initial scan not finished")
+
 // app is a server with the state it needs to run.
 type app struct {
-	log      *slog.Logger
-	store    *store.Store
-	auth     *auth.Service
-	http     *http.Server
-	basePath string
-	dataDir  string
+	log       *slog.Logger
+	store     *store.Store
+	auth      *auth.Service
+	scanner   *library.Scanner
+	quickScan config.ClockTime
+	scanned   atomic.Bool // Set when the first scan has ended, whatever its outcome.
+	http      *http.Server
+	basePath  string
+	dataDir   string
 }
 
 // openApp opens the database and builds the HTTP server. It refuses to start
@@ -166,25 +174,41 @@ func buildApp(cfg *config.Config, st *store.Store, log *slog.Logger) (*app, erro
 	for _, n := range cfg.Server.TrustedProxies {
 		trusted = append(trusted, n.Prefix)
 	}
+	a := &app{
+		log:   log,
+		store: st,
+		auth:  svc,
+		scanner: library.NewScanner(st, library.Options{
+			Roots:        cfg.Library.Roots,
+			MissingGrace: cfg.Library.MissingGrace,
+			Logger:       log,
+		}),
+		quickScan: cfg.Library.QuickScan,
+		basePath:  cfg.Server.BasePath(),
+		dataDir:   cfg.Storage.DataDir,
+	}
 	handler := server.New(server.Config{
 		Auth:          svc,
 		Logger:        log,
 		ClientIP:      server.ForwardedClientIP(trusted),
 		SecureCookies: cfg.Server.HTTPS(),
 		BasePath:      cfg.Server.BasePath(),
-		Ready:         st.Ping,
+		Ready:         a.ready,
 	})
+	a.http = newHTTPServer(handler, log)
 	if cfg.Server.BaseURL != "" && len(trusted) == 0 {
 		log.Warn("base_url is set but trusted_proxies is empty; every client will share the proxy's address for login rate limits")
 	}
-	return &app{
-		log:      log,
-		store:    st,
-		auth:     svc,
-		http:     newHTTPServer(handler, log),
-		basePath: cfg.Server.BasePath(),
-		dataDir:  cfg.Storage.DataDir,
-	}, nil
+	return a, nil
+}
+
+// ready backs /readyz: it fails with errScanning until the first scan has
+// finished, then with the database's error if it can't be reached.
+func (a *app) ready(ctx context.Context) error {
+	if !a.scanned.Load() {
+		return errScanning
+	}
+	return a.store.Ping(ctx) //nolint:wrapcheck // The store's error already says what failed.
 }
 
 // newHTTPServer returns the HTTP server for h. It sets no ReadTimeout or
@@ -212,9 +236,14 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.log.InfoContext(ctx, "listening",
 		"addr", ln.Addr().String(), "version", version(), "basePath", a.basePath, "dataDir", a.dataDir)
 
-	purgeCtx, cancelPurge := context.WithCancel(ctx)
-	var purge sync.WaitGroup
-	purge.Go(func() { a.purgeSessions(purgeCtx) })
+	// The purge loop and the scanner stop together, and shutdown waits for both,
+	// so a pending scan batch is written before the store closes.
+	bgCtx, cancelBackground := context.WithCancel(ctx)
+	var background sync.WaitGroup
+	background.Go(func() { a.purgeSessions(bgCtx) })
+	background.Go(func() {
+		a.scanner.Run(bgCtx, a.quickScan.Hour, a.quickScan.Minute, func() { a.scanned.Store(true) })
+	})
 
 	served := make(chan error, 1)
 	go func() { served <- a.http.Serve(ln) }()
@@ -229,8 +258,8 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	case <-ctx.Done():
 		result = a.shutdown(ctx, served)
 	}
-	cancelPurge()
-	purge.Wait()
+	cancelBackground()
+	background.Wait()
 	a.log.InfoContext(context.WithoutCancel(ctx), "stopped")
 	return result
 }
