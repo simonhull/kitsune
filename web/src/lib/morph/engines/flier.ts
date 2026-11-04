@@ -196,6 +196,23 @@ export class CoverFlier implements Flier {
 		return scaleShadow(boxShadow, this.#base / element.offsetWidth);
 	}
 
+	/**
+	 * Lays a sharper picture over the one in flight, once it has decoded. Never the other way: a
+	 * flight can't wait for bytes, so it leaves on what's already on screen. It's the same picture,
+	 * so no crossfade: the only change is that it stops being soft.
+	 */
+	sharpen(url: string): void {
+		const image = new Image();
+		image.src = url;
+		image.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover';
+		image
+			.decode()
+			.then(() => {
+				this.#face.append(image);
+			})
+			.catch(() => undefined);
+	}
+
 	get target(): MorphEntry | null {
 		return this.#target;
 	}

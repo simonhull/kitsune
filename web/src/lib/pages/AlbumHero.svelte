@@ -1,5 +1,5 @@
 <script lang="ts">
-	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
+	import Cover from '#lib/cover/Cover.svelte';
 	import { albumFacts } from '#lib/library/format.ts';
 	import type { Album, AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
@@ -24,7 +24,7 @@
 		data-morph-part="art"
 		use:morph={{ id: `cover:${albumId}`, slot: 'hero', kind: 'cover' }}
 	>
-		<GeneratedCover {albumId} />
+		<Cover {albumId} {entry} place="stage" />
 	</div>
 	<div class="words" data-morph-part="words">
 		<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>

@@ -10,6 +10,7 @@ import {
 	type MotionToken,
 	type RouteName
 } from './choreography.ts';
+import { preload } from '#lib/cover/rungs.ts';
 import { library } from '#lib/library/library.svelte.ts';
 import { markClick } from './hud.svelte.ts';
 import { pick, recordOrigins, type Origins } from './pairs.ts';
@@ -53,16 +54,31 @@ export function watchInput(): () => void {
 		lastClick = event.target;
 		markClick(performance.now());
 	}
+	function onPointerDown({ target }: PointerEvent): void {
+		preloadFor(target instanceof Element ? target.closest('a') : null);
+	}
 	function onPopState(event: PopStateEvent): void {
 		visualTransition = event.hasUAVisualTransition;
 		markClick(performance.now());
 	}
 	document.addEventListener('click', onClick, { capture: true });
+	document.addEventListener('pointerdown', onPointerDown, { capture: true, passive: true });
 	window.addEventListener('popstate', onPopState, { capture: true });
 	return () => {
 		document.removeEventListener('click', onClick, { capture: true });
+		document.removeEventListener('pointerdown', onPointerDown, { capture: true });
 		window.removeEventListener('popstate', onPopState, { capture: true });
 	};
+}
+
+/** A click is a hundred milliseconds of warning: the stage's cover starts moving now. */
+function preloadFor(link: HTMLAnchorElement | null): void {
+	const [, id] = /^\/album\/([^/]+)/.exec(link?.pathname ?? '') ?? [];
+	if (id !== undefined) {
+		preload(library.entry(decodeURIComponent(id))?.artwork, 'stage');
+	} else if (link?.pathname === '/now-playing') {
+		preload(library.playing?.album.artwork, 'stage');
+	}
 }
 
 function reducedMotion(): boolean {

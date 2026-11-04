@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { coverFor } from '#lib/cover/cover.ts';
-	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
+	import Cover from '#lib/cover/Cover.svelte';
+	import { paletteFor } from '#lib/cover/palette.ts';
 	import type { AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Wash from '#lib/shell/Wash.svelte';
@@ -12,7 +12,7 @@
 
 	let { album }: Props = $props();
 
-	const palette = $derived(coverFor(album.id).palette);
+	const palette = $derived(paletteFor(album));
 </script>
 
 <a
@@ -22,9 +22,9 @@
 	style:background={palette.stage}
 	style:--tile-wash={palette.wash}
 >
-	<Wash albumId={album.id} variant="tile" />
+	<Wash {palette} variant="tile" />
 	<span class="art" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
-		><GeneratedCover albumId={album.id} /></span
+		><Cover albumId={album.id} entry={album} place="card" /></span
 	>
 	<span class="words">
 		<span class="label">Just added</span>

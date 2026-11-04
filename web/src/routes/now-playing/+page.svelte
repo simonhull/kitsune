@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { coverFor } from '#lib/cover/cover.ts';
-	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
+	import Cover from '#lib/cover/Cover.svelte';
 	import { balancedLines, credit, gain, trackGain } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
@@ -77,7 +76,7 @@
 						onclick={goUp}
 						use:morph={{ id: `cover:${playing.album.id}`, slot: 'poster', kind: 'cover' }}
 					>
-						<GeneratedCover albumId={playing.album.id} />
+						<Cover albumId={playing.album.id} entry={playing.album} place="stage" />
 					</a>
 				</div>
 				<div class="names">
@@ -95,7 +94,9 @@
 					<span class="next-label">UP NEXT</span>
 					{#each playing.upNext as upcoming, index (upcoming.id)}
 						<span class="pill" style:opacity={1 - index * 0.2}>
-							<span class="dot" style:background={coverFor(playing.album.id).palette.base}></span>
+							<span class="dot"
+								><Cover albumId={playing.album.id} entry={playing.album} place="small" /></span
+							>
 							<span class="pill-name" class:lead={index === 0}>{upcoming.title}</span>
 						</span>
 					{/each}
@@ -294,9 +295,12 @@
 	}
 
 	.dot {
+		position: relative;
+		flex: none;
 		width: 36px;
 		height: 36px;
 		border-radius: 50%;
+		overflow: hidden;
 	}
 
 	.pill-name {

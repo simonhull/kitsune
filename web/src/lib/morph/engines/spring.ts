@@ -101,7 +101,11 @@ function capture(source: MorphEntry): Capture {
 /** Draws what a flier shows: a cover's art, or a control as it stands. */
 function pictureOf({ element, kind }: MorphEntry): Node {
 	if (kind === 'cover') {
-		return (element.firstElementChild ?? element).cloneNode(true);
+		const picture = (element.firstElementChild ?? element).cloneNode(true);
+		if (picture instanceof Element) {
+			settleImages(picture);
+		}
+		return picture;
 	}
 	const picture = element.cloneNode(true);
 	if (picture instanceof HTMLElement) {
@@ -109,6 +113,22 @@ function pictureOf({ element, kind }: MorphEntry): Node {
 		picture.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;margin:0';
 	}
 	return picture;
+}
+
+/**
+ * Makes a clone's images paint on its first frame, from what's already decoded. One still on its
+ * way shows nothing where it stands, so its clone mustn't start a fetch of its own.
+ */
+function settleImages(picture: Element): void {
+	for (const image of picture.querySelectorAll('img')) {
+		if (image.hasAttribute('data-cover-pending')) {
+			image.removeAttribute('src');
+			image.remove();
+		} else {
+			image.loading = 'eager';
+			image.decoding = 'sync';
+		}
+	}
 }
 
 /** The outgoing page, as an inert picture of itself. */
@@ -326,14 +346,13 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 				drawTitle(target.element)
 			);
 		}
-		const to = measureCover(target.element);
-		const growing = to.width >= source.shape.width;
-		return new CoverFlier(
-			source.shape,
-			target,
-			growing ? pictureOf(target) : source.picture,
-			source.shadow
-		);
+		const flier = new CoverFlier(source.shape, target, source.picture, source.shadow);
+		const want =
+			target.element.querySelector<HTMLElement>('[data-cover-want]')?.dataset['coverWant'];
+		if (want !== undefined && measureCover(target.element).width >= source.shape.width) {
+			flier.sharpen(want);
+		}
+		return flier;
 	}
 
 	function arrive(journey: Journey, path: string, targets: Map<string, MorphEntry>): void {

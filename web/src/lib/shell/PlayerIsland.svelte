@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
+	import Cover from '#lib/cover/Cover.svelte';
 	import { clock } from '#lib/library/format.ts';
 	import type { NowPlaying } from '#lib/library/cue.ts';
 	import { morph } from '#lib/morph/registry.ts';
@@ -92,7 +92,7 @@
 				<span
 					class="thumb"
 					use:morph={{ id: `cover:${playing.album.id}`, slot: 'island', kind: 'cover' }}
-					><GeneratedCover albumId={playing.album.id} /></span
+					><Cover albumId={playing.album.id} entry={playing.album} place="small" /></span
 				>
 				<span class="names">
 					<span class="song" use:morph={{ id: 'song', slot: 'island', kind: 'title' }}

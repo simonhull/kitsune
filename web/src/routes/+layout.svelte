@@ -7,7 +7,7 @@
 	import { page } from '$app/state';
 	import { goto, onNavigate, preloadCode } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { coverFor } from '#lib/cover/cover.ts';
+	import { paletteFor } from '#lib/cover/palette.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { loginPath } from '#lib/library/session.ts';
 	import { startMorphs } from '#lib/morph/engine.ts';
@@ -36,7 +36,8 @@
 		return lastStageAlbum;
 	});
 
-	const palette = $derived(stageAlbum === null ? null : coverFor(stageAlbum).palette);
+	const stageEntry = $derived(stageAlbum === null ? undefined : library.entry(stageAlbum));
+	const palette = $derived(stageAlbum === null ? null : paletteFor(stageEntry));
 
 	onNavigate(startMorphs());
 
@@ -61,14 +62,19 @@
 	style:--wash={palette?.wash}
 	style:--stage={palette?.stage}
 >
-	<Backdrop albumId={stageAlbum} mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : 'clear'} />
+	<Backdrop
+		albumId={stageAlbum}
+		{palette}
+		known={stageEntry !== undefined}
+		mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : 'clear'}
+	/>
 	<Nav
 		route={onNowPlaying || onLogin ? 'gone' : onAlbum ? 'album' : 'home'}
 		healthIssues={library.facts?.issues}
 	/>
 	<main>{@render children()}</main>
 	<div class="ghost-layer" aria-hidden="true"></div>
-	{#if stageAlbum !== null}<Bloom albumId={stageAlbum} />{/if}
+	{#if palette !== null}<Bloom {palette} />{/if}
 	{#if library.playing !== null && !onLogin}
 		<PlayerIsland playing={library.playing} expanded={onNowPlaying} />
 	{/if}

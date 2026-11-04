@@ -16,6 +16,8 @@ import {
 const recentCount = 6;
 /** How long to leave a server that isn't answering, or a library still empty. */
 const retryMs = 5000;
+/** How often a broken cover may ask whether the session is still good. */
+const probeMs = 30_000;
 
 export type Session = 'signed-in' | 'signed-out' | 'down';
 
@@ -55,6 +57,7 @@ export class Library {
 	#more: Promise<void> | null = null;
 	#retry: ReturnType<typeof setTimeout> | undefined;
 	#expiring = false;
+	#probedAt = -probeMs;
 
 	constructor(
 		source: LibrarySource | ((expired: () => void) => LibrarySource),
@@ -95,6 +98,15 @@ export class Library {
 			return 'signed-in';
 		} catch (error) {
 			return error instanceof UnauthorizedError ? 'signed-out' : 'down';
+		}
+	}
+
+	/** Asks whether the session survives: a 401 here goes to the door like any other. */
+	probe(): void {
+		const now = performance.now();
+		if (now - this.#probedAt >= probeMs) {
+			this.#probedAt = now;
+			this.#source.me().catch(() => undefined);
 		}
 	}
 

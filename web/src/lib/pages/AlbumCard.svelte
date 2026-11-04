@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
+	import Cover from '#lib/cover/Cover.svelte';
 	import type { AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
 
@@ -13,7 +13,7 @@
 
 <a class="card" data-morph-part="card" href={resolve('/album/[id]', { id: album.id })}>
 	<span class="art" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
-		><GeneratedCover albumId={album.id} /></span
+		><Cover albumId={album.id} entry={album} place="card" lazy /></span
 	>
 	<span class="names">
 		<span class="title" use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}
