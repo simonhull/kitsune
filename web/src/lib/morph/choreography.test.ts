@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { Channel } from './channel';
 import {
 	blend,
+	bloomFrames,
+	bloomOpenness,
+	bloomStrength,
 	choreographyFor,
 	linearEasing,
 	parseTime,
@@ -140,6 +143,52 @@ describe('Channel', () => {
 		follower.adopt(source);
 		expect(follower.value).toBe(source.value);
 		expect(follower.velocity).toBe(source.velocity);
+	});
+});
+
+describe('bloom', () => {
+	const shape = { rest: 0.12, full: 2.6, peak: 0.9 };
+	const out = { direction: 'out', ...shape } as const;
+	const back = { direction: 'in', ...shape } as const;
+
+	it('is dark at both ends and reaches its peak between them', () => {
+		expect(bloomStrength(0, 0.9)).toBe(0);
+		expect(bloomStrength(1, 0.9)).toBe(0);
+		expect(bloomStrength(0.4, 0.9)).toBeCloseTo(0.9, 2);
+	});
+
+	it('tolerates a spring overshooting either end', () => {
+		expect(bloomStrength(1.01, 0.9)).toBe(0);
+		expect(bloomStrength(-0.01, 0.9)).toBe(0);
+	});
+
+	it('samples the same curve the spring engine computes live', () => {
+		const samples = 40;
+		const frames = bloomFrames(motion, out, samples);
+		const interval = settleTime(motion) / 1000 / samples;
+		const live = new Channel(out.rest, out.full);
+		const params = springParams(motion);
+		for (const frame of frames.slice(0, -1)) {
+			expect(frame.scale).toBeCloseTo(live.value, 6);
+			expect(frame.opacity).toBeCloseTo(bloomStrength(bloomOpenness(live.value, out), out.peak), 6);
+			live.step(params, interval);
+		}
+	});
+
+	it('shows the same strength at the same size in both directions', () => {
+		const opening = bloomFrames(motion, out);
+		const closing = bloomFrames(motion, back);
+		for (const [index, frame] of opening.entries()) {
+			expect(closing.at(index)?.scale).toBeCloseTo(out.full + out.rest - frame.scale, 6);
+		}
+		expect(bloomStrength(bloomOpenness(1, out), out.peak)).toBe(
+			bloomStrength(bloomOpenness(1, back), back.peak)
+		);
+	});
+
+	it('ends dark, so nothing pops when the flight lands', () => {
+		expect(bloomFrames(motion, out).at(-1)?.opacity).toBe(0);
+		expect(bloomFrames(motion, back).at(-1)?.opacity).toBe(0);
 	});
 });
 

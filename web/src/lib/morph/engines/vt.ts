@@ -1,6 +1,7 @@
 import type { OnNavigate } from '$app/navigation';
 import {
 	blendDuration,
+	bloomFrames,
 	linearEasing,
 	settleTime,
 	type Choreography,
@@ -160,17 +161,15 @@ function bloomRules(
 		return '';
 	}
 	const curve = motionOf(motion);
-	const out = bloom.direction === 'out';
-	const start = bloomPose(from, out ? bloom.rest : bloom.full);
-	const end = bloomPose(to, out ? bloom.full : bloom.rest);
+	const frames = bloomFrames(curve, bloom).map(({ offset, travel, scale, opacity }) => {
+		const at = { x: from.x + (to.x - from.x) * travel, y: from.y + (to.y - from.y) * travel };
+		return `${(offset * 100).toFixed(2)}% { opacity: ${opacity.toFixed(3)}; transform: ${bloomPose(at, scale)}; }`;
+	});
+	// The curve is baked into the frames: any easing here would apply it twice.
 	return `
-@keyframes m-bloom {
-	0% { opacity: ${String(out ? 0 : bloom.peak)}; transform: ${start}; }
-	25% { opacity: ${String(bloom.peak)}; }
-	100% { opacity: 0; transform: ${end}; }
-}
+@keyframes m-bloom { ${frames.join(' ')} }
 ::view-transition-new(m-bloom) {
-	animation: m-bloom ${String(settleTime(curve))}ms ${linearEasing(curve)} both;
+	animation: m-bloom ${String(settleTime(curve))}ms linear both;
 	mix-blend-mode: normal;
 }`;
 }

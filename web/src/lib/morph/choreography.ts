@@ -119,6 +119,14 @@ interface SharedTravel {
 	targetSlots: readonly ('card' | 'hero' | 'island')[];
 }
 
+/** The light around the cover: its scale at the cover and at full size, and its strength. */
+export interface Bloom {
+	direction: 'out' | 'in';
+	rest: number;
+	full: number;
+	peak: number;
+}
+
 export interface Choreography {
 	name: ChoreographyName;
 	/** The curve shared elements fly on. */
@@ -130,9 +138,11 @@ export interface Choreography {
 	arriving: Partial<Record<'page' | 'words' | 'panel', Part>>;
 	/** The blurred album stage. */
 	stage: Part | null;
-	/** The light around the cover: its scale at the cover and at full size, and its strength. */
-	bloom: { direction: 'out' | 'in'; rest: number; full: number; peak: number } | null;
+	/** The light around the cover. */
+	bloom: Bloom | null;
 }
+
+const bloomShape = { rest: 0.12, full: 2.6, peak: 0.9 } as const;
 
 const slow: MotionSpec = { token: '--morph-slow', bounce: 0.08 };
 const base: MotionSpec = { token: '--morph', bounce: 0.04 };
@@ -153,7 +163,7 @@ const homeToAlbum: Choreography = {
 		panel: { from: { opacity: 0, y: 120 }, to: {}, delay: 140, motion: slow }
 	},
 	stage: { from: { opacity: 0, scale: 1.08 }, to: {}, delay: 120, motion: slow },
-	bloom: { direction: 'out', rest: 0.12, full: 2.6, peak: 0.95 }
+	bloom: { direction: 'out', ...bloomShape }
 };
 
 /**
@@ -170,7 +180,7 @@ const albumToHome: Choreography = {
 		page: { from: { opacity: 0, scale: 0.94 }, to: {}, delay: 100, motion: base }
 	},
 	stage: { from: {}, to: { opacity: 0 }, delay: 0, motion: base },
-	bloom: { direction: 'in', rest: 0.12, full: 2.6, peak: 0.7 }
+	bloom: { direction: 'in', ...bloomShape }
 };
 
 /** Everything without its own journey yet, and all of reduced motion: never a hard cut. */
@@ -183,6 +193,51 @@ export const blend: Choreography = {
 	stage: null,
 	bloom: null
 };
+
+/**
+ * How strong the bloom is at a given openness, from 0 at the cover to 1 at full size. This is
+ * the one bloom curve: it depends only on the bloom's size, never on the clock or the direction,
+ * so both engines match and a turn in mid-air can't make it jump.
+ */
+export function bloomStrength(open: number, peak: number): number {
+	const clamped = Math.min(1, Math.max(0, open));
+	return peak * Math.min(1, clamped / 0.2) * (1 - clamped ** 6);
+}
+
+/** Finds how open a bloom of this scale is. */
+export function bloomOpenness(scale: number, { rest, full }: Bloom): number {
+	return (scale - rest) / (full - rest);
+}
+
+export interface BloomFrame {
+	/** Where this frame falls in the flight, from 0 to 1. */
+	offset: number;
+	/** How far the cover has travelled: 0 at its source, 1 at its target. */
+	travel: number;
+	scale: number;
+	opacity: number;
+}
+
+/** Samples a whole bloom in advance, for an engine that can't compute it per frame. */
+export function bloomFrames(motion: Motion, bloom: Bloom, samples = 40): BloomFrame[] {
+	const params = springParams(motion);
+	const interval = settleTime(motion) / 1000 / samples;
+	const frames: BloomFrame[] = [];
+	let state: SpringState = { offset: 1, velocity: 0 };
+	for (let index = 0; index <= samples; index += 1) {
+		const travel = index === samples ? 1 : 1 - state.offset;
+		const open = bloom.direction === 'out' ? travel : 1 - travel;
+		const scale = bloom.rest + (bloom.full - bloom.rest) * open;
+		frames.push({
+			offset: index / samples,
+			travel,
+			scale,
+			opacity: bloomStrength(open, bloom.peak)
+		});
+		state = stepSpring(params, state, interval);
+	}
+	return frames;
+}
 
 /** The length of a blend, in milliseconds. */
 export const blendDuration = 120;

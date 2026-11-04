@@ -2,6 +2,8 @@ import type { OnNavigate } from '$app/navigation';
 import { Channel } from '../channel.ts';
 import {
 	blendDuration,
+	bloomOpenness,
+	bloomStrength,
 	springParams,
 	type Choreography,
 	type Part,
@@ -80,7 +82,6 @@ interface Bloom {
 	element: HTMLElement;
 	cover: CoverFlier;
 	scale: Channel;
-	strength: Channel;
 	spec: NonNullable<Choreography['bloom']>;
 }
 
@@ -304,7 +305,6 @@ export function createSpringEngine(): Engine {
 				element,
 				cover,
 				scale: new Channel(out ? spec.rest : spec.full, out ? spec.full : spec.rest),
-				strength: new Channel(out ? 0 : spec.peak),
 				spec
 			};
 			element.dataset['morphBloom'] = 'open';
@@ -321,14 +321,11 @@ export function createSpringEngine(): Engine {
 		if (bloom === null) {
 			return;
 		}
-		const { scale, strength, spec, element, cover } = bloom;
+		const { scale, spec, element, cover } = bloom;
 		scale.step(flight, seconds);
-		const open = Math.min(1, Math.max(0, (scale.value - spec.rest) / (spec.full - spec.rest)));
-		strength.target = spec.peak * Math.min(1, open / 0.25) * Math.sqrt(1 - open);
-		strength.step(springParams({ duration: 120, bounce: 0 }), seconds);
 		const { x, y } = cover.center;
 		element.style.transform = `translate(${(x - innerWidth / 2).toFixed(1)}px, ${(y - innerHeight / 2).toFixed(1)}px) scale(${scale.value.toFixed(3)})`;
-		element.style.opacity = Math.max(0, strength.value).toFixed(3);
+		element.style.opacity = bloomStrength(bloomOpenness(scale.value, spec), spec.peak).toFixed(3);
 	}
 
 	function closeBloom(): void {
