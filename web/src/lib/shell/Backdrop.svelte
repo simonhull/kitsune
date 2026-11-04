@@ -50,8 +50,9 @@
 		inset: 0;
 		background: linear-gradient(
 			180deg,
-			rgb(10 9 8 / 0%) 30%,
-			rgb(10 9 8 / 55%) 70%,
+			rgb(10 9 8 / 0%) 14%,
+			rgb(10 9 8 / 34%) 48%,
+			rgb(10 9 8 / 58%) 70%,
 			var(--ground) 100%
 		);
 	}

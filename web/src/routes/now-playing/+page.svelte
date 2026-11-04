@@ -222,7 +222,9 @@
 			0 0 0 1px rgb(255 255 255 / 8%);
 	}
 
+	/* Positioned, so the cover's long shadow falls behind the words and not across them. */
 	.names {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: center;

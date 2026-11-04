@@ -37,6 +37,12 @@ describe('fixtures', () => {
 		await expect(source.album('tin-lantern-78')).resolves.toBeDefined();
 	});
 
+	it('counts the same issues it lists', async () => {
+		const { health } = await source.home();
+		const listed = (health.detail.match(/\d+/g) ?? []).map(Number);
+		expect(listed.reduce((sum, count) => sum + count, 0)).toBe(health.issues);
+	});
+
 	it('rejects an unknown album', async () => {
 		await expect(source.album('nope')).rejects.toBeInstanceOf(AlbumNotFoundError);
 	});

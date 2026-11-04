@@ -128,7 +128,7 @@ const home: Home = {
 		trackCount: 10,
 		positionSeconds: 102
 	},
-	health: { issues: 14, detail: '6 missing ReplayGain · 3 duplicates' },
+	health: { issues: 9, detail: '6 missing ReplayGain · 3 duplicates' },
 	week: { listened: '11h 40m', detail: '212 plays · top: Low Tide Choir' },
 	recentlyAdded: [paperSuns, redSignal, longSummer, tidewater, afterHours],
 	onRepeat: [glasshouse, nightFerry, orbitals, quietMachines, harbourLights]

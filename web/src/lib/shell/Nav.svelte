@@ -98,7 +98,8 @@
 	}
 
 	.nav:is([data-route='album'], [data-route='gone']) {
-		background: color-mix(in srgb, var(--stage) 50%, transparent);
+		/* Heavier than the board's 50%: at that level the glow behind it fails AA on most albums. */
+		background: color-mix(in srgb, var(--stage) 68%, transparent);
 		border-color: rgb(255 255 255 / 10%);
 		box-shadow: none;
 	}
@@ -186,12 +187,13 @@
 		height: var(--target);
 		min-width: var(--target);
 		margin-left: 4px;
-		padding: 0 14px;
+		padding: 0 8px 0 14px;
 		border-radius: var(--radius-pill);
 		background: rgb(255 255 255 / 6%);
 		transition:
 			background var(--morph) var(--curve-morph),
-			margin var(--morph) var(--curve-morph);
+			margin var(--morph) var(--curve-morph),
+			padding var(--morph) var(--curve-morph);
 		display: flex;
 		align-items: center;
 		color: var(--text-meta);
@@ -200,6 +202,7 @@
 
 	:is([data-route='album'], [data-route='gone']) .search {
 		margin-left: 0;
+		padding: 0 14px;
 		background: rgb(255 255 255 / 8%);
 		color: var(--wash);
 	}
@@ -209,7 +212,6 @@
 		align-items: center;
 		gap: 12px;
 		padding-left: 12px;
-		margin-right: -6px;
 	}
 
 	.key {
