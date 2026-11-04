@@ -37,16 +37,21 @@ CREATE TABLE artwork (
 
 CREATE TABLE albums (
 	id          INTEGER PRIMARY KEY,
+	ulid        TEXT    NOT NULL UNIQUE CHECK (length(ulid) = 26), -- public ID; kept across updates
 	group_key   TEXT    NOT NULL UNIQUE, -- caller-computed grouping key; the identity
 	name        TEXT    NOT NULL,
-	sort_name   TEXT    NOT NULL,
+	sort_name   TEXT    NOT NULL COLLATE NOCASE, -- the collation must be on the column for keyset seeks
+	artist      TEXT    NOT NULL,        -- display name
 	mbid        TEXT,
 	year        INTEGER,
 	compilation INTEGER NOT NULL CHECK (compilation IN (0, 1)),
-	artwork_hash BLOB REFERENCES artwork (hash) -- NULL when the album has no cover
+	artwork_hash BLOB REFERENCES artwork (hash), -- NULL when the album has no cover
+	added_at    INTEGER NOT NULL                 -- first sight; kept across updates
 ) STRICT;
 
 CREATE INDEX albums_artwork ON albums (artwork_hash);
+CREATE INDEX albums_sort ON albums (sort_name, id);
+CREATE INDEX albums_added ON albums (added_at DESC, id DESC);
 
 CREATE TABLE tracks (
 	id            INTEGER PRIMARY KEY,  -- internal; the FTS rowid
@@ -85,6 +90,7 @@ CREATE TABLE tracks (
 ) STRICT;
 
 CREATE INDEX tracks_album ON tracks (album_id, disc_no, track_no);
+CREATE INDEX tracks_live ON tracks (album_id, duration_ms) WHERE missing_since IS NULL;
 CREATE INDEX tracks_missing_digest ON tracks (audio_digest) WHERE missing_since IS NOT NULL;
 CREATE INDEX tracks_missing_since ON tracks (missing_since) WHERE missing_since IS NOT NULL;
 

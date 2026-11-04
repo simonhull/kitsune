@@ -18,11 +18,12 @@ ON CONFLICT (hash) DO UPDATE SET
     source = excluded.source;
 
 -- name: UpsertAlbum :one
-INSERT INTO albums (group_key, name, sort_name, mbid, year, compilation, artwork_hash)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO albums (ulid, group_key, name, sort_name, artist, mbid, year, compilation, artwork_hash, added_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (group_key) DO UPDATE SET
     name = excluded.name,
     sort_name = excluded.sort_name,
+    artist = excluded.artist,
     mbid = coalesce(excluded.mbid, albums.mbid),
     year = excluded.year,
     compilation = excluded.compilation,

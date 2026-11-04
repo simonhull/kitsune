@@ -75,7 +75,7 @@ func writeBody(w http.ResponseWriter, status int, mediaType string, v any) {
 	}
 	h.Set("Content-Type", mediaType)
 	w.WriteHeader(status)
-	_, _ = w.Write(body)
+	_, _ = w.Write(body) //nolint:gosec // G705: a JSON body of api types with a JSON media type; browsers do not render it as HTML.
 }
 
 // marshal encodes v. Raw tags straight from audio files may hold invalid

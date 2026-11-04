@@ -473,11 +473,12 @@ func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (int64
 }
 
 const upsertAlbum = `-- name: UpsertAlbum :one
-INSERT INTO albums (group_key, name, sort_name, mbid, year, compilation, artwork_hash)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO albums (ulid, group_key, name, sort_name, artist, mbid, year, compilation, artwork_hash, added_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (group_key) DO UPDATE SET
     name = excluded.name,
     sort_name = excluded.sort_name,
+    artist = excluded.artist,
     mbid = coalesce(excluded.mbid, albums.mbid),
     year = excluded.year,
     compilation = excluded.compilation,
@@ -486,24 +487,30 @@ RETURNING id
 `
 
 type UpsertAlbumParams struct {
+	Ulid        string
 	GroupKey    string
 	Name        string
 	SortName    string
+	Artist      string
 	Mbid        *string
 	Year        *int64
 	Compilation int64
 	ArtworkHash []byte
+	AddedAt     int64
 }
 
 func (q *Queries) UpsertAlbum(ctx context.Context, arg UpsertAlbumParams) (int64, error) {
 	row := q.queryRow(ctx, q.upsertAlbumStmt, upsertAlbum,
+		arg.Ulid,
 		arg.GroupKey,
 		arg.Name,
 		arg.SortName,
+		arg.Artist,
 		arg.Mbid,
 		arg.Year,
 		arg.Compilation,
 		arg.ArtworkHash,
+		arg.AddedAt,
 	)
 	var id int64
 	err := row.Scan(&id)

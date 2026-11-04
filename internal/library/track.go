@@ -107,6 +107,36 @@ func setAlbum(tw *store.TrackWrite, t *audiometa.Tags) {
 	}
 	tw.Album.SortName = cmp.Or(single(t, keysAlbumSort), tw.Album.Name)
 	tw.Album.GroupKey = groupKey(tw)
+	// After grouping, which still sees the real (possibly empty) name.
+	tw.Album.Name = cmp.Or(tw.Album.Name, unknownAlbum)
+	tw.Album.SortName = cmp.Or(tw.Album.SortName, unknownAlbum)
+	tw.Album.Artist = albumArtistName(tw)
+}
+
+// Display fallbacks for an album with no title or no artist tags.
+const (
+	unknownAlbum   = "Unknown Album"
+	unknownArtist  = "Unknown Artist"
+	variousArtists = "Various Artists"
+)
+
+// albumArtistName returns the album's display artist: the album artists, joined
+// with ", "; else Various Artists for a compilation; else the first track
+// artist, which is stable because [groupKey] uses it too.
+func albumArtistName(tw *store.TrackWrite) string {
+	switch {
+	case len(tw.AlbumArtists) > 0:
+		names := make([]string, len(tw.AlbumArtists))
+		for i := range tw.AlbumArtists {
+			names[i] = tw.AlbumArtists[i].Name
+		}
+		return strings.Join(names, ", ")
+	case tw.Compilation:
+		return variousArtists
+	case len(tw.Artists) > 0:
+		return tw.Artists[0].Name
+	}
+	return unknownArtist
 }
 
 // artists maps the track artists, falling back to the single Artist field.

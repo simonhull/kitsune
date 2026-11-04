@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	testRoot = "/music"
-	badPath  = "bad.flac"
+	flacFormat = "flac"
+	testRoot   = "/music"
+	badPath    = "bad.flac"
 )
 
 // newWrite returns a distinct valid write: its own album and artist per index.
@@ -27,13 +28,15 @@ func newWrite(i int) store.TrackWrite {
 		Size:      1000 + int64(i),
 		MTime:     time.UnixMilli(1_761_000_000_000 + int64(i)).UTC().Add(456789 * time.Nanosecond),
 		Digest:    sha256.Sum256([]byte(strconv.Itoa(i))),
-		Format:    "flac",
-		Codec:     "flac",
+		Format:    flacFormat,
+		Codec:     flacFormat,
 		Duration:  200*time.Second + 123*time.Millisecond,
 		Title:     fmt.Sprintf("Title %d", i),
 		SortTitle: fmt.Sprintf("Title %d", i),
 		Album: store.AlbumWrite{
 			GroupKey: fmt.Sprintf("album-%d", i),
+			ULID:     fmt.Sprintf("02J%023d", i),
+			Artist:   fmt.Sprintf("Artist %d", i),
 			Name:     fmt.Sprintf("Album %d", i),
 			SortName: fmt.Sprintf("Album %d", i),
 		},
@@ -177,6 +180,8 @@ func TestWriteBatchValidation(t *testing.T) {
 		{"empty ULID", func(w *store.TrackWrite) { w.ULID = "" }},
 		{"25-character ULID", func(w *store.TrackWrite) { w.ULID = strings.Repeat("0", 25) }},
 		{"empty RelPath", func(w *store.TrackWrite) { w.RelPath = "" }},
+		{"empty Album.ULID", func(w *store.TrackWrite) { w.Album.ULID = "" }},
+		{"25-character Album.ULID", func(w *store.TrackWrite) { w.Album.ULID = strings.Repeat("0", 25) }},
 		{"empty GroupKey", func(w *store.TrackWrite) { w.Album.GroupKey = "" }},
 		{"empty artist MatchKey", func(w *store.TrackWrite) { w.Artists[0].MatchKey = "" }},
 	}

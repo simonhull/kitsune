@@ -29,22 +29,24 @@ func requestID(ctx context.Context) string {
 	return id
 }
 
-// withBasePath serves next under the server's base path: it strips the path
-// and answers every request outside it with a 404, which [withProblems]
-// turns into a problem. With no base path it returns next unchanged.
+// apiPrefix is where the contract's paths live: the contract declares
+// servers: [{ url: /api/v1 }].
+const apiPrefix = "/api/v1"
+
+// withBasePath serves next under the server's base path and [apiPrefix]: it
+// strips both and answers every request outside them with a 404, which
+// [withProblems] turns into a problem.
 //
 // A known limit: ServeMux's path-cleaning redirects, such as
-// /music//healthz to /healthz, drop the base path. Canonical API paths never
+// /api/v1//healthz to /healthz, drop the prefix. Canonical API paths never
 // trigger one, and it is not an open redirect.
 func (s *Server) withBasePath(next http.Handler) http.Handler {
-	if s.basePath == "" {
-		return next
-	}
-	strip := http.StripPrefix(s.basePath, next)
+	prefix := s.basePath + apiPrefix
+	strip := http.StripPrefix(prefix, next)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// The escaped path: /music%2Fhealthz decodes to /music/healthz, but
+		// The escaped path: /api%2Fv1/healthz decodes to /api/v1/healthz, but
 		// StripPrefix would leave a RawPath with no leading slash.
-		if !strings.HasPrefix(r.URL.EscapedPath(), s.basePath+"/") {
+		if !strings.HasPrefix(r.URL.EscapedPath(), prefix+"/") {
 			http.NotFound(w, r)
 			return
 		}

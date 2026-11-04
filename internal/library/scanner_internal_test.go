@@ -3,6 +3,7 @@ package library
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -571,5 +572,46 @@ func TestIssueFor(t *testing.T) {
 				t.Errorf("issue = %+v, want the job's location and mtime", is)
 			}
 		})
+	}
+}
+
+func TestScanGivesEachAlbumAPublicID(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	root := l.roots[0]
+	l.copyTo(root, "one.flac", sampleFLAC)
+	l.copyTo(root, keepMP3, sampleMP3)
+	l.scan(Quick)
+	path := filepath.Join(root, "one.flac")
+	retag(t, path, "Changed") // The update branch returns early from identify; it still needs an album ID.
+	bump(t, path, 2)
+	l.scan(Quick)
+
+	db, err := sql.Open("sqlite3", "file:"+l.dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	rows, err := db.QueryContext(t.Context(), "SELECT ulid FROM albums")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	seen := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		if len(id) != 26 || seen[id] {
+			t.Errorf("album ULID %q is not a fresh 26-character ID", id)
+		}
+		seen[id] = true
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) < 2 {
+		t.Errorf("%d albums, want at least 2", len(seen))
 	}
 }

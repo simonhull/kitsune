@@ -6,13 +6,16 @@ package sqlcdb
 
 type Album struct {
 	ID          int64
+	Ulid        string
 	GroupKey    string
 	Name        string
 	SortName    string
+	Artist      string
 	Mbid        *string
 	Year        *int64
 	Compilation int64
 	ArtworkHash []byte
+	AddedAt     int64
 }
 
 type Artist struct {

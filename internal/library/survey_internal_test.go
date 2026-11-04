@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -136,7 +137,7 @@ func (l *testLib) trackAt(root, rel string, size int64, mtime time.Time) store.T
 	}
 	return store.TrackWrite{
 		ULID: id, Root: root, RelPath: rel, Size: size, MTime: mtime, Title: rel,
-		Album: store.AlbumWrite{GroupKey: testGroupKey, Name: testGroupKey},
+		Album: store.AlbumWrite{GroupKey: testGroupKey, ULID: strings.Repeat("A", 26), Name: testGroupKey},
 	}
 }
 

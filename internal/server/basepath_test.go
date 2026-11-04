@@ -17,7 +17,7 @@ func plainClient() *http.Client { return &http.Client{} }
 func TestBasePathServes(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t, testServerOptions{BasePath: musicBase})
-	resp := ts.send(t, call{method: http.MethodGet, path: musicBase + healthPath, client: plainClient()})
+	resp := ts.send(t, call{method: http.MethodGet, path: healthPath, client: plainClient()})
 	if resp.Status != http.StatusNoContent {
 		t.Errorf("status = %d, want 204", resp.Status)
 	}
@@ -26,10 +26,10 @@ func TestBasePathServes(t *testing.T) {
 func TestBasePathMisses(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t, testServerOptions{BasePath: musicBase})
-	for _, path := range []string{healthPath, musicBase, "/musicx/healthz", musicBase + "%2Fhealthz"} {
+	for _, path := range []string{healthPath, musicBase, musicBase + healthPath, "/musicx" + apiPrefix + healthPath, "/music%2Fapi/v1/healthz"} {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
-			resp := ts.send(t, call{method: http.MethodGet, path: path, client: plainClient()})
+			resp := ts.send(t, call{method: http.MethodGet, path: path, client: plainClient(), raw: true})
 			p := resp.problem(t, http.StatusNotFound)
 			if p.RequestID == "" {
 				t.Error("problem has no requestId")
@@ -44,7 +44,7 @@ func TestBasePathCookies(t *testing.T) {
 	ts.seedUser(t, simonName, testPassword, store.RoleUser)
 
 	login := loginCall(t, "", api.LoginRequest{Name: simonName, Password: testPassword, Cookie: true})
-	login.path, login.client = musicBase+loginPath, plainClient()
+	login.client = plainClient()
 	resp := ts.send(t, login)
 	decodeSession(t, resp)
 	if c := sessionCookieOf(t, resp); c.Path != musicBase {
@@ -52,9 +52,9 @@ func TestBasePathCookies(t *testing.T) {
 	}
 
 	token := loginCall(t, "", api.LoginRequest{Name: simonName, Password: testPassword})
-	token.path, token.client = musicBase+loginPath, plainClient()
+	token.client = plainClient()
 	s := decodeSession(t, ts.send(t, token))
-	logout := call{method: http.MethodPost, path: musicBase + logoutPath, header: bearer(s.Token), client: plainClient()}
+	logout := call{method: http.MethodPost, path: logoutPath, header: bearer(s.Token), client: plainClient()}
 	out := ts.send(t, logout)
 	if out.Status != http.StatusNoContent {
 		t.Fatalf("logout status = %d, want 204", out.Status)

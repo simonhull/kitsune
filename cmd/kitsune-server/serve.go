@@ -201,6 +201,8 @@ func buildApp(cfg *config.Config, st *store.Store, log *slog.Logger) (*app, erro
 		BasePath:      cfg.Server.BasePath(),
 		Ready:         a.ready,
 		Artwork:       covers,
+		Library:       st,
+		Roots:         len(cfg.Library.Roots),
 	})
 	a.http = newHTTPServer(handler, log)
 	if cfg.Server.BaseURL != "" && len(trusted) == 0 {
