@@ -4,7 +4,7 @@
 	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
 	import { balancedLines, gain } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import { hasInAppHistory } from '#lib/morph/journey.ts';
+	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import { reserveIslandSlot } from '#lib/shell/slot.svelte.ts';
@@ -12,6 +12,10 @@
 	const playing = $derived(library.playing);
 	const lines = $derived(playing === null ? ['', ''] : balancedLines(playing.track.title));
 	const longest = $derived(Math.max(...lines.map((line) => line.length)));
+
+	function goUp(event: MouseEvent & { currentTarget: HTMLAnchorElement }): void {
+		goUpToAlbum(event, event.currentTarget.pathname);
+	}
 
 	function close(event: MouseEvent): void {
 		if (hasInAppHistory()) {
@@ -41,9 +45,17 @@
 					aria-label="Close now playing"
 					onclick={close}><Icon name="chevron-down" size={20} /></a
 				>
-				<span class="where"
-					>NOW PLAYING · {playing.album.title.toUpperCase()} · {playing.track.number} / {playing.trackCount}</span
-				>
+				<span class="where">
+					NOW PLAYING ·
+					<a
+						class="album-link"
+						href={resolve('/album/[id]', { id: playing.album.id })}
+						aria-label={`Go to the album ${playing.album.title}`}
+						data-sveltekit-replacestate
+						onclick={goUp}>{playing.album.title.toUpperCase()}</a
+					>
+					· {playing.track.number} / {playing.trackCount}
+				</span>
 				<span class="chips">
 					<span class="chip">{playing.format}</span>
 					{#if playing.track.replayGain !== null}
@@ -53,12 +65,16 @@
 			</div>
 
 			<div class="center">
-				<div
+				<a
 					class="art"
+					href={resolve('/album/[id]', { id: playing.album.id })}
+					aria-label={`Go to the album ${playing.album.title}`}
+					data-sveltekit-replacestate
+					onclick={goUp}
 					use:morph={{ id: `cover:${playing.album.id}`, slot: 'poster', kind: 'cover' }}
 				>
 					<GeneratedCover albumId={playing.album.id} />
-				</div>
+				</a>
 				<div class="names">
 					<h1 use:morph={{ id: 'song', slot: 'poster', kind: 'title' }}>{playing.track.title}</h1>
 					<span class="artist" data-morph-part="details">
@@ -143,7 +159,31 @@
 	}
 
 	.where {
+		display: flex;
+		align-items: center;
+		gap: 0.6em;
 		letter-spacing: 0.06em;
+		white-space: nowrap;
+	}
+
+	/* The words stay small; the target doesn't. */
+	.album-link {
+		min-width: var(--target);
+		min-height: var(--target);
+		padding: 0 6px;
+		margin: 0 -6px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		text-underline-offset: 3px;
+	}
+
+	.album-link:hover {
+		text-decoration: underline;
+	}
+
+	.album-link:focus-visible {
+		outline-offset: -4px;
 	}
 
 	.chips {
@@ -169,8 +209,10 @@
 		padding: 24px 0 8px;
 	}
 
+	/* A link with no hover of its own: the art isn't a button, and nothing should fight it. */
 	.art {
 		position: relative;
+		display: block;
 		width: min(400px, 46dvh, 100%);
 		aspect-ratio: 1;
 		border-radius: var(--radius-28);
@@ -271,8 +313,6 @@
 		.where {
 			min-width: 0;
 			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
 		}
 
 		.art {

@@ -302,9 +302,10 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 				air.append(flier.element);
 			}
 		}
-		// A flier whose page has gone has nowhere to land: it leaves with the ghost.
+		// A flier whose page has gone has nowhere to land: it leaves with the ghost. One heading
+		// for the shell keeps going, whatever this journey is about: the island is still there.
 		for (const [id, flier] of fliers) {
-			if (!targets.has(id)) {
+			if (!targets.has(id) && flier.target?.element.isConnected !== true) {
 				flier.target = null;
 			}
 		}

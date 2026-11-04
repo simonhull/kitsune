@@ -13,6 +13,7 @@ import {
 import { library } from '#lib/library/library.svelte.ts';
 import { markClick } from './hud.svelte.ts';
 import { pick, recordOrigins, type Origins } from './pairs.ts';
+import { albumExit } from './path.ts';
 import { registry, type MorphEntry } from './registry.ts';
 
 /** One navigation's plan. */
@@ -37,6 +38,9 @@ let lastClick: EventTarget | null = null;
 let homeScroll = 0;
 let visualTransition = false;
 let navigations = 0;
+/** The page behind Now playing in the history stack, when that's known. */
+let behindNowPlaying: string | null = null;
+let landAtTop = false;
 
 /** Reports whether there's a page of ours to go back to. */
 export function hasInAppHistory(): boolean {
@@ -74,6 +78,11 @@ function onScreen({ element }: MorphEntry): boolean {
 export function beginJourney(navigation: OnNavigate): Journey | null {
 	const { from, to, type } = navigation;
 	navigations += 1;
+	if (to?.route.id === '/now-playing') {
+		// Arriving by going back means the page we left is ahead of us, not behind.
+		const behind = navigation.type !== 'popstate' || (navigation.delta ?? 0) > 0;
+		behindNowPlaying = behind ? (from?.url.pathname ?? null) : null;
+	}
 	const fromRoute = routes.get(from?.route.id ?? '');
 	const toRoute = routes.get(to?.route.id ?? '');
 	if (fromRoute === undefined || toRoute === undefined) {
@@ -140,6 +149,10 @@ function clickedScope(): Element | null {
 /** Resolves the targets once the new page is in the DOM and the scroll is final. */
 export function landJourney(journey: Journey, scrollToOrigin: boolean): Map<string, MorphEntry> {
 	const { travel, name } = journey.choreography;
+	if (landAtTop) {
+		landAtTop = false;
+		scrollTo({ top: 0, behavior: 'instant' });
+	}
 	if (travel === null) {
 		return new Map();
 	}
@@ -151,7 +164,8 @@ export function landJourney(journey: Journey, scrollToOrigin: boolean): Map<stri
 		ids: journey.ids,
 		slots: travel.targetSlots,
 		origins,
-		visible: onScreen,
+		// With no origin, a card already in the clear wins, so the page stays where it was left.
+		visible: ({ element }) => inTheClear(element),
 		eligible: canTravel
 	});
 	if (landingOnHome) {
@@ -163,17 +177,42 @@ export function landJourney(journey: Journey, scrollToOrigin: boolean): Map<stri
 	return targets;
 }
 
+const clearTop = 90;
+
+/** Finds where the viewport stops being clear of the island. */
+function clearBottom(): number {
+	const island = document.querySelector('aside');
+	return (island?.getBoundingClientRect().top ?? innerHeight) - 16;
+}
+
+function inTheClear(element: HTMLElement): boolean {
+	const { top, bottom } = element.getBoundingClientRect();
+	return top >= clearTop && bottom <= clearBottom();
+}
+
 /** Scrolls instantly, under the outgoing page, so a card isn't behind the nav or the island. */
 function bringIntoView(element: HTMLElement): void {
 	const { top, bottom } = element.getBoundingClientRect();
-	const clearTop = 90;
-	const island = document.querySelector('aside');
-	const clearBottom = (island?.getBoundingClientRect().top ?? innerHeight) - 16;
+	const limit = clearBottom();
 	if (top < clearTop) {
 		scrollBy({ top: top - clearTop, behavior: 'instant' });
-	} else if (bottom > clearBottom) {
-		const overshoot = Math.min(bottom - clearBottom, top - clearTop);
+	} else if (bottom > limit) {
+		const overshoot = Math.min(bottom - limit, top - clearTop);
 		scrollBy({ top: overshoot, behavior: 'instant' });
+	}
+}
+
+/**
+ * Handles a click on a link up to the album. A link that can't go back is left to Kit, which
+ * replaces Now playing with the album. Either way the page lands at the top, because the cover
+ * was asked to settle into the hero and history may restore a scroll that hides it.
+ */
+export function goUpToAlbum(event: MouseEvent, albumPath: string): void {
+	const opensElsewhere = event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
+	if (!opensElsewhere && albumExit(behindNowPlaying, albumPath) === 'back') {
+		event.preventDefault();
+		landAtTop = true;
+		history.back();
 	}
 }
 
