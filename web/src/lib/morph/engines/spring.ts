@@ -331,7 +331,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			source.shape,
 			target,
 			growing ? pictureOf(target) : source.picture,
-			growing ? getComputedStyle(target.element).boxShadow : source.shadow
+			source.shadow
 		);
 	}
 
@@ -433,21 +433,26 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		}
 		island ??= new IslandShape(aside, glass);
 
-		const { left, top, width, height } = content.getBoundingClientRect();
 		const clone = content.cloneNode(true);
 		if (!(clone instanceof HTMLElement)) {
 			return;
 		}
-		clone.inert = true;
-		clone.style.cssText = `position:absolute;left:${String(left)}px;top:${String(top)}px;width:${String(width)}px;height:${String(height)}px;margin:0`;
-		air.prepend(clone);
+		// Inside a stand-in for the island, so `.expanded .content` still matches the picture.
+		const { left, top, width, height } = aside.getBoundingClientRect();
+		const stand = document.createElement('div');
+		stand.className = aside.className;
+		stand.inert = true;
+		stand.style.cssText = `position:absolute;left:${String(left)}px;top:${String(top)}px;bottom:auto;width:${String(width)}px;height:${String(height)}px;transform:none`;
+		keepColors(aside, stand);
+		stand.append(clone);
+		air.prepend(stand);
 		const layer = new Layer(clone, part);
 		const inherited = landing.get(content);
 		if (inherited !== undefined) {
 			layer.adopt(inherited);
 		}
 		landing.delete(content);
-		ghosts.push({ path: '', element: clone, layers: [layer] });
+		ghosts.push({ path: '', element: stand, layers: [layer] });
 	}
 
 	function landIsland(part: Part): void {

@@ -1,6 +1,7 @@
 import { Channel } from '../channel.ts';
 import type { SpringParams } from '../choreography.ts';
 import type { MorphEntry } from '../registry.ts';
+import { scaleShadow, ShadowMix } from './shadow.ts';
 
 /** Where a shared cover is and how it's shaped, in viewport coordinates. */
 export interface CoverShape {
@@ -134,12 +135,18 @@ export class CoverFlier implements Flier {
 	readonly #rotation: Channel;
 	readonly #radius: Channel;
 	readonly #face = document.createElement('div');
-	readonly #shadow = document.createElement('div');
+	readonly #shadows = [document.createElement('div'), document.createElement('div')] as const;
+	readonly #mix: ShadowMix;
 	readonly #base: number;
-	readonly #small: number;
 
 	constructor(from: CoverShape, target: MorphEntry, picture: Node, shadow: string) {
 		const to = measureCover(target.element);
+		this.#base = Math.max(from.width, to.width);
+		// Each end's shadow is drawn at the size it has at rest, whatever the box is scaled by.
+		this.#mix = new ShadowMix(
+			scaleShadow(shadow, this.#base / from.width),
+			this.#restingShadow(target)
+		);
 		this.target = target;
 		this.#x = new Channel(from.x, to.x);
 		this.#y = new Channel(from.y, to.y);
@@ -147,16 +154,22 @@ export class CoverFlier implements Flier {
 		this.#height = new Channel(from.height, to.height);
 		this.#rotation = new Channel(from.rotation, to.rotation);
 		this.#radius = new Channel(from.radius, to.radius);
-		this.#base = Math.max(from.width, to.width);
-		this.#small = Math.min(from.width, to.width);
 
 		const size = `${String(this.#base)}px`;
 		this.element.style.cssText = `position:absolute;left:0;top:0;width:${size};height:${size};will-change:transform`;
-		this.#shadow.style.cssText = `position:absolute;inset:0;box-shadow:${shadow};will-change:opacity`;
 		this.#face.style.cssText = 'position:absolute;inset:0;overflow:hidden';
 		this.#face.append(picture);
-		this.element.append(this.#shadow, this.#face);
+		for (const [index, layer] of this.#shadows.entries()) {
+			layer.style.cssText = `position:absolute;inset:0;will-change:opacity`;
+			layer.style.boxShadow = this.#mix.shadows.at(index) ?? 'none';
+		}
+		this.element.append(...this.#shadows, this.#face);
 		this.write();
+	}
+
+	#restingShadow({ element }: MorphEntry): string {
+		const { boxShadow } = getComputedStyle(element);
+		return scaleShadow(boxShadow, this.#base / element.offsetWidth);
 	}
 
 	get target(): MorphEntry | null {
@@ -169,6 +182,14 @@ export class CoverFlier implements Flier {
 			const { rotation, radius } = measureCover(entry.element);
 			this.#rotation0 = rotation;
 			this.#radius0 = radius;
+			this.#aimShadow(entry);
+		}
+	}
+
+	#aimShadow(entry: MorphEntry): void {
+		this.#mix.aim(this.#restingShadow(entry));
+		for (const [index, layer] of this.#shadows.entries()) {
+			layer.style.boxShadow = this.#mix.shadows.at(index) ?? 'none';
 		}
 	}
 
@@ -189,6 +210,7 @@ export class CoverFlier implements Flier {
 		for (const channel of this.#channels) {
 			channel.step(params, seconds);
 		}
+		this.#mix.step(params, seconds);
 	}
 
 	get #channels(): Channel[] {
@@ -203,8 +225,10 @@ export class CoverFlier implements Flier {
 		this.element.style.transform = `translate(${left.toFixed(2)}px, ${top.toFixed(2)}px) rotate(${this.#rotation.value.toFixed(3)}deg) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`;
 		const radius = `${(Math.max(0, this.#radius.value) / Math.max(scaleX, 0.01)).toFixed(2)}px`;
 		this.#face.style.borderRadius = radius;
-		this.#shadow.style.borderRadius = radius;
-		this.#shadow.style.opacity = unit(this.#width.value, this.#small, this.#base).toFixed(3);
+		for (const [index, layer] of this.#shadows.entries()) {
+			layer.style.borderRadius = radius;
+			layer.style.opacity = (this.#mix.opacities.at(index) ?? 0).toFixed(3);
+		}
 	}
 
 	/** Where the cover is right now, for whatever is following it. */

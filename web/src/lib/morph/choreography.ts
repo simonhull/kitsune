@@ -150,7 +150,8 @@ export interface Part {
 }
 
 /** What a page's unit is, from `data-morph-part`. It decides how the unit arrives. */
-export type Role = 'card' | 'art' | 'words' | 'panel' | 'line-1' | 'line-2' | 'details' | 'chrome';
+export type Role =
+	'intro' | 'card' | 'art' | 'words' | 'panel' | 'line-1' | 'line-2' | 'details' | 'chrome';
 
 export type StageName = 'album' | 'poster';
 
@@ -293,7 +294,7 @@ const albumToHome: Choreography = {
 	motion: base,
 	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['card', 'island'] },
 	leaving: sink,
-	arriving: { card: comeForward },
+	arriving: { intro: comeForward, card: comeForward },
 	stages: { album: fadeOut(0, base) },
 	bloom: { direction: 'in', ...bloomShape },
 	island: null
@@ -321,7 +322,11 @@ const nowPlayingToHome: Choreography = {
 	motion: base,
 	travel: { ...playing.out, targetSlots: ['island'] },
 	leaving: sink,
-	arriving: { card: comeForward },
+	arriving: {
+		// Held until the poster title clears: two words that size can't share a stage.
+		intro: { ...comeForward, delay: 140 },
+		card: comeForward
+	},
 	stages: { poster: fadeOut(0, base) },
 	bloom: { direction: 'in', ...bloomShape },
 	island: islandCloses
@@ -337,7 +342,8 @@ const albumToNowPlaying: Choreography = {
 	motion: slow,
 	travel: { ...playing.in, sourceSlots: ['hero', 'island'] },
 	leaving: fallBack,
-	arriving: nowPlayingArrives,
+	// Later than from Home: the album's headline is in the way until it has fallen back.
+	arriving: { ...nowPlayingArrives, 'line-1': posterLine(200), 'line-2': posterLine(290) },
 	stages: { poster: fadeIn(60, slow), album: fadeOut(460, quick) },
 	bloom: null,
 	island: islandOpens

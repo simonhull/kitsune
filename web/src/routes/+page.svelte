@@ -14,7 +14,7 @@
 
 {#if home !== null}
 	<div class="home">
-		<div class="intro" data-morph-part="card">
+		<div class="intro" data-morph-part="intro">
 			<h1>{home.greeting}</h1>
 			<span class="summary">{home.summary}</span>
 		</div>
