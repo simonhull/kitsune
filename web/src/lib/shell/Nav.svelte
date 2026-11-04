@@ -1,26 +1,32 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { morph } from '#lib/morph/registry.ts';
 	import { flowingPill } from './flowingPill.ts';
 	import Icon from './Icon.svelte';
 
 	interface Props {
-		route: 'home' | 'album' | 'gone';
+		/** `door` is Home's layout, unseen: the fox needs its seat there before anything shows. */
+		route: 'home' | 'album' | 'gone' | 'door';
 		healthIssues: number | undefined;
 	}
 
 	let { route, healthIssues }: Props = $props();
 </script>
 
-<header class="bar" data-route={route} inert={route === 'gone'}>
+<header class="bar" data-route={route} inert={route === 'gone' || route === 'door'}>
 	<nav aria-label="Main" class="nav" data-route={route} use:flowingPill={route}>
 		<span class="pill" aria-hidden="true"></span>
-		<a class="fox" href={resolve('/')} aria-label="Kitsune home" data-sveltekit-reset="false"
-			><Icon name="fox" size={22} /></a
+		<a
+			class="fox"
+			href={resolve('/')}
+			aria-label="Kitsune home"
+			data-sveltekit-reset="false"
+			use:morph={{ id: 'fox', slot: 'nav', kind: 'control' }}><Icon name="fox" size={22} /></a
 		>
 		<a
 			class="item"
 			href={resolve('/')}
-			aria-current={route === 'home' ? 'page' : undefined}
+			aria-current={route === 'home' || route === 'door' ? 'page' : undefined}
 			data-sveltekit-reset="false">Home</a
 		>
 		<span class="item" aria-disabled="true" aria-current={route === 'album' ? 'page' : undefined}
@@ -70,7 +76,7 @@
 			visibility 0s;
 	}
 
-	.bar[data-route='gone'] {
+	.bar:is([data-route='gone'], [data-route='door']) {
 		opacity: 0;
 		visibility: hidden;
 		transform: translateY(-20px) scale(0.94);

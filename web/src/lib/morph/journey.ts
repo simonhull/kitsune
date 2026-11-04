@@ -27,6 +27,7 @@ export interface Journey {
 }
 
 const routes = new Map<string, RouteName>([
+	['/login', 'login'],
 	['/', 'home'],
 	['/album/[id]', 'album'],
 	['/now-playing', 'now-playing']
@@ -105,6 +106,10 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 	if (fromRoute === undefined || toRoute === undefined) {
 		return null;
 	}
+	if (fromRoute === 'login') {
+		// The door replaced itself: whatever's behind this entry isn't a page of ours.
+		navigations = 0;
+	}
 	if (from?.url.pathname === to?.url.pathname) {
 		return null;
 	}
@@ -149,7 +154,10 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 }
 
 /** Lists what travels on a journey. */
-function idsFor(subject: 'from' | 'to' | 'playing', { from, to }: OnNavigate): string[] {
+function idsFor(subject: 'from' | 'to' | 'playing' | 'fox', { from, to }: OnNavigate): string[] {
+	if (subject === 'fox') {
+		return ['fox'];
+	}
 	if (subject === 'playing') {
 		const id = library.playing?.album.id;
 		return id === undefined ? [] : [`cover:${id}`, 'song', ...playerParts];

@@ -549,6 +549,16 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		ghosts.push({ path: '', element: stand, layers: [layer], units: new Map() });
 	}
 
+	/** The island's first appearance: glass and contents rise as one, under the frame. */
+	function formIsland(part: Part): void {
+		for (const selector of ['[data-island-glass]', '[data-island-content]']) {
+			const element = surfaceFor(selector);
+			if (element !== null) {
+				landing.set(element, new Layer(element, part));
+			}
+		}
+	}
+
 	function landIsland(part: Part): void {
 		island?.aim();
 		island?.measure();
@@ -814,6 +824,9 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		arrive(journey, toPath, targets);
 		if (choreography.island !== null) {
 			landIsland(choreography.island);
+		}
+		if (choreography.islandForms !== undefined) {
+			formIsland(choreography.islandForms);
 		}
 		openBloom(journey);
 		run();

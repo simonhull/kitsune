@@ -71,7 +71,7 @@
 		mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : 'clear'}
 	/>
 	<Nav
-		route={onNowPlaying || onLogin ? 'gone' : onAlbum ? 'album' : 'home'}
+		route={onLogin ? 'door' : onNowPlaying ? 'gone' : onAlbum ? 'album' : 'home'}
 		healthIssues={library.facts?.issues}
 	/>
 	<main>{@render children()}</main>
