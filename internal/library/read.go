@@ -234,6 +234,13 @@ func (w *writer) handle(ctx context.Context, r *result) error {
 // identify sets tw's ID or ULID. The row at the path wins; otherwise a single
 // missing track with the same audio is taken over; otherwise it is new.
 func (w *writer) identify(ctx context.Context, tw *store.TrackWrite, j *job) error {
+	// First, because the update and move branches return early. The store keeps
+	// the ID of an album that already exists and ignores this one.
+	albumID, err := newULID(w.s.now(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("new album ID for %s: %w", tw.RelPath, err)
+	}
+	tw.Album.ULID = albumID
 	if j.TrackID != 0 {
 		tw.ID = j.TrackID
 		w.stats.Updated++

@@ -46,8 +46,11 @@ type TrackWrite struct {
 type ReplayGain struct{ TrackGain, TrackPeak, AlbumGain, AlbumPeak float64 }
 
 // AlbumWrite identifies an album by GroupKey and carries its display fields.
+// ULID and the first-seen time are kept when the album already exists.
 type AlbumWrite struct {
 	GroupKey, Name, SortName, MBID string
+	ULID                           string // Required, 26 characters; the album's public ID, kept when the album already exists.
+	Artist                         string // The display artist.
 	Year                           int
 	Compilation                    bool
 	Artwork                        *ArtworkWrite // Nil keeps the cover the album has.
@@ -223,6 +226,8 @@ func (tw *TrackWrite) validate() error {
 		return fmt.Errorf("empty RelPath: %w", ErrInvalidWrite)
 	case tw.Album.GroupKey == "":
 		return fmt.Errorf("empty Album.GroupKey: %w", ErrInvalidWrite)
+	case len(tw.Album.ULID) != ulidLen:
+		return fmt.Errorf("Album.ULID is %d characters, want %d: %w", len(tw.Album.ULID), ulidLen, ErrInvalidWrite)
 	}
 	if art := tw.Album.Artwork; art != nil {
 		if err := art.validate(); err != nil {
@@ -290,7 +295,7 @@ func (f *ftsStmts) close() error {
 //
 // It returns an error wrapping [ErrInvalidWrite], and writes nothing, if a
 // track lacks a 26-character ULID (when inserting), Root, RelPath, an album
-// GroupKey or an artist MatchKey. It returns an error wrapping [ErrNotFound] if
+// GroupKey, a 26-character album ULID or an artist MatchKey. It returns an error wrapping [ErrNotFound] if
 // an update names a track that does not exist. Any error rolls the whole batch
 // back. An empty batch does nothing.
 func (s *Store) WriteBatch(ctx context.Context, b *Batch) error {
@@ -332,7 +337,7 @@ type trackRefs struct {
 }
 
 // resolveRefs upserts the track's album and artists.
-func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite) (trackRefs, error) {
+func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, now time.Time) (trackRefs, error) {
 	var refs trackRefs
 	var err error
 	if refs.artistIDs, err = upsertArtists(ctx, q, tw.Artists); err != nil {
@@ -352,13 +357,16 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite) (trackR
 		artworkHash = art.Hash[:]
 	}
 	refs.albumID, err = q.UpsertAlbum(ctx, sqlcdb.UpsertAlbumParams{
+		Ulid:        tw.Album.ULID,
 		GroupKey:    tw.Album.GroupKey,
 		Name:        tw.Album.Name,
 		SortName:    tw.Album.SortName,
+		Artist:      tw.Album.Artist,
 		Mbid:        nullStr(tw.Album.MBID),
 		Year:        nullInt(tw.Album.Year),
 		Compilation: flag(tw.Album.Compilation),
 		ArtworkHash: artworkHash,
+		AddedAt:     ms(now),
 	})
 	if err != nil {
 		return refs, fmt.Errorf("upsert album: %w", err)
@@ -368,7 +376,7 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite) (trackR
 
 // writeTrack stores one track and everything that hangs off it.
 func writeTrack(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tw *TrackWrite, now time.Time) error {
-	refs, err := resolveRefs(ctx, q, tw)
+	refs, err := resolveRefs(ctx, q, tw, now)
 	if err != nil {
 		return err
 	}

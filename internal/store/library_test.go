@@ -34,6 +34,8 @@ func newWrite(i int) store.TrackWrite {
 		SortTitle: fmt.Sprintf("Title %d", i),
 		Album: store.AlbumWrite{
 			GroupKey: fmt.Sprintf("album-%d", i),
+			ULID:     fmt.Sprintf("02J%023d", i),
+			Artist:   fmt.Sprintf("Artist %d", i),
 			Name:     fmt.Sprintf("Album %d", i),
 			SortName: fmt.Sprintf("Album %d", i),
 		},
@@ -177,6 +179,8 @@ func TestWriteBatchValidation(t *testing.T) {
 		{"empty ULID", func(w *store.TrackWrite) { w.ULID = "" }},
 		{"25-character ULID", func(w *store.TrackWrite) { w.ULID = strings.Repeat("0", 25) }},
 		{"empty RelPath", func(w *store.TrackWrite) { w.RelPath = "" }},
+		{"empty Album.ULID", func(w *store.TrackWrite) { w.Album.ULID = "" }},
+		{"25-character Album.ULID", func(w *store.TrackWrite) { w.Album.ULID = strings.Repeat("0", 25) }},
 		{"empty GroupKey", func(w *store.TrackWrite) { w.Album.GroupKey = "" }},
 		{"empty artist MatchKey", func(w *store.TrackWrite) { w.Artists[0].MatchKey = "" }},
 	}

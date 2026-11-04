@@ -2,6 +2,7 @@ package library
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -275,7 +276,7 @@ func TestNewTrackWriteAlbum(t *testing.T) {
 	f.Tags.AddRaw("MUSICBRAINZ ALBUM ID", " MB1 ")
 	f.Tags.AddRaw("COMPILATION", "TRUE")
 	tw := NewTrackWrite(f, testInfo())
-	want := store.AlbumWrite{GroupKey: groupKey(&tw), Name: "Abbey Road", SortName: "Abbey Road, The", MBID: "MB1", Year: 1969, Compilation: true}
+	want := store.AlbumWrite{GroupKey: groupKey(&tw), Artist: "Various Artists", Name: "Abbey Road", SortName: "Abbey Road, The", MBID: "MB1", Year: 1969, Compilation: true}
 	if tw.Album != want {
 		t.Errorf("Album = %+v, want %+v", tw.Album, want)
 	}
@@ -426,5 +427,54 @@ func BenchmarkNewTrackWrite(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = NewTrackWrite(f, fi)
+	}
+}
+
+func TestNewTrackWriteAlbumArtist(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		albumArtists []string
+		artists      []string
+		compilation  bool
+		want         string
+	}{
+		{"album artists joined", []string{"A", "B"}, []string{"C"}, false, "A, B"},
+		{"compilation without album artist", nil, []string{"C"}, true, "Various Artists"},
+		{"album artist beats compilation", []string{"A"}, []string{"C"}, true, "A"},
+		{"first track artist", nil, []string{"C", "D"}, false, "C"},
+		{"unknown", nil, nil, false, "Unknown Artist"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := &audiometa.File{}
+			f.Tags.Album = "X"
+			f.Tags.Artists = tc.artists
+			for _, a := range tc.albumArtists {
+				f.Tags.AddRaw("ALBUMARTIST", a)
+			}
+			if tc.compilation {
+				f.Tags.AddRaw("COMPILATION", "1")
+			}
+			if got := NewTrackWrite(f, testInfo()).Album.Artist; got != tc.want {
+				t.Errorf("Album.Artist = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNewTrackWriteUnknownAlbum(t *testing.T) {
+	t.Parallel()
+	f := &audiometa.File{}
+	f.Tags.Artists = []string{"C"}
+	tw := NewTrackWrite(f, testInfo())
+	if tw.Album.Name != "Unknown Album" || tw.Album.SortName != "Unknown Album" {
+		t.Errorf("Album = %q / %q, want Unknown Album for both", tw.Album.Name, tw.Album.SortName)
+	}
+	// Grouping still sees the empty name.
+	want := "tag:" + MatchKey("C") + "\x1f" + "" + "\x1f"
+	if !strings.HasPrefix(tw.Album.GroupKey, want) {
+		t.Errorf("GroupKey = %q, want prefix %q", tw.Album.GroupKey, want)
 	}
 }

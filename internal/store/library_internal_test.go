@@ -73,6 +73,8 @@ func newWrite(i int) TrackWrite {
 		SortTitle: fmt.Sprintf("Title %d", i),
 		Album: AlbumWrite{
 			GroupKey: fmt.Sprintf("album-%d", i),
+			ULID:     fmt.Sprintf("02J%023d", i),
+			Artist:   fmt.Sprintf("Artist %d", i),
 			Name:     fmt.Sprintf("Album %d", i),
 			SortName: fmt.Sprintf("Album %d", i),
 		},
@@ -217,6 +219,7 @@ func TestWriteBatchUpdateKeepsIdentity(t *testing.T) {
 	u.Title = "Newtitle"
 	u.Tags = []Tag{{"NEW", "y"}}
 	u.Album.GroupKey = "other-album"
+	u.Album.ULID = "02Jother-album-00000000000"
 	writeAll(t, s, u)
 
 	var ulid string
@@ -401,7 +404,7 @@ func benchBatch() *Batch {
 		w := newWrite(i)
 		album := i % benchAlbums
 		w.Album = AlbumWrite{
-			GroupKey: fmt.Sprintf("album-%d", album), Name: fmt.Sprintf("Album %d", album),
+			GroupKey: fmt.Sprintf("album-%d", album), ULID: fmt.Sprintf("02J%023d", album), Artist: fmt.Sprintf("Artist %d", album), Name: fmt.Sprintf("Album %d", album),
 			SortName: fmt.Sprintf("Album %d", album), Year: 2000 + album,
 		}
 		w.Artists = []ArtistWrite{artist(i), artist(i + 1)}
@@ -449,4 +452,55 @@ func BenchmarkWriteBatch(b *testing.B) {
 			}
 		}
 	})
+}
+
+func TestAlbumIdentityKeptOnUpsert(t *testing.T) {
+	t.Parallel()
+	now := time.UnixMilli(1_762_000_000_000).UTC()
+	s, err := Open(t.Context(), filepath.Join(t.TempDir(), "kitsune.db"), Options{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	first := newWrite(0)
+	writeAll(t, s, first)
+	now = now.Add(time.Hour)
+	second := newWrite(1)
+	second.Album.GroupKey = first.Album.GroupKey // The same album, seen again with a new candidate ULID.
+	second.Album.Artist = "Renamed"
+	writeAll(t, s, second)
+
+	var ulid, artist string
+	var added int64
+	q := "SELECT ulid, artist, added_at FROM albums WHERE group_key = ?"
+	if err = s.r.QueryRowContext(t.Context(), q, first.Album.GroupKey).Scan(&ulid, &artist, &added); err != nil {
+		t.Fatal(err)
+	}
+	if ulid != first.Album.ULID || added != 1_762_000_000_000 {
+		t.Errorf("ulid, added_at = %q, %d; want the original %q, 1762000000000", ulid, added, first.Album.ULID)
+	}
+	if artist != "Renamed" {
+		t.Errorf("artist = %q, want the update to apply", artist)
+	}
+}
+
+func TestAlbumSchemaForBrowse(t *testing.T) {
+	t.Parallel()
+	s := openTest(t)
+	for _, name := range []string{"albums_sort", "albums_added", "tracks_live", "tracks_album"} {
+		q := "SELECT count(*) FROM sqlite_schema WHERE type = 'index' AND name = '" + name + "'"
+		if got := rawInt(t, s.r, q); got != 1 {
+			t.Errorf("index %s: count = %d, want 1", name, got)
+		}
+	}
+	// The collation must sit on the column, or keyset seeks fall back to scans.
+	var coll string
+	q := "SELECT coll FROM pragma_index_xinfo('albums_sort') WHERE name = 'sort_name'"
+	if err := s.r.QueryRowContext(t.Context(), q).Scan(&coll); err != nil {
+		t.Fatal(err)
+	}
+	if coll != "NOCASE" {
+		t.Errorf("albums_sort collation on sort_name = %q, want NOCASE", coll)
+	}
 }

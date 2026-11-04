@@ -58,6 +58,10 @@ pixels (never upscaled) go to `<data_dir>/artwork`, so `GET /api/v1/artwork/{has
 cached for a year. The cache is derived data, but it is only rebuilt when an audio file changes:
 a replaced `cover.jpg` is not noticed, and if you delete the folder you need a new database.
 
+Albums have public IDs, like tracks. A known limit: an album's ID is not stable across a move
+or a retag, because its identity is its folder, name and artist. A moved album gets a new ID and a
+fresh added time, while its tracks keep theirs.
+
 Logs are JSON on stderr. `log.level = "debug"` adds one line per request; it records the
 path only, never the query. `GET /api/v1/healthz` reports that the process is up, and
 `GET /api/v1/readyz` that it is ready to serve. On SIGINT or SIGTERM the server stops accepting
