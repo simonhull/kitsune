@@ -210,12 +210,10 @@ func tagKey(k string) string {
 }
 
 // groupKey returns the key that groups tw's tracks into an album: the album
-// MBID when there is one, else the album artist, album name and folder, with
-// disc folders collapsed into their parent.
+// artist, album name and folder, with disc folders collapsed into their parent.
+// The album MBID is deliberately not part of it. On a real library, grouping by
+// MBID split partly tagged albums and merged editions that shared a release ID.
 func groupKey(tw *store.TrackWrite) string {
-	if tw.Album.MBID != "" {
-		return "mb:" + strings.ToLower(tw.Album.MBID)
-	}
 	var artistKey string
 	switch {
 	case len(tw.AlbumArtists) > 0:

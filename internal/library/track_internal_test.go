@@ -265,7 +265,7 @@ func TestNewTrackWriteAlbum(t *testing.T) {
 	f.Tags.AddRaw("MUSICBRAINZ ALBUM ID", " MB1 ")
 	f.Tags.AddRaw("COMPILATION", "TRUE")
 	tw := NewTrackWrite(f, testInfo())
-	want := store.AlbumWrite{GroupKey: "mb:mb1", Name: "Abbey Road", SortName: "Abbey Road, The", MBID: "MB1", Year: 1969, Compilation: true}
+	want := store.AlbumWrite{GroupKey: groupKey(&tw), Name: "Abbey Road", SortName: "Abbey Road, The", MBID: "MB1", Year: 1969, Compilation: true}
 	if tw.Album != want {
 		t.Errorf("Album = %+v, want %+v", tw.Album, want)
 	}
@@ -329,6 +329,7 @@ func TestGroupKey(t *testing.T) {
 		albumArtists, artists  []string
 		compilation            bool
 	}
+	const mbid = "abc"
 	base := track{root: "/music", rel: "Artist/Album/a.flac", album: "Album", albumArtists: []string{"Artist"}}
 	with := func(mut func(*track)) track {
 		tr := base
@@ -350,8 +351,9 @@ func TestGroupKey(t *testing.T) {
 		{"CD 1 of 2 is not a disc folder", with(func(t *track) { t.rel = "Album/CD 1 of 2/x.flac" }), with(func(t *track) { t.rel = albumY }), false},
 		{"root named CD1 is not collapsed", with(func(t *track) { t.root, t.rel = "/mnt/CD1", "x.flac" }), with(func(t *track) { t.root, t.rel = "/mnt", "y.flac" }), false},
 		{"disc folder at root collapses to root", with(func(t *track) { t.rel = "CD1/x.flac" }), with(func(t *track) { t.rel = "y.flac" }), true},
-		{"MBID case-insensitive across folders", with(func(t *track) { t.mbid, t.rel = "ABC", "A/x.flac" }), with(func(t *track) { t.mbid, t.rel = "abc", "B/y.flac" }), true},
-		{"different MBIDs", with(func(t *track) { t.mbid = "abc" }), with(func(t *track) { t.mbid = "abd" }), false},
+		{"same MBID in different folders", with(func(t *track) { t.mbid, t.rel = mbid, "A/x.flac" }), with(func(t *track) { t.mbid, t.rel = mbid, "B/y.flac" }), false},
+		{"a track without the MBID joins its folder's album", with(func(t *track) { t.mbid = mbid }), base, true},
+		{"different MBIDs in one folder", with(func(t *track) { t.mbid = mbid }), with(func(t *track) { t.mbid = "abd" }), true},
 		{
 			"compilation without album artist",
 			with(func(t *track) { t.albumArtists, t.artists, t.compilation = nil, []string{"P"}, true }),
