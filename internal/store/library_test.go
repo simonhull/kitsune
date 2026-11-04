@@ -305,12 +305,19 @@ func TestPruneOrphans(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (store.Pruned{Albums: 1, Artists: 1}); got != want {
-		t.Errorf("PruneOrphans = %+v, want %+v", got, want)
-	}
+	wantPruned(t, got, 1, 1)
 	again, err := s.PruneOrphans(t.Context())
-	if err != nil || again != (store.Pruned{}) {
-		t.Errorf("second PruneOrphans = %+v, %v; want zero", again, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPruned(t, again, 0, 0)
+}
+
+// wantPruned checks the counts of a prune that dropped no artwork.
+func wantPruned(t *testing.T, got store.Pruned, albums, artists int64) {
+	t.Helper()
+	if got.Albums != albums || got.Artists != artists || len(got.Artwork) != 0 {
+		t.Errorf("PruneOrphans = %+v, want %d albums, %d artists and no artwork", got, albums, artists)
 	}
 }
 

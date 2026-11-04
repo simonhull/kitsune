@@ -26,6 +26,15 @@ CREATE TABLE artists (
 	mbid      TEXT                      -- NULL when unknown
 ) STRICT;
 
+CREATE TABLE artwork (
+	hash   BLOB    PRIMARY KEY CHECK (length(hash) = 32), -- SHA-256 of the source image; names the files
+	width  INTEGER NOT NULL,                              -- of the source
+	height INTEGER NOT NULL,
+	accent TEXT    NOT NULL,                              -- #rrggbb
+	ground TEXT    NOT NULL,                              -- #rrggbb
+	source TEXT    NOT NULL CHECK (source IN ('embedded', 'folder'))
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE albums (
 	id          INTEGER PRIMARY KEY,
 	group_key   TEXT    NOT NULL UNIQUE, -- caller-computed grouping key; the identity
@@ -33,8 +42,11 @@ CREATE TABLE albums (
 	sort_name   TEXT    NOT NULL,
 	mbid        TEXT,
 	year        INTEGER,
-	compilation INTEGER NOT NULL CHECK (compilation IN (0, 1))
+	compilation INTEGER NOT NULL CHECK (compilation IN (0, 1)),
+	artwork_hash BLOB REFERENCES artwork (hash) -- NULL when the album has no cover
 ) STRICT;
+
+CREATE INDEX albums_artwork ON albums (artwork_hash);
 
 CREATE TABLE tracks (
 	id            INTEGER PRIMARY KEY,  -- internal; the FTS rowid

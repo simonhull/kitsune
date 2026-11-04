@@ -49,6 +49,15 @@ it finishes, so point health checks that restart containers at `GET /healthz`. A
 keeps its track; a vanished one is deleted after `library.missing_grace`. A root that is
 unreadable or suddenly empty is skipped, so an unmounted disk never deletes anything.
 
+### Album covers
+
+The scan renders each album's cover once, from the first of: an embedded front cover, any
+other embedded picture, or `cover`, `folder`, `front` or `album` (`.jpg`, `.jpeg`, `.png`,
+`.webp`) in the track's folder or the parent of a disc folder. Renditions at 128, 512 and 1024
+pixels (never upscaled) go to `<data_dir>/artwork`, so `GET /artwork/{hash}?size=` is a file read,
+cached for a year. The cache is derived data, but it is only rebuilt when an audio file changes:
+a replaced `cover.jpg` is not noticed, and if you delete the folder you need a new database.
+
 Logs are JSON on stderr. `log.level = "debug"` adds one line per request; it records the
 path only, never the query. `GET /healthz` reports that the process is up, and
 `GET /readyz` that it is ready to serve. On SIGINT or SIGTERM the server stops accepting

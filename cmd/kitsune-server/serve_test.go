@@ -567,3 +567,57 @@ func TestServeStopsDuringScan(t *testing.T) { //nolint:paralleltest // overrides
 		t.Errorf("close = %v, want nil", err)
 	}
 }
+
+func TestServeRendersAndServesArtwork(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	lib := libraryEnv(t, 1)
+	ra := serveApp(t, lib.env)
+	ra.waitReady(t)
+
+	dir := filepath.Join(lib.env.dataDir, "artwork")
+	st, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("the artwork cache was not created: %v", err)
+	}
+	if mode := st.Mode().Perm(); mode != 0o700 {
+		t.Errorf("artwork dir mode = %v, want 0700", mode)
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "*", "*-128.jpg"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("renditions = %v, %v; want one cover rendered by the scan", files, err)
+	}
+	if covers, ok := logMessages(t, ra.logs)["scan finished"]["covers"].(float64); !ok || covers != 1 {
+		t.Errorf("scan finished covers = %v, want 1", covers)
+	}
+	hash, _, _ := strings.Cut(filepath.Base(files[0]), "-")
+	got := ra.getArtwork(t, hash)
+	if got.status != http.StatusOK || got.contentType != "image/jpeg" {
+		t.Errorf("GET artwork = %d %q, want 200 image/jpeg", got.status, got.contentType)
+	}
+}
+
+// getArtwork fetches the 128 px rendition of hash as simon.
+func (ra *runningApp) getArtwork(t *testing.T, hash string) artworkReply {
+	t.Helper()
+	res, err := ra.app.auth.Login(t.Context(), simonName, goodPassword, "test/1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ra.url+"/artwork/"+hash+"?size=128", http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+res.Token)
+	resp, err := ra.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // Read-only.
+	return artworkReply{status: resp.StatusCode, contentType: resp.Header.Get(contentTypeKey)}
+}
+
+// artworkReply is the status and media type of an artwork response.
+type artworkReply struct {
+	status      int
+	contentType string
+}

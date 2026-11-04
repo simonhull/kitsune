@@ -50,6 +50,27 @@ type AlbumWrite struct {
 	GroupKey, Name, SortName, MBID string
 	Year                           int
 	Compilation                    bool
+	Artwork                        *ArtworkWrite // Nil keeps the cover the album has.
+}
+
+// ArtworkSource says where a cover came from.
+type ArtworkSource string
+
+const (
+	// ArtworkEmbedded is a picture inside an audio file.
+	ArtworkEmbedded ArtworkSource = "embedded"
+	// ArtworkFolder is an image file next to the audio.
+	ArtworkFolder ArtworkSource = "folder"
+)
+
+// ArtworkWrite describes a rendered cover. Hash is the SHA-256 of the source
+// image, the key of its renditions on disk; the store holds no image bytes.
+type ArtworkWrite struct {
+	Hash          [32]byte
+	Width, Height int    // Of the source image.
+	Accent        string // "#rrggbb".
+	Ground        string // "#rrggbb".
+	Source        ArtworkSource
 }
 
 // ArtistWrite identifies an artist by MatchKey and carries its display fields.
@@ -203,12 +224,33 @@ func (tw *TrackWrite) validate() error {
 	case tw.Album.GroupKey == "":
 		return fmt.Errorf("empty Album.GroupKey: %w", ErrInvalidWrite)
 	}
+	if art := tw.Album.Artwork; art != nil {
+		if err := art.validate(); err != nil {
+			return fmt.Errorf("Album.Artwork: %w", err)
+		}
+	}
+	return tw.validateArtists()
+}
+
+func (tw *TrackWrite) validateArtists() error {
 	for _, list := range [][]ArtistWrite{tw.Artists, tw.AlbumArtists} {
 		for i := range list {
 			if list[i].MatchKey == "" {
 				return fmt.Errorf("empty MatchKey on artist %q: %w", list[i].Name, ErrInvalidWrite)
 			}
 		}
+	}
+	return nil
+}
+
+func (a *ArtworkWrite) validate() error {
+	switch {
+	case a.Source != ArtworkEmbedded && a.Source != ArtworkFolder:
+		return fmt.Errorf("unknown Source %q: %w", a.Source, ErrInvalidWrite)
+	case a.Width <= 0 || a.Height <= 0:
+		return fmt.Errorf("size %d x %d: %w", a.Width, a.Height, ErrInvalidWrite)
+	case a.Accent == "" || a.Ground == "":
+		return fmt.Errorf("empty Accent or Ground: %w", ErrInvalidWrite)
 	}
 	return nil
 }
@@ -299,6 +341,16 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite) (trackR
 	if refs.albumArtistIDs, err = upsertArtists(ctx, q, tw.AlbumArtists); err != nil {
 		return refs, err
 	}
+	var artworkHash []byte
+	if art := tw.Album.Artwork; art != nil {
+		if err = q.UpsertArtwork(ctx, sqlcdb.UpsertArtworkParams{
+			Hash: art.Hash[:], Width: int64(art.Width), Height: int64(art.Height),
+			Accent: art.Accent, Ground: art.Ground, Source: string(art.Source),
+		}); err != nil {
+			return refs, fmt.Errorf("upsert artwork: %w", err)
+		}
+		artworkHash = art.Hash[:]
+	}
 	refs.albumID, err = q.UpsertAlbum(ctx, sqlcdb.UpsertAlbumParams{
 		GroupKey:    tw.Album.GroupKey,
 		Name:        tw.Album.Name,
@@ -306,6 +358,7 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite) (trackR
 		Mbid:        nullStr(tw.Album.MBID),
 		Year:        nullInt(tw.Album.Year),
 		Compilation: flag(tw.Album.Compilation),
+		ArtworkHash: artworkHash,
 	})
 	if err != nil {
 		return refs, fmt.Errorf("upsert album: %w", err)
@@ -582,8 +635,12 @@ type MissingTrack struct {
 	Root, RelPath string
 }
 
-// Pruned counts what PruneOrphans deleted.
-type Pruned struct{ Albums, Artists int64 }
+// Pruned counts what PruneOrphans deleted, and lists the artwork rows it
+// dropped so the caller can delete their files.
+type Pruned struct {
+	Albums, Artists int64
+	Artwork         [][32]byte
+}
 
 // MissingByDigest returns the missing tracks whose audio digest is digest,
 // ordered by ID. An unknown digest gives an empty slice.
@@ -665,8 +722,10 @@ func (s *Store) DeleteMissingBefore(ctx context.Context, cutoff time.Time) (int6
 	return n, nil
 }
 
-// PruneOrphans deletes the albums that no track uses and the artists that no
-// track links to, and returns how many of each.
+// PruneOrphans deletes the albums that no track uses, then the artwork rows no
+// album uses, and the artists that no track links to. It returns how many
+// albums and artists went, and the hashes of the artwork, so the caller can
+// delete their files.
 func (s *Store) PruneOrphans(ctx context.Context) (Pruned, error) {
 	var p Pruned
 	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
@@ -674,11 +733,18 @@ func (s *Store) PruneOrphans(ctx context.Context) (Pruned, error) {
 		if albumsErr != nil {
 			return fmt.Errorf("albums: %w", albumsErr)
 		}
+		hashes, artworkErr := q.PruneArtwork(ctx)
+		if artworkErr != nil {
+			return fmt.Errorf("artwork: %w", artworkErr)
+		}
 		artists, artistsErr := q.PruneArtists(ctx)
 		if artistsErr != nil {
 			return fmt.Errorf("artists: %w", artistsErr)
 		}
 		p = Pruned{Albums: albums, Artists: artists}
+		for _, h := range hashes {
+			p.Artwork = append(p.Artwork, [32]byte(h))
+		}
 		return nil
 	})
 	if err != nil {

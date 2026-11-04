@@ -210,6 +210,14 @@ func tagKey(k string) string {
 	return sb.String()
 }
 
+// discParent returns the parent of dir when dir is a disc folder ("CD1").
+func discParent(dir string) (string, bool) {
+	if dir != "." && discFolder.MatchString(filepath.Base(dir)) {
+		return filepath.Dir(dir), true
+	}
+	return "", false
+}
+
 // groupKey returns the key that groups tw's tracks into an album: the album
 // artist, album name and folder, with disc folders collapsed into their parent.
 // The album MBID is deliberately not part of it. On a real library, grouping by
@@ -225,8 +233,8 @@ func groupKey(tw *store.TrackWrite) string {
 		artistKey = tw.Artists[0].MatchKey
 	}
 	dir := filepath.Dir(tw.RelPath)
-	if dir != "." && discFolder.MatchString(filepath.Base(dir)) {
-		dir = filepath.Dir(dir)
+	if parent, ok := discParent(dir); ok {
+		dir = parent
 	}
 	folder := filepath.Join(tw.Root, dir)
 	return "tag:" + artistKey + "\x1f" + MatchKey(tw.Album.Name) + "\x1f" + folder

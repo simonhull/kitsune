@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/openapitest"
 	"github.com/simonhull/kitsune/internal/store"
@@ -86,6 +87,7 @@ type testServerOptions struct {
 	BasePath      string
 	Ready         func(context.Context) error
 	LogLevel      slog.Level // The zero value is Info.
+	Artwork       *artwork.Cache
 }
 
 // testServer is a running API over a real store and auth service.
@@ -99,8 +101,8 @@ type testServer struct {
 }
 
 // newTestServer starts a server over a temporary store.
-func newTestServer(t *testing.T, opts ...testServerOptions) *testServer {
-	t.Helper()
+func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
+	tb.Helper()
 	var o testServerOptions
 	if len(opts) > 0 {
 		o = opts[0]
@@ -109,18 +111,18 @@ func newTestServer(t *testing.T, opts ...testServerOptions) *testServer {
 		o.Params = auth.Params{Time: 1, MemoryKiB: 64, Threads: 1}
 	}
 	clock := newTestClock()
-	st, err := store.Open(t.Context(), filepath.Join(t.TempDir(), store.FileName), store.Options{Now: clock.Now})
+	st, err := store.Open(tb.Context(), filepath.Join(tb.TempDir(), store.FileName), store.Options{Now: clock.Now})
 	if err != nil {
-		t.Fatalf("open store: %v", err)
+		tb.Fatalf("open store: %v", err)
 	}
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		if closeErr := st.Close(); closeErr != nil {
-			t.Errorf("close store: %v", closeErr)
+			tb.Errorf("close store: %v", closeErr)
 		}
 	})
 	svc, err := auth.New(st, auth.Options{Params: o.Params, Now: clock.Now})
 	if err != nil {
-		t.Fatalf("auth.New: %v", err)
+		tb.Fatalf("auth.New: %v", err)
 	}
 	logs := &syncBuffer{}
 	h := New(Config{
@@ -131,9 +133,10 @@ func newTestServer(t *testing.T, opts ...testServerOptions) *testServer {
 		SecureCookies: o.SecureCookies,
 		BasePath:      o.BasePath,
 		Ready:         o.Ready,
+		Artwork:       o.Artwork,
 	})
 	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
+	tb.Cleanup(srv.Close)
 	return &testServer{Server: srv, URL: srv.URL, Clock: clock, Log: logs, Auth: svc, Handle: h}
 }
 
@@ -147,11 +150,11 @@ func testClientIP(r *http.Request) string {
 }
 
 // seedUser creates a user and returns it.
-func (ts *testServer) seedUser(t *testing.T, name, password string, role store.Role) store.User {
-	t.Helper()
-	u, err := ts.Auth.CreateUser(t.Context(), name, password, role)
+func (ts *testServer) seedUser(tb testing.TB, name, password string, role store.Role) store.User {
+	tb.Helper()
+	u, err := ts.Auth.CreateUser(tb.Context(), name, password, role)
 	if err != nil {
-		t.Fatalf("seed user %q: %v", name, err)
+		tb.Fatalf("seed user %q: %v", name, err)
 	}
 	return u
 }

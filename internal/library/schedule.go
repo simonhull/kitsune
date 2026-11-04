@@ -32,6 +32,7 @@ func (s *Scanner) logScan(ctx context.Context) {
 			slog.Int("moved", stats.Moved), slog.Int("missing", stats.Missing),
 			slog.Int("issues", stats.Issues), slog.Int64("deleted", stats.Deleted),
 			slog.Int64("prunedAlbums", stats.Pruned.Albums), slog.Int64("prunedArtists", stats.Pruned.Artists),
+			slog.Int("prunedArtwork", len(stats.Pruned.Artwork)), slog.Int("covers", stats.Covers),
 			slog.Int("skippedRoots", stats.SkippedRoots), slog.Duration("duration", elapsed))
 	}
 }

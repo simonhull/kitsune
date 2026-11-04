@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
 )
 
@@ -27,6 +28,7 @@ type Config struct {
 	SecureCookies bool                        // Mark cookies Secure even without TLS (HTTPS proxy in front).
 	BasePath      string                      // "" or a path such as "/music": serve under it. New panics on a malformed one.
 	Ready         func(context.Context) error // Nil means always ready. Backs GET /readyz.
+	Artwork       *artwork.Cache              // Nil means every GET /artwork/{hash} is a 404.
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -41,6 +43,7 @@ type Server struct {
 	secureCookies bool
 	basePath      string
 	ready         func(context.Context) error
+	artwork       *artwork.Cache
 	limiter       *loginLimiter
 }
 
@@ -67,6 +70,7 @@ func New(cfg Config) *Server {
 		secureCookies: cfg.SecureCookies,
 		basePath:      cfg.BasePath,
 		ready:         cfg.Ready,
+		artwork:       cfg.Artwork,
 		limiter:       newLoginLimiter(maxLimiterKeys),
 	}
 	if s.log == nil {
@@ -122,6 +126,7 @@ func (s *Server) routes() []route {
 		{pattern: "POST /auth/login", public: true, handle: s.login},
 		{pattern: "POST /auth/logout", handle: s.logout},
 		{pattern: "GET /me", handle: s.getMe},
+		{pattern: "GET /artwork/{hash}", handle: s.getArtwork},
 	}
 }
 

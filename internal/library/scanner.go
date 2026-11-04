@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -32,6 +33,7 @@ type Options struct {
 	Workers      int              // Zero means runtime.NumCPU().
 	Logger       *slog.Logger     // Nil discards.
 	Now          func() time.Time // Nil means time.Now.
+	Artwork      *artwork.Cache   // Nil skips album art.
 }
 
 // Stats counts what a scan did.
@@ -40,6 +42,7 @@ type Stats struct {
 	Deleted                                            int64 // Tracks past the grace period.
 	Pruned                                             store.Pruned
 	SkippedRoots                                       int
+	Covers                                             int // Album covers stored: successful artwork.Cache.Put calls.
 }
 
 // Scanner keeps the store in step with the library roots. It is safe for
@@ -52,6 +55,7 @@ type Scanner struct {
 	batchSize int // Tracks plus issues per write; tests lower it.
 	log       *slog.Logger
 	now       func() time.Time
+	artwork   *artwork.Cache
 	mu        sync.Mutex
 }
 
@@ -59,7 +63,7 @@ type Scanner struct {
 func NewScanner(st *store.Store, opts Options) *Scanner {
 	s := &Scanner{
 		st: st, roots: opts.Roots, grace: opts.MissingGrace, workers: opts.Workers,
-		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now,
+		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
 	}
 	if s.workers <= 0 {
 		s.workers = runtime.NumCPU()
@@ -129,5 +133,19 @@ func (s *Scanner) finish(ctx context.Context, hold bool, stats *Stats) error {
 		return fmt.Errorf("prune: %w", err)
 	}
 	stats.Pruned = pruned
+	s.deleteArtwork(ctx, pruned.Artwork)
 	return nil
+}
+
+// deleteArtwork removes the renditions of images no album uses any more. A
+// failure is logged: leftover files cost disk, never a scan.
+func (s *Scanner) deleteArtwork(ctx context.Context, hashes [][32]byte) {
+	if s.artwork == nil {
+		return
+	}
+	for _, h := range hashes {
+		if err := s.artwork.Delete(h); err != nil {
+			s.log.WarnContext(ctx, "deleting a pruned cover failed", "err", err)
+		}
+	}
 }

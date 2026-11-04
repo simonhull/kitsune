@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sync/atomic"
 	"testing"
@@ -61,7 +62,7 @@ func garbage() []byte { return bytes.Repeat([]byte("garbage!"), 512) }
 
 func wantStats(t *testing.T, got, want *Stats) {
 	t.Helper()
-	if *got != *want {
+	if !reflect.DeepEqual(*got, *want) {
 		t.Errorf("stats = %+v, want %+v", *got, *want)
 	}
 }
