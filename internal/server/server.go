@@ -1,5 +1,5 @@
 // Package server is Kitsune's native HTTP API, written by hand against
-// api/openapi.yaml. The kitsune-server binary does not serve it yet.
+// api/openapi.yaml. The kitsune-server binary serves it.
 //
 // Routing uses [http.ServeMux] method and path patterns, which share the
 // contract's {name} placeholder syntax, so a route's pattern is the spec's

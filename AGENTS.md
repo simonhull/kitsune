@@ -86,13 +86,23 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   real files written by audiometa. Add a key there, never inline.
 - audiometa reports tags as stored; display fallbacks (title from file name, sort name
   from name, disc folders) are Kitsune's and live here.
+- The scanner is the only library writer: one goroutine resolves identity and writes.
+  Identity order: row at the path, then a single digest match among missing tracks,
+  then same relative path, then base name, then a new ULID.
+- An outage must never look like deletions, because a missing track is eventually
+  deleted with its users' data. An unreadable or empty root, a mass disappearance, an
+  unreadable directory and an empty `roots` all leave tracks alone. Removed roots count
+  only when every configured root was walked and had audio. Deletes hold while a missing
+  track may be behind an outage.
+- Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
+  wait for the file to change.
 
 ## Operations
 - `cmd/kitsune-server` is the only place that reads the environment, signals or flags;
   `internal/server` takes everything through `server.Config`.
 - Logs are `log/slog` JSON. Log `r.URL.Path`, never the full URL or query: OpenSubsonic
   clients send credentials in the query string.
-- `Config.Ready` backs `/readyz`; new readiness conditions (the scanner) join it there.
+- `Config.Ready` backs `/readyz`; new readiness conditions join it there (today: the first scan has finished, then the database answers).
 
 ## Lint policy
 - golangci-lint runs with `default: all`. Every disabled linter in `.golangci.yml` has
