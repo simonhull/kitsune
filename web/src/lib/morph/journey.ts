@@ -10,6 +10,7 @@ import {
 	type MotionToken,
 	type RouteName
 } from './choreography.ts';
+import { library } from '#lib/library/library.svelte.ts';
 import { markClick } from './hud.svelte.ts';
 import { pick, recordOrigins, type Origins } from './pairs.ts';
 import { registry, type MorphEntry } from './registry.ts';
@@ -30,9 +31,17 @@ const routes = new Map<string, RouteName>([
 
 const origins: Origins = new Map();
 
+const playerParts = ['control:previous', 'control:pause', 'control:next', 'progress'];
+
 let lastClick: EventTarget | null = null;
 let homeScroll = 0;
 let visualTransition = false;
+let navigations = 0;
+
+/** Reports whether there's a page of ours to go back to. */
+export function hasInAppHistory(): boolean {
+	return navigations > 0;
+}
 
 /** Listens for what the journey needs to know before Kit does. Returns the cleanup. */
 export function watchInput(): () => void {
@@ -64,6 +73,7 @@ function onScreen({ element }: MorphEntry): boolean {
 /** Decides what a navigation does, or returns null when it shouldn't animate at all. */
 export function beginJourney(navigation: OnNavigate): Journey | null {
 	const { from, to, type } = navigation;
+	navigations += 1;
 	const fromRoute = routes.get(from?.route.id ?? '');
 	const toRoute = routes.get(to?.route.id ?? '');
 	if (fromRoute === undefined || toRoute === undefined) {
@@ -87,12 +97,10 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 		return { choreography, ids: [], sources: new Map() };
 	}
 
-	const albumId = (travel.subject === 'to' ? to : from)?.params?.['id'];
-	if (albumId === undefined) {
-		return { choreography, ids: [], sources: new Map() };
+	const ids = idsFor(travel.subject, navigation);
+	if (ids.length === 0) {
+		return { choreography, ids, sources: new Map() };
 	}
-
-	const ids = [`cover:${albumId}`, `title:${albumId}`];
 	const scope = type === 'link' ? clickedScope() : null;
 	const candidates = registry.list();
 	const sources = pick(candidates, {
@@ -100,16 +108,29 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 		slots: travel.sourceSlots,
 		clicked: scope === null ? undefined : ({ element }) => scope.contains(element),
 		visible: onScreen,
+		eligible: canTravel,
 		// Forward through history has no click: go back to the card the album was opened from.
 		origins: type === 'popstate' ? origins : undefined
 	});
-	if (fromRoute === 'home') {
-		const [slot] = travel.sourceSlots;
-		if (slot !== undefined) {
-			recordOrigins(candidates, ids, slot, sources, origins);
-		}
+	if (choreography.name === 'home-to-album') {
+		recordOrigins(candidates, ids, 'card', sources, origins);
 	}
 	return { choreography, ids, sources };
+}
+
+/** Lists what travels on a journey. */
+function idsFor(subject: 'from' | 'to' | 'playing', { from, to }: OnNavigate): string[] {
+	if (subject === 'playing') {
+		const id = library.playing?.album.id;
+		return id === undefined ? [] : [`cover:${id}`, 'song', ...playerParts];
+	}
+	const id = (subject === 'to' ? to : from)?.params?.['id'];
+	return id === undefined ? [] : [`cover:${id}`, `title:${id}`];
+}
+
+/** A hero scrolled off screen stays with its page: the island's cover travels instead. */
+function canTravel(entry: MorphEntry): boolean {
+	return entry.slot !== 'hero' || onScreen(entry);
 }
 
 function clickedScope(): Element | null {
@@ -130,7 +151,8 @@ export function landJourney(journey: Journey, scrollToOrigin: boolean): Map<stri
 		ids: journey.ids,
 		slots: travel.targetSlots,
 		origins,
-		visible: onScreen
+		visible: onScreen,
+		eligible: canTravel
 	});
 	if (landingOnHome) {
 		const cover = [...targets.values()].find((entry) => entry.kind === 'cover');

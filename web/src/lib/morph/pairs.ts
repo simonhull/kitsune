@@ -23,6 +23,8 @@ export interface PickOptions<C extends Candidate> {
 	origins?: Origins;
 	/** Reports whether a candidate is on screen. */
 	visible?: (candidate: C) => boolean;
+	/** Rules candidates out altogether: a hero scrolled off screen can't travel. */
+	eligible?: (candidate: C) => boolean;
 }
 
 function pickInSlot<C extends Candidate>(
@@ -53,7 +55,9 @@ export function pick<C extends Candidate>(
 	const picked = new Map<string, C>();
 	for (const id of options.ids) {
 		for (const slot of options.slots) {
-			const matches = candidates.filter((c) => c.id === id && c.slot === slot);
+			const matches = candidates.filter(
+				(c) => c.id === id && c.slot === slot && (options.eligible?.(c) ?? true)
+			);
 			if (matches.length === 0) {
 				continue;
 			}

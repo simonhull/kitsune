@@ -53,6 +53,7 @@ button {
 .morph-layer * {
 	animation: none !important;
 	transition: none !important;
+	backdrop-filter: none !important;
 }
 
 /* A shared element waiting for its flier to land. */

@@ -28,10 +28,14 @@ function rotationOf(element: HTMLElement): number {
 	return (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI;
 }
 
-/** Measures a cover. The box ignores rotation; the center doesn't care. */
+/** Measures a cover in full, styles included: once per target, never per frame. */
 export function measureCover(element: HTMLElement): CoverShape {
+	return placeCover(element, rotationOf(element), radiusOf(element, element.offsetWidth));
+}
+
+/** Finds a cover whose style is already known. The box ignores rotation; the center doesn't care. */
+function placeCover(element: HTMLElement, rotation: number, radius: number): CoverShape {
 	const { left, top, width, height } = element.getBoundingClientRect();
-	const rotation = rotationOf(element);
 	const scale = rotation === 0 ? width / (element.offsetWidth || 1) : 1;
 	return {
 		x: left + width / 2,
@@ -39,8 +43,15 @@ export function measureCover(element: HTMLElement): CoverShape {
 		width: element.offsetWidth * scale,
 		height: element.offsetHeight * scale,
 		rotation,
-		radius: Number.parseFloat(getComputedStyle(element).borderTopLeftRadius) * scale
+		radius: radius * scale
 	};
+}
+
+/** Reads an element's corner radius in pixels, whichever unit it's written in. */
+function radiusOf(element: HTMLElement, width: number): number {
+	const { borderTopLeftRadius } = getComputedStyle(element);
+	const radius = Number.parseFloat(borderTopLeftRadius);
+	return borderTopLeftRadius.endsWith('%') ? (radius / 100) * width : radius;
 }
 
 /** Finds how far below the top of an element its first baseline sits, unscaled. */
@@ -60,21 +71,18 @@ export interface TitleMeasure {
 	drawnBaseline: number;
 }
 
-/** Measures a title for flight. */
+/** Measures a title in full, baseline probe included: once per target, never per frame. */
 export function measureTitle(element: HTMLElement): TitleMeasure {
 	const drawnSize = Number.parseFloat(getComputedStyle(element).fontSize);
 	const drawnBaseline = baselineOffset(element);
+	return { shape: placeTitle(element, drawnSize, drawnBaseline), drawnSize, drawnBaseline };
+}
+
+/** Finds a title whose metrics are already known. */
+function placeTitle(element: HTMLElement, drawnSize: number, drawnBaseline: number): TitleShape {
 	const { left, top, height } = element.getBoundingClientRect();
 	const scale = height / (element.offsetHeight || 1);
-	return {
-		shape: {
-			left,
-			baseline: top + drawnBaseline * scale,
-			fontSize: drawnSize * scale
-		},
-		drawnSize,
-		drawnBaseline
-	};
+	return { left, baseline: top + drawnBaseline * scale, fontSize: drawnSize * scale };
 }
 
 /** A picture of a title at its true font, drawn once and only ever transformed. */
@@ -82,7 +90,12 @@ export function drawTitle(element: HTMLElement): HTMLElement {
 	const style = getComputedStyle(element);
 	const picture = document.createElement('span');
 	picture.textContent = element.textContent;
-	picture.style.cssText = `position:absolute;left:0;top:0;white-space:nowrap;transform-origin:0 0;will-change:transform,opacity;
+	// A title truncated where it sits stays truncated in its picture, so the first frame matches.
+	const clipped =
+		element.scrollWidth > element.clientWidth
+			? `max-width:${String(element.clientWidth)}px;overflow:hidden;text-overflow:ellipsis;`
+			: '';
+	picture.style.cssText = `${clipped}position:absolute;left:0;top:0;white-space:nowrap;transform-origin:0 0;will-change:transform,opacity;
 		font-family:${style.fontFamily};font-size:${style.fontSize};font-weight:${style.fontWeight};
 		letter-spacing:${style.letterSpacing};line-height:${style.lineHeight};color:${style.color}`;
 	return picture;
@@ -93,7 +106,7 @@ export interface Flier {
 	readonly element: HTMLElement;
 	/** Where it's going; null when the page it was going to has gone. */
 	target: MorphEntry | null;
-	/** Reads the target's position. Runs before anything is written, once per frame. */
+	/** Reads the target's position, and nothing else. Runs before any writes, once per frame. */
 	measure(): void;
 	step(params: SpringParams, seconds: number): void;
 	write(): void;
@@ -110,7 +123,9 @@ function unit(value: number, low: number, high: number): number {
  */
 export class CoverFlier implements Flier {
 	readonly element = document.createElement('div');
-	target: MorphEntry | null;
+	#target: MorphEntry | null = null;
+	#rotation0 = 0;
+	#radius0 = 0;
 
 	readonly #x: Channel;
 	readonly #y: Channel;
@@ -144,11 +159,24 @@ export class CoverFlier implements Flier {
 		this.write();
 	}
 
+	get target(): MorphEntry | null {
+		return this.#target;
+	}
+
+	set target(entry: MorphEntry | null) {
+		this.#target = entry;
+		if (entry !== null) {
+			const { rotation, radius } = measureCover(entry.element);
+			this.#rotation0 = rotation;
+			this.#radius0 = radius;
+		}
+	}
+
 	measure(): void {
-		if (this.target === null) {
+		if (this.#target === null) {
 			return;
 		}
-		const to = measureCover(this.target.element);
+		const to = placeCover(this.#target.element, this.#rotation0, this.#radius0);
 		this.#x.target = to.x;
 		this.#y.target = to.y;
 		this.#width.target = to.width;
@@ -194,6 +222,78 @@ export class CoverFlier implements Flier {
 	}
 }
 
+/** Where a bar is. Unlike a cover it changes proportion, so it's drawn at its true size. */
+export interface BarShape {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+	radius: number;
+}
+
+export function measureBar(element: HTMLElement): BarShape {
+	const { left, top, width, height } = element.getBoundingClientRect();
+	return { left, top, width, height, radius: radiusOf(element, width) };
+}
+
+/** A bar in flight: the island's hairline becoming the scrubber's fill, and back. */
+export class BarFlier implements Flier {
+	readonly element = document.createElement('div');
+	target: MorphEntry | null;
+
+	readonly #left: Channel;
+	readonly #top: Channel;
+	readonly #width: Channel;
+	readonly #height: Channel;
+	readonly #radius: Channel;
+
+	constructor(from: BarShape, target: MorphEntry, color: string) {
+		const to = measureBar(target.element);
+		this.target = target;
+		this.#left = new Channel(from.left, to.left);
+		this.#top = new Channel(from.top, to.top);
+		this.#width = new Channel(from.width, to.width);
+		this.#height = new Channel(from.height, to.height);
+		this.#radius = new Channel(from.radius, to.radius);
+		this.element.style.cssText = `position:absolute;left:0;top:0;background:${color}`;
+		this.write();
+	}
+
+	measure(): void {
+		if (this.target === null) {
+			return;
+		}
+		const { left, top, width, height } = this.target.element.getBoundingClientRect();
+		this.#left.target = left;
+		this.#top.target = top;
+		this.#width.target = width;
+		this.#height.target = height;
+	}
+
+	step(params: SpringParams, seconds: number): void {
+		for (const channel of [this.#left, this.#top, this.#width, this.#height, this.#radius]) {
+			channel.step(params, seconds);
+		}
+	}
+
+	write(): void {
+		const { style } = this.element;
+		style.transform = `translate(${this.#left.value.toFixed(2)}px, ${this.#top.value.toFixed(2)}px)`;
+		style.width = `${this.#width.value.toFixed(2)}px`;
+		style.height = `${Math.max(0, this.#height.value).toFixed(2)}px`;
+		style.borderRadius = `${Math.max(0, this.#radius.value).toFixed(2)}px`;
+	}
+
+	get settled(): boolean {
+		return (
+			this.#left.settled(0.4) &&
+			this.#top.settled(0.4) &&
+			this.#width.settled(0.4) &&
+			this.#height.settled(0.2)
+		);
+	}
+}
+
 interface TitlePicture {
 	element: HTMLElement;
 	size: number;
@@ -207,7 +307,9 @@ interface TitlePicture {
  */
 export class TitleFlier implements Flier {
 	readonly element = document.createElement('div');
-	target: MorphEntry | null;
+	#target: MorphEntry | null = null;
+	#size0 = 0;
+	#baseline0 = 0;
 
 	readonly #left: Channel;
 	readonly #baseline: Channel;
@@ -236,11 +338,24 @@ export class TitleFlier implements Flier {
 		this.write();
 	}
 
+	get target(): MorphEntry | null {
+		return this.#target;
+	}
+
+	set target(entry: MorphEntry | null) {
+		this.#target = entry;
+		if (entry !== null) {
+			const { drawnSize, drawnBaseline } = measureTitle(entry.element);
+			this.#size0 = drawnSize;
+			this.#baseline0 = drawnBaseline;
+		}
+	}
+
 	measure(): void {
-		if (this.target === null) {
+		if (this.#target === null) {
 			return;
 		}
-		const { shape } = measureTitle(this.target.element);
+		const shape = placeTitle(this.#target.element, this.#size0, this.#baseline0);
 		this.#left.target = shape.left;
 		this.#baseline.target = shape.baseline;
 		this.#fontSize.target = shape.fontSize;

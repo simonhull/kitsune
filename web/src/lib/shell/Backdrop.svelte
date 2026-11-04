@@ -15,12 +15,13 @@
 
 {#if albumId !== null && palette !== null}
 	<div class="backdrop" data-mode={mode} aria-hidden="true">
-		<div class="album" data-morph-stage style:background={palette.stage}>
+		<div class="album" data-morph-stage="album" style:background={palette.stage}>
 			<Wash {albumId} variant="hero" />
 			<div class="fade"></div>
 		</div>
 		<div
 			class="poster"
+			data-morph-stage="poster"
 			style:--field={palette.field}
 			style:--band={palette.band}
 			style:--stage={palette.stage}

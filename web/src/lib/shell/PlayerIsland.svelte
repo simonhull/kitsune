@@ -19,85 +19,163 @@
 	const position = $derived(clock(playing.positionSeconds));
 	const duration = $derived(clock(playing.track.seconds));
 	const slot = $derived(expanded ? islandSlot.rect : null);
+	const percent = $derived(`${String(progress * 100)}%`);
 </script>
 
 <aside
 	aria-label="Player"
 	class="island"
 	class:expanded
-	style:left={slot === null ? undefined : `${String(slot.left)}px`}
-	style:top={slot === null ? undefined : `${String(slot.top)}px`}
-	style:width={slot === null ? undefined : `${String(slot.width)}px`}
+	style:--slot-left={slot === null ? undefined : `${String(slot.left)}px`}
+	style:--slot-top={slot === null ? undefined : `${String(slot.top)}px`}
+	style:--slot-width={slot === null ? undefined : `${String(slot.width)}px`}
 >
-	{#if expanded}
-		<div class="transport">
-			<button type="button" class="skip" aria-label="Previous"
-				><Icon name="previous" size={22} /></button
-			>
-			<button type="button" class="pause large" aria-label="Pause"
-				><Icon name="pause" size={22} /></button
-			>
-			<button type="button" class="skip" aria-label="Next"><Icon name="next" size={22} /></button>
-		</div>
-		<div class="scrub">
-			<span class="time">{position}</span>
-			<div class="track">
-				<div class="fill" style:width={`${String(progress * 100)}%`}></div>
-			</div>
-			<span class="time">{duration}</span>
-		</div>
-		<button type="button" class="skip favorite" aria-label="Favorite" aria-pressed="true"
-			><Icon name="heart" size={20} /></button
-		>
-	{:else}
-		<a class="now" href={resolve('/now-playing')}>
+	<!-- The glass is its own layer: in flight it changes shape while the island's box is final. -->
+	<div class="glass" data-island-glass>
+		{#if !expanded}
 			<span
-				class="thumb"
-				use:morph={{ id: `cover:${playing.album.id}`, slot: 'island', kind: 'cover' }}
-				><GeneratedCover albumId={playing.album.id} /></span
+				class="progress"
+				style:width={percent}
+				aria-hidden="true"
+				use:morph={{ id: 'progress', slot: 'island', kind: 'bar' }}
+			></span>
+		{/if}
+	</div>
+	<div class="content" data-island-content>
+		{#if expanded}
+			<div class="transport">
+				<button
+					type="button"
+					class="skip"
+					aria-label="Previous"
+					use:morph={{ id: 'control:previous', slot: 'poster', kind: 'control' }}
+					><Icon name="previous" size={22} /></button
+				>
+				<button
+					type="button"
+					class="pause large"
+					aria-label="Pause"
+					use:morph={{ id: 'control:pause', slot: 'poster', kind: 'control' }}
+					><Icon name="pause" size={22} /></button
+				>
+				<button
+					type="button"
+					class="skip"
+					aria-label="Next"
+					use:morph={{ id: 'control:next', slot: 'poster', kind: 'control' }}
+					><Icon name="next" size={22} /></button
+				>
+			</div>
+			<div class="scrub">
+				<span class="time">{position}</span>
+				<div class="track">
+					<div
+						class="fill"
+						style:width={percent}
+						use:morph={{ id: 'progress', slot: 'poster', kind: 'bar' }}
+					></div>
+				</div>
+				<span class="time">{duration}</span>
+			</div>
+			<button type="button" class="skip favorite" aria-label="Favorite" aria-pressed="true"
+				><Icon name="heart" size={20} /></button
 			>
-			<span class="names">
-				<span class="song">{playing.track.title}</span>
-				<span class="artist">{playing.album.artist}</span>
-			</span>
-		</a>
-		<span class="time compact">{position} / {duration}</span>
-		<button type="button" class="skip" aria-label="Previous"><Icon name="previous" /></button>
-		<button type="button" class="pause" aria-label="Pause"><Icon name="pause" size={20} /></button>
-		<button type="button" class="skip" aria-label="Next"><Icon name="next" /></button>
-		<span class="progress" style:width={`${String(progress * 100)}%`} aria-hidden="true"></span>
-	{/if}
+		{:else}
+			<a class="now" href={resolve('/now-playing')}>
+				<span
+					class="thumb"
+					use:morph={{ id: `cover:${playing.album.id}`, slot: 'island', kind: 'cover' }}
+					><GeneratedCover albumId={playing.album.id} /></span
+				>
+				<span class="names">
+					<span class="song" use:morph={{ id: 'song', slot: 'island', kind: 'title' }}
+						>{playing.track.title}</span
+					>
+					<span class="artist">{playing.album.artist}</span>
+				</span>
+			</a>
+			<span class="time compact">{position} / {duration}</span>
+			<button
+				type="button"
+				class="skip"
+				aria-label="Previous"
+				use:morph={{ id: 'control:previous', slot: 'island', kind: 'control' }}
+				><Icon name="previous" /></button
+			>
+			<button
+				type="button"
+				class="pause"
+				aria-label="Pause"
+				use:morph={{ id: 'control:pause', slot: 'island', kind: 'control' }}
+				><Icon name="pause" size={20} /></button
+			>
+			<button
+				type="button"
+				class="skip"
+				aria-label="Next"
+				use:morph={{ id: 'control:next', slot: 'island', kind: 'control' }}
+				><Icon name="next" /></button
+			>
+		{/if}
+	</div>
 </aside>
 
 <style>
 	.island {
+		--island-radius: var(--radius-28);
+		--island-radius-px: 28;
+
 		position: fixed;
 		left: 50%;
 		bottom: calc(24px + env(safe-area-inset-bottom));
 		transform: translateX(-50%);
 		z-index: 4;
 		width: min(720px, calc(100% - 32px));
-		display: flex;
-		align-items: center;
-		gap: 16px;
-		padding: 10px 12px 10px 10px;
-		border-radius: var(--radius-28);
+	}
+
+	.island.expanded {
+		--island-radius: var(--radius-pill);
+		--island-radius-px: 999;
+
+		left: var(--slot-left);
+		top: var(--slot-top);
+		bottom: auto;
+		width: var(--slot-width);
+		transform: none;
+	}
+
+	.glass {
+		position: absolute;
+		inset: 0;
+		overflow: hidden;
+		border-radius: var(--island-radius);
 		background: var(--glass-fill-player);
 		border: 1px solid var(--edge);
 		backdrop-filter: var(--glass-blur-player);
 		box-shadow: var(--glass-shadow-player);
-		overflow: hidden;
+		transition:
+			background var(--morph) var(--curve-morph),
+			border-color var(--morph) var(--curve-morph),
+			box-shadow var(--morph) var(--curve-morph);
 	}
 
-	.island.expanded {
-		bottom: auto;
-		transform: none;
-		gap: 14px;
-		padding: 16px 20px;
-		border-radius: var(--radius-pill);
+	.expanded .glass {
 		background: rgb(10 9 8 / 40%);
 		border-color: rgb(255 255 255 / 10%);
 		box-shadow: none;
+	}
+
+	.content {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		padding: 11px 13px 11px 11px;
+	}
+
+	.expanded .content {
+		gap: 14px;
+		padding: 17px 21px;
 	}
 
 	.now {
@@ -218,7 +296,7 @@
 	}
 
 	@media (max-width: 640px) {
-		.island {
+		.content {
 			gap: 4px;
 		}
 
@@ -227,11 +305,15 @@
 		}
 
 		.island.expanded {
+			--island-radius: var(--radius-32);
+			--island-radius-px: 32;
+		}
+
+		.expanded .content {
 			flex-wrap: wrap;
 			justify-content: space-between;
 			gap: 6px 8px;
-			padding: 12px 16px;
-			border-radius: var(--radius-32);
+			padding: 13px 17px;
 		}
 
 		.scrub {

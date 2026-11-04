@@ -72,6 +72,16 @@ describe('pick', () => {
 		expect(pick([island], { ids: [cover], slots: ['card', 'island'] }).get(cover)).toBe(island);
 	});
 
+	it('passes over what cannot travel, to the next slot', () => {
+		const hero: Named = { id: cover, slot: 'hero', name: 'hero' };
+		const picked = pick([hero, island], {
+			ids: [cover],
+			slots: ['hero', 'island'],
+			eligible: (candidate) => candidate !== hero
+		});
+		expect(picked.get(cover)).toBe(island);
+	});
+
 	it('finds nothing for an album that is neither on the page nor playing', () => {
 		expect(pick([other], { ids: [cover], slots: ['card', 'island'] }).size).toBe(0);
 	});

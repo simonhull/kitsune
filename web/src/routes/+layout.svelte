@@ -54,9 +54,10 @@
 	style:--stage={palette?.stage}
 >
 	<Backdrop albumId={stageAlbum} mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : 'clear'} />
-	{#if !onNowPlaying}
-		<Nav route={onAlbum ? 'album' : 'home'} healthIssues={library.home?.health.issues} />
-	{/if}
+	<Nav
+		route={onNowPlaying ? 'gone' : onAlbum ? 'album' : 'home'}
+		healthIssues={library.home?.health.issues}
+	/>
 	<main>{@render children()}</main>
 	<div class="ghost-layer" aria-hidden="true"></div>
 	{#if stageAlbum !== null}<Bloom albumId={stageAlbum} />{/if}

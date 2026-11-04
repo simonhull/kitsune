@@ -2,10 +2,10 @@
 export type MorphSlot = 'card' | 'hero' | 'island' | 'poster';
 
 /** What a shared element is, which decides how it travels. */
-export type MorphKind = 'cover' | 'title';
+export type MorphKind = 'cover' | 'title' | 'control' | 'bar';
 
 export interface MorphParams {
-	/** Shared across pages: `cover:<albumId>` or `title:<albumId>`. */
+	/** Shared across pages: `cover:<albumId>`, `title:<albumId>`, `song`, `control:pause`… */
 	id: string;
 	slot: MorphSlot;
 	kind: MorphKind;

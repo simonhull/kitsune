@@ -4,14 +4,14 @@
 	import Icon from './Icon.svelte';
 
 	interface Props {
-		route: 'home' | 'album';
+		route: 'home' | 'album' | 'gone';
 		healthIssues: number | undefined;
 	}
 
 	let { route, healthIssues }: Props = $props();
 </script>
 
-<header class="bar">
+<header class="bar" data-route={route} inert={route === 'gone'}>
 	<nav aria-label="Main" class="nav" data-route={route} use:flowingPill={route}>
 		<span class="pill" aria-hidden="true"></span>
 		<a class="fox" href={resolve('/')} aria-label="Kitsune home" data-sveltekit-reset="false"
@@ -60,6 +60,24 @@
 		pointer-events: none;
 	}
 
+	/* On Now playing the nav goes away the way everything shallow does: back and up. */
+	.bar {
+		transition:
+			opacity var(--morph-fast) var(--curve-morph),
+			transform var(--morph) var(--curve-morph),
+			visibility 0s;
+	}
+
+	.bar[data-route='gone'] {
+		opacity: 0;
+		visibility: hidden;
+		transform: translateY(-20px) scale(0.94);
+		transition:
+			opacity var(--morph-fast) var(--curve-morph),
+			transform var(--morph) var(--curve-morph),
+			visibility 0s var(--morph-fast);
+	}
+
 	.nav {
 		display: flex;
 		align-items: center;
@@ -79,7 +97,7 @@
 			box-shadow var(--morph) var(--curve-morph);
 	}
 
-	.nav[data-route='album'] {
+	.nav:is([data-route='album'], [data-route='gone']) {
 		background: color-mix(in srgb, var(--stage) 50%, transparent);
 		border-color: rgb(255 255 255 / 10%);
 		box-shadow: none;
@@ -96,7 +114,7 @@
 		transition: background var(--morph) var(--curve-morph);
 	}
 
-	[data-route='album'] .pill {
+	:is([data-route='album'], [data-route='gone']) .pill {
 		background: rgb(255 255 255 / 14%);
 	}
 
@@ -127,7 +145,7 @@
 			color var(--morph) var(--curve-morph);
 	}
 
-	[data-route='album'] .item {
+	:is([data-route='album'], [data-route='gone']) .item {
 		color: var(--wash);
 	}
 
@@ -141,7 +159,7 @@
 		font-weight: 600;
 	}
 
-	[data-route='album'] .item[aria-current='page'] {
+	:is([data-route='album'], [data-route='gone']) .item[aria-current='page'] {
 		color: var(--text);
 	}
 
@@ -180,7 +198,7 @@
 		font-size: 14px;
 	}
 
-	[data-route='album'] .search {
+	:is([data-route='album'], [data-route='gone']) .search {
 		margin-left: 0;
 		background: rgb(255 255 255 / 8%);
 		color: var(--wash);
@@ -220,17 +238,18 @@
 		overflow: hidden;
 	}
 
-	[data-route='album'] .home-only {
+	:is([data-route='album'], [data-route='gone']) .home-only {
 		grid-template-columns: 0fr;
 		opacity: 0;
 		margin-right: -4px;
 	}
 
-	[data-route='album'] .search .home-only {
+	:is([data-route='album'], [data-route='gone']) .search .home-only {
 		margin-right: 0;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
+		.bar,
 		.nav,
 		.nav * {
 			transition-duration: 120ms;

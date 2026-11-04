@@ -27,6 +27,8 @@ export class Layer {
 		this.#params = springParams(motionOf(part.motion));
 		this.#wait = delay / 1000;
 		element.style.willChange = 'transform, opacity';
+		// A backdrop blur recomputes every frame anything under it moves; in flight it's unseen.
+		element.style.backdropFilter = 'none';
 		this.write();
 	}
 
@@ -82,5 +84,6 @@ export class Layer {
 		style.removeProperty('transform');
 		style.removeProperty('transform-origin');
 		style.removeProperty('will-change');
+		style.removeProperty('backdrop-filter');
 	}
 }

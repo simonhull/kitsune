@@ -4,12 +4,21 @@
 	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
 	import { balancedLines, gain } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import { hasInAppHistory } from '#lib/morph/journey.ts';
+	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import { reserveIslandSlot } from '#lib/shell/slot.svelte.ts';
 
 	const playing = $derived(library.playing);
 	const lines = $derived(playing === null ? ['', ''] : balancedLines(playing.track.title));
 	const longest = $derived(Math.max(...lines.map((line) => line.length)));
+
+	function close(event: MouseEvent): void {
+		if (hasInAppHistory()) {
+			event.preventDefault();
+			history.back();
+		}
+	}
 </script>
 
 <svelte:head>
@@ -19,15 +28,18 @@
 {#if playing !== null}
 	<div class="stage">
 		<div class="poster" aria-hidden="true" style:--chars={longest}>
-			{#each lines as line (line)}<span>{line}</span>{/each}
+			{#each lines as line, index (line)}
+				<span data-morph-part={`line-${String(index + 1)}`}>{line}</span>
+			{/each}
 		</div>
 
 		<div class="column">
-			<div class="top">
+			<div class="top" data-morph-part="chrome">
 				<a
 					class="close"
 					href={resolve('/album/[id]', { id: playing.album.id })}
-					aria-label="Close now playing"><Icon name="chevron-down" size={20} /></a
+					aria-label="Close now playing"
+					onclick={close}><Icon name="chevron-down" size={20} /></a
 				>
 				<span class="where"
 					>NOW PLAYING · {playing.album.title.toUpperCase()} · {playing.track.number} / {playing.trackCount}</span
@@ -41,10 +53,15 @@
 			</div>
 
 			<div class="center">
-				<div class="art"><GeneratedCover albumId={playing.album.id} /></div>
+				<div
+					class="art"
+					use:morph={{ id: `cover:${playing.album.id}`, slot: 'poster', kind: 'cover' }}
+				>
+					<GeneratedCover albumId={playing.album.id} />
+				</div>
 				<div class="names">
-					<h1>{playing.track.title}</h1>
-					<span class="artist">
+					<h1 use:morph={{ id: 'song', slot: 'poster', kind: 'title' }}>{playing.track.title}</h1>
+					<span class="artist" data-morph-part="details">
 						<strong>{playing.album.artist}</strong>
 						{#if playing.track.featuring !== undefined}feat. {playing.track.featuring}{/if}
 					</span>
@@ -52,7 +69,7 @@
 				<div class="controls-slot" use:reserveIslandSlot></div>
 			</div>
 
-			<section aria-label="Up next" class="next">
+			<section aria-label="Up next" class="next" data-morph-part="panel">
 				<span class="next-label">UP NEXT</span>
 				{#each playing.upNext as upcoming, index (upcoming.title)}
 					<span class="pill" style:opacity={1 - index * 0.2}>

@@ -5,30 +5,45 @@ import {
 	bloomOpenness,
 	bloomStrength,
 	rippleDelay,
+	rippleWeight,
 	springParams,
+	weighPart,
 	type Choreography,
 	type Part,
 	type Role,
-	type SpringParams
+	type SpringParams,
+	type StageName
 } from '../choreography.ts';
+import { library } from '#lib/library/library.svelte.ts';
 import { reportStart } from '../hud.svelte.ts';
 import { beginJourney, centerOf, landJourney, motionOf, type Journey } from '../journey.ts';
 import { registry, type MorphEntry } from '../registry.ts';
 import {
+	BarFlier,
 	CoverFlier,
 	drawTitle,
+	measureBar,
 	measureCover,
 	measureTitle,
 	TitleFlier,
+	type BarShape,
 	type CoverShape,
 	type Flier,
 	type TitleMeasure
 } from './flier.ts';
+import { IslandShape } from './island.ts';
 import { Layer } from './layer.ts';
 
 const hiddenAttribute = 'data-morph-hidden';
 const sourceAttribute = 'data-morph-source';
 
+/** What's inside the island leaves at once, before the glass has got anywhere. */
+const islandLeaves: Part = {
+	from: {},
+	to: { opacity: 0 },
+	delay: 0,
+	motion: { token: '--morph-fast', bounce: 0 }
+};
 /** The largest gap one frame may jump: a stalled main thread shouldn't teleport anything. */
 const longestFrame = 1 / 20;
 
@@ -46,7 +61,7 @@ interface Point {
 }
 
 interface CoverCapture {
-	kind: 'cover';
+	kind: 'cover' | 'control';
 	shape: CoverShape;
 	picture: Node;
 	shadow: string;
@@ -58,23 +73,42 @@ interface TitleCapture {
 	picture: HTMLElement;
 }
 
-type Capture = CoverCapture | TitleCapture;
+interface BarCapture {
+	kind: 'bar';
+	shape: BarShape;
+	color: string;
+}
+
+type Capture = CoverCapture | TitleCapture | BarCapture;
 
 function capture(source: MorphEntry): Capture {
 	const { element, kind } = source;
 	if (kind === 'title') {
 		return { kind, measure: measureTitle(element), picture: drawTitle(element) };
 	}
+	if (kind === 'bar') {
+		const color = getComputedStyle(element).backgroundColor;
+		return { kind, shape: measureBar(element), color };
+	}
 	return {
 		kind,
 		shape: measureCover(element),
-		picture: pictureOf(element),
+		picture: pictureOf(source),
 		shadow: getComputedStyle(element).boxShadow
 	};
 }
 
-function pictureOf(element: HTMLElement): Node {
-	return (element.firstElementChild ?? element).cloneNode(true);
+/** Draws what a flier shows: a cover's art, or a control as it stands. */
+function pictureOf({ element, kind }: MorphEntry): Node {
+	if (kind === 'cover') {
+		return (element.firstElementChild ?? element).cloneNode(true);
+	}
+	const picture = element.cloneNode(true);
+	if (picture instanceof HTMLElement) {
+		picture.removeAttribute(hiddenAttribute);
+		picture.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;margin:0';
+	}
+	return picture;
 }
 
 /** The outgoing page, as an inert picture of itself. */
@@ -99,17 +133,34 @@ function distance(unit: HTMLElement, from: { x: number; y: number }): number {
 	return Math.hypot(x - from.x, y - from.y);
 }
 
-/** Works out each unit's delay for a part, with its ripple if it has one. */
-function delays(units: HTMLElement[], part: (unit: HTMLElement) => Part, from: Point | null) {
+/** Scales each unit's part by where it sits relative to the cover. */
+function shapeWave(
+	units: HTMLElement[],
+	part: (unit: HTMLElement) => Part,
+	from: Point | null
+): { part: Part; delay: number }[] {
 	const reach = from === null ? [] : units.map((unit) => distance(unit, from));
-	const farthest = Math.max(0, ...reach);
+	const farthest = Math.max(1, ...reach);
 	return units.map((unit, index) => {
-		const { delay, ripple } = part(unit);
+		const plain = part(unit);
 		const away = reach.at(index);
-		return ripple === undefined || away === undefined
-			? delay
-			: delay + rippleDelay(ripple, away, farthest);
+		if (plain.ripple === undefined || away === undefined) {
+			return { part: plain, delay: plain.delay };
+		}
+		const share = away / farthest;
+		return {
+			part: weighPart(plain, rippleWeight(plain.ripple, share)),
+			delay: plain.delay + rippleDelay(plain.ripple, share)
+		};
 	});
+}
+
+/** Pins the album colors on a picture, because the shell's are about to change. */
+function keepColors(from: HTMLElement, picture: HTMLElement): void {
+	const style = getComputedStyle(from);
+	for (const name of ['--accent', '--on-accent', '--wash', '--stage']) {
+		picture.style.setProperty(name, style.getPropertyValue(name));
+	}
 }
 
 /** The light around the cover, following it through the air. */
@@ -147,7 +198,8 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 	const ghosts: Ghost[] = [];
 	const inFlight = new Set<string>();
 	let flight: SpringParams = springParams({ duration: 420, bounce: 0 });
-	let stage: Layer | null = null;
+	const stages = new Map<StageName, Layer>();
+	let island: IslandShape | null = null;
 	let bloom: Bloom | null = null;
 	let frame = 0;
 	let lastFrame = 0;
@@ -186,6 +238,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		clone.inert = true;
 		clone.setAttribute('aria-hidden', 'true');
 		clone.style.cssText = `position:absolute;left:${String(left)}px;top:${String(top)}px;width:${String(width)}px;height:${String(height)}px;z-index:auto`;
+		keepColors(main, clone);
 		under.append(clone);
 
 		const cover = [...sources.values()].find((entry) => entry.kind === 'cover');
@@ -194,7 +247,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		const units = unitsOf(clone);
 		// A page with no units yet, still loading say, leaves as one.
 		const movers = units.length > 0 ? units : [clone];
-		const waits = delays(movers, () => part, center);
+		const wave = shapeWave(movers, () => part, center);
 		const layers = movers.map((unit, index) => {
 			const realUnit = real.at(index);
 			// A unit still arriving is at some pose: its ghost starts there, not at rest.
@@ -202,7 +255,8 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			if (center !== null) {
 				pivot(unit, center);
 			}
-			const layer = new Layer(unit, part, waits.at(index));
+			const shaped = wave.at(index);
+			const layer = new Layer(unit, shaped?.part ?? part, shaped?.delay);
 			if (inherited !== undefined) {
 				layer.adopt(inherited);
 			}
@@ -240,8 +294,9 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			}
 			const flier = createFlier(source, target);
 			fliers.set(id, flier);
-			// Words stay in front of art, so a title never tucks behind the cover it travels with.
-			if (flier instanceof CoverFlier) {
+			// Words stay in front of art, so a title never tucks behind the cover it travels with,
+			// and the fox bar passes under the controls it crosses on the way.
+			if (target.kind === 'cover' || target.kind === 'bar') {
 				air.prepend(flier.element);
 			} else {
 				air.append(flier.element);
@@ -257,6 +312,9 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 	}
 
 	function createFlier(source: Capture, target: MorphEntry): Flier {
+		if (source.kind === 'bar') {
+			return new BarFlier(source.shape, target, source.color);
+		}
 		if (source.kind === 'title') {
 			return new TitleFlier(
 				source.measure,
@@ -271,7 +329,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		return new CoverFlier(
 			source.shape,
 			target,
-			growing ? pictureOf(target.element) : source.picture,
+			growing ? pictureOf(target) : source.picture,
 			growing ? getComputedStyle(target.element).boxShadow : source.shadow
 		);
 	}
@@ -310,43 +368,102 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			return;
 		}
 
-		const moving = units.filter((unit) => arriving[roleOf(unit)] !== undefined);
-		const waits = delays(moving, (unit) => arriving[roleOf(unit)] as Part, center);
+		const moving = units.filter(
+			(unit) => arriving[roleOf(unit)] !== undefined && !flying.has(unit)
+		);
+		const wave = shapeWave(moving, (unit) => arriving[roleOf(unit)] as Part, center);
 		for (const [index, unit] of moving.entries()) {
-			const part = arriving[roleOf(unit)];
-			if (part === undefined || flying.has(unit)) {
+			const shaped = wave.at(index);
+			if (shaped === undefined) {
 				continue;
 			}
 			if (center !== null) {
 				pivot(unit, center);
 			}
-			landing.set(unit, new Layer(unit, part, waits.at(index)));
+			landing.set(unit, new Layer(unit, shaped.part, shaped.delay));
 		}
 	}
 
-	function moveStage(journey: Journey, leaving: boolean, frozenTop: number): void {
-		const { stage: part } = journey.choreography;
-		const element = surfaceFor('[data-morph-stage]');
-		if (part === null || element === null) {
+	function moveStages(journey: Journey, frozen: Map<StageName, number>, held: boolean): void {
+		for (const [name, part] of Object.entries(journey.choreography.stages) as [StageName, Part][]) {
+			const element = surfaceFor(`[data-morph-stage="${name}"]`);
+			if (element === null || (held && name === 'album')) {
+				continue;
+			}
+			const stage = stages.get(name);
+			if (stage === undefined) {
+				stages.set(name, new Layer(element, part));
+			} else {
+				stage.retarget(part);
+			}
+			// Only a leaving stage is pinned: an arriving one scrolls with its page, as at rest.
+			const top = frozen.get(name);
+			if (part.to.opacity !== 0) {
+				thaw(element);
+			} else if (element.style.position === '' && top !== undefined) {
+				freeze(element, top);
+			}
+		}
+	}
+
+	/**
+	 * Leaving one album for another's Now playing: the stage would change color in a single
+	 * frame. A picture of the old one stays to be covered, and the real one is free to change.
+	 */
+	function holdStage(stage: HTMLElement, part: Part): void {
+		const clone = stage.cloneNode(true);
+		if (!(clone instanceof HTMLElement)) {
 			return;
 		}
-		if (stage === null) {
-			stage = new Layer(element, part);
-		} else {
-			stage.retarget(part);
+		clone.removeAttribute('data-morph-stage');
+		freeze(clone, stage.getBoundingClientRect().top);
+		stage.after(clone);
+		ghosts.push({ path: '', element: clone, layers: [new Layer(clone, part)] });
+	}
+
+	/** Picks up the glass and leaves a picture of the island's old contents to fade. */
+	function liftIsland(part: Part): void {
+		const aside = surfaceFor('aside');
+		const glass = surfaceFor('[data-island-glass]');
+		const content = surfaceFor('[data-island-content]');
+		const air = surfaceFor('.morph-layer');
+		if (aside === null || glass === null || content === null || air === null) {
+			return;
 		}
-		// Only a leaving stage is pinned: an arriving one scrolls with its page, as it will at rest.
-		if (!leaving) {
-			thaw(element);
-		} else if (element.style.position === '') {
-			freeze(element, frozenTop);
+		island ??= new IslandShape(aside, glass);
+
+		const { left, top, width, height } = content.getBoundingClientRect();
+		const clone = content.cloneNode(true);
+		if (!(clone instanceof HTMLElement)) {
+			return;
+		}
+		clone.inert = true;
+		clone.style.cssText = `position:absolute;left:${String(left)}px;top:${String(top)}px;width:${String(width)}px;height:${String(height)}px;margin:0`;
+		air.prepend(clone);
+		const layer = new Layer(clone, part);
+		const inherited = landing.get(content);
+		if (inherited !== undefined) {
+			layer.adopt(inherited);
+		}
+		landing.delete(content);
+		ghosts.push({ path: '', element: clone, layers: [layer] });
+	}
+
+	function landIsland(part: Part): void {
+		island?.aim();
+		island?.measure();
+		island?.write();
+		const content = surfaceFor('[data-island-content]');
+		if (content !== null) {
+			landing.set(content, new Layer(content, part));
 		}
 	}
 
 	function openBloom(journey: Journey): void {
 		const { bloom: spec, motion } = journey.choreography;
 		const element = surfaceFor('[data-morph-bloom]');
-		const cover = [...fliers.values()].find((flier) => flier instanceof CoverFlier);
+		const coverId = journey.ids.at(0) ?? '';
+		const cover = fliers.get(coverId);
 		if (spec === null || element === null || !(cover instanceof CoverFlier)) {
 			return;
 		}
@@ -359,6 +476,8 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 				spec
 			};
 			element.dataset['morphBloom'] = 'open';
+			// A full-viewport gradient is an expensive paint: keep it on its own layer in flight.
+			element.style.willChange = 'transform, opacity';
 		} else {
 			bloom.scale.target = out ? spec.full : spec.rest;
 			bloom.spec = spec;
@@ -384,6 +503,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			bloom.element.dataset['morphBloom'] = '';
 			bloom.element.style.removeProperty('transform');
 			bloom.element.style.removeProperty('opacity');
+			bloom.element.style.removeProperty('will-change');
 			bloom = null;
 		}
 	}
@@ -419,10 +539,12 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		for (const flier of fliers.values()) {
 			flier.measure();
 		}
-		const layers = [...landing.values(), ...ghosts.flatMap((ghost) => ghost.layers)];
-		if (stage !== null) {
-			layers.push(stage);
-		}
+		island?.measure();
+		const layers = [
+			...landing.values(),
+			...ghosts.flatMap((ghost) => ghost.layers),
+			...stages.values()
+		];
 		for (const layer of layers) {
 			layer.step(seconds);
 			layer.write();
@@ -431,6 +553,8 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			flier.step(flight, seconds);
 			flier.write();
 		}
+		island?.step(flight, seconds);
+		island?.write();
 		stepBloom(seconds);
 
 		for (const [id, flier] of fliers) {
@@ -447,7 +571,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 	}
 
 	function active(): boolean {
-		return fliers.size + landing.size + ghosts.length > 0 || stage !== null;
+		return fliers.size + landing.size + ghosts.length + stages.size > 0 || island !== null;
 	}
 
 	/** Lets go of whatever has come to rest. */
@@ -464,13 +588,18 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 				ghosts.splice(ghosts.indexOf(ghost), 1);
 			}
 		}
-		if (stage?.settled === true && fliers.size === 0) {
-			stage.release();
-			thaw(stage.element);
-			stage = null;
-			closeBloom();
+		for (const [name, stage] of stages) {
+			if (stage.settled && fliers.size === 0) {
+				stage.release();
+				thaw(stage.element);
+				stages.delete(name);
+			}
 		}
-		if (stage === null && fliers.size === 0) {
+		if (island?.settled === true) {
+			island.release();
+			island = null;
+		}
+		if (stages.size === 0 && fliers.size === 0) {
 			closeBloom();
 		}
 	}
@@ -494,11 +623,13 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		for (const ghost of ghosts.splice(0)) {
 			ghost.element.remove();
 		}
-		if (stage !== null) {
+		for (const stage of stages.values()) {
 			stage.release();
 			thaw(stage.element);
-			stage = null;
 		}
+		stages.clear();
+		island?.release();
+		island = null;
 		closeBloom();
 		inFlight.clear();
 		for (const element of document.querySelectorAll(`[${hiddenAttribute}]`)) {
@@ -512,15 +643,28 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		const toPath = navigation.to?.url.pathname ?? '';
 
 		// Everything here runs synchronously in `onNavigate`, while the old page still exists.
-		const stageElement = surfaceFor('[data-morph-stage]');
-		const frozenTop = stageElement?.getBoundingClientRect().top ?? 0;
+		const frozen = new Map<StageName, number>();
+		const albumStage = surfaceFor('[data-morph-stage="album"]');
+		if (albumStage !== null) {
+			frozen.set('album', albumStage.getBoundingClientRect().top);
+		}
 		const captures = new Map<string, Capture>();
 		for (const [id, source] of sources) {
 			if (!fliers.has(id)) {
 				captures.set(id, capture(source));
 			}
 		}
+		const fromAlbum = navigation.from?.params?.['id'];
+		const heldStage = choreography.stages.album;
+		const changesAlbum =
+			choreography.name === 'album-to-now-playing' && fromAlbum !== library.playing?.album.id;
+		if (changesAlbum && albumStage !== null && heldStage !== undefined) {
+			holdStage(albumStage, heldStage);
+		}
 		const ghost = cloneRoute(fromPath, choreography.leaving, sources);
+		if (choreography.island !== null) {
+			liftIsland(islandLeaves);
+		}
 		for (const id of ids) {
 			inFlight.add(id);
 		}
@@ -539,7 +683,6 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 
 		// DOM and scroll are final.
 		const targets = landJourney(journey, navigation.type !== 'popstate');
-		const leavingStage = choreography.name === 'album-to-home';
 		for (const entry of registry.list()) {
 			if (ids.includes(entry.id) && targets.get(entry.id) !== entry) {
 				show(entry.element);
@@ -557,8 +700,11 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		}
 
 		launch(journey, captures, targets);
-		moveStage(journey, leavingStage, frozenTop);
+		moveStages(journey, frozen, changesAlbum);
 		arrive(journey, toPath, targets);
+		if (choreography.island !== null) {
+			landIsland(choreography.island);
+		}
 		openBloom(journey);
 		run();
 	}

@@ -1,3 +1,5 @@
+import type { MorphSlot } from './registry.ts';
+
 /** The tokens in `tokens.css`, which stay the one place a morph's length is set. */
 export type MotionToken = '--morph-fast' | '--morph' | '--morph-slow';
 
@@ -11,6 +13,8 @@ export interface Motion {
 export interface MotionSpec {
 	token: MotionToken;
 	bounce: number;
+	/** A share of the token's length, for what must finish inside it: exits are shorter. */
+	pace?: number;
 }
 
 export interface SpringParams {
@@ -100,22 +104,39 @@ export interface Pose {
 }
 
 /**
- * A wave across a page's units, centered on the cover. Outward starts at the cover and spreads:
- * the way a page falls back. Inward starts at the edges and closes on it: the same fall, played
- * in reverse.
+ * How a page answers the cover leaving it. This is about amplitude, not a queue: the units next
+ * to the cover move most, the far ones barely move and only fade, and the spread in time is
+ * under three frames. A uniform stagger would read as a metronome on something opened many
+ * times a day, and it would hold back nothing useful anyway.
  */
 export interface Ripple {
-	order: 'outward' | 'inward';
-	/** How fast the wave crosses the page, in pixels per millisecond. */
-	speed: number;
-	/** The most it can add to a part's delay, in milliseconds. */
-	limit: number;
+	/** The delay at the far edge of the page, in milliseconds. */
+	spread: number;
+	/** How much of the movement is left at the far edge, from 0 to 1. */
+	floor: number;
 }
 
-/** The delay a ripple adds at `distance` from the cover, on a page reaching out to `farthest`. */
-export function rippleDelay(ripple: Ripple, distance: number, farthest: number): number {
-	const steps = ripple.order === 'outward' ? distance : farthest - distance;
-	return Math.min(ripple.limit, Math.max(0, steps) / ripple.speed);
+/** The delay of a unit `share` of the way across the page, from 0 at the cover to 1. */
+export function rippleDelay({ spread }: Ripple, share: number): number {
+	return spread * share;
+}
+
+/** How much of the movement a unit keeps, `share` of the way across the page. */
+export function rippleWeight({ floor }: Ripple, share: number): number {
+	return floor + (1 - floor) * (1 - share) ** 2;
+}
+
+function weighPose(pose: Pose, weight: number): Pose {
+	return {
+		...pose,
+		...(pose.scale === undefined ? {} : { scale: 1 + (pose.scale - 1) * weight }),
+		...(pose.y === undefined ? {} : { y: pose.y * weight })
+	};
+}
+
+/** Scales a part's movement, leaving its opacity alone: far units still fade. */
+export function weighPart(part: Part, weight: number): Part {
+	return { ...part, from: weighPose(part.from, weight), to: weighPose(part.to, weight) };
 }
 
 /** One thing that moves, from one pose to another, starting `delay` into the morph. */
@@ -129,17 +150,26 @@ export interface Part {
 }
 
 /** What a page's unit is, from `data-morph-part`. It decides how the unit arrives. */
-export type Role = 'card' | 'art' | 'words' | 'panel';
+export type Role = 'card' | 'art' | 'words' | 'panel' | 'line-1' | 'line-2' | 'details' | 'chrome';
+
+export type StageName = 'album' | 'poster';
 
 export type RouteName = 'home' | 'album' | 'now-playing';
 
-export type ChoreographyName = 'home-to-album' | 'album-to-home' | 'blend';
+export type ChoreographyName =
+	| 'home-to-album'
+	| 'album-to-home'
+	| 'home-to-now-playing'
+	| 'now-playing-to-home'
+	| 'album-to-now-playing'
+	| 'now-playing-to-album'
+	| 'blend';
 
 interface SharedTravel {
-	/** Which end of the journey the album's ID comes from. */
-	subject: 'from' | 'to';
-	sourceSlots: readonly ('card' | 'hero')[];
-	targetSlots: readonly ('card' | 'hero' | 'island')[];
+	/** Whose things travel: the album at either end of the journey, or what's playing. */
+	subject: 'from' | 'to' | 'playing';
+	sourceSlots: readonly MorphSlot[];
+	targetSlots: readonly MorphSlot[];
 }
 
 /** The light around the cover: its scale at the cover and at full size, and its strength. */
@@ -159,17 +189,83 @@ export interface Choreography {
 	leaving: Part;
 	/** The incoming page's units, by role. */
 	arriving: Partial<Record<Role, Part>>;
-	/** The blurred album stage. */
-	stage: Part | null;
-	/** The light around the cover. */
+	/** The two full-bleed stages behind the page. */
+	stages: Partial<Record<StageName, Part>>;
 	bloom: Bloom | null;
+	/** What's inside the island, when it changes shape on this journey. */
+	island: Part | null;
 }
 
 const bloomShape = { rest: 0.12, full: 2.6, peak: 0.9 } as const;
 
-const slow: MotionSpec = { token: '--morph-slow', bounce: 0.08 };
-const base: MotionSpec = { token: '--morph', bounce: 0.04 };
+// All critically damped: a tap carries no momentum, so nothing has a reason to overshoot.
+const slow: MotionSpec = { token: '--morph-slow', bounce: 0 };
+const base: MotionSpec = { token: '--morph', bounce: 0 };
 const quick: MotionSpec = { token: '--morph-fast', bounce: 0 };
+/** Exits go together and go fast: the user has already decided to leave. */
+const exit: MotionSpec = { ...quick, pace: 0.7 };
+
+// The app is one axis of depth: Home, then Album, then Now playing. Every journey is built from
+// the same few verbs on that axis, so going deeper and coming back are opposite directions of
+// one path. Going deeper, the art comes toward you, the page you're on falls back in a ripple
+// from it, and what's next rises from below. Coming back is the same path the other way,
+// shorter: the deep page sinks, and the shallower one comes forward around the art.
+
+const fallBack: Part = {
+	from: {},
+	to: { opacity: 0, scale: 0.9 },
+	delay: 0,
+	motion: exit,
+	ripple: { spread: 40, floor: 0.08 }
+};
+
+const sink: Part = { from: {}, to: { opacity: 0, y: 56 }, delay: 0, motion: exit };
+
+/** Held back only until the deeper page has mostly gone, so two pages never compete. */
+const comeForward: Part = {
+	from: { opacity: 0, scale: 0.9 },
+	to: {},
+	delay: 90,
+	motion: base,
+	ripple: { spread: 0, floor: 0.08 }
+};
+
+function rise(y: number, delay: number, motion: MotionSpec = base): Part {
+	return { from: { opacity: 0, y }, to: {}, delay, motion };
+}
+
+function fadeOut(delay: number, motion: MotionSpec): Part {
+	return { from: {}, to: { opacity: 0 }, delay, motion };
+}
+
+function fadeIn(delay: number, motion: MotionSpec): Part {
+	return { from: { opacity: 0 }, to: {}, delay, motion };
+}
+
+/** The poster title: behind the cover, in its wake, one line after the other. */
+function posterLine(delay: number): Part {
+	return { from: { opacity: 0, y: 72, scale: 0.85 }, to: {}, delay, motion: slow };
+}
+
+const nowPlayingArrives: Choreography['arriving'] = {
+	'line-1': posterLine(130),
+	'line-2': posterLine(230),
+	// One beat for everything else: order among these would mean nothing.
+	details: rise(8, 240),
+	panel: rise(24, 240),
+	chrome: fadeIn(240, base)
+};
+
+// The island's old contents leave before the new ones arrive: it's changing size in both
+// dimensions, and two rich layouts inside it at once would be chaos. Opening waits longest,
+// because the fox bar has to pass the time label on its way to the scrubber.
+const islandOpens = fadeIn(280, base);
+const islandCloses = fadeIn(170, base);
+
+const playing = {
+	in: { subject: 'playing', targetSlots: ['poster'] },
+	out: { subject: 'playing', sourceSlots: ['poster'] }
+} as const;
 
 /**
  * Home to Album. The cover lifts out of the grid and grows into the hero; its color breaks out
@@ -180,19 +276,11 @@ const homeToAlbum: Choreography = {
 	name: 'home-to-album',
 	motion: slow,
 	travel: { subject: 'to', sourceSlots: ['card'], targetSlots: ['hero'] },
-	leaving: {
-		from: {},
-		to: { opacity: 0, scale: 0.92 },
-		delay: 0,
-		motion: quick,
-		ripple: { order: 'outward', speed: 3, limit: 170 }
-	},
-	arriving: {
-		words: { from: { opacity: 0, y: 28 }, to: {}, delay: 200, motion: base },
-		panel: { from: { opacity: 0, y: 120 }, to: {}, delay: 140, motion: slow }
-	},
-	stage: { from: { opacity: 0, scale: 1.08 }, to: {}, delay: 120, motion: slow },
-	bloom: { direction: 'out', ...bloomShape }
+	leaving: fallBack,
+	arriving: { words: rise(20, 160), panel: rise(96, 160, slow) },
+	stages: { album: { from: { opacity: 0, scale: 1.08 }, to: {}, delay: 120, motion: slow } },
+	bloom: { direction: 'out', ...bloomShape },
+	island: null
 };
 
 /**
@@ -204,30 +292,93 @@ const albumToHome: Choreography = {
 	name: 'album-to-home',
 	motion: base,
 	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['card', 'island'] },
-	leaving: { from: {}, to: { opacity: 0, y: 56 }, delay: 0, motion: quick },
-	arriving: {
-		// Held back until the album has mostly gone, so two pages never compete.
-		card: {
-			from: { opacity: 0, scale: 0.92 },
-			to: {},
-			delay: 130,
-			motion: base,
-			ripple: { order: 'inward', speed: 5, limit: 100 }
-		}
-	},
-	stage: { from: {}, to: { opacity: 0 }, delay: 0, motion: base },
-	bloom: { direction: 'in', ...bloomShape }
+	leaving: sink,
+	arriving: { card: comeForward },
+	stages: { album: fadeOut(0, base) },
+	bloom: { direction: 'in', ...bloomShape },
+	island: null
 };
 
-/** Everything without its own journey yet, and all of reduced motion: never a hard cut. */
+/**
+ * Home to Now playing: two levels down in one move. The island's cover rises to the center of
+ * the stage and the song's name follows it up, the rest of the island gathers into the pill
+ * controls, and the poster title climbs out from behind the cover, a line at a time.
+ */
+const homeToNowPlaying: Choreography = {
+	name: 'home-to-now-playing',
+	motion: slow,
+	travel: { ...playing.in, sourceSlots: ['island'] },
+	leaving: fallBack,
+	arriving: nowPlayingArrives,
+	stages: { poster: fadeIn(120, slow) },
+	bloom: { direction: 'out', ...bloomShape },
+	island: islandOpens
+};
+
+/** Now playing to Home: everything condenses back into the island, and Home comes forward. */
+const nowPlayingToHome: Choreography = {
+	name: 'now-playing-to-home',
+	motion: base,
+	travel: { ...playing.out, targetSlots: ['island'] },
+	leaving: sink,
+	arriving: { card: comeForward },
+	stages: { poster: fadeOut(0, base) },
+	bloom: { direction: 'in', ...bloomShape },
+	island: islandCloses
+};
+
+/**
+ * Album to Now playing: one level deeper. The stage is already this album's, so nothing blooms;
+ * it stays and deepens. The hero moves to the center if it can; otherwise the island's cover
+ * rises and the hero falls back with the page. The album's headline gives way to the song's.
+ */
+const albumToNowPlaying: Choreography = {
+	name: 'album-to-now-playing',
+	motion: slow,
+	travel: { ...playing.in, sourceSlots: ['hero', 'island'] },
+	leaving: fallBack,
+	arriving: nowPlayingArrives,
+	stages: { poster: fadeIn(60, slow), album: fadeOut(460, quick) },
+	bloom: null,
+	island: islandOpens
+};
+
+/** Now playing to Album: the poster lifts off the stage it was deepening, and the album returns. */
+const nowPlayingToAlbum: Choreography = {
+	name: 'now-playing-to-album',
+	motion: base,
+	travel: { ...playing.out, targetSlots: ['hero', 'island'] },
+	leaving: sink,
+	arriving: {
+		art: comeForward,
+		// The headline waits for the poster title to clear: two words that size can't share a stage.
+		words: { ...comeForward, ripple: undefined, delay: 140 },
+		panel: rise(72, 90)
+	},
+	stages: { poster: fadeOut(0, base) },
+	bloom: null,
+	island: islandCloses
+};
+
+/** All of reduced motion: never a hard cut. */
 export const blend: Choreography = {
 	name: 'blend',
 	motion: quick,
 	travel: null,
 	leaving: { from: {}, to: { opacity: 0 }, delay: 0, motion: quick },
 	arriving: {},
-	stage: null,
-	bloom: null
+	stages: {},
+	bloom: null,
+	island: null
+};
+
+const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
+	'home>album': homeToAlbum,
+	'album>home': albumToHome,
+	'home>now-playing': homeToNowPlaying,
+	'now-playing>home': nowPlayingToHome,
+	'album>now-playing': albumToNowPlaying,
+	'now-playing>album': nowPlayingToAlbum
 };
 
 /**
@@ -250,18 +401,12 @@ export const blendDuration = 120;
 
 /** Finds the choreography between two routes. */
 export function choreographyFor(from: RouteName, to: RouteName): Choreography {
-	if (from === 'home' && to === 'album') {
-		return homeToAlbum;
-	}
-	if (from === 'album' && to === 'home') {
-		return albumToHome;
-	}
-	return blend;
+	return journeys[`${from}>${to}`] ?? blend;
 }
 
 /** Reads a motion's duration from its token. */
 export function resolveMotion(spec: MotionSpec, read: (token: MotionToken) => number): Motion {
-	return { duration: read(spec.token), bounce: spec.bounce };
+	return { duration: read(spec.token) * (spec.pace ?? 1), bounce: spec.bounce };
 }
 
 /** Parses a CSS time such as `420ms` or `0.6s` to milliseconds. */

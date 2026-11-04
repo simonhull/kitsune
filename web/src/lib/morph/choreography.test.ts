@@ -6,14 +6,17 @@ import {
 	choreographyFor,
 	linearEasing,
 	parseTime,
+	resolveMotion,
 	rippleDelay,
+	rippleWeight,
 	settleTime,
 	springParams,
 	stepSpring,
+	weighPart,
 	type Motion
 } from './choreography';
 
-const motion: Motion = { duration: 600, bounce: 0.08 };
+const motion: Motion = { duration: 600, bounce: 0 };
 
 function curve(easing: string): number[] {
 	return easing
@@ -71,9 +74,9 @@ describe('stepSpring', () => {
 });
 
 describe('settleTime', () => {
-	it('is near the perceived duration, and longer than it', () => {
+	it('is near the perceived duration', () => {
 		const settle = settleTime(motion);
-		expect(settle).toBeGreaterThan(motion.duration);
+		expect(settle).toBeGreaterThan(motion.duration * 0.9);
 		expect(settle).toBeLessThan(motion.duration * 1.6);
 	});
 });
@@ -91,8 +94,8 @@ describe('linearEasing', () => {
 		expect(points).toEqual([...points].sort((a, b) => a - b));
 	});
 
-	it('stays restrained: nothing reads as bouncy', () => {
-		expect(Math.max(...curve(linearEasing(motion)))).toBeLessThan(1.002);
+	it('stays restrained even with some bounce', () => {
+		expect(Math.max(...curve(linearEasing({ duration: 600, bounce: 0.08 })))).toBeLessThan(1.002);
 	});
 
 	it('is the same curve the spring runs', () => {
@@ -158,34 +161,83 @@ describe('bloom', () => {
 	});
 });
 
-describe('rippleDelay', () => {
-	const outward = { order: 'outward', speed: 2, limit: 150 } as const;
-	const inward = { order: 'inward', speed: 2, limit: 150 } as const;
+describe('ripple', () => {
+	const ripple = { spread: 40, floor: 0.08 };
+	const leaving = choreographyFor('home', 'album').leaving;
 
-	it('starts at the cover and spreads, going out', () => {
-		expect(rippleDelay(outward, 0, 800)).toBe(0);
-		expect(rippleDelay(outward, 100, 800)).toBe(50);
+	it('moves the units beside the cover most, and the far ones barely', () => {
+		expect(rippleWeight(ripple, 0)).toBe(1);
+		expect(rippleWeight(ripple, 0.5)).toBeLessThan(0.4);
+		expect(rippleWeight(ripple, 1)).toBeCloseTo(0.08);
 	});
 
-	it('starts at the edges and closes on the cover, coming back', () => {
-		expect(rippleDelay(inward, 800, 800)).toBe(0);
-		expect(rippleDelay(inward, 700, 800)).toBe(50);
+	it('is never uniform: delay, distance and scale all vary across the page', () => {
+		const near = weighPart(leaving, rippleWeight(ripple, 0.1));
+		const far = weighPart(leaving, rippleWeight(ripple, 0.9));
+		expect(near.to.scale).toBeLessThan(far.to.scale ?? 1);
+		expect(rippleDelay(ripple, 0.9)).toBeGreaterThan(rippleDelay(ripple, 0.1));
 	});
 
-	it('never exceeds its limit', () => {
-		expect(rippleDelay(outward, 5000, 5000)).toBe(150);
-		expect(rippleDelay(inward, 0, 5000)).toBe(150);
+	it('leaves opacity alone, so far units still fade', () => {
+		expect(weighPart(leaving, 0.1).to.opacity).toBe(0);
+	});
+
+	it('finishes within about 300 ms, far edge included', () => {
+		const exit = resolveMotion(leaving.motion, () => 280);
+		expect(settleTime(exit) + (leaving.ripple?.spread ?? 0)).toBeLessThanOrEqual(320);
+	});
+
+	it('adds no spread on the way back: an entrance must not queue', () => {
+		expect(choreographyFor('album', 'home').arriving.card?.ripple?.spread).toBe(0);
 	});
 });
 
 describe('choreographyFor', () => {
-	it('has a journey for each direction', () => {
-		expect(choreographyFor('home', 'album').name).toBe('home-to-album');
-		expect(choreographyFor('album', 'home').name).toBe('album-to-home');
+	const routes = ['home', 'album', 'now-playing'] as const;
+	const depth = { home: 0, album: 1, 'now-playing': 2 };
+	const pairs = routes.flatMap((from) =>
+		routes.filter((to) => to !== from).map((to) => [from, to] as const)
+	);
+
+	it('has a journey for every pair of pages', () => {
+		for (const [from, to] of pairs) {
+			expect(choreographyFor(from, to)).not.toBe(blend);
+		}
+		expect(new Set(pairs.map(([from, to]) => choreographyFor(from, to).name)).size).toBe(6);
 	});
 
-	it('blends what has no journey yet', () => {
-		expect(choreographyFor('home', 'now-playing')).toBe(blend);
+	it('goes deeper one way and comes back the other, on every journey', () => {
+		for (const [from, to] of pairs) {
+			const { leaving } = choreographyFor(from, to);
+			if (depth[to] > depth[from]) {
+				expect(leaving.to.scale).toBeLessThan(1);
+				expect(leaving.ripple).toBeDefined();
+			} else {
+				expect(leaving.to.y).toBeGreaterThan(0);
+				expect(leaving.ripple).toBeUndefined();
+			}
+		}
+	});
+
+	it('takes less time coming back than going in', () => {
+		for (const [from, to] of pairs) {
+			if (depth[to] > depth[from]) {
+				expect(choreographyFor(from, to).motion.token).toBe('--morph-slow');
+				expect(choreographyFor(to, from).motion.token).toBe('--morph');
+			}
+		}
+	});
+
+	it('reshapes the island exactly when Now playing is involved', () => {
+		for (const [from, to] of pairs) {
+			expect(choreographyFor(from, to).island !== null).toBe(
+				from === 'now-playing' || to === 'now-playing'
+			);
+		}
+	});
+
+	it('blends a page into itself', () => {
+		expect(choreographyFor('home', 'home')).toBe(blend);
 	});
 });
 
