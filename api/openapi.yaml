@@ -155,6 +155,89 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
+  /albums:
+    get:
+      operationId: getAlbums
+      summary: List albums, a page at a time.
+      description: >-
+        Albums with at least one live track. Paging is by keyset: pass the
+        previous page's `nextCursor` as `cursor`. A cursor is opaque and belongs
+        to the `sort` that issued it. The `name` sort ignores case and breaks
+        ties by the album's internal ID.
+      parameters:
+        - name: sort
+          in: query
+          required: false
+          description: "`added` lists the newest albums first; `name` sorts by sort name."
+          schema: { type: string, enum: [added, name], default: added }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 60 }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of albums.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlbumPage" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /albums/{id}:
+    get:
+      operationId: getAlbum
+      summary: Return an album and its tracks.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The album.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlbumDetail" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+  /library:
+    get:
+      operationId: getLibrary
+      summary: Report what the library holds.
+      description: Counts live tracks and albums that have a live track.
+      responses:
+        "200":
+          description: The library's counts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LibraryFacts" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 components:
   securitySchemes:
     bearer:
@@ -216,3 +299,96 @@ components:
           description: Present only when the login did not ask for a cookie.
         expiresAt: { type: string, format: date-time }
         user: { $ref: "#/components/schemas/User" }
+    Artwork:
+      type: object
+      additionalProperties: false
+      required: [hash, accent, ground, width, height]
+      properties:
+        hash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: Names the cover for `GET /artwork/{hash}`.
+        accent: { type: string, pattern: "^#[0-9a-f]{6}$" }
+        ground: { type: string, pattern: "^#[0-9a-f]{6}$" }
+        width: { type: integer, description: Of the source image. }
+        height: { type: integer, description: Of the source image. }
+    AlbumEntry:
+      type: object
+      additionalProperties: false
+      required: [id, title, artist, trackCount, compilation]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        year: { type: integer }
+        trackCount: { type: integer }
+        compilation: { type: boolean }
+        artwork: { $ref: "#/components/schemas/Artwork" }
+    AlbumPage:
+      type: object
+      additionalProperties: false
+      required: [albums]
+      properties:
+        albums:
+          type: array
+          items: { $ref: "#/components/schemas/AlbumEntry" }
+        nextCursor:
+          type: string
+          description: Absent on the last page.
+    ReplayGain:
+      type: object
+      additionalProperties: false
+      properties:
+        trackGain: { type: number }
+        albumGain: { type: number }
+        trackPeak: { type: number }
+        albumPeak: { type: number }
+    Track:
+      type: object
+      additionalProperties: false
+      required: [id, title, artists, durationMs, format]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artists:
+          type: array
+          items: { type: string }
+        discNo: { type: integer }
+        trackNo: { type: integer }
+        durationMs: { type: integer, format: int64 }
+        format: { type: string }
+        sampleRate: { type: integer }
+        bitDepth: { type: integer }
+        replayGain: { $ref: "#/components/schemas/ReplayGain" }
+    AlbumDetail:
+      description: An album entry's properties, repeated (allOf does not mix with additionalProperties false), plus its tracks.
+      type: object
+      additionalProperties: false
+      required: [id, title, artist, trackCount, compilation, tracks, durationMs, formats, addedAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        year: { type: integer }
+        trackCount: { type: integer }
+        compilation: { type: boolean }
+        artwork: { $ref: "#/components/schemas/Artwork" }
+        tracks:
+          type: array
+          items: { $ref: "#/components/schemas/Track" }
+        durationMs: { type: integer, format: int64 }
+        formats:
+          type: array
+          description: Distinct and sorted.
+          items: { type: string }
+        addedAt: { type: string, format: date-time }
+    LibraryFacts:
+      type: object
+      additionalProperties: false
+      required: [albums, tracks, durationMs, roots, issues]
+      properties:
+        albums: { type: integer, format: int64 }
+        tracks: { type: integer, format: int64 }
+        durationMs: { type: integer, format: int64 }
+        roots: { type: integer, description: The number of configured library roots. }
+        issues: { type: integer, format: int64, description: Files the scanner could not read. }

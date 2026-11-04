@@ -88,6 +88,7 @@ type testServerOptions struct {
 	Ready         func(context.Context) error
 	LogLevel      slog.Level // The zero value is Info.
 	Artwork       *artwork.Cache
+	Roots         int
 }
 
 // testServer is a running API over a real store and auth service.
@@ -98,6 +99,7 @@ type testServer struct {
 	Log    *syncBuffer
 	Auth   *auth.Service
 	Handle *Server
+	Store  *store.Store
 }
 
 // newTestServer starts a server over a temporary store.
@@ -134,10 +136,12 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		BasePath:      o.BasePath,
 		Ready:         o.Ready,
 		Artwork:       o.Artwork,
+		Library:       st,
+		Roots:         o.Roots,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)
-	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h}
+	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st}
 }
 
 // testClientIP reads the client IP from testClientIPHeader, falling back to

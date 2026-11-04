@@ -17,6 +17,7 @@ import (
 
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
+	"github.com/simonhull/kitsune/internal/store"
 )
 
 // Config holds the server's dependencies.
@@ -29,6 +30,8 @@ type Config struct {
 	BasePath      string                      // "" or a path such as "/music": serve under it. New panics on a malformed one.
 	Ready         func(context.Context) error // Nil means always ready. Backs GET /readyz.
 	Artwork       *artwork.Cache              // Nil means every GET /artwork/{hash} is a 404.
+	Library       *store.Store                // Required; New panics if nil. Backs the browse routes.
+	Roots         int                         // The number of configured library roots, reported by GET /library.
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -44,6 +47,8 @@ type Server struct {
 	basePath      string
 	ready         func(context.Context) error
 	artwork       *artwork.Cache
+	library       *store.Store
+	roots         int
 	limiter       *loginLimiter
 }
 
@@ -57,9 +62,9 @@ type route struct {
 
 // New returns a server for cfg.
 //
-// New panics if cfg.Auth is nil or cfg.BasePath is malformed, which are
+// New panics if cfg.Auth or cfg.Library is nil or cfg.BasePath is malformed, which are
 // programming errors.
-func New(cfg Config) *Server {
+func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built once at startup; a value keeps every caller a plain literal.
 	checkConfig(&cfg)
 	s := &Server{
 		mux:           http.NewServeMux(),
@@ -71,6 +76,8 @@ func New(cfg Config) *Server {
 		basePath:      cfg.BasePath,
 		ready:         cfg.Ready,
 		artwork:       cfg.Artwork,
+		library:       cfg.Library,
+		roots:         cfg.Roots,
 		limiter:       newLoginLimiter(maxLimiterKeys),
 	}
 	if s.log == nil {
@@ -97,6 +104,9 @@ func New(cfg Config) *Server {
 func checkConfig(cfg *Config) {
 	if cfg.Auth == nil {
 		panic("server: Config.Auth is required")
+	}
+	if cfg.Library == nil {
+		panic("server: Config.Library is required")
 	}
 	if b := cfg.BasePath; b != "" && (!strings.HasPrefix(b, "/") || strings.HasSuffix(b, "/")) {
 		panic("server: Config.BasePath must be empty, or start with / and not end with /")
@@ -127,6 +137,9 @@ func (s *Server) routes() []route {
 		{pattern: "POST /auth/logout", handle: s.logout},
 		{pattern: "GET /me", handle: s.getMe},
 		{pattern: "GET /artwork/{hash}", handle: s.getArtwork},
+		{pattern: "GET /albums", handle: s.getAlbums},
+		{pattern: "GET /albums/{id}", handle: s.getAlbum},
+		{pattern: "GET /library", handle: s.getLibrary},
 	}
 }
 
