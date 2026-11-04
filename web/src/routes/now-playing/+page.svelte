@@ -2,7 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { coverFor } from '#lib/cover/cover.ts';
 	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
-	import { balancedLines, gain } from '#lib/library/format.ts';
+	import { balancedLines, credit, gain, trackGain } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
 	import { morph } from '#lib/morph/registry.ts';
@@ -12,6 +12,10 @@
 	const playing = $derived(library.playing);
 	const lines = $derived(playing === null ? ['', ''] : balancedLines(playing.track.title));
 	const longest = $derived(Math.max(...lines.map((line) => line.length)));
+	const others = $derived(
+		playing === null ? undefined : credit(playing.track, playing.album.artist)
+	);
+	const rg = $derived(playing === null ? null : trackGain(playing.track));
 
 	function goUp(event: MouseEvent & { currentTarget: HTMLAnchorElement }): void {
 		goUpToAlbum(event, event.currentTarget.pathname);
@@ -48,12 +52,12 @@
 						data-sveltekit-replacestate
 						onclick={goUp}>{playing.album.title.toUpperCase()}</a
 					>
-					· {playing.track.number} / {playing.trackCount}
+					· {playing.index + 1} / {playing.trackCount}
 				</span>
 				<span class="chips">
 					<span class="chip">{playing.format}</span>
-					{#if playing.track.replayGain !== null}
-						<span class="chip">RG {gain(playing.track.replayGain)} dB</span>
+					{#if rg !== null}
+						<span class="chip">RG {gain(rg)} dB</span>
 					{/if}
 				</span>
 			</div>
@@ -61,7 +65,7 @@
 			<div class="center">
 				<div class="stack">
 					<div class="poster" aria-hidden="true" style:--chars={longest}>
-						{#each lines as line, index (line)}
+						{#each lines as line, index (index)}
 							<span data-morph-part={`line-${String(index + 1)}`}>{line}</span>
 						{/each}
 					</div>
@@ -80,22 +84,24 @@
 					<h1 use:morph={{ id: 'song', slot: 'poster', kind: 'title' }}>{playing.track.title}</h1>
 					<span class="artist" data-morph-part="details">
 						<strong>{playing.album.artist}</strong>
-						{#if playing.track.featuring !== undefined}feat. {playing.track.featuring}{/if}
+						{#if others !== undefined}{others}{/if}
 					</span>
 				</div>
 				<div class="controls-slot" use:reserveIslandSlot></div>
 			</div>
 
-			<section aria-label="Up next" class="next" data-morph-part="panel">
-				<span class="next-label">UP NEXT</span>
-				{#each playing.upNext as upcoming, index (upcoming.title)}
-					<span class="pill" style:opacity={1 - index * 0.2}>
-						<span class="dot" style:background={coverFor(upcoming.albumId).palette.base}></span>
-						<span class="pill-name" class:lead={index === 0}>{upcoming.title}</span>
-					</span>
-				{/each}
-				<span class="more">+{playing.moreCount} more</span>
-			</section>
+			{#if playing.upNext.length > 0}
+				<section aria-label="Up next" class="next" data-morph-part="panel">
+					<span class="next-label">UP NEXT</span>
+					{#each playing.upNext as upcoming, index (upcoming.id)}
+						<span class="pill" style:opacity={1 - index * 0.2}>
+							<span class="dot" style:background={coverFor(playing.album.id).palette.base}></span>
+							<span class="pill-name" class:lead={index === 0}>{upcoming.title}</span>
+						</span>
+					{/each}
+					{#if playing.moreCount > 0}<span class="more">+{playing.moreCount} more</span>{/if}
+				</section>
+			{/if}
 		</div>
 	</div>
 {/if}

@@ -2,19 +2,16 @@
 	import { resolve } from '$app/paths';
 	import { coverFor } from '#lib/cover/cover.ts';
 	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
-	import { clock } from '#lib/library/format.ts';
-	import type { Home } from '#lib/library/source.ts';
+	import type { AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
-	import Icon from '#lib/shell/Icon.svelte';
 	import Wash from '#lib/shell/Wash.svelte';
 
 	interface Props {
-		listening: Home['continueListening'];
+		album: AlbumEntry;
 	}
 
-	let { listening }: Props = $props();
+	let { album }: Props = $props();
 
-	const album = $derived(listening.album);
 	const palette = $derived(coverFor(album.id).palette);
 </script>
 
@@ -23,8 +20,6 @@
 	data-morph-part="card"
 	href={resolve('/album/[id]', { id: album.id })}
 	style:background={palette.stage}
-	style:--tile-accent={palette.accent}
-	style:--tile-on-accent={palette.onAccent}
 	style:--tile-wash={palette.wash}
 >
 	<Wash albumId={album.id} variant="tile" />
@@ -32,16 +27,11 @@
 		><GeneratedCover albumId={album.id} /></span
 	>
 	<span class="words">
-		<span class="label">Continue listening</span>
+		<span class="label">Just added</span>
 		<span class="title" use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}
 			>{album.title}</span
 		>
-		<span class="detail"
-			>{album.artist} · track {listening.trackNumber} of {listening.trackCount} · {clock(
-				listening.positionSeconds
-			)} in</span
-		>
-		<span class="resume"><Icon name="play" />Resume</span>
+		<span class="detail">{album.artist}</span>
 	</span>
 </a>
 
@@ -96,21 +86,6 @@
 	.detail {
 		font-size: var(--type-title);
 		color: var(--tile-wash);
-	}
-
-	.resume {
-		align-self: flex-start;
-		margin-top: 8px;
-		height: 52px;
-		padding: 0 26px 0 20px;
-		border-radius: var(--radius-pill);
-		background: var(--tile-accent);
-		color: var(--tile-on-accent);
-		font-weight: 700;
-		font-size: 16px;
-		display: flex;
-		align-items: center;
-		gap: 10px;
 	}
 
 	@media (max-width: 720px) {

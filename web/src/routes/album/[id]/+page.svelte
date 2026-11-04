@@ -10,9 +10,7 @@
 	const id = $derived(params.id);
 	const entry = $derived(library.entry(id));
 	const album = $derived(library.album(id));
-	const playingNumber = $derived(
-		library.playing?.album.id === id ? library.playing.track.number : undefined
-	);
+	const cuedId = $derived(library.playing?.album.id === id ? library.playing.track.id : undefined);
 
 	// Never awaited: the first frame is built from the list entry, and tracks stream in.
 	$effect(() => {
@@ -32,7 +30,7 @@
 {:else}
 	<div class="album">
 		<AlbumHero albumId={id} {entry} {album} />
-		<TrackList {album} {playingNumber} />
+		<TrackList {album} {cuedId} />
 	</div>
 {/if}
 

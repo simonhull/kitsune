@@ -2,7 +2,7 @@
 	import { resolve } from '$app/paths';
 	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
 	import { clock } from '#lib/library/format.ts';
-	import type { NowPlaying } from '#lib/library/source.ts';
+	import type { NowPlaying } from '#lib/library/cue.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from './Icon.svelte';
 	import { islandSlot } from './slot.svelte.ts';
@@ -15,11 +15,11 @@
 
 	let { playing, expanded }: Props = $props();
 
-	const progress = $derived(playing.positionSeconds / playing.track.seconds);
-	const position = $derived(clock(playing.positionSeconds));
-	const duration = $derived(clock(playing.track.seconds));
+	// Cued, not playing: until plan 018 there's no sound, so the clock stands at the start.
+	const position = clock(0);
+	const duration = $derived(clock(playing.track.durationMs / 1000));
 	const slot = $derived(expanded ? islandSlot.rect : null);
-	const percent = $derived(`${String(progress * 100)}%`);
+	const percent = '0%';
 </script>
 
 <aside
@@ -48,20 +48,23 @@
 					type="button"
 					class="skip"
 					aria-label="Previous"
+					disabled
 					use:morph={{ id: 'control:previous', slot: 'poster', kind: 'control' }}
 					><Icon name="previous" size={22} /></button
 				>
 				<button
 					type="button"
 					class="pause large"
-					aria-label="Pause"
+					aria-label="Play"
+					disabled
 					use:morph={{ id: 'control:pause', slot: 'poster', kind: 'control' }}
-					><Icon name="pause" size={22} /></button
+					><Icon name="play" size={22} /></button
 				>
 				<button
 					type="button"
 					class="skip"
 					aria-label="Next"
+					disabled
 					use:morph={{ id: 'control:next', slot: 'poster', kind: 'control' }}
 					><Icon name="next" size={22} /></button
 				>
@@ -77,8 +80,12 @@
 				</div>
 				<span class="time">{duration}</span>
 			</div>
-			<button type="button" class="skip favorite" aria-label="Favorite" aria-pressed="true"
-				><Icon name="heart" size={20} /></button
+			<button
+				type="button"
+				class="skip favorite"
+				aria-label="Favorite"
+				aria-pressed="false"
+				disabled><Icon name="heart-outline" size={20} /></button
 			>
 		{:else}
 			<a class="now" href={resolve('/now-playing')}>
@@ -99,20 +106,23 @@
 				type="button"
 				class="skip"
 				aria-label="Previous"
+				disabled
 				use:morph={{ id: 'control:previous', slot: 'island', kind: 'control' }}
 				><Icon name="previous" /></button
 			>
 			<button
 				type="button"
 				class="pause"
-				aria-label="Pause"
+				aria-label="Play"
+				disabled
 				use:morph={{ id: 'control:pause', slot: 'island', kind: 'control' }}
-				><Icon name="pause" size={20} /></button
+				><Icon name="play" size={20} /></button
 			>
 			<button
 				type="button"
 				class="skip"
 				aria-label="Next"
+				disabled
 				use:morph={{ id: 'control:next', slot: 'island', kind: 'control' }}
 				><Icon name="next" /></button
 			>
@@ -235,6 +245,21 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+	}
+
+	/* Nothing can sound until plan 018: the controls say so without leaving their places. */
+	button:disabled {
+		cursor: default;
+	}
+
+	.skip:disabled {
+		color: var(--text-label);
+	}
+
+	.pause:disabled {
+		background: transparent;
+		box-shadow: inset 0 0 0 2px var(--fox);
+		color: var(--fox);
 	}
 
 	.skip {

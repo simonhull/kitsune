@@ -1,49 +1,52 @@
 <script lang="ts">
-	import { clock, gain } from '#lib/library/format.ts';
+	import {
+		addedOn,
+		clock,
+		credit,
+		formatLine,
+		gain,
+		isMultiDisc,
+		trackGain,
+		trackLabel
+	} from '#lib/library/format.ts';
 	import type { Album } from '#lib/library/source.ts';
 
 	interface Props {
 		album: Album | undefined;
-		/** The number of the track playing from this album, if any. */
-		playingNumber: number | undefined;
+		/** The ID of the track cued from this album, if any. */
+		cuedId: string | undefined;
 	}
 
-	let { album, playingNumber }: Props = $props();
+	let { album, cuedId }: Props = $props();
+
+	const multiDisc = $derived(isMultiDisc(album?.tracks ?? []));
 </script>
 
 <section aria-label="Tracks" class="panel" data-morph-part="panel">
 	{#if album !== undefined}
 		<div class="rows">
-			{#each album.tracks as track (track.number)}
-				{@const playing = track.number === playingNumber}
-				<div class="row" class:playing>
-					{#if playing}
-						<span class="bars" role="img" aria-label="Playing">
-							<span style:height="8px"></span>
-							<span style:height="14px"></span>
-							<span style:height="5px"></span>
-						</span>
-					{:else}
-						<span class="mono number">{String(track.number).padStart(2, '0')}</span>
-					{/if}
+			{#each album.tracks as track (track.id)}
+				{@const others = credit(track, album.artist)}
+				{@const rg = trackGain(track)}
+				<div class="row" class:cued={track.id === cuedId} class:discs={multiDisc}>
+					<span class="mono number">{trackLabel(track, multiDisc)}</span>
 					<span class="name">
 						<span class="title">{track.title}</span>
-						{#if track.featuring !== undefined}
-							<span class="featuring">feat. {track.featuring}</span>
+						{#if others !== undefined}
+							<span class="featuring">{others}</span>
 						{/if}
 					</span>
-					{#if track.replayGain === null}
+					{#if rg === null}
 						<span class="mono gain missing">no RG</span>
 					{:else}
-						<span class="mono gain">RG {gain(track.replayGain)}</span>
+						<span class="mono gain">RG {gain(rg)}</span>
 					{/if}
-					<span class="mono length">{clock(track.seconds)}</span>
+					<span class="mono length">{clock(track.durationMs / 1000)}</span>
 				</div>
 			{/each}
 			<div class="facts">
-				<span>{album.format}</span>
-				<span>{album.path}</span>
-				<span>added {album.added}</span>
+				<span>{formatLine(album.tracks)}</span>
+				<span>added {addedOn(album.addedAt)}</span>
 			</div>
 		</div>
 	{/if}
@@ -85,7 +88,7 @@
 		border-radius: 18px;
 	}
 
-	.row.playing {
+	.row.cued {
 		background: color-mix(in srgb, var(--accent) 10%, transparent);
 	}
 
@@ -111,7 +114,7 @@
 		font-weight: 500;
 	}
 
-	.playing .title {
+	.cued .title {
 		font-weight: 700;
 		color: var(--accent);
 	}
@@ -133,19 +136,6 @@
 	.length {
 		color: var(--text-meta);
 		text-align: right;
-	}
-
-	.bars {
-		display: flex;
-		align-items: flex-end;
-		gap: 2px;
-		height: 14px;
-	}
-
-	.bars span {
-		width: 3px;
-		background: var(--accent);
-		border-radius: 1px;
 	}
 
 	.facts {
@@ -172,6 +162,10 @@
 			grid-template-columns: 28px minmax(0, 1fr) 48px;
 			gap: 10px;
 			padding: 8px 10px;
+		}
+
+		.row.discs {
+			grid-template-columns: 44px minmax(0, 1fr) 48px;
 		}
 
 		.gain {

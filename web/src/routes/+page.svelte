@@ -5,37 +5,40 @@
 	import RecentCover from '#lib/pages/RecentCover.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 
-	const home = $derived(library.home);
+	const facts = $derived(library.facts);
+	const feature = $derived(library.recent.at(0));
 </script>
 
 <svelte:head>
 	<title>Kitsune</title>
 </svelte:head>
 
-{#if home !== null}
+{#if facts !== null}
 	<div class="home">
 		<div class="intro" data-morph-part="intro">
-			<h1>{home.greeting}</h1>
-			<span class="summary">{home.summary}</span>
+			<h1>Hello, {library.user?.name}</h1>
+			<span class="summary"
+				>{facts.albums} albums · {facts.roots} roots · {facts.issues} issues</span
+			>
 		</div>
 
 		<section aria-label="Overview" class="overview">
-			<ContinueTile listening={home.continueListening} />
+			{#if feature !== undefined}<ContinueTile album={feature} />{/if}
 
 			<div class="health" data-morph-part="card">
 				<span class="fox-mark"><Icon name="fox" size={220} /></span>
 				<span class="label">Library health</span>
 				<span class="figure">
-					<span class="number">{home.health.issues}</span>
-					<span class="note">{home.health.detail}</span>
+					<span class="number">{facts.issues}</span>
+					<span class="note">files the scanner could not read</span>
 				</span>
 			</div>
 
 			<div class="week" data-morph-part="card">
-				<span class="label">This week</span>
+				<span class="label">Your library</span>
 				<span class="figure">
-					<span class="number">{home.week.listened}</span>
-					<span class="note">{home.week.detail}</span>
+					<span class="number">{facts.tracks}</span>
+					<span class="note">tracks</span>
 				</span>
 			</div>
 
@@ -45,20 +48,19 @@
 					<span class="more">See all</span>
 				</div>
 				<div class="recent-row">
-					{#each home.recentlyAdded as album (album.id)}
+					{#each library.recent.slice(1) as album (album.id)}
 						<RecentCover {album} />
 					{/each}
 				</div>
 			</section>
 		</section>
 
-		<section aria-label="On repeat" class="repeat">
+		<section aria-label="Your albums" class="repeat">
 			<div class="repeat-head" data-morph-part="card">
-				<h2>On repeat</h2>
-				<span class="more">All albums</span>
+				<h2>Your albums</h2>
 			</div>
 			<div class="grid">
-				{#each home.onRepeat as album (album.id)}
+				{#each library.albums as album (album.id)}
 					<AlbumCard {album} />
 				{/each}
 			</div>

@@ -4,10 +4,12 @@
 	import '#lib/styles/tokens.css';
 	import '#lib/styles/base.css';
 	import { onMount } from 'svelte';
-	import { onNavigate, preloadCode } from '$app/navigation';
 	import { page } from '$app/state';
+	import { goto, onNavigate, preloadCode } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { coverFor } from '#lib/cover/cover.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import { loginPath } from '#lib/library/session.ts';
 	import { startMorphs } from '#lib/morph/engine.ts';
 	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
@@ -22,6 +24,7 @@
 	const routeId = $derived(page.route.id);
 	const onNowPlaying = $derived(routeId === '/now-playing');
 	const onAlbum = $derived(routeId === '/album/[id]');
+	const onLogin = $derived(routeId === '/login');
 	const albumParam = $derived(page.params['id']);
 
 	// The stage keeps its last album so it has something to fade away. It's derived, not an
@@ -38,8 +41,13 @@
 	onNavigate(startMorphs());
 
 	onMount(() => {
-		void library.loadShell();
-		void Promise.all(['/', '/album/[id]', '/now-playing'] as const).then((routes) =>
+		library.onExpired = async () => {
+			if (location.pathname !== resolve('/login')) {
+				// eslint-disable-next-line svelte/no-navigation-without-resolve -- Built from resolve('/login') and the current path, with its `next`.
+				await goto(loginPath(location), { replaceState: true });
+			}
+		};
+		void Promise.all(['/', '/album/[id]', '/now-playing', '/login'] as const).then((routes) =>
 			Promise.all(routes.map((route) => preloadCode(route)))
 		);
 		return watchInput();
@@ -55,13 +63,13 @@
 >
 	<Backdrop albumId={stageAlbum} mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : 'clear'} />
 	<Nav
-		route={onNowPlaying ? 'gone' : onAlbum ? 'album' : 'home'}
-		healthIssues={library.home?.health.issues}
+		route={onNowPlaying || onLogin ? 'gone' : onAlbum ? 'album' : 'home'}
+		healthIssues={library.facts?.issues}
 	/>
 	<main>{@render children()}</main>
 	<div class="ghost-layer" aria-hidden="true"></div>
 	{#if stageAlbum !== null}<Bloom albumId={stageAlbum} />{/if}
-	{#if library.playing !== null}
+	{#if library.playing !== null && !onLogin}
 		<PlayerIsland playing={library.playing} expanded={onNowPlaying} />
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>

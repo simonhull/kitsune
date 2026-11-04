@@ -1,5 +1,6 @@
 <script lang="ts">
 	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
+	import { albumFacts } from '#lib/library/format.ts';
 	import type { Album, AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
@@ -14,11 +15,7 @@
 
 	let { albumId, entry, album }: Props = $props();
 
-	const meta = $derived(
-		album === undefined
-			? ''
-			: `ALBUM · ${String(album.year)} · ${String(album.tracks.length)} TRACKS · ${String(album.minutes)} MIN`
-	);
+	const meta = $derived(album === undefined ? '' : albumFacts(album, album));
 </script>
 
 <section aria-label="Album" class="hero">
