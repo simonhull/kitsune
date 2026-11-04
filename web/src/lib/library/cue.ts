@@ -5,7 +5,7 @@ import type { Album, AlbumEntry, Track } from './source.ts';
 const upNextShown = 3;
 
 /**
- * The track in the player. Until plan 018 streams audio this is only ever cued: it is what would
+ * The track in the player. until streaming lands this is only ever cued: it is what would
  * play, never what is playing, so nothing that reads it may claim sound or progress.
  */
 export interface NowPlaying {

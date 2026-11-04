@@ -148,7 +148,7 @@
 		max-width: 100%;
 	}
 
-	/* Nothing can sound until plan 018: a hollow button keeps its place and promises nothing. */
+	/* Nothing can sound until streaming lands: a hollow button keeps its place and promises nothing. */
 	.play:disabled {
 		background: transparent;
 		box-shadow: inset 0 0 0 2px var(--accent);

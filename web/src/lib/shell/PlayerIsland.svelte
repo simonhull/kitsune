@@ -15,7 +15,7 @@
 
 	let { playing, expanded }: Props = $props();
 
-	// Cued, not playing: until plan 018 there's no sound, so the clock stands at the start.
+	// Cued, not playing: until streaming lands there's no sound, so the clock stands at the start.
 	const position = clock(0);
 	const duration = $derived(clock(playing.track.durationMs / 1000));
 	const slot = $derived(expanded ? islandSlot.rect : null);
@@ -271,7 +271,7 @@
 		justify-content: center;
 	}
 
-	/* Nothing can sound until plan 018: the controls say so without leaving their places. */
+	/* Nothing can sound until streaming lands: the controls say so without leaving their places. */
 	button:disabled {
 		cursor: default;
 	}
