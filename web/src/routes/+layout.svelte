@@ -8,7 +8,7 @@
 	import { page } from '$app/state';
 	import { coverFor } from '#lib/cover/cover.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import { currentEngine, startEngines } from '#lib/morph/engine.ts';
+	import { startMorphs } from '#lib/morph/engine.ts';
 	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
 	import Backdrop from '#lib/shell/Backdrop.svelte';
@@ -35,8 +35,7 @@
 
 	const palette = $derived(stageAlbum === null ? null : coverFor(stageAlbum).palette);
 
-	startEngines();
-	onNavigate((navigation) => currentEngine().navigate(navigation));
+	onNavigate(startMorphs());
 
 	onMount(() => {
 		void library.loadShell();

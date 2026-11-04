@@ -212,12 +212,6 @@
 		margin-right: 0;
 	}
 
-	/* View transitions capture the final layout: nothing may still be moving at that moment. */
-	:global([data-morph-engine='vt']) .nav,
-	:global([data-morph-engine='vt']) .nav * {
-		transition: none;
-	}
-
 	@media (prefers-reduced-motion: reduce) {
 		.nav,
 		.nav * {

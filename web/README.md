@@ -13,15 +13,14 @@ never `bun test`).
 
 ## The morph lab
 
-Page transitions are morphs, run by one of two engines on the same choreography
-(`src/lib/morph/choreography.ts`): `vt` (View Transitions) and `spring` (a persistent overlay
-of flying elements). Pages only register shared elements with `use:morph`.
+Page transitions are morphs: a persistent overlay of flying elements, run on springs from the
+choreography in `src/lib/morph/choreography.ts`. Pages only register shared elements with
+`use:morph`.
 
-- `?engine=vt` or `?engine=spring` picks the engine; link clicks keep it. `vt` is the default.
 - `?latency=300` delays every fixture response, to prove no first frame waits for data.
 - `?playing=<album id>` plays another album, for the path where a hero condenses into the island.
 
-In dev, a small HUD at the bottom left switches engines and shows the last morph's start time.
+In dev, a small HUD at the bottom left shows how long the last morph took to start.
 
 ## Native binaries
 

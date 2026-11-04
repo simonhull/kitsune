@@ -197,7 +197,7 @@ export const blend: Choreography = {
 /**
  * How strong the bloom is at a given openness, from 0 at the cover to 1 at full size. This is
  * the one bloom curve: it depends only on the bloom's size, never on the clock or the direction,
- * so both engines match and a turn in mid-air can't make it jump.
+ * so a turn in mid-air can't make it jump.
  */
 export function bloomStrength(open: number, peak: number): number {
 	const clamped = Math.min(1, Math.max(0, open));
@@ -207,36 +207,6 @@ export function bloomStrength(open: number, peak: number): number {
 /** Finds how open a bloom of this scale is. */
 export function bloomOpenness(scale: number, { rest, full }: Bloom): number {
 	return (scale - rest) / (full - rest);
-}
-
-export interface BloomFrame {
-	/** Where this frame falls in the flight, from 0 to 1. */
-	offset: number;
-	/** How far the cover has travelled: 0 at its source, 1 at its target. */
-	travel: number;
-	scale: number;
-	opacity: number;
-}
-
-/** Samples a whole bloom in advance, for an engine that can't compute it per frame. */
-export function bloomFrames(motion: Motion, bloom: Bloom, samples = 40): BloomFrame[] {
-	const params = springParams(motion);
-	const interval = settleTime(motion) / 1000 / samples;
-	const frames: BloomFrame[] = [];
-	let state: SpringState = { offset: 1, velocity: 0 };
-	for (let index = 0; index <= samples; index += 1) {
-		const travel = index === samples ? 1 : 1 - state.offset;
-		const open = bloom.direction === 'out' ? travel : 1 - travel;
-		const scale = bloom.rest + (bloom.full - bloom.rest) * open;
-		frames.push({
-			offset: index / samples,
-			travel,
-			scale,
-			opacity: bloomStrength(open, bloom.peak)
-		});
-		state = stepSpring(params, state, interval);
-	}
-	return frames;
 }
 
 /** The length of a blend, in milliseconds. */

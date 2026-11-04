@@ -9,7 +9,6 @@ import {
 	type Part,
 	type SpringParams
 } from '../choreography.ts';
-import type { Engine } from '../engine.ts';
 import { reportStart } from '../hud.svelte.ts';
 import { beginJourney, centerOf, landJourney, motionOf, type Journey } from '../journey.ts';
 import { registry, type MorphEntry } from '../registry.ts';
@@ -105,7 +104,7 @@ function thaw(stage: HTMLElement): void {
 }
 
 /** The spring engine: real elements, a persistent overlay, and physics that can turn around. */
-export function createSpringEngine(): Engine {
+export function createSpringEngine(): (navigation: OnNavigate) => void {
 	const fliers = new Map<string, Flier>();
 	const landing = new Set<Layer>();
 	const ghosts: Ghost[] = [];
@@ -548,14 +547,11 @@ export function createSpringEngine(): Engine {
 		picture.remove();
 	}
 
-	return {
-		name: 'spring',
-		navigate(navigation) {
-			const journey = beginJourney(navigation);
-			if (journey === null) {
-				return;
-			}
-			void (journey.choreography.travel === null ? blendTo(navigation) : fly(journey, navigation));
+	return (navigation) => {
+		const journey = beginJourney(navigation);
+		if (journey === null) {
+			return;
 		}
+		void (journey.choreography.travel === null ? blendTo(navigation) : fly(journey, navigation));
 	};
 }

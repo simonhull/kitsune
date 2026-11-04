@@ -59,13 +59,3 @@ button {
 [data-morph-hidden] {
 	visibility: hidden !important;
 }
-
-/* View transitions: while a cover flies, its group carries the corners and the shadow. */
-[data-morph-square] {
-	border-radius: 0 !important;
-	box-shadow: none !important;
-}
-
-[data-morph-flat] {
-	backdrop-filter: none !important;
-}
