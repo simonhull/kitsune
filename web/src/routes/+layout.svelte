@@ -74,11 +74,17 @@
 		route={onLogin ? 'door' : onNowPlaying ? 'gone' : onAlbum ? 'album' : 'home'}
 		healthIssues={library.facts?.issues}
 	/>
-	<main>{@render children()}</main>
+	<main>
+		{#if library.down && library.facts === null && !onLogin}
+			<p class="down" role="status">The server isn't answering. Trying again…</p>
+		{:else}
+			{@render children()}
+		{/if}
+	</main>
 	<div class="ghost-layer" aria-hidden="true"></div>
 	{#if palette !== null}<Bloom {palette} />{/if}
 	{#if library.playing !== null && !onLogin}
-		<PlayerIsland playing={library.playing} expanded={onNowPlaying} />
+		<PlayerIsland playing={library.playing} expanded={onNowPlaying} rises={library.arrivedLate} />
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
 	{#if import.meta.env.DEV}<Hud />{/if}
@@ -99,6 +105,16 @@
 	main {
 		position: relative;
 		z-index: 1;
+	}
+
+	.down {
+		min-height: 100dvh;
+		padding: 16px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		text-align: center;
+		color: var(--text-secondary);
 	}
 
 	/* Under the shell: what's left of the outgoing page. */

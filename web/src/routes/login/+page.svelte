@@ -77,7 +77,13 @@
 		const next = safeNext(page.url.searchParams.get('next'), location.origin);
 		const [, albumId] = /^\/album\/([^/?]+)/.exec(next) ?? [];
 		if (albumId !== undefined) {
-			await library.loadAlbum(decodeURIComponent(albumId));
+			const id = decodeURIComponent(albumId);
+			await library.loadAlbum(id);
+			// The island forms on this journey, so it forms already holding the album it's going to.
+			const album = library.album(id);
+			if (album !== undefined) {
+				library.cueAlbum(album);
+			}
 		}
 		// Replacing, so Back never returns to the door.
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- `safeNext` returns a path on this origin.

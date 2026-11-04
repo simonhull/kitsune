@@ -820,6 +820,10 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		}
 
 		launch(journey, captures, targets);
+		// Every target is known now: a card that mounts from here on isn't one of them.
+		for (const id of ids) {
+			inFlight.delete(id);
+		}
 		moveStages(journey, frozen, changesAlbum);
 		arrive(journey, toPath, targets);
 		if (choreography.island !== null) {

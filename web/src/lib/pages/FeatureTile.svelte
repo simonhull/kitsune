@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { paletteFor } from '#lib/cover/palette.ts';
+	import { emWidth } from '#lib/library/fit.ts';
 	import type { AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Wash from '#lib/shell/Wash.svelte';
@@ -32,7 +33,7 @@
 		<span
 			class="title"
 			title={album.title}
-			style:--chars={album.title.length}
+			style:--width={emWidth(album.title, 800, -0.05)}
 			use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}>{album.title}</span
 		>
 		<span class="detail">{album.artist}</span>
@@ -83,7 +84,7 @@
 
 	/* Fit to one line if it can, then two, and a long title is cut rather than left to spill. */
 	.title {
-		--fit: calc((100cqw - 64px) / (var(--chars) * 0.5));
+		--fit: calc((100cqw - 64px) / max(var(--width), 1));
 
 		display: -webkit-box;
 		-webkit-box-orient: vertical;
@@ -124,7 +125,7 @@
 		}
 
 		.title {
-			--fit: calc((100cqw - 48px) / (var(--chars) * 0.5));
+			--fit: calc((100cqw - 48px) / max(var(--width), 1));
 
 			font-size: clamp(28px, var(--fit), 52px);
 		}

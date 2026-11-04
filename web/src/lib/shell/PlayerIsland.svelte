@@ -11,9 +11,11 @@
 		playing: NowPlaying;
 		/** On Now playing the island becomes the page's pill controls, in place. */
 		expanded: boolean;
+		/** Whether it's arriving on a Home that's already showing, with no morph to carry it. */
+		rises: boolean;
 	}
 
-	let { playing, expanded }: Props = $props();
+	let { playing, expanded, rises }: Props = $props();
 
 	// Cued, not playing: until plan 018 there's no sound, so the clock stands at the start.
 	const position = clock(0);
@@ -26,6 +28,7 @@
 	aria-label="Player"
 	class="island"
 	class:expanded
+	class:rises
 	style:--slot-left={slot === null ? undefined : `${String(slot.left)}px`}
 	style:--slot-top={slot === null ? undefined : `${String(slot.top)}px`}
 	style:--slot-width={slot === null ? undefined : `${String(slot.width)}px`}
@@ -154,6 +157,18 @@
 		bottom: auto;
 		width: var(--slot-width);
 		transform: none;
+	}
+
+	.rises .glass,
+	.rises .content {
+		animation: island-rises var(--morph) var(--curve-morph);
+	}
+
+	@keyframes island-rises {
+		from {
+			opacity: 0;
+			transform: translateY(32px);
+		}
 	}
 
 	.glass {

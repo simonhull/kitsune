@@ -6,6 +6,11 @@
 	import { gridWindow } from './gridWindow.svelte.ts';
 
 	let root: HTMLElement | undefined = $state();
+	/**
+	 * Whether the page has landed. Before that its scroll isn't final, and reading it now would
+	 * swap the page the user came back to for the top of the grid.
+	 */
+	let landed = $state(false);
 
 	const pages = $derived(Array.from({ length: gridWindow.pageCount }, (_, index) => index));
 
@@ -47,7 +52,9 @@
 		// A page arriving moves the end of the grid: it may need the next one at once.
 		void library.albums.length;
 		void gridWindow.measure;
-		track();
+		if (landed) {
+			track();
+		}
 	});
 
 	onMount(() => {
@@ -67,7 +74,7 @@
 			frame ||= requestAnimationFrame(() => {
 				frame = 0;
 				gridWindow.wide = true;
-				track();
+				landed = true;
 			});
 		});
 

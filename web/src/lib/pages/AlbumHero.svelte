@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Cover from '#lib/cover/Cover.svelte';
+	import { emWidth } from '#lib/library/fit.ts';
 	import { albumFacts } from '#lib/library/format.ts';
 	import type { Album, AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
@@ -28,21 +29,21 @@
 	</div>
 	<div class="words" data-morph-part="words">
 		<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>
-		<!-- The fit divides by length so the first frame is final: nothing measures, nothing jumps. -->
+		<!-- The fit divides by the words' width, known before layout: the first frame is final. -->
 		<h1
 			title={entry?.title}
-			style:--chars={entry?.title.length ?? 10}
+			style:--width={emWidth(entry?.title ?? '', 900, -0.07)}
 			use:morph={{ id: `title:${albumId}`, slot: 'hero', kind: 'title' }}
 		>
 			{entry?.title ?? ''}
 		</h1>
 		<div class="actions">
-			<button type="button" class="play" aria-label={`Play ${entry?.title ?? 'album'}`}>
+			<button type="button" class="play" aria-label={`Play ${entry?.title ?? 'album'}`} disabled>
 				<Icon name="play" size={28} />
 			</button>
 			<span class="artist">{entry?.artist ?? ''}</span>
-			<button type="button" class="ghost">Shuffle</button>
-			<button type="button" class="ghost round" aria-label="Favorite"
+			<button type="button" class="ghost" disabled>Shuffle</button>
+			<button type="button" class="ghost round" aria-label="Favorite" disabled
 				><Icon name="heart-outline" /></button
 			>
 			<span class="ghost" aria-disabled="true">Edit tags</span>
@@ -99,7 +100,7 @@
 	 */
 	h1 {
 		--room: calc(100cqw - 2 * var(--hero-pad) - var(--hero-cover) - 32px);
-		--fit: calc(var(--room) / (var(--chars) * 0.5));
+		--fit: calc(var(--room) / max(var(--width), 1));
 
 		display: -webkit-box;
 		-webkit-box-orient: vertical;
@@ -137,6 +138,14 @@
 		box-shadow: 0 16px 40px color-mix(in srgb, var(--accent) 30%, transparent);
 	}
 
+	/* Nothing can sound until plan 018: a hollow button keeps its place and promises nothing. */
+	.play:disabled {
+		background: transparent;
+		box-shadow: inset 0 0 0 2px var(--accent);
+		color: var(--accent);
+		cursor: default;
+	}
+
 	.artist {
 		min-width: 0;
 		font-size: 22px;
@@ -158,6 +167,12 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+	}
+
+	.ghost:disabled,
+	.ghost[aria-disabled] {
+		color: var(--text-label);
+		cursor: default;
 	}
 
 	.round {

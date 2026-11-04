@@ -15,15 +15,27 @@
 		album: Album | undefined;
 		/** The ID of the track cued from this album, if any. */
 		cuedId: string | undefined;
+		/** The server no longer has it, though a list still did. */
+		gone: boolean;
+		/** It couldn't be fetched this time. */
+		unavailable: boolean;
+		retry: () => void;
 	}
 
-	let { album, cuedId }: Props = $props();
+	let { album, cuedId, gone, unavailable, retry }: Props = $props();
 
 	const multiDisc = $derived(isMultiDisc(album?.tracks ?? []));
 </script>
 
 <section aria-label="Tracks" class="panel" data-morph-part="panel">
-	{#if album !== undefined}
+	{#if gone}
+		<p class="note">This album isn't in the library any more.</p>
+	{:else if unavailable}
+		<p class="note">
+			The tracks couldn't be loaded.
+			<button type="button" onclick={retry}>Try again</button>
+		</p>
+	{:else if album !== undefined}
 		<div class="rows">
 			{#each album.tracks as track (track.id)}
 				{@const others = credit(track, album.artist)}
@@ -64,6 +76,24 @@
 		background: rgb(21 19 17 / 82%);
 		border: 1px solid rgb(255 255 255 / 7%);
 		backdrop-filter: blur(24px);
+	}
+
+	.note {
+		min-height: var(--target);
+		padding: 16px;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0 8px;
+		color: var(--text-secondary);
+	}
+
+	.note button {
+		min-height: var(--target);
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--fox);
 	}
 
 	.rows {

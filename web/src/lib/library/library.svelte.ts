@@ -42,6 +42,8 @@ export class Library {
 	down = $state(false);
 	/** Whether the first scan is still running; only known, and only asked, while there's nothing. */
 	scanning = $state(false);
+	/** Set when albums turn up on a Home that had none, which is the one time Home changes alone. */
+	arrivedLate = $state(false);
 	playing = $state.raw<NowPlaying | null>(null);
 	/** Sends the app to the door. Set by the shell once it can navigate. */
 	onExpired: (() => Promise<void>) | null = null;
@@ -144,20 +146,49 @@ export class Library {
 			this.facts = facts;
 			this.down = false;
 			if (facts.albums === 0) {
-				this.scanning = facts.roots > 0 && !(await this.#source.ready().catch(() => true));
-				this.#retryShell();
+				await this.#learnWhyEmpty(facts);
+				this.#retryLater(() => this.#pollForAlbums());
 			}
 		} catch (error) {
 			if (!(error instanceof UnauthorizedError)) {
 				this.down = true;
-				this.#retryShell();
+				this.#retryLater(() => this.loadShell());
 			}
 		}
 	}
 
-	#retryShell(): void {
+	/**
+	 * Tells a scan under way from a scan that found nothing. Readiness only explains the emptiness;
+	 * it can't be what decides it, because albums arrive long before a first scan ends.
+	 */
+	async #learnWhyEmpty({ roots }: LibraryFacts): Promise<void> {
+		this.scanning = roots > 0 && !(await this.#source.ready().catch(() => true));
+	}
+
+	/** Asks only for the counts while there's nothing to show, however long a first scan runs. */
+	async #pollForAlbums(): Promise<void> {
+		try {
+			const facts = await this.#source.facts();
+			if (facts.albums > 0) {
+				this.arrivedLate = true;
+				await this.loadShell();
+				// It's a one-off: Home must not rise like this again each time it's come back to.
+				setTimeout(() => {
+					this.arrivedLate = false;
+				}, retryMs);
+				return;
+			}
+			this.facts = facts;
+			await this.#learnWhyEmpty(facts);
+		} catch {
+			// Still nothing to show either way, and a lost session has gone to the door.
+		}
+		this.#retryLater(() => this.#pollForAlbums());
+	}
+
+	#retryLater(work: () => Promise<void>): void {
 		clearTimeout(this.#retry);
-		this.#retry = setTimeout(() => void this.loadShell(), retryMs);
+		this.#retry = setTimeout(() => void work(), retryMs);
 	}
 
 	#remember(entries: AlbumEntry[]): void {
@@ -223,6 +254,7 @@ export class Library {
 		try {
 			const album = await this.#source.album(id);
 			this.#albums.set(id, album);
+			this.#missing.delete(id);
 		} catch (error) {
 			if (error instanceof AlbumNotFoundError) {
 				this.#missing.add(id);
@@ -258,6 +290,7 @@ export class Library {
 		this.hasMoreAlbums = false;
 		this.down = false;
 		this.scanning = false;
+		this.arrivedLate = false;
 		this.playing = null;
 		this.#cursor = undefined;
 		this.#session = Promise.resolve('signed-out');

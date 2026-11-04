@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { greeting, healthNote, listeningTime, summary, trackCount } from './home';
+import { emptyLine, greeting, healthNote, listeningTime, summary, trackCount } from './home';
 import type { LibraryFacts } from './source';
 
 const facts: LibraryFacts = { albums: 927, tracks: 7586, durationMs: 0, roots: 1, issues: 0 };
@@ -27,6 +27,16 @@ describe('summary', () => {
 		expect(summary({ ...facts, albums: 1284, roots: 2, issues: 16 })).toBe(
 			'1,284 albums · 2 roots watched · 16 issues'
 		);
+	});
+});
+
+describe('emptyLine', () => {
+	const empty = { ...facts, albums: 0, tracks: 0 };
+
+	it('tells no roots, a scan under way and a scan that found nothing apart', () => {
+		expect(emptyLine({ ...empty, roots: 0 }, false)).toMatch(/^No music folders/);
+		expect(emptyLine(empty, true)).toMatch(/^The first scan is running/);
+		expect(emptyLine(empty, false)).toMatch(/^The scan found no music/);
 	});
 });
 

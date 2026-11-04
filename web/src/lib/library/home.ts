@@ -25,6 +25,16 @@ export function summary({ albums, roots, issues }: LibraryFacts): string {
 	].join(' · ');
 }
 
+/** Why Home has nothing to show. Each is a different problem with a different answer. */
+export function emptyLine({ roots }: LibraryFacts, scanning: boolean): string {
+	if (roots === 0) {
+		return 'No music folders are set up. Add one under roots in server.toml, then restart.';
+	}
+	return scanning
+		? 'The first scan is running. Albums will appear here as it finds them.'
+		: 'The scan found no music in your folders.';
+}
+
 /** What the Health tile's number means. It must agree with the number, at 0, 1 and N. */
 export function healthNote(issues: number): string {
 	if (issues === 0) {

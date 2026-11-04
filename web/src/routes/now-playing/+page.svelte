@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
+	import { emWidth } from '#lib/library/fit.ts';
 	import { balancedLines, credit, gain, trackGain } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
@@ -10,7 +11,7 @@
 
 	const playing = $derived(library.playing);
 	const lines = $derived(playing === null ? ['', ''] : balancedLines(playing.track.title));
-	const longest = $derived(Math.max(...lines.map((line) => line.length)));
+	const longest = $derived(Math.max(...lines.map((line) => emWidth(line, 900, -0.075)), 1));
 	const others = $derived(
 		playing === null ? undefined : credit(playing.track, playing.album.artist)
 	);
@@ -69,7 +70,7 @@
 
 			<div class="center">
 				<div class="stack">
-					<div class="poster" aria-hidden="true" style:--chars={longest}>
+					<div class="poster" aria-hidden="true" style:--width={longest}>
 						{#each lines as line, index (index)}
 							<span data-morph-part={`line-${String(index + 1)}`}>{line}</span>
 						{/each}
@@ -155,7 +156,7 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		font-size: min(230px, 25.6dvh, calc((100cqw - 32px) / (var(--chars) * 0.5)));
+		font-size: min(230px, 25.6dvh, calc((100cqw - 32px) / var(--width)));
 		font-weight: 900;
 		letter-spacing: -0.075em;
 		line-height: 0.8;
@@ -379,7 +380,7 @@
 			position: static;
 			transform: none;
 			margin-bottom: -16px;
-			font-size: min(11dvh, calc((100cqw - 32px) / (var(--chars) * 0.5)));
+			font-size: min(11dvh, calc((100cqw - 32px) / var(--width)));
 		}
 
 		.chips {

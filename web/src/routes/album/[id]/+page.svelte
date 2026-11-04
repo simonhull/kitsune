@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { whenSettled } from '#lib/morph/settled.ts';
@@ -15,7 +16,9 @@
 
 	// Never awaited: the first frame is built from the list entry, and tracks stream in.
 	$effect(() => {
-		void library.loadAlbum(id);
+		const wanted = id;
+		// Untracked: a failure must wait for Try again, not re-run this and ask forever.
+		untrack(() => void library.loadAlbum(wanted));
 	});
 
 	// The album last opened is the one cued, but the island mustn't change under a flight.
@@ -33,7 +36,7 @@
 	<title>{entry?.title ?? 'Album'} · Kitsune</title>
 </svelte:head>
 
-{#if library.failed(id)}
+{#if library.failed(id) && entry === undefined}
 	<div class="missing">
 		<h1>That album isn't in the library</h1>
 		<a href={resolve('/')} data-sveltekit-reset="false">Back to Home</a>
@@ -41,7 +44,13 @@
 {:else}
 	<div class="album">
 		<AlbumHero albumId={id} {entry} {album} />
-		<TrackList {album} {cuedId} />
+		<TrackList
+			{album}
+			{cuedId}
+			gone={library.failed(id)}
+			unavailable={library.unavailable(id)}
+			retry={() => void library.loadAlbum(id)}
+		/>
 	</div>
 {/if}
 

@@ -92,6 +92,44 @@ describe('Library', () => {
 		expect(albumsPage).toHaveBeenCalledOnce();
 	});
 
+	it('tells why a library is empty, and asks only for counts until it is not', async () => {
+		vi.useFakeTimers();
+		const empty = { albums: 0, tracks: 0, durationMs: 0, roots: 1, issues: 0 };
+		const facts = vi.fn<LibrarySource['facts']>(() => Promise.resolve(empty));
+		const ready = vi.fn<LibrarySource['ready']>(() => Promise.resolve(false));
+		const albumsPage = vi.fn<LibrarySource['albumsPage']>(() => Promise.resolve({ albums: [] }));
+		const library = new Library(source({ facts, ready, albumsPage }));
+		await library.loadShell();
+		expect(library.scanning).toBe(true);
+		expect(library.playing).toBeNull();
+
+		albumsPage.mockClear();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(albumsPage).not.toHaveBeenCalled();
+
+		ready.mockResolvedValue(true);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(library.scanning).toBe(false);
+
+		facts.mockResolvedValue({ ...empty, albums: 1 });
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(library.arrivedLate).toBe(true);
+		expect(albumsPage).toHaveBeenCalled();
+		library.reset();
+		vi.useRealTimers();
+	});
+
+	it('does not ask about a scan with no roots to scan', async () => {
+		vi.useFakeTimers();
+		const none = { albums: 0, tracks: 0, durationMs: 0, roots: 0, issues: 0 };
+		const ready = vi.fn<LibrarySource['ready']>(() => Promise.resolve(false));
+		const library = new Library(source({ facts: () => Promise.resolve(none), ready }));
+		await library.loadShell();
+		expect(library.scanning).toBe(false);
+		library.reset();
+		vi.useRealTimers();
+	});
+
 	it('marks the shell down, and comes back by itself', async () => {
 		vi.useFakeTimers();
 		const facts = vi.fn(createFixtureSource().facts);
