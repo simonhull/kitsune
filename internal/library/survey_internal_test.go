@@ -61,6 +61,7 @@ type testLib struct {
 	roots   []string
 	scanner *Scanner
 	opts    Options
+	dbPath  string
 }
 
 const testGrace = 24 * time.Hour
@@ -68,7 +69,8 @@ const testGrace = 24 * time.Hour
 // newTestLib returns a library with n empty roots.
 func newTestLib(t *testing.T, n int) *testLib {
 	t.Helper()
-	st, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "kitsune.db"), store.Options{})
+	dbPath := filepath.Join(t.TempDir(), "kitsune.db")
+	st, err := store.Open(t.Context(), dbPath, store.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +79,7 @@ func newTestLib(t *testing.T, n int) *testLib {
 			t.Error(cerr)
 		}
 	})
-	l := &testLib{t: t, st: st, clock: &fakeClock{now: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)}}
+	l := &testLib{t: t, st: st, dbPath: dbPath, clock: &fakeClock{now: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)}}
 	for range n {
 		l.roots = append(l.roots, t.TempDir())
 	}
@@ -268,7 +270,7 @@ func TestSurveyFindsAudio(t *testing.T) {
 		"deep/er/k.flac", "@music.flac", "x.flac.mp3",
 	}
 	other := []string{
-		"cover.jpg", ".hidden.flac", "._x.flac", "@eaDir/x.flac", ".cache/x.flac", "notes.txt", "m.mp4", "n.m4p",
+		coverJPG, ".hidden.flac", "._x.flac", "@eaDir/x.flac", ".cache/x.flac", "notes.txt", "m.mp4", "n.m4p",
 		"sub/@eaDir/y.flac", "flac", "sub/.hidden/z.flac",
 	}
 	for _, rel := range slices.Concat(audio, other) {

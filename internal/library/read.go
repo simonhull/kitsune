@@ -41,11 +41,13 @@ func (s *Scanner) read(ctx context.Context, jobs []job, stats *Stats) (bool, err
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
 	w := &writer{s: s, stats: stats, claimed: claimedBy(jobs)}
-	for r := range s.startWorkers(work, jobs) {
+	rd := &reader{covers: &covers{cache: s.artwork, log: s.log}}
+	for r := range s.startWorkers(work, jobs, rd) {
 		if w.step(ctx, work, &r) {
 			cancel()
 		}
 	}
+	stats.Covers = int(rd.covers.stored.Load())
 	return w.hold, w.finish(ctx)
 }
 
@@ -65,7 +67,7 @@ func claimedBy(jobs []job) map[int64]struct{} {
 // startWorkers feeds jobs to the worker pool and returns the results. The
 // channel closes once every worker has stopped, which happens when the jobs
 // run out or work ends.
-func (s *Scanner) startWorkers(work context.Context, jobs []job) <-chan result {
+func (s *Scanner) startWorkers(work context.Context, jobs []job, rd *reader) <-chan result {
 	queue := make(chan *job)
 	results := make(chan result)
 	go func() {
@@ -82,7 +84,7 @@ func (s *Scanner) startWorkers(work context.Context, jobs []job) <-chan result {
 	for range s.workers {
 		wg.Go(func() {
 			for j := range queue {
-				r, ok := readJob(work, j)
+				r, ok := rd.readJob(work, j)
 				if !ok {
 					return
 				}
@@ -101,10 +103,15 @@ func (s *Scanner) startWorkers(work context.Context, jobs []job) <-chan result {
 	return results
 }
 
+// reader reads files for the workers of one scan.
+type reader struct {
+	covers *covers
+}
+
 // readJob opens, fingerprints and maps one file. It reports false when the
 // context ended: a canceled read must never become a scan issue.
-func readJob(ctx context.Context, j *job) (result, bool) {
-	tw, err := readFile(ctx, j)
+func (rd *reader) readJob(ctx context.Context, j *job) (result, bool) {
+	tw, err := rd.readFile(ctx, j)
 	if err != nil {
 		if ctx.Err() != nil {
 			return result{}, false
@@ -115,10 +122,12 @@ func readJob(ctx context.Context, j *job) (result, bool) {
 	return result{job: j, track: tw}, true
 }
 
-// readFile reads the file at j into a track write. Its errors are stored
-// verbatim as the scan issue's message, so they are not wrapped.
-func readFile(ctx context.Context, j *job) (*store.TrackWrite, error) {
-	f, err := audiometa.OpenContext(ctx, filepath.Join(j.Root, j.RelPath))
+// readFile reads the file at j into a track write, with its album's cover when
+// this file is the one to find it. Its errors are stored verbatim as the scan
+// issue's message, so they are not wrapped. Art never fails a file: only a
+// canceled ctx is returned from the art search.
+func (rd *reader) readFile(ctx context.Context, j *job) (*store.TrackWrite, error) {
+	f, err := audiometa.OpenContext(ctx, filepath.Join(j.Root, j.RelPath), audiometa.WithMaxArtworkSize(maxArtworkBytes))
 	if err != nil {
 		return nil, err //nolint:wrapcheck // The message is stored as the scan issue verbatim.
 	}
@@ -129,6 +138,9 @@ func readFile(ctx context.Context, j *job) (*store.TrackWrite, error) {
 		return nil, err //nolint:wrapcheck // The message is stored as the scan issue verbatim.
 	}
 	tw := NewTrackWrite(f, &FileInfo{Root: j.Root, RelPath: j.RelPath, Size: j.Size, MTime: j.MTime, Digest: digest})
+	if coverErr := rd.covers.attach(ctx, f, j, &tw); coverErr != nil {
+		return nil, coverErr
+	}
 	return &tw, nil
 }
 
