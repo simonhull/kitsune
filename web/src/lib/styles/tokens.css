@@ -1,0 +1,62 @@
+/* Direction B "Immersive", copied from the B-System board. */
+:root {
+	color-scheme: dark;
+
+	/* Frame: amber for navigation, playback, focus and system state. */
+	--fox: #f28c28;
+	--fox-ink: #1a0f05;
+	--tint: #2a1c10;
+	--card: #151311;
+	--ground: #0a0908;
+
+	/* Text. */
+	--text: #f5f1ec;
+	--text-secondary: #cbc4bc;
+	--text-meta: #a39b93;
+	--text-label: #8c857d;
+
+	/* Hairlines. */
+	--edge: rgb(255 255 255 / 8%);
+	--edge-card: rgb(255 255 255 / 6%);
+	--edge-strong: rgb(255 255 255 / 20%);
+
+	/* Glass: the islands float above the art. */
+	--glass-fill: rgb(24 22 20 / 72%);
+	--glass-fill-player: rgb(24 22 20 / 78%);
+	--glass-blur: blur(24px) saturate(1.4);
+	--glass-blur-player: blur(28px) saturate(1.5);
+	--glass-shadow: 0 16px 40px rgb(0 0 0 / 45%);
+	--glass-shadow-player: 0 24px 60px rgb(0 0 0 / 55%);
+
+	/* Radii. Covers: card 20, hero 24, poster 28 (the page boards win over B-System's note). */
+	--radius-12: 12px;
+	--radius-16: 16px;
+	--radius-20: 20px;
+	--radius-24: 24px;
+	--radius-28: 28px;
+	--radius-32: 32px;
+	--radius-pill: 999px;
+
+	/* Type. Tracking tightens as size grows. */
+	--font-sans: 'Geist Variable', system-ui, sans-serif;
+	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+	--type-hero: 168px;
+	--type-display: 88px;
+	--type-section: 40px;
+	--type-title: 17px;
+	--type-body: 15px;
+	--type-mono: 12px;
+	--tracking-hero: -0.07em;
+	--tracking-display: -0.055em;
+	--tracking-section: -0.04em;
+	--tracking-title: -0.02em;
+
+	/* Touch: nothing tappable is smaller than this. */
+	--target: 44px;
+
+	/* Motion. Central so a morph's length can later stretch to land on a beat. */
+	--morph-fast: 280ms;
+	--morph: 420ms;
+	--morph-slow: 600ms;
+	--curve-morph: ease-out;
+}

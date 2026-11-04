@@ -1,5 +1,6 @@
 [tools]
 go = "1.27.3"
+bun = "1.4.4"
 golangci-lint = "2.15.0"
 
 [tasks.build]
@@ -37,6 +38,32 @@ run = "golangci-lint fmt ./..."
 description = "Known-vulnerability scan (CI runs this too)"
 run = "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./..."
 
+[tasks."web:dev"]
+description = "Run the web client's dev server"
+dir = "web"
+run = "bun run dev"
+
+[tasks."web:build"]
+description = "Build the web client"
+dir = "web"
+run = "bun run build"
+
+[tasks."web:preview"]
+description = "Serve the production build of the web client"
+dir = "web"
+run = "bun run preview"
+
+[tasks."web:check"]
+description = "Web client: locked install, lint, svelte-check, tests, build (mirrors CI)"
+dir = "web"
+run = [
+  "bun install --frozen-lockfile",
+  "bun run lint",
+  "bun run check",
+  "bun run test",
+  "bun run build",
+]
+
 [tasks.check]
 description = "Everything CI checks, locally"
-depends = ["build", "test", "lint", "nocgo", "vuln"]
+depends = ["build", "test", "lint", "nocgo", "vuln", "web:check"]

@@ -2,6 +2,9 @@ module github.com/simonhull/kitsune
 
 go 1.27.0
 
+// npm packages can ship .go files (flatted does); ./... must not find them.
+ignore ./web/node_modules
+
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/ncruces/go-sqlite3 v0.36.0
