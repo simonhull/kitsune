@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/openapitest"
 	"github.com/simonhull/kitsune/internal/store"
@@ -86,6 +87,7 @@ type testServerOptions struct {
 	BasePath      string
 	Ready         func(context.Context) error
 	LogLevel      slog.Level // The zero value is Info.
+	Artwork       *artwork.Cache
 }
 
 // testServer is a running API over a real store and auth service.
@@ -131,6 +133,7 @@ func newTestServer(t *testing.T, opts ...testServerOptions) *testServer {
 		SecureCookies: o.SecureCookies,
 		BasePath:      o.BasePath,
 		Ready:         o.Ready,
+		Artwork:       o.Artwork,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

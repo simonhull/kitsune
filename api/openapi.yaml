@@ -97,6 +97,62 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /artwork/{hash}:
+    get:
+      operationId: getArtwork
+      summary: Return a cover rendition.
+      description: >-
+        Covers are rendered during library scans at three sizes, so this reads
+        a file. The hash names the source image, which never changes under it:
+        the response is cached for a year and marked immutable. A `size` the
+        image has no rendition for gets the largest rendition at or below it,
+        or the smallest there is. The image is never upscaled, so a small
+        source is returned at its own size. Range requests are not supported.
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          description: SHA-256 of the source image, as 64 lowercase hex digits.
+          schema: { type: string, pattern: "^[0-9a-f]{64}$" }
+        - name: size
+          in: query
+          required: false
+          description: Longest side in pixels.
+          schema: { type: integer, enum: [128, 512, 1024], default: 512 }
+        - name: If-None-Match
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: The cover, as JPEG.
+          headers:
+            ETag:
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string }
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+        "304":
+          description: The client's copy is current.
+          headers:
+            ETag:
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     bearer:
