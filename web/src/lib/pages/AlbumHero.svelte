@@ -41,7 +41,11 @@
 			<button type="button" class="play" aria-label={`Play ${entry?.title ?? 'album'}`} disabled>
 				<Icon name="play" size={28} />
 			</button>
-			<span class="artist">{entry?.artist ?? ''}</span>
+			<span class="artist">
+				<span class="name" use:morph={{ id: `artist:${albumId}`, slot: 'hero', kind: 'title' }}
+					>{entry?.artist ?? ''}</span
+				>
+			</span>
 			<button type="button" class="ghost" disabled>Shuffle</button>
 			<button type="button" class="ghost round" aria-label="Favorite" disabled
 				><Icon name="heart-outline" /></button
@@ -136,6 +140,12 @@
 		align-items: center;
 		justify-content: center;
 		box-shadow: 0 16px 40px color-mix(in srgb, var(--accent) 30%, transparent);
+	}
+
+	/* As wide as the words, whatever room the row gives the artist: a flight measures this. */
+	.name {
+		display: inline-block;
+		max-width: 100%;
 	}
 
 	/* Nothing can sound until plan 018: a hollow button keeps its place and promises nothing. */

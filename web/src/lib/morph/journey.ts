@@ -163,7 +163,7 @@ function idsFor(subject: 'from' | 'to' | 'playing' | 'fox', { from, to }: OnNavi
 		return id === undefined ? [] : [`cover:${id}`, 'song', ...playerParts];
 	}
 	const id = (subject === 'to' ? to : from)?.params?.['id'];
-	return id === undefined ? [] : [`cover:${id}`, `title:${id}`];
+	return id === undefined ? [] : [`cover:${id}`, `title:${id}`, `artist:${id}`];
 }
 
 /** A hero scrolled off screen stays with its page: the island's cover travels instead. */
