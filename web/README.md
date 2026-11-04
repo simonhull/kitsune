@@ -37,6 +37,9 @@ With `?source=fixtures`:
 - `?latency=300` delays every fixture response, to prove no first frame waits for data.
 - `?playing=<album id>` holds the cue on another album, for the path where a hero condenses into
   the island.
+- `?scan=<seconds>&gap=<seconds>` runs a first scan on a timer, in bursts sized like a real one, so
+  Home opens on the deck. `gap` defaults to 27; `?scan=30&gap=7` is a 30 s clip. A reload resumes
+  the scan, and a new tab starts it again.
 
 In dev, a small HUD at the bottom left shows how long the last morph took to start.
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createFixtureSource } from './fixtures';
+import { burstSizes, burstTimes, createFixtureSource, createScanFixtureSource } from './fixtures';
 import { AlbumNotFoundError, LoginError, type LibrarySource } from './source';
 
 const source: LibrarySource = createFixtureSource();
@@ -56,5 +56,72 @@ describe('fixtures', () => {
 		await vi.advanceTimersByTimeAsync(1);
 		await pending;
 		expect(settled).toBe(true);
+	});
+});
+
+describe('a scan', () => {
+	let clock = 0;
+	const scan = createScanFixtureSource({
+		scanMs: 400_000,
+		gapMs: 27_000,
+		startedAt: 0,
+		now: () => clock
+	});
+	const times = burstTimes(400_000, 27_000);
+
+	function at(ms: number): void {
+		clock = ms;
+	}
+
+	it('finds nothing at first, and is not ready until the end', async () => {
+		at(0);
+		await expect(scan.facts()).resolves.toMatchObject({ albums: 0, tracks: 0, roots: 1 });
+		await expect(scan.ready()).resolves.toBe(false);
+		at(399_999);
+		await expect(scan.ready()).resolves.toBe(false);
+		at(400_000);
+		await expect(scan.ready()).resolves.toBe(true);
+	});
+
+	it('lands bursts sized like the real library, at uneven gaps', async () => {
+		at(times.at(0) ?? 0);
+		await expect(scan.facts()).resolves.toMatchObject({ albums: burstSizes.at(0) });
+		at(times.at(1) ?? 0);
+		await expect(scan.facts()).resolves.toMatchObject({
+			albums: (burstSizes.at(0) ?? 0) + (burstSizes.at(1) ?? 0)
+		});
+		const gaps = times.slice(1).map((time, index) => time - (times.at(index) ?? 0));
+		expect(new Set(gaps).size).toBeGreaterThan(1);
+	});
+
+	it('never lands a burst after the end', () => {
+		expect(Math.max(...burstTimes(30_000, 7000))).toBeLessThan(30_000);
+		expect(burstTimes(1000, 27_000).length).toBeGreaterThan(0);
+	});
+
+	it('lists the newest first, and pages by name on cursors with nothing lost', async () => {
+		at(400_000);
+		const { albums } = await scan.facts();
+		const newest = await scan.albumsPage('added', undefined, 3);
+		expect(newest.albums.at(0)?.id).toBe(`scan-${String(albums - 1)}`);
+		const seen = new Set<string>();
+		let cursor: string | undefined;
+		do {
+			const page = await scan.albumsPage('name', cursor, 200);
+			for (const album of page.albums) {
+				seen.add(album.id);
+			}
+			cursor = page.nextCursor;
+		} while (cursor !== undefined);
+		expect(seen.size).toBe(albums);
+	});
+
+	it('serves every album it has found, and none it has not', async () => {
+		at(times.at(0) ?? 0);
+		const { albums } = await scan.albumsPage('added', undefined, 1);
+		const [entry] = albums;
+		expect(await scan.album(entry?.id ?? '')).toMatchObject(entry ?? {});
+		await expect(scan.album('scan-99999')).rejects.toBeInstanceOf(AlbumNotFoundError);
+		await expect(scan.album('glasshouse-66')).rejects.toBeInstanceOf(AlbumNotFoundError);
 	});
 });

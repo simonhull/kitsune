@@ -84,7 +84,7 @@
 	<div class="ghost-layer" aria-hidden="true"></div>
 	{#if palette !== null}<Bloom {palette} />{/if}
 	{#if library.playing !== null && !onLogin}
-		<PlayerIsland playing={library.playing} expanded={onNowPlaying} rises={library.arrivedLate} />
+		<PlayerIsland playing={library.playing} expanded={onNowPlaying} />
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
 	{#if import.meta.env.DEV}<Hud />{/if}

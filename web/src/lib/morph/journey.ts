@@ -77,9 +77,9 @@ export function watchInput(): () => void {
 function preloadFor(link: HTMLAnchorElement | null): void {
 	const [, id] = /^\/album\/([^/]+)/.exec(link?.pathname ?? '') ?? [];
 	if (id !== undefined) {
-		preload(library.entry(decodeURIComponent(id))?.artwork, 'stage');
+		void preload(library.entry(decodeURIComponent(id))?.artwork, 'stage');
 	} else if (link?.pathname === '/now-playing') {
-		preload(library.playing?.album.artwork, 'stage');
+		void preload(library.playing?.album.artwork, 'stage');
 	}
 }
 

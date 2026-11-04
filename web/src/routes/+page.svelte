@@ -4,6 +4,7 @@
 		greeting,
 		healthNote,
 		listeningTime,
+		scanLine,
 		summary,
 		trackCount
 	} from '#lib/library/home.ts';
@@ -26,13 +27,15 @@
 	<div class="home">
 		<div class="intro" data-morph-part="intro" data-morph-key="intro">
 			<h1>{greeting(new Date().getHours(), name)}</h1>
-			{#if facts.albums > 0}<span class="summary">{summary(facts)}</span>{/if}
+			{#if facts.albums > 0 && !library.deck}<span class="summary">{summary(facts)}</span>{/if}
 		</div>
 
-		{#if facts.albums === 0}
-			<p class="empty" role="status">{emptyLine(facts, library.scanning)}</p>
+		{#if library.deck && library.pile.length > 0}
+			<p class="empty" role="status">{scanLine(facts)}</p>
+		{:else if facts.albums === 0 || library.deck}
+			<p class="empty" role="status">{emptyLine(facts, library.deck)}</p>
 		{:else}
-			<section aria-label="Overview" class="overview" class:late={library.arrivedLate}>
+			<section aria-label="Overview" class="overview">
 				{#if feature !== undefined}<FeatureTile album={feature} />{/if}
 
 				<div class="health" data-morph-part="card" data-morph-key="health">
@@ -67,7 +70,7 @@
 				</section>
 			</section>
 
-			<section aria-label="Your albums" class="repeat" class:late={library.arrivedLate}>
+			<section aria-label="Your albums" class="repeat">
 				<h2 data-morph-part="card" data-morph-key="albums">Your albums</h2>
 				<AlbumGrid />
 			</section>
@@ -111,18 +114,6 @@
 		font-size: var(--type-title);
 		line-height: 1.4;
 		color: var(--text-secondary);
-	}
-
-	/* A scan's first albums reach a Home nobody navigated to: they rise in once, together. */
-	.late {
-		animation: arrive-late var(--morph) var(--curve-morph);
-	}
-
-	@keyframes arrive-late {
-		from {
-			opacity: 0;
-			transform: translateY(24px);
-		}
 	}
 
 	.overview {

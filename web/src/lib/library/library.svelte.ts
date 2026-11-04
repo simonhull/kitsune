@@ -1,7 +1,9 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+import { preload } from '#lib/cover/rungs.ts';
+import { dealInterval, expectedGap, openingFor, queueCap, seedGapMs } from '#lib/pages/deck.ts';
 import { createApiSource } from './api.ts';
 import { cueOf, type NowPlaying } from './cue.ts';
-import { createFixtureSource } from './fixtures.ts';
+import { createFixtureSource, createScanFixtureSource, scanStart } from './fixtures.ts';
 import {
 	AlbumNotFoundError,
 	UnauthorizedError,
@@ -20,12 +22,65 @@ const recentCount = 6;
 const retryMs = 5000;
 /** How often a broken cover may ask whether the session is still good. */
 const probeMs = 30_000;
+/** How long a library with albums gets to turn out to be a restart, not a first scan. */
+const restartGraceMs = 1500;
+/** How often the deck asks what the scan has found. */
+const scanPollMs = 3000;
+/** How much of the newest end of the library each of those asks for. */
+const feedSize = 100;
+/** The most cards on the pile at once: older ones have left the DOM, under it. */
+export const pileSize = 12;
+/** How long a card may hold up its landing for its cover. */
+const decodeBoundMs = 800;
+/** How often a hidden tab looks up to see if it can deal again. */
+const hiddenRetryMs = 1000;
 
 export type Session = 'signed-in' | 'signed-out' | 'down';
+
+/** Whether this browser has seen the library ready, which outlives any session. */
+export interface ReadyMemory {
+	seen(): boolean;
+	mark(): void;
+}
+
+/** Remembers in a browser store, if there is one. Without it a restart can look like a first scan. */
+export function readyMemoryIn(store: () => Storage, key: string): ReadyMemory {
+	return {
+		seen() {
+			try {
+				return store().getItem(key) !== null;
+			} catch {
+				return false;
+			}
+		},
+		mark() {
+			try {
+				store().setItem(key, '1');
+			} catch {
+				// Nothing to do: the next restart waits a moment longer, and may show the deck.
+			}
+		}
+	};
+}
 
 export interface LibraryOptions {
 	/** Holds the cue on this album, for the lab: a hero condensing into the island needs another. */
 	pinnedAlbumId?: string;
+	readyMemory?: ReadyMemory;
+}
+
+/** Gives a card what it needs to land: its decoded cover, or the generated one if that failed. */
+async function cardFor(entry: AlbumEntry): Promise<AlbumEntry> {
+	if (entry.artwork === undefined) {
+		return entry;
+	}
+	const timeout = new Promise<boolean>((resolve) => {
+		setTimeout(() => {
+			resolve(true);
+		}, decodeBoundMs);
+	});
+	const usable = await Promise.race([preload(entry.artwork, 'card'), timeout]);
+	return usable ? entry : { ...entry, artwork: undefined };
 }
 
 /** The client's view of the library. List entries seed the first frame of the next page. */
@@ -40,10 +95,10 @@ export class Library {
 	hasMoreAlbums = $state(false);
 	/** Set once a first load has failed for any reason but the session. */
 	down = $state(false);
-	/** Whether the first scan is still running; only known, and only asked, while there's nothing. */
-	scanning = $state(false);
-	/** Set when albums turn up on a Home that had none, which is the one time Home changes alone. */
-	arrivedLate = $state(false);
+	/** Whether Home is the deck, following a first scan, in place of the library it's still finding. */
+	deck = $state(false);
+	/** The covers on the deck, the top one last. */
+	pile = $state.raw<AlbumEntry[]>([]);
 	playing = $state.raw<NowPlaying | null>(null);
 	/** Sends the app to the door. Set by the shell once it can navigate. */
 	onExpired: (() => Promise<void>) | null = null;
@@ -62,6 +117,22 @@ export class Library {
 	#retry: ReturnType<typeof setTimeout> | undefined;
 	#expiring = false;
 	#probedAt = -probeMs;
+	/** Moves on at every reset: anything older that resolves late has no business here. */
+	#epoch = 0;
+	readonly #readyMemory: ReadyMemory;
+	#waited = false;
+	#scanPoll: ReturnType<typeof setTimeout> | undefined;
+	#nextCard: ReturnType<typeof setTimeout> | undefined;
+	/** Everything the feed has already handed over, so no album lands twice. */
+	readonly #seen = new SvelteSet<string>();
+	#queue: AlbumEntry[] = [];
+	/** The queue's length as the last burst left it, which is what the spacing is built on. */
+	#burstQueue = 0;
+	#gapMs = seedGapMs;
+	#lastBurstAt: number | null = null;
+	#tracks = 0;
+	/** Set on a deck joined part way: its first poll fills the pile without replaying it. */
+	#seeding = false;
 
 	constructor(
 		source: LibrarySource | ((expired: () => void) => LibrarySource),
@@ -69,6 +140,8 @@ export class Library {
 	) {
 		this.#source = typeof source === 'function' ? source(() => void this.expire()) : source;
 		this.#pinnedAlbumId = options.pinnedAlbumId;
+		this.#readyMemory =
+			options.readyMemory ?? readyMemoryIn(() => localStorage, 'kitsune:ready-seen');
 	}
 
 	/** Returns what's known about an album right now, without waiting. */
@@ -130,60 +203,202 @@ export class Library {
 
 	async #loadShell(): Promise<void> {
 		clearTimeout(this.#retry);
+		const epoch = this.#epoch;
 		try {
 			this.user ??= await this.#source.me();
-			const [facts, recent, first] = await Promise.all([
+			const [facts, recent, first, ready] = await Promise.all([
 				this.#source.facts(),
 				this.#source.albumsPage('added', undefined, recentCount),
-				this.#source.albumsPage('name', undefined, albumPageSize)
+				this.#source.albumsPage('name', undefined, albumPageSize),
+				// Not answering means unknown, and unknown isn't ready.
+				this.#source.ready().catch(() => false)
 			]);
+			if (epoch !== this.#epoch) {
+				return;
+			}
+			if (ready) {
+				this.#readyMemory.mark();
+			}
+			const opening = openingFor(facts, ready, {
+				remembered: this.#readyMemory.seen(),
+				waited: this.#waited
+			});
+			if (opening === 'wait') {
+				// Nothing is assigned, so Home can't flash, and nobody waits for this: not even login.
+				this.#waited = true;
+				this.#retry = setTimeout(() => void this.loadShell(), restartGraceMs);
+				return;
+			}
+			if (opening === 'deck') {
+				this.#followScan(facts);
+				return;
+			}
+			const leavingDeck = this.deck;
+			this.#stopFollowing();
+			if (leavingDeck) {
+				// An album opened mid-scan holds the tracks found so far.
+				this.#albums.clear();
+			}
 			this.#remember([...recent.albums, ...first.albums]);
 			this.recent = recent.albums;
 			this.albums = first.albums;
 			this.#cursor = first.nextCursor;
 			this.hasMoreAlbums = first.nextCursor !== undefined;
-			await this.#cueOpening();
+			await this.#cueOpening(leavingDeck);
 			this.facts = facts;
 			this.down = false;
+			this.deck = false;
+			this.pile = [];
 			if (facts.albums === 0) {
-				await this.#learnWhyEmpty(facts);
 				this.#retryLater(() => this.#pollForAlbums());
 			}
 		} catch (error) {
-			if (!(error instanceof UnauthorizedError)) {
+			if (epoch === this.#epoch && !(error instanceof UnauthorizedError)) {
 				this.down = true;
 				this.#retryLater(() => this.loadShell());
 			}
 		}
 	}
 
-	/**
-	 * Tells a scan under way from a scan that found nothing. Readiness only explains the emptiness;
-	 * it can't be what decides it, because albums arrive long before a first scan ends.
-	 */
-	async #learnWhyEmpty({ roots }: LibraryFacts): Promise<void> {
-		this.scanning = roots > 0 && !(await this.#source.ready().catch(() => true));
-	}
-
-	/** Asks only for the counts while there's nothing to show, however long a first scan runs. */
+	/** Asks only for the counts while there's nothing to show: a later scan may yet find something. */
 	async #pollForAlbums(): Promise<void> {
+		const epoch = this.#epoch;
 		try {
 			const facts = await this.#source.facts();
+			if (epoch !== this.#epoch) {
+				return;
+			}
 			if (facts.albums > 0) {
-				this.arrivedLate = true;
 				await this.loadShell();
-				// It's a one-off: Home must not rise like this again each time it's come back to.
-				setTimeout(() => {
-					this.arrivedLate = false;
-				}, retryMs);
 				return;
 			}
 			this.facts = facts;
-			await this.#learnWhyEmpty(facts);
 		} catch {
 			// Still nothing to show either way, and a lost session has gone to the door.
 		}
-		this.#retryLater(() => this.#pollForAlbums());
+		if (epoch === this.#epoch) {
+			this.#retryLater(() => this.#pollForAlbums());
+		}
+	}
+
+	/** Turns Home into the deck. Joining a scan part way, nothing already found lands again. */
+	#followScan(facts: LibraryFacts): void {
+		if (!this.deck) {
+			this.#seeding = facts.albums > 0;
+			this.#tracks = facts.tracks;
+		}
+		this.facts = facts;
+		this.down = false;
+		this.deck = true;
+		clearTimeout(this.#scanPoll);
+		void this.#pollScan();
+	}
+
+	#stopFollowing(): void {
+		clearTimeout(this.#scanPoll);
+		clearTimeout(this.#nextCard);
+		this.#nextCard = undefined;
+		this.#seen.clear();
+		this.#queue = [];
+		this.#burstQueue = 0;
+		this.#gapMs = seedGapMs;
+		this.#lastBurstAt = null;
+		this.#seeding = false;
+	}
+
+	/** Asks what the scan has found, until it says it's done. */
+	async #pollScan(): Promise<void> {
+		const epoch = this.#epoch;
+		try {
+			const [facts, page, ready] = await Promise.all([
+				this.#source.facts(),
+				this.#source.albumsPage('added', undefined, feedSize),
+				this.#source.ready().catch(() => false)
+			]);
+			if (epoch !== this.#epoch) {
+				return;
+			}
+			this.down = false;
+			this.facts = facts;
+			this.#remember(page.albums);
+			this.#feed(facts, page.albums);
+			if (ready) {
+				// Always a fresh read: the counts can still say 0 right beside ready.
+				await this.loadShell();
+				return;
+			}
+		} catch (error) {
+			if (epoch !== this.#epoch || error instanceof UnauthorizedError) {
+				return;
+			}
+			this.down = true;
+		}
+		this.#scanPoll = setTimeout(() => void this.#pollScan(), scanPollMs);
+	}
+
+	/** Takes in one look at the newest end of the library. */
+	#feed({ tracks }: LibraryFacts, newestFirst: AlbumEntry[]): void {
+		if (this.#seeding) {
+			this.#seeding = false;
+			this.#tracks = tracks;
+			this.pile = newestFirst.slice(0, pileSize).toReversed();
+			for (const { id } of newestFirst) {
+				this.#seen.add(id);
+			}
+			return;
+		}
+		const fresh = newestFirst.filter(({ id }) => !this.#seen.has(id));
+		for (const { id } of fresh) {
+			this.#seen.add(id);
+		}
+		this.#queue = [...this.#queue, ...fresh.toReversed()].slice(-queueCap(this.#gapMs));
+		if (tracks !== this.#tracks) {
+			this.#tracks = tracks;
+			this.#markBurst();
+		}
+		if (this.#nextCard === undefined) {
+			this.#dealCard(0);
+		}
+	}
+
+	/** A burst has landed: it re-measures the gap, and the queue is spread over that from here. */
+	#markBurst(): void {
+		const now = performance.now();
+		if (this.#lastBurstAt !== null) {
+			this.#gapMs = expectedGap(this.#gapMs, now - this.#lastBurstAt);
+		}
+		this.#lastBurstAt = now;
+		this.#burstQueue = this.#queue.length;
+	}
+
+	/** Lands the next card after `waitMs`, its cover decoding meanwhile, and lines up the one after. */
+	#dealCard(waitMs: number): void {
+		const next = this.#queue.shift();
+		if (next === undefined) {
+			this.#nextCard = undefined;
+			return;
+		}
+		const epoch = this.#epoch;
+		const card = cardFor(next);
+		this.#nextCard = setTimeout(() => {
+			void card.then((ready) => {
+				if (epoch === this.#epoch && this.deck) {
+					this.#land(ready);
+				}
+			});
+		}, waitMs);
+	}
+
+	#land(card: AlbumEntry): void {
+		if (typeof document !== 'undefined' && document.hidden) {
+			this.#queue.unshift(card);
+			this.#nextCard = setTimeout(() => {
+				this.#dealCard(0);
+			}, hiddenRetryMs);
+			return;
+		}
+		this.pile = [...this.pile, card].slice(-pileSize);
+		this.#dealCard(dealInterval(this.#burstQueue, this.#gapMs, card.id));
 	}
 
 	#retryLater(work: () => Promise<void>): void {
@@ -197,10 +412,14 @@ export class Library {
 		}
 	}
 
-	/** Cues something for the island's first frame, without holding up the page if it can't. */
-	async #cueOpening(): Promise<void> {
-		const id = this.#pinnedAlbumId ?? this.recent.at(0)?.id;
-		if (this.playing !== null || id === undefined) {
+	/**
+	 * Cues something for the island's first frame, without holding up the page if it can't. Leaving
+	 * the deck it cues again what's already cued, because that was read part way through the scan.
+	 */
+	async #cueOpening(again: boolean): Promise<void> {
+		const cued = again ? this.playing?.album.id : undefined;
+		const id = this.#pinnedAlbumId ?? cued ?? this.recent.at(0)?.id;
+		if ((this.playing !== null && !again) || id === undefined) {
 			return;
 		}
 		await this.loadAlbum(id);
@@ -283,14 +502,17 @@ export class Library {
 	/** Forgets everything the last session saw. */
 	reset(): void {
 		clearTimeout(this.#retry);
+		this.#stopFollowing();
+		this.#epoch += 1;
+		this.#waited = false;
 		this.user = null;
 		this.facts = null;
 		this.recent = [];
 		this.albums = [];
 		this.hasMoreAlbums = false;
 		this.down = false;
-		this.scanning = false;
-		this.arrivedLate = false;
+		this.deck = false;
+		this.pile = [];
 		this.playing = null;
 		this.#cursor = undefined;
 		this.#session = Promise.resolve('signed-out');
@@ -307,8 +529,25 @@ function fromQuery(): Library {
 	if (query.get('source') !== 'fixtures') {
 		return new Library((expired) => createApiSource({ onUnauthorized: expired }));
 	}
-	return new Library(createFixtureSource({ latencyMs: Number(query.get('latency') ?? 0) }), {
-		pinnedAlbumId: query.get('playing') ?? undefined
+	const latencyMs = Number(query.get('latency') ?? 0);
+	const pinnedAlbumId = query.get('playing') ?? undefined;
+	const scan = Number(query.get('scan') ?? 0);
+	if (scan <= 0) {
+		// A fake library has no business vouching for the real one on this origin.
+		const readyMemory = { seen: () => false, mark: () => undefined };
+		return new Library(createFixtureSource({ latencyMs }), { pinnedAlbumId, readyMemory });
+	}
+	const gap = Number(query.get('gap') ?? seedGapMs / 1000);
+	const key = `kitsune:scan:${String(scan)}:${String(gap)}`;
+	const source = createScanFixtureSource({
+		scanMs: scan * 1000,
+		gapMs: gap * 1000,
+		startedAt: scanStart(key, Date.now()),
+		latencyMs
+	});
+	return new Library(source, {
+		pinnedAlbumId,
+		readyMemory: readyMemoryIn(() => sessionStorage, `${key}:ready`)
 	});
 }
 

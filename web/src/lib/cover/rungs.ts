@@ -18,7 +18,7 @@ export function rungFor({ width, height }: Pick<Artwork, 'width' | 'height'>, pl
 /** The best rung decoded so far, per cover: a morph shows this at once, and never waits. */
 const decoded = new Map<string, number>();
 const fading = new Set<string>();
-const preloading = new Set<string>();
+const preloading = new Map<string, Promise<boolean>>();
 
 export function bestDecoded(hash: string): number | undefined {
 	return decoded.get(hash);
@@ -37,26 +37,37 @@ export function firstSight(hash: string): boolean {
 	return true;
 }
 
-/** Starts a rung's bytes moving ahead of the click that needs them. */
-export function preload(artwork: Artwork | undefined, place: CoverPlace): void {
+/**
+ * Starts a rung's bytes moving ahead of the click that needs them. Resolves once they're decoded,
+ * and says whether they were. Whoever waits for this is what the cover first appears through, so it
+ * counts as first sight: a cover that decoded here must not fade in again when it mounts.
+ */
+export function preload(artwork: Artwork | undefined, place: CoverPlace): Promise<boolean> {
 	if (artwork === undefined) {
-		return;
+		return Promise.resolve(false);
 	}
 	const { hash } = artwork;
 	const size = rungFor(artwork, place);
 	const key = `${hash}-${String(size)}`;
-	if ((decoded.get(hash) ?? 0) >= size || preloading.has(key)) {
-		return;
+	if ((decoded.get(hash) ?? 0) >= size) {
+		return Promise.resolve(true);
 	}
-	preloading.add(key);
+	const running = preloading.get(key);
+	if (running !== undefined) {
+		return running;
+	}
 	const image = new Image();
 	image.fetchPriority = 'high';
 	image.src = artworkUrl(hash, size);
-	image
+	const done = image
 		.decode()
 		.then(() => {
 			markDecoded(hash, size);
+			firstSight(hash);
+			return true;
 		})
-		.catch(() => undefined)
+		.catch(() => false)
 		.finally(() => preloading.delete(key));
+	preloading.set(key, done);
+	return done;
 }
