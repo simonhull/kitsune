@@ -11,7 +11,6 @@
 		crossfade,
 		deckToHome,
 		drop,
-		riffleDrop,
 		type Choreography
 	} from '#lib/morph/choreography.ts';
 	import { morphsKey } from '#lib/morph/engine.ts';
@@ -20,7 +19,7 @@
 	import { dealTargets, reducedMotion } from '#lib/morph/journey.ts';
 	import { morph, type MorphEntry } from '#lib/morph/registry.ts';
 	import { holdSettled } from '#lib/morph/settled.ts';
-	import { restOf, shrinkingDelays } from './deck.ts';
+	import { restOf, shrinkingDelays, spinOf } from './deck.ts';
 
 	interface Props {
 		facts: LibraryFacts;
@@ -51,7 +50,6 @@
 	let landing: Layer[] = [];
 	let frame = 0;
 	let lastFrame = 0;
-	let riffling = false;
 	/** Set once a navigation has taken over: whatever the deal was about to do, it mustn't. */
 	let overtaken = false;
 	let onLanded: (() => void) | null = null;
@@ -61,8 +59,7 @@
 		if (alreadyHere.has(id)) {
 			return;
 		}
-		const landed = riffling ? riffleDrop : drop;
-		landing.push(new Layer(element, reducedMotion() ? crossfade : landed));
+		landing.push(new Layer(element, reducedMotion() ? crossfade : drop(spinOf(id))));
 		if (frame === 0) {
 			lastFrame = performance.now();
 			frame = requestAnimationFrame(step);
@@ -141,7 +138,6 @@
 			cards.map(({ id }) => id),
 			riffleStepMs
 		);
-		riffling = true;
 		for (const [index, card] of cards.entries()) {
 			if (overtaken) {
 				return;

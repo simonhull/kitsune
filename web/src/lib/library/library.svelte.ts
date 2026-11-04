@@ -1,9 +1,14 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { preload } from '#lib/cover/rungs.ts';
-import { dealInterval, expectedGap, openingFor, queueCap, seedGapMs } from '#lib/pages/deck.ts';
+import { decodesAhead, mostQueued, openingFor, throwGap } from '#lib/pages/deck.ts';
 import { createApiSource } from './api.ts';
 import { cueOf, type NowPlaying } from './cue.ts';
-import { createFixtureSource, createScanFixtureSource, scanStart } from './fixtures.ts';
+import {
+	createFixtureSource,
+	createScanFixtureSource,
+	defaultScanGap,
+	scanStart
+} from './fixtures.ts';
 import {
 	AlbumNotFoundError,
 	UnauthorizedError,
@@ -25,13 +30,15 @@ const probeMs = 30_000;
 /** How long a library with albums gets to turn out to be a restart, not a first scan. */
 const restartGraceMs = 1500;
 /** How often the deck asks what the scan has found. */
-const scanPollMs = 3000;
+const scanPollMs = 1000;
 /** How much of the newest end of the library each of those asks for. */
 const feedSize = 100;
 /** The most cards on the pile at once: older ones have left the DOM, under it. */
 export const pileSize = 12;
 /** How long a card may hold up its landing for its cover. */
 const decodeBoundMs = 800;
+/** How many decoded covers may wait for their turn: a decode kept too long has been wasted. */
+const readyAhead = 12;
 /** How often a hidden tab looks up to see if it can deal again. */
 const hiddenRetryMs = 1000;
 
@@ -69,18 +76,21 @@ export interface LibraryOptions {
 	readyMemory?: ReadyMemory;
 }
 
-/** Gives a card what it needs to land: its decoded cover, or the generated one if that failed. */
+/**
+ * Gives a card what it needs to land: its decoded cover, so the image is what lands. One that fails,
+ * or that's still not here at the bound, lands as its generated cover instead of as a blank.
+ */
 async function cardFor(entry: AlbumEntry): Promise<AlbumEntry> {
 	if (entry.artwork === undefined) {
 		return entry;
 	}
 	const timeout = new Promise<boolean>((resolve) => {
 		setTimeout(() => {
-			resolve(true);
+			resolve(false);
 		}, decodeBoundMs);
 	});
-	const usable = await Promise.race([preload(entry.artwork, 'card'), timeout]);
-	return usable ? entry : { ...entry, artwork: undefined };
+	const decoded = await Promise.race([preload(entry.artwork, 'card'), timeout]);
+	return decoded ? entry : { ...entry, artwork: undefined };
 }
 
 /** The client's view of the library. List entries seed the first frame of the next page. */
@@ -129,15 +139,17 @@ export class Library {
 	readonly #readyMemory: ReadyMemory;
 	#waited = false;
 	#scanPoll: ReturnType<typeof setTimeout> | undefined;
-	#nextCard: ReturnType<typeof setTimeout> | undefined;
+	/** Running while the spacing after the last card lasts, or a hidden tab waits. */
+	#throwing: ReturnType<typeof setTimeout> | undefined;
 	/** Everything the feed has already handed over, so no album lands twice. */
 	readonly #seen = new SvelteSet<string>();
+	/** Found, and waiting for a decode. */
 	#queue: AlbumEntry[] = [];
-	/** The queue's length as the last burst left it, which is what the spacing is built on. */
-	#burstQueue = 0;
-	#gapMs = seedGapMs;
-	#lastBurstAt: number | null = null;
-	#tracks = 0;
+	#decoding = 0;
+	/** Decoded, and waiting for their turn. */
+	#ready: AlbumEntry[] = [];
+	/** Moves on whenever the following stops: a cover decoded for an older run has missed its turn. */
+	#followRun = 0;
 	/** Set on a deck joined part way: its first poll fills the pile without replaying it. */
 	#seeding = false;
 
@@ -305,7 +317,6 @@ export class Library {
 	#followScan(facts: LibraryFacts): void {
 		if (!this.deck) {
 			this.#seeding = facts.albums > 0;
-			this.#tracks = facts.tracks;
 		}
 		this.facts = facts;
 		this.down = false;
@@ -316,13 +327,13 @@ export class Library {
 
 	#stopFollowing(): void {
 		clearTimeout(this.#scanPoll);
-		clearTimeout(this.#nextCard);
-		this.#nextCard = undefined;
+		clearTimeout(this.#throwing);
+		this.#throwing = undefined;
+		this.#followRun += 1;
 		this.#seen.clear();
 		this.#queue = [];
-		this.#burstQueue = 0;
-		this.#gapMs = seedGapMs;
-		this.#lastBurstAt = null;
+		this.#ready = [];
+		this.#decoding = 0;
 		this.#seeding = false;
 	}
 
@@ -341,7 +352,7 @@ export class Library {
 			this.down = false;
 			this.facts = facts;
 			this.#remember(page.albums);
-			this.#feed(facts, page.albums);
+			this.#feed(page.albums);
 			if (ready) {
 				// Always a fresh read: the counts can still say 0 right beside ready.
 				await this.loadShell();
@@ -357,10 +368,9 @@ export class Library {
 	}
 
 	/** Takes in one look at the newest end of the library. */
-	#feed({ tracks }: LibraryFacts, newestFirst: AlbumEntry[]): void {
+	#feed(newestFirst: AlbumEntry[]): void {
 		if (this.#seeding) {
 			this.#seeding = false;
-			this.#tracks = tracks;
 			this.pile = newestFirst.slice(0, pileSize).toReversed();
 			for (const { id } of newestFirst) {
 				this.#seen.add(id);
@@ -372,30 +382,14 @@ export class Library {
 		for (const { id } of fresh) {
 			this.#seen.add(id);
 		}
-		this.#queue = [...this.#queue, ...fresh.toReversed()].slice(-queueCap(this.#gapMs));
-		if (tracks !== this.#tracks) {
-			this.#tracks = tracks;
-			this.#markBurst();
-		}
-		if (this.#nextCard === undefined) {
-			this.#dealCard(0);
-		}
+		this.#queue = [...this.#queue, ...fresh.toReversed()].slice(-mostQueued);
+		this.#decodeAhead();
 	}
 
 	/** Gives a pile that went straight on, with no landing, the generated covers it turns out to need. */
 	async #checkCovers(): Promise<void> {
 		const cards = await this.cardsFor(this.pile);
 		this.pile = this.pile.map((entry) => cards.find(({ id }) => id === entry.id) ?? entry);
-	}
-
-	/** A burst has landed: it re-measures the gap, and the queue is spread over that from here. */
-	#markBurst(): void {
-		const now = performance.now();
-		if (this.#lastBurstAt !== null) {
-			this.#gapMs = expectedGap(this.#gapMs, now - this.#lastBurstAt);
-		}
-		this.#lastBurstAt = now;
-		this.#burstQueue = this.#queue.length;
 	}
 
 	/** Takes the deck away, leaving Home. */
@@ -417,35 +411,46 @@ export class Library {
 		this.pile = [...this.pile.filter((entry) => room || entry !== oldest), card];
 	}
 
-	/** Lands the next card after `waitMs`, its cover decoding meanwhile, and lines up the one after. */
-	#dealCard(waitMs: number): void {
-		const next = this.#queue.shift();
-		if (next === undefined) {
-			this.#nextCard = undefined;
-			return;
-		}
-		const card = cardFor(next);
-		const timer = setTimeout(() => {
-			void card.then((ready) => {
-				// A card still decoding when the following stopped has missed its turn.
-				if (this.#nextCard === timer) {
-					this.#land(ready);
+	/** Keeps covers decoding ahead of the throw, a few at once, each going down as soon as it's done. */
+	#decodeAhead(): void {
+		const run = this.#followRun;
+		while (this.#decoding < decodesAhead && this.#ready.length + this.#decoding < readyAhead) {
+			const next = this.#queue.shift();
+			if (next === undefined) {
+				return;
+			}
+			this.#decoding += 1;
+			void cardFor(next).then((card) => {
+				if (run === this.#followRun) {
+					this.#decoding -= 1;
+					this.#ready.push(card);
+					this.#throwNext();
+					this.#decodeAhead();
 				}
 			});
-		}, waitMs);
-		this.#nextCard = timer;
+		}
 	}
 
-	#land(card: AlbumEntry): void {
-		if (typeof document !== 'undefined' && document.hidden) {
-			this.#queue.unshift(card);
-			this.#nextCard = setTimeout(() => {
-				this.#dealCard(0);
-			}, hiddenRetryMs);
+	/** Throws the next decoded card down, unless the last one's spacing is still running. */
+	#throwNext(): void {
+		if (this.#throwing !== undefined) {
 			return;
 		}
-		this.pile = [...this.pile, card].slice(-pileSize);
-		this.#dealCard(dealInterval(this.#burstQueue, this.#gapMs, card.id));
+		const carryOn = (): void => {
+			this.#throwing = undefined;
+			this.#throwNext();
+		};
+		if (typeof document !== 'undefined' && document.hidden) {
+			this.#throwing = setTimeout(carryOn, hiddenRetryMs);
+			return;
+		}
+		const card = this.#ready.shift();
+		if (card !== undefined) {
+			this.pile = [...this.pile, card].slice(-pileSize);
+			const waiting = this.#ready.length + this.#decoding + this.#queue.length;
+			this.#throwing = setTimeout(carryOn, throwGap(waiting, card.id));
+			this.#decodeAhead();
+		}
 	}
 
 	#retryLater(work: () => Promise<void>): void {
@@ -585,7 +590,7 @@ function fromQuery(): Library {
 		const readyMemory = { seen: () => false, mark: () => undefined };
 		return new Library(createFixtureSource({ latencyMs }), { pinnedAlbumId, readyMemory });
 	}
-	const gap = Number(query.get('gap') ?? seedGapMs / 1000);
+	const gap = Number(query.get('gap') ?? defaultScanGap);
 	const key = `kitsune:scan:${String(scan)}:${String(gap)}`;
 	const source = createScanFixtureSource({
 		scanMs: scan * 1000,

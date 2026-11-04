@@ -101,6 +101,8 @@ export interface Pose {
 	opacity?: number;
 	y?: number;
 	scale?: number;
+	/** Degrees. Only a card landing on the deck turns: pages have no such term. */
+	rotate?: number;
 }
 
 /**
@@ -146,6 +148,8 @@ export interface Part {
 	/** Milliseconds after the morph starts. */
 	delay: number;
 	motion: MotionSpec;
+	/** A curve of its own for the opacity, for something that's solid long before it arrives. */
+	fade?: MotionSpec;
 	ripple?: Ripple;
 }
 
@@ -238,13 +242,21 @@ const comeForward: Part = {
 	ripple: { spread: 0, floor: 0.08 }
 };
 
-/** A cover landing on the deck: it comes down onto the pile from just above it. */
-export const drop: Part = {
-	from: { opacity: 0, y: -28, scale: 1.08 },
-	to: {},
-	delay: 0,
-	motion: { token: '--morph-drop', bounce: 0 }
-};
+/**
+ * A cover thrown down on the deck, from well above and well off the table, still turning. It takes
+ * `spin` degrees off its way to the tilt it lies at, and nothing about it lingers: at one every
+ * 70 ms a placement would read as a queue.
+ */
+export function drop(spin: number): Part {
+	return {
+		from: { opacity: 0, y: -84, scale: 1.3, rotate: spin },
+		to: {},
+		delay: 0,
+		motion: { token: '--morph-drop', bounce: 0 },
+		// Solid almost at once: several land together, and a run of see-through cards is a dissolve.
+		fade: { token: '--morph-drop', bounce: 0, pace: 0.3 }
+	};
+}
 
 /** The same landing with nothing moving, for reduced motion. */
 export const crossfade: Part = { from: { opacity: 0 }, to: {}, delay: 0, motion: quick };
@@ -445,9 +457,6 @@ export const deckToHome: Choreography = {
 
 /** The deck's count line, once there's a Home to say it instead. */
 export const countFades = fadeOut(0, quick);
-
-/** A card riffling onto the pile: the same landing, in the time a deal can spare. */
-export const riffleDrop: Part = { ...drop, motion: exit };
 
 /** All of reduced motion: never a hard cut. */
 export const blend: Choreography = {

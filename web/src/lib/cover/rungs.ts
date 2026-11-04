@@ -19,6 +19,12 @@ export function rungFor({ width, height }: Pick<Artwork, 'width' | 'height'>, pl
 const decoded = new Map<string, number>();
 const fading = new Set<string>();
 const preloading = new Map<string, Promise<boolean>>();
+/**
+ * The covers decoded last, held on to: an image nothing refers to can leave the memory cache before
+ * its card mounts, and then that card has to wait for it. It must outnumber what's decoded ahead.
+ */
+const justDecoded: HTMLImageElement[] = [];
+const keepDecoded = 16;
 
 export function bestDecoded(hash: string): number | undefined {
 	return decoded.get(hash);
@@ -64,6 +70,8 @@ export function preload(artwork: Artwork | undefined, place: CoverPlace): Promis
 		.then(() => {
 			markDecoded(hash, size);
 			firstSight(hash);
+			justDecoded.push(image);
+			justDecoded.splice(0, justDecoded.length - keepDecoded);
 			return true;
 		})
 		.catch(() => false)

@@ -226,18 +226,63 @@ describe('the deck', () => {
 		library.reset();
 	});
 
-	it('lands a burst oldest first, and spreads it over the expected gap', async () => {
+	it('throws a burst down oldest first, as fast as the spacing allows', async () => {
 		const scan = new Scripted();
 		const library = new Library(scan.source(), { readyMemory: forgetful() });
 		await library.loadShell();
 		scan.found = 10;
-		await vi.advanceTimersByTimeAsync(3001);
+		await vi.advanceTimersByTimeAsync(1001);
 		expect(ids(library)).toEqual(['album-0']);
-		// 27 s over 10 cards: 2.7 s each, give or take a quarter.
-		await vi.advanceTimersByTimeAsync(1800);
-		expect(library.pile.length).toBeLessThanOrEqual(2);
-		await vi.advanceTimersByTimeAsync(27_000);
+		await vi.advanceTimersByTimeAsync(40);
+		expect(library.pile.length).toBe(1);
+		// Ten cards at no more than 84 ms apart.
+		await vi.advanceTimersByTimeAsync(9 * 84);
 		expect(ids(library).at(-1)).toBe('album-9');
+		library.reset();
+	});
+
+	it('asks every second', async () => {
+		const scan = new Scripted();
+		const facts = vi.fn<LibrarySource['facts']>(() => Promise.resolve(scan.facts));
+		const library = new Library({ ...scan.source(), facts }, { readyMemory: forgetful() });
+		await library.loadShell();
+		facts.mockClear();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(facts).toHaveBeenCalledTimes(5);
+		library.reset();
+	});
+
+	it('hurries under a backlog', async () => {
+		const scan = new Scripted();
+		const library = new Library(scan.source(), { readyMemory: forgetful() });
+		await library.loadShell();
+		scan.found = 100;
+		await vi.advanceTimersByTimeAsync(1001);
+		await vi.advanceTimersByTimeAsync(3000);
+		// About 45 ms apart: at 70 it would be nearer 43.
+		expect(Number(ids(library).at(-1)?.slice('album-'.length))).toBeGreaterThan(55);
+		library.reset();
+	});
+
+	it('drops the oldest only past 200 waiting', async () => {
+		const scan = new Scripted();
+		const library = new Library(scan.source(), { readyMemory: forgetful() });
+		await library.loadShell();
+		const landed = new Set<string>();
+		const watch = setInterval(() => {
+			for (const id of ids(library)) {
+				landed.add(id);
+			}
+		}, 30);
+		for (const found of [100, 200, 300, 400]) {
+			scan.found = found;
+			await vi.advanceTimersByTimeAsync(1000);
+		}
+		await vi.advanceTimersByTimeAsync(30_000);
+		clearInterval(watch);
+		// The feed sees the newest 100 at a time, and about 70 cards have gone in four seconds.
+		expect(landed.has('album-399')).toBe(true);
+		expect(landed.size).toBeGreaterThan(250);
 		library.reset();
 	});
 
@@ -345,6 +390,138 @@ describe('the deck', () => {
 		await vi.advanceTimersByTimeAsync(3000);
 		expect(library.album('album-1')).not.toBe(partial);
 		library.reset();
+	});
+
+	describe('with real covers', () => {
+		interface Decode {
+			hash: string;
+			finish: () => void;
+			fail: () => void;
+		}
+
+		let decodes: Decode[] = [];
+
+		class FakeImage {
+			fetchPriority = '';
+			src = '';
+
+			decode(): Promise<undefined> {
+				const { promise, resolve, reject } = Promise.withResolvers<undefined>();
+				const hash = /artwork\/([^?]+)/.exec(this.src)?.[1] ?? '';
+				decodes.push({
+					hash,
+					finish: () => {
+						resolve(undefined);
+					},
+					fail: () => {
+						reject(new Error('no'));
+					}
+				});
+				return promise;
+			}
+		}
+
+		let run = 0;
+
+		/** A deck with this many albums found, each with a cover no other test has decoded. */
+		async function withCovers(count: number): Promise<Library> {
+			run += 1;
+			decodes = [];
+			vi.stubGlobal('Image', FakeImage);
+			const scan = new Scripted();
+			const base = scan.source();
+			const library = new Library(
+				{
+					...base,
+					albumsPage: async (...args) => {
+						const page = await base.albumsPage(...args);
+						return {
+							...page,
+							albums: page.albums.map((album) => ({
+								...album,
+								artwork: {
+									hash: `${String(run)}-${album.id}`,
+									accent: '#123456',
+									ground: '#000000',
+									width: 512,
+									height: 512
+								}
+							}))
+						};
+					}
+				},
+				{ readyMemory: forgetful() }
+			);
+			await library.loadShell();
+			scan.found = count;
+			await vi.advanceTimersByTimeAsync(1001);
+			return library;
+		}
+
+		afterEach(() => {
+			vi.unstubAllGlobals();
+		});
+
+		it('decodes six at once, ahead of the throw, and lands nothing before its decode', async () => {
+			const library = await withCovers(20);
+			expect(decodes.length).toBe(6);
+			expect(library.pile).toEqual([]);
+			await vi.advanceTimersByTimeAsync(500);
+			expect(library.pile).toEqual([]);
+
+			decodes.at(0)?.finish();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(library.pile.length).toBe(1);
+			expect(library.pile.at(0)?.artwork).toBeDefined();
+			expect(decodes.length).toBe(7);
+			library.reset();
+		});
+
+		it('does not hold a decoded card behind a slow one', async () => {
+			const library = await withCovers(6);
+			decodes.at(3)?.finish();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(ids(library)).toEqual(['album-3']);
+			library.reset();
+		});
+
+		it('keeps the spacing, however many decode together', async () => {
+			const library = await withCovers(6);
+			for (const decode of decodes) {
+				decode.finish();
+			}
+			await vi.advanceTimersByTimeAsync(0);
+			expect(library.pile.length).toBe(1);
+			await vi.advanceTimersByTimeAsync(90);
+			expect(library.pile.length).toBe(2);
+			library.reset();
+		});
+
+		it('lands a generated cover at the bound, not a blank', async () => {
+			const library = await withCovers(1);
+			await vi.advanceTimersByTimeAsync(790);
+			expect(library.pile).toEqual([]);
+			await vi.advanceTimersByTimeAsync(10);
+			expect(library.pile.length).toBe(1);
+			expect(library.pile.at(0)?.artwork).toBeUndefined();
+			library.reset();
+		});
+
+		it('lands a generated cover when the decode fails', async () => {
+			const library = await withCovers(1);
+			decodes.at(0)?.fail();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(library.pile.at(0)?.artwork).toBeUndefined();
+			library.reset();
+		});
+
+		it('drops a decode that finishes after a reset', async () => {
+			const library = await withCovers(3);
+			library.reset();
+			decodes.at(0)?.finish();
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(library.pile).toEqual([]);
+		});
 	});
 
 	describe('at the end of the scan', () => {

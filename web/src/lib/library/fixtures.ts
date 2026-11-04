@@ -171,8 +171,10 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	};
 }
 
-/** Albums per flush on the real library's first scan, in order. */
-export const burstSizes = [86, 67, 29, 4, 48, 75, 56, 56, 69, 54, 89, 62, 99, 49, 65, 19];
+/** The real library: however fast a scan is set to run, this is what it finds. */
+const scanLibrary = 927;
+/** Seconds between flushes at the scanner's 50-track batch. */
+export const defaultScanGap = 2.7;
 const firstScanDelay = 1.2;
 const scanArtists = ['Mere Coast', 'Ilse Varga', 'The Halden Set', 'Vanta Park', 'Sorrel Vane'];
 
@@ -191,16 +193,25 @@ function scanEntry(index: number): AlbumEntry {
 	};
 }
 
-/** When each burst lands, in milliseconds from the start: uneven, as flushes are, and never after the end. */
+/** When each burst lands, in milliseconds from the start: a little uneven, and never after the end. */
 export function burstTimes(scanMs: number, gapMs: number): number[] {
 	const times: number[] = [];
 	let at = Math.min(gapMs * firstScanDelay, scanMs * 0.8);
 	while (at < scanMs) {
 		times.push(at);
-		// From a ninth of the mean to nearly one and a half, like the real gaps of 3 to 39 s.
-		at += gapMs * (0.11 + (fnv1a(String(times.length)) % 1000) * 0.00178);
+		at += gapMs * (0.7 + (fnv1a(String(times.length)) % 1000) * 0.0006);
 	}
 	return times;
+}
+
+/**
+ * How many albums this burst finds: a share of the library by how much of the scan one gap is, so
+ * 2.7 s in a 412 s scan is the real thing, about 6 at a time, and the same library in 30 s is dense.
+ */
+export function burstSize(index: number, scanMs: number, gapMs: number): number {
+	const even = (scanLibrary * gapMs) / scanMs;
+	const spread = 0.2 * ((fnv1a(`burst-${String(index)}`) % 2001) / 1000 - 1);
+	return Math.max(1, Math.round(even * (1 + spread)));
 }
 
 export interface ScanOptions extends FixtureOptions {
@@ -212,8 +223,8 @@ export interface ScanOptions extends FixtureOptions {
 }
 
 /**
- * A first scan on a timer, through the same contract as a real one: bursts sized like the real
- * library's, growing counts, and not ready until the end. It's all a function of the clock, so a
+ * A first scan on a timer, through the same contract as a real one: small frequent bursts, growing
+ * counts, and not ready until the end. It's all a function of the clock, so a
  * reload picks up where the scan had got to.
  */
 export function createScanFixtureSource({
@@ -230,7 +241,7 @@ export function createScanFixtureSource({
 		const elapsed = now() - startedAt;
 		return times
 			.filter((at) => at <= elapsed)
-			.reduce((sum, _, index) => sum + (burstSizes.at(index % burstSizes.length) ?? 0), 0);
+			.reduce((sum, _, index) => sum + burstSize(index, scanMs, gapMs), 0);
 	}
 
 	function entries(sort: AlbumSort): AlbumEntry[] {

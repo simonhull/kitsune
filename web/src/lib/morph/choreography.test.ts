@@ -322,6 +322,20 @@ describe('the deal', () => {
 	it('is only scale and opacity on the way down, and never overshoots', () => {
 		expect(deckToHome.leaving.to.y).toBeUndefined();
 		expect(deckToHome.leaving.motion.bounce).toBe(0);
-		expect(drop.motion.bounce).toBe(0);
+		expect(drop(5).motion.bounce).toBe(0);
+	});
+
+	it('throws a card from off the pile, and settles it into its own tilt', () => {
+		const { from, to } = drop(5);
+		expect(from.y).toBeLessThan(-28);
+		expect(from.scale).toBeGreaterThan(1.08);
+		expect(from.rotate).toBe(5);
+		expect(to).toEqual({});
+	});
+
+	it('is solid well before it lands, so cards landing together never dissolve into each other', () => {
+		const { fade, motion } = drop(5);
+		const length = (spec: typeof motion): number => resolveMotion(spec, () => 180).duration;
+		expect(length(fade ?? motion)).toBeLessThan(length(motion) / 2);
 	});
 });

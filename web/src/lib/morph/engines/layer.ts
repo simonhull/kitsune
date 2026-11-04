@@ -2,7 +2,7 @@ import { Channel, landsWithin } from '../channel.ts';
 import { springParams, type Part, type Pose, type SpringParams } from '../choreography.ts';
 import { motionOf } from '../journey.ts';
 
-const rest = { opacity: 1, y: 0, scale: 1 } as const;
+const rest = { opacity: 1, y: 0, scale: 1, rotate: 0 } as const;
 
 function complete(pose: Pose): Required<Pose> {
 	return { ...rest, ...pose };
@@ -14,7 +14,9 @@ export class Layer {
 	readonly opacity: Channel;
 	readonly y: Channel;
 	readonly scale: Channel;
+	readonly rotate: Channel;
 	#params: SpringParams;
+	#fade: SpringParams;
 	#wait: number;
 
 	constructor(element: HTMLElement, part: Part, delay = part.delay) {
@@ -24,7 +26,9 @@ export class Layer {
 		this.opacity = new Channel(from.opacity, to.opacity);
 		this.y = new Channel(from.y, to.y);
 		this.scale = new Channel(from.scale, to.scale);
+		this.rotate = new Channel(from.rotate, to.rotate);
 		this.#params = springParams(motionOf(part.motion));
+		this.#fade = springParams(motionOf(part.fade ?? part.motion));
 		this.#wait = delay / 1000;
 		element.style.willChange = 'transform, opacity';
 		// A backdrop blur recomputes every frame anything under it moves; in flight it's unseen.
@@ -38,7 +42,9 @@ export class Layer {
 		this.opacity.target = to.opacity;
 		this.y.target = to.y;
 		this.scale.target = to.scale;
+		this.rotate.target = to.rotate;
 		this.#params = springParams(motionOf(part.motion));
+		this.#fade = springParams(motionOf(part.fade ?? part.motion));
 		this.#wait = 0;
 	}
 
@@ -47,6 +53,7 @@ export class Layer {
 		this.opacity.adopt(other.opacity);
 		this.y.adopt(other.y);
 		this.scale.adopt(other.scale);
+		this.rotate.adopt(other.rotate);
 		this.#wait = 0;
 		this.write();
 	}
@@ -57,7 +64,8 @@ export class Layer {
 		if (moving <= 0) {
 			return;
 		}
-		for (const channel of [this.opacity, this.y, this.scale]) {
+		this.opacity.step(this.#fade, moving);
+		for (const channel of [this.y, this.scale, this.rotate]) {
 			channel.step(this.#params, moving);
 		}
 	}
@@ -65,7 +73,7 @@ export class Layer {
 	write(): void {
 		const { style } = this.element;
 		style.opacity = String(Math.min(1, Math.max(0, this.opacity.value)));
-		style.transform = `translateY(${this.y.value.toFixed(2)}px) scale(${this.scale.value.toFixed(4)})`;
+		style.transform = `translateY(${this.y.value.toFixed(2)}px) rotate(${this.rotate.value.toFixed(3)}deg) scale(${this.scale.value.toFixed(4)})`;
 	}
 
 	get settled(): boolean {
@@ -73,7 +81,8 @@ export class Layer {
 			this.#wait === 0 &&
 			this.opacity.settled(0.01) &&
 			this.y.settled(landsWithin) &&
-			this.scale.settled(0.002)
+			this.scale.settled(0.002) &&
+			this.rotate.settled(0.2)
 		);
 	}
 

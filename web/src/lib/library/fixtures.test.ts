@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { burstSizes, burstTimes, createFixtureSource, createScanFixtureSource } from './fixtures';
+import { burstSize, burstTimes, createFixtureSource, createScanFixtureSource } from './fixtures';
 import { AlbumNotFoundError, LoginError, type LibrarySource } from './source';
 
 const source: LibrarySource = createFixtureSource();
@@ -83,15 +83,41 @@ describe('a scan', () => {
 		await expect(scan.ready()).resolves.toBe(true);
 	});
 
-	it('lands bursts sized like the real library, at uneven gaps', async () => {
+	it('lands bursts one at a time, at uneven gaps', async () => {
 		at(times.at(0) ?? 0);
-		await expect(scan.facts()).resolves.toMatchObject({ albums: burstSizes.at(0) });
+		const first = burstSize(0, 400_000, 27_000);
+		await expect(scan.facts()).resolves.toMatchObject({ albums: first });
 		at(times.at(1) ?? 0);
 		await expect(scan.facts()).resolves.toMatchObject({
-			albums: (burstSizes.at(0) ?? 0) + (burstSizes.at(1) ?? 0)
+			albums: first + burstSize(1, 400_000, 27_000)
 		});
 		const gaps = times.slice(1).map((time, index) => time - (times.at(index) ?? 0));
 		expect(new Set(gaps).size).toBeGreaterThan(1);
+	});
+
+	it('finds 5 to 7 albums at a time at real tempo, every 2.7 s or so', () => {
+		const sizes = Array.from({ length: 150 }, (_, index) => burstSize(index, 412_000, 2700));
+		expect(Math.min(...sizes)).toBeGreaterThanOrEqual(5);
+		expect(Math.max(...sizes)).toBeLessThanOrEqual(7);
+		const real = burstTimes(412_000, 2700);
+		expect(412_000 / real.length).toBeGreaterThan(2400);
+		expect(412_000 / real.length).toBeLessThan(3000);
+	});
+
+	it('finds about the same library whatever the tempo, so a short scan is a dense one', () => {
+		for (const [scanMs, gapMs] of [
+			[412_000, 2700],
+			[30_000, 2700],
+			[1_700_000, 11_000]
+		] as const) {
+			const found = burstTimes(scanMs, gapMs).reduce(
+				(sum, _, index) => sum + burstSize(index, scanMs, gapMs),
+				0
+			);
+			expect(found).toBeGreaterThan(750);
+			expect(found).toBeLessThan(1100);
+		}
+		expect(burstSize(0, 30_000, 2700)).toBeGreaterThan(60);
 	});
 
 	it('never lands a burst after the end', () => {

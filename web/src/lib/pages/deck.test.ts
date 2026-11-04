@@ -1,38 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import {
-	dealInterval,
-	expectedGap,
-	openingFor,
-	queueCap,
-	restOf,
-	seedGapMs,
-	shrinkingDelays,
-	wobble
-} from './deck';
+import { openingFor, restOf, shrinkingDelays, spinOf, throwGap, wobble } from './deck';
 
-describe('dealInterval', () => {
-	it('spreads a burst over the gap, within a quarter either side', () => {
-		const even = seedGapMs / 60;
-		for (const id of ['a', 'b', 'c', 'd', 'e']) {
-			const interval = dealInterval(60, seedGapMs, id);
-			expect(interval).toBeGreaterThanOrEqual(even * 0.75);
-			expect(interval).toBeLessThanOrEqual(even * 1.25);
+describe('throwGap', () => {
+	const ids = Array.from({ length: 50 }, (_, index) => `album-${String(index)}`);
+
+	it('leaves about 70 ms with nothing waiting', () => {
+		for (const id of ids) {
+			expect(throwGap(0, id)).toBeGreaterThanOrEqual(70 * 0.8);
+			expect(throwGap(0, id)).toBeLessThanOrEqual(70 * 1.2);
 		}
 	});
 
-	it('never rushes a big burst or stalls on a small one', () => {
-		expect(dealInterval(1000, seedGapMs, 'a')).toBeGreaterThanOrEqual(180 * 0.75);
-		expect(dealInterval(1, seedGapMs, 'a')).toBeLessThanOrEqual(3000 * 1.25);
+	it('hurries to about 45 ms under a backlog, and no further however long it gets', () => {
+		for (const id of ids) {
+			expect(throwGap(200, id)).toBeGreaterThanOrEqual(45 * 0.8);
+			expect(throwGap(200, id)).toBeLessThanOrEqual(45 * 1.2);
+			expect(throwGap(200, id)).toBe(throwGap(24, id));
+		}
 	});
 
-	it('survives an empty queue', () => {
-		expect(Number.isFinite(dealInterval(0, seedGapMs, 'a'))).toBe(true);
+	it('hurries gradually', () => {
+		expect(throwGap(12, 'a')).toBeLessThan(throwGap(0, 'a'));
+		expect(throwGap(12, 'a')).toBeGreaterThan(throwGap(24, 'a'));
 	});
 
 	it('is the same for the same album, and differs between albums', () => {
-		expect(dealInterval(60, seedGapMs, 'a')).toBe(dealInterval(60, seedGapMs, 'a'));
-		const spread = new Set(['a', 'b', 'c', 'd'].map((id) => dealInterval(60, seedGapMs, id)));
-		expect(spread.size).toBeGreaterThan(1);
+		expect(throwGap(0, 'a')).toBe(throwGap(0, 'a'));
+		expect(new Set(ids.map((id) => throwGap(0, id))).size).toBeGreaterThan(1);
 	});
 });
 
@@ -91,19 +85,12 @@ describe('shrinkingDelays', () => {
 	});
 });
 
-describe('expectedGap', () => {
-	it('moves three tenths of the way to what was measured', () => {
-		expect(expectedGap(27_000, 37_000)).toBeCloseTo(30_000);
-		expect(expectedGap(27_000, 27_000)).toBe(27_000);
-	});
-});
-
-describe('queueCap', () => {
-	it('holds at least 40 and at most 100', () => {
-		expect(queueCap(3000)).toBe(40);
-		expect(queueCap(seedGapMs)).toBe(40);
-		expect(queueCap(180_000)).toBe(60);
-		expect(queueCap(3_000_000)).toBe(100);
+describe('spinOf', () => {
+	it('stays small, and turns both ways', () => {
+		const spins = Array.from({ length: 100 }, (_, index) => spinOf(`album-${String(index)}`));
+		expect(Math.max(...spins.map(Math.abs))).toBeLessThanOrEqual(7);
+		expect(Math.min(...spins)).toBeLessThan(0);
+		expect(Math.max(...spins)).toBeGreaterThan(0);
 	});
 });
 
