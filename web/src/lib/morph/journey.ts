@@ -10,8 +10,10 @@ import {
 	type MotionToken,
 	type RouteName
 } from './choreography.ts';
+import { preload } from '#lib/cover/rungs.ts';
 import { library } from '#lib/library/library.svelte.ts';
 import { markClick } from './hud.svelte.ts';
+import { gridWindow } from '#lib/pages/gridWindow.svelte.ts';
 import { pick, recordOrigins, type Origins } from './pairs.ts';
 import { albumExit } from './path.ts';
 import { registry, type MorphEntry } from './registry.ts';
@@ -25,6 +27,7 @@ export interface Journey {
 }
 
 const routes = new Map<string, RouteName>([
+	['/login', 'login'],
 	['/', 'home'],
 	['/album/[id]', 'album'],
 	['/now-playing', 'now-playing']
@@ -53,16 +56,31 @@ export function watchInput(): () => void {
 		lastClick = event.target;
 		markClick(performance.now());
 	}
+	function onPointerDown({ target }: PointerEvent): void {
+		preloadFor(target instanceof Element ? target.closest('a') : null);
+	}
 	function onPopState(event: PopStateEvent): void {
 		visualTransition = event.hasUAVisualTransition;
 		markClick(performance.now());
 	}
 	document.addEventListener('click', onClick, { capture: true });
+	document.addEventListener('pointerdown', onPointerDown, { capture: true, passive: true });
 	window.addEventListener('popstate', onPopState, { capture: true });
 	return () => {
 		document.removeEventListener('click', onClick, { capture: true });
+		document.removeEventListener('pointerdown', onPointerDown, { capture: true });
 		window.removeEventListener('popstate', onPopState, { capture: true });
 	};
+}
+
+/** A click is a hundred milliseconds of warning: the stage's cover starts moving now. */
+function preloadFor(link: HTMLAnchorElement | null): void {
+	const [, id] = /^\/album\/([^/]+)/.exec(link?.pathname ?? '') ?? [];
+	if (id !== undefined) {
+		preload(library.entry(decodeURIComponent(id))?.artwork, 'stage');
+	} else if (link?.pathname === '/now-playing') {
+		preload(library.playing?.album.artwork, 'stage');
+	}
 }
 
 function reducedMotion(): boolean {
@@ -88,6 +106,10 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 	if (fromRoute === undefined || toRoute === undefined) {
 		return null;
 	}
+	if (fromRoute === 'login') {
+		// The door replaced itself: whatever's behind this entry isn't a page of ours.
+		navigations = 0;
+	}
 	if (from?.url.pathname === to?.url.pathname) {
 		return null;
 	}
@@ -98,6 +120,10 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 	}
 	if (fromRoute === 'home') {
 		homeScroll = scrollY;
+	}
+	const leaving = from?.params?.['id'];
+	if (toRoute === 'home' && leaving !== undefined && !origins.has(`cover:${leaving}`)) {
+		gridWindow.aim(leaving);
 	}
 
 	const choreography = reducedMotion() ? blend : choreographyFor(fromRoute, toRoute);
@@ -128,7 +154,10 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 }
 
 /** Lists what travels on a journey. */
-function idsFor(subject: 'from' | 'to' | 'playing', { from, to }: OnNavigate): string[] {
+function idsFor(subject: 'from' | 'to' | 'playing' | 'fox', { from, to }: OnNavigate): string[] {
+	if (subject === 'fox') {
+		return ['fox'];
+	}
 	if (subject === 'playing') {
 		const id = library.playing?.album.id;
 		return id === undefined ? [] : [`cover:${id}`, 'song', ...playerParts];

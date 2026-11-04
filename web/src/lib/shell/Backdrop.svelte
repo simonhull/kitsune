@@ -1,26 +1,38 @@
 <script lang="ts">
-	import { coverFor } from '#lib/cover/cover.ts';
+	import type { AlbumPalette } from '#lib/cover/palette.ts';
 	import Wash from './Wash.svelte';
 
 	interface Props {
 		/** The album whose colors fill the stage; it stays set after the stage clears. */
 		albumId: string | null;
+		/** Null when no album has been on stage yet. */
+		palette: AlbumPalette | null;
+		/** Whether the album is known yet: a cold deep link has to wait for its colors. */
+		known: boolean;
 		mode: 'clear' | 'album' | 'poster';
 	}
 
-	let { albumId, mode }: Props = $props();
+	let { albumId, palette, known, mode }: Props = $props();
 
-	const palette = $derived(albumId === null ? null : coverFor(albumId).palette);
+	// The one color change no morph carries: a cold deep link's stage, once its entry arrives.
+	let waitedFor: string | null = null;
+	const cold = $derived.by(() => {
+		if (!known) {
+			waitedFor = albumId;
+		}
+		return waitedFor === albumId;
+	});
 </script>
 
 {#if albumId !== null && palette !== null}
-	<div class="backdrop" data-mode={mode} aria-hidden="true">
-		<div class="album" data-morph-stage="album" style:background={palette.stage}>
-			<Wash {albumId} variant="hero" />
+	<div class="backdrop" data-mode={known ? mode : 'clear'} aria-hidden="true">
+		<div class="album" class:cold data-morph-stage="album" style:background={palette.stage}>
+			<Wash {palette} variant="hero" />
 			<div class="fade"></div>
 		</div>
 		<div
 			class="poster"
+			class:cold
 			data-morph-stage="poster"
 			style:--field={palette.field}
 			style:--band={palette.band}
@@ -72,5 +84,16 @@
 	[data-mode='album'] .album,
 	[data-mode='poster'] .poster {
 		opacity: 1;
+	}
+
+	[data-mode='album'] .album.cold,
+	[data-mode='poster'] .poster.cold {
+		animation: stage-in var(--morph) var(--curve-morph);
+	}
+
+	@keyframes stage-in {
+		from {
+			opacity: 0;
+		}
 	}
 </style>

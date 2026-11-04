@@ -1,6 +1,6 @@
 # Kitsune web client
 
-A SvelteKit single-page client. It runs on fixtures for now, with no server.
+A SvelteKit single-page client of the native API.
 
     mise install          # the pinned Bun
     mise run web:dev      # dev server
@@ -11,14 +11,32 @@ A SvelteKit single-page client. It runs on fixtures for now, with no server.
 Bun is the package manager and script runner. Tests run under Vitest (`bun run test`,
 never `bun test`).
 
+## Developing the client
+
+The dev server proxies `/api` to `KITSUNE_API` (default `http://localhost:4533`), so the session
+cookie is same-origin. Run a server beside it, with a `server.toml` naming your music:
+
+    [library]
+    roots = ["/path/to/music"]
+
+    kitsune-server users add -admin NAME
+    kitsune-server serve
+    mise run web:dev
+
+Add `?source=fixtures` to the first URL you open to run on the boards' fake library, with no
+server and no login, for tests and clips. It holds until the next full page load.
+
 ## The morph lab
 
 Page transitions are morphs: a persistent overlay of flying elements, run on springs from the
 choreography in `src/lib/morph/choreography.ts`. Pages only register shared elements with
 `use:morph`.
 
+With `?source=fixtures`:
+
 - `?latency=300` delays every fixture response, to prove no first frame waits for data.
-- `?playing=<album id>` plays another album, for the path where a hero condenses into the island.
+- `?playing=<album id>` holds the cue on another album, for the path where a hero condenses into
+  the island.
 
 In dev, a small HUD at the bottom left shows how long the last morph took to start.
 

@@ -1,68 +1,77 @@
 <script lang="ts">
+	import {
+		emptyLine,
+		greeting,
+		healthNote,
+		listeningTime,
+		summary,
+		trackCount
+	} from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import AlbumCard from '#lib/pages/AlbumCard.svelte';
-	import ContinueTile from '#lib/pages/ContinueTile.svelte';
+	import AlbumGrid from '#lib/pages/AlbumGrid.svelte';
+	import FeatureTile from '#lib/pages/FeatureTile.svelte';
 	import RecentCover from '#lib/pages/RecentCover.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 
-	const home = $derived(library.home);
+	const facts = $derived(library.facts);
+	const feature = $derived(library.recent.at(0));
+	const name = $derived(library.user?.name ?? '');
 </script>
 
 <svelte:head>
 	<title>Kitsune</title>
 </svelte:head>
 
-{#if home !== null}
+{#if facts !== null}
 	<div class="home">
-		<div class="intro" data-morph-part="intro">
-			<h1>{home.greeting}</h1>
-			<span class="summary">{home.summary}</span>
+		<div class="intro" data-morph-part="intro" data-morph-key="intro">
+			<h1>{greeting(new Date().getHours(), name)}</h1>
+			{#if facts.albums > 0}<span class="summary">{summary(facts)}</span>{/if}
 		</div>
 
-		<section aria-label="Overview" class="overview">
-			<ContinueTile listening={home.continueListening} />
+		{#if facts.albums === 0}
+			<p class="empty" role="status">{emptyLine(facts, library.scanning)}</p>
+		{:else}
+			<section aria-label="Overview" class="overview" class:late={library.arrivedLate}>
+				{#if feature !== undefined}<FeatureTile album={feature} />{/if}
 
-			<div class="health" data-morph-part="card">
-				<span class="fox-mark"><Icon name="fox" size={220} /></span>
-				<span class="label">Library health</span>
-				<span class="figure">
-					<span class="number">{home.health.issues}</span>
-					<span class="note">{home.health.detail}</span>
-				</span>
-			</div>
+				<div class="health" data-morph-part="card" data-morph-key="health">
+					<span class="fox-mark"><Icon name="fox" size={220} /></span>
+					<span class="label">Library health</span>
+					<span class="figure">
+						<span class="number">{facts.issues.toLocaleString('en-US')}</span>
+						<span class="note">{healthNote(facts.issues)}</span>
+					</span>
+				</div>
 
-			<div class="week" data-morph-part="card">
-				<span class="label">This week</span>
-				<span class="figure">
-					<span class="number">{home.week.listened}</span>
-					<span class="note">{home.week.detail}</span>
-				</span>
-			</div>
+				<div class="week" data-morph-part="card" data-morph-key="stats">
+					<span class="label">Your library</span>
+					<span class="figure">
+						<span class="number">{listeningTime(facts.durationMs)}</span>
+						<span class="note">{trackCount(facts.tracks)} of listening</span>
+					</span>
+				</div>
 
-			<section aria-label="Recently added" class="recent" data-morph-part="card">
-				<div class="recent-head">
+				<section
+					aria-label="Recently added"
+					class="recent"
+					data-morph-part="card"
+					data-morph-key="recent"
+				>
 					<h2>Recently added</h2>
-					<span class="more">See all</span>
-				</div>
-				<div class="recent-row">
-					{#each home.recentlyAdded as album (album.id)}
-						<RecentCover {album} />
-					{/each}
-				</div>
+					<div class="recent-row">
+						{#each library.recent.slice(1) as album (album.id)}
+							<RecentCover {album} />
+						{/each}
+					</div>
+				</section>
 			</section>
-		</section>
 
-		<section aria-label="On repeat" class="repeat">
-			<div class="repeat-head" data-morph-part="card">
-				<h2>On repeat</h2>
-				<span class="more">All albums</span>
-			</div>
-			<div class="grid">
-				{#each home.onRepeat as album (album.id)}
-					<AlbumCard {album} />
-				{/each}
-			</div>
-		</section>
+			<section aria-label="Your albums" class="repeat" class:late={library.arrivedLate}>
+				<h2 data-morph-part="card" data-morph-key="albums">Your albums</h2>
+				<AlbumGrid />
+			</section>
+		{/if}
 	</div>
 {/if}
 
@@ -95,6 +104,25 @@
 		font-family: var(--font-mono);
 		font-size: 13px;
 		color: var(--text-meta);
+	}
+
+	.empty {
+		max-width: 44ch;
+		font-size: var(--type-title);
+		line-height: 1.4;
+		color: var(--text-secondary);
+	}
+
+	/* A scan's first albums reach a Home nobody navigated to: they rise in once, together. */
+	.late {
+		animation: arrive-late var(--morph) var(--curve-morph);
+	}
+
+	@keyframes arrive-late {
+		from {
+			opacity: 0;
+			transform: translateY(24px);
+		}
 	}
 
 	.overview {
@@ -195,25 +223,6 @@
 		overflow: hidden;
 	}
 
-	.recent-head,
-	.repeat-head {
-		display: flex;
-		justify-content: space-between;
-	}
-
-	.recent-head {
-		align-items: center;
-	}
-
-	.repeat-head {
-		align-items: baseline;
-	}
-
-	.more {
-		font-size: 14px;
-		color: var(--text-secondary);
-	}
-
 	.recent-row {
 		display: flex;
 		gap: 14px;
@@ -229,12 +238,6 @@
 		font-size: var(--type-section);
 		font-weight: 800;
 		letter-spacing: var(--tracking-section);
-	}
-
-	.grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-		gap: 24px;
 	}
 
 	@media (max-width: 720px) {
@@ -262,11 +265,6 @@
 			margin-right: -24px;
 			padding-right: 24px;
 			scrollbar-width: none;
-		}
-
-		.grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-			gap: 20px 16px;
 		}
 	}
 </style>

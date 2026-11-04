@@ -1,13 +1,11 @@
 <script lang="ts">
-	import { coverFor } from '#lib/cover/cover.ts';
+	import type { AlbumPalette } from '#lib/cover/palette.ts';
 
 	interface Props {
-		albumId: string;
+		palette: AlbumPalette;
 	}
 
-	let { albumId }: Props = $props();
-
-	const palette = $derived(coverFor(albumId).palette);
+	let { palette }: Props = $props();
 </script>
 
 <!-- Light breaking out of the cover: soft by construction, so it only ever scales and fades. -->

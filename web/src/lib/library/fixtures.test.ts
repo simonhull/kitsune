@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureSource } from './fixtures';
-import { AlbumNotFoundError, type LibrarySource } from './source';
+import { AlbumNotFoundError, LoginError, type LibrarySource } from './source';
 
 const source: LibrarySource = createFixtureSource();
 
@@ -10,37 +10,34 @@ afterEach(() => {
 
 describe('fixtures', () => {
 	it('serves an album for every list entry, with the same first-frame fields', async () => {
-		const home = await source.home();
-		for (const entry of [...home.onRepeat, ...home.recentlyAdded, home.continueListening.album]) {
+		const pages = await Promise.all([source.albumsPage('added'), source.albumsPage('name')]);
+		for (const entry of pages.flatMap((page) => page.albums)) {
 			const album = await source.album(entry.id);
 			expect(album).toMatchObject(entry);
-			expect(album.tracks.length).toBeGreaterThan(0);
+			expect(album.tracks.length).toBe(entry.trackCount);
 		}
 	});
 
-	it('plays Glasshouse track 2 by default', async () => {
-		const playing = await source.nowPlaying();
-		expect(playing.album.title).toBe('Glasshouse');
-		expect(playing.track.title).toBe('Salt in the Lungs');
-		expect(playing.trackCount).toBe(10);
+	it('lists the newest album first and honors a limit', async () => {
+		const { albums, nextCursor } = await source.albumsPage('added', undefined, 3);
+		expect(albums.map((album) => album.title)).toEqual(['Glasshouse', 'Paper Suns', 'Red Signal']);
+		expect(nextCursor).toBeUndefined();
 	});
 
-	it('plays the album it is told to', async () => {
-		const other = createFixtureSource({ playingAlbumId: 'tin-lantern-78' });
-		expect((await other.nowPlaying()).album.title).toBe('Tin Lantern');
+	it('sorts by name', async () => {
+		const titles = (await source.albumsPage('name')).albums.map((album) => album.title);
+		expect(titles).toEqual([...titles].sort((a, b) => a.localeCompare(b)));
 	});
 
 	it('keeps one album off Home for the no-card path', async () => {
-		const home = await source.home();
-		const listed = [...home.onRepeat, ...home.recentlyAdded].map((entry) => entry.id);
+		const listed = (await source.albumsPage('name')).albums.map((entry) => entry.id);
 		expect(listed).not.toContain('tin-lantern-78');
 		await expect(source.album('tin-lantern-78')).resolves.toBeDefined();
 	});
 
-	it('counts the same issues it lists', async () => {
-		const { health } = await source.home();
-		const listed = (health.detail.match(/\d+/g) ?? []).map(Number);
-		expect(listed.reduce((sum, count) => sum + count, 0)).toBe(health.issues);
+	it('has a user, and turns away a login with no name', async () => {
+		expect((await source.me()).name).toBe('Simon');
+		await expect(source.login('', 'x')).rejects.toBeInstanceOf(LoginError);
 	});
 
 	it('rejects an unknown album', async () => {
@@ -51,7 +48,7 @@ describe('fixtures', () => {
 		vi.useFakeTimers();
 		const slow = createFixtureSource({ latencyMs: 300 });
 		let settled = false;
-		const pending = slow.home().then(() => {
+		const pending = slow.facts().then(() => {
 			settled = true;
 		});
 		await vi.advanceTimersByTimeAsync(299);

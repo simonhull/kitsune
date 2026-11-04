@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
+	import Cover from '#lib/cover/Cover.svelte';
 	import { clock } from '#lib/library/format.ts';
-	import type { NowPlaying } from '#lib/library/source.ts';
+	import type { NowPlaying } from '#lib/library/cue.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from './Icon.svelte';
 	import { islandSlot } from './slot.svelte.ts';
@@ -11,21 +11,24 @@
 		playing: NowPlaying;
 		/** On Now playing the island becomes the page's pill controls, in place. */
 		expanded: boolean;
+		/** Whether it's arriving on a Home that's already showing, with no morph to carry it. */
+		rises: boolean;
 	}
 
-	let { playing, expanded }: Props = $props();
+	let { playing, expanded, rises }: Props = $props();
 
-	const progress = $derived(playing.positionSeconds / playing.track.seconds);
-	const position = $derived(clock(playing.positionSeconds));
-	const duration = $derived(clock(playing.track.seconds));
+	// Cued, not playing: until plan 018 there's no sound, so the clock stands at the start.
+	const position = clock(0);
+	const duration = $derived(clock(playing.track.durationMs / 1000));
 	const slot = $derived(expanded ? islandSlot.rect : null);
-	const percent = $derived(`${String(progress * 100)}%`);
+	const percent = '0%';
 </script>
 
 <aside
 	aria-label="Player"
 	class="island"
 	class:expanded
+	class:rises
 	style:--slot-left={slot === null ? undefined : `${String(slot.left)}px`}
 	style:--slot-top={slot === null ? undefined : `${String(slot.top)}px`}
 	style:--slot-width={slot === null ? undefined : `${String(slot.width)}px`}
@@ -48,20 +51,23 @@
 					type="button"
 					class="skip"
 					aria-label="Previous"
+					disabled
 					use:morph={{ id: 'control:previous', slot: 'poster', kind: 'control' }}
 					><Icon name="previous" size={22} /></button
 				>
 				<button
 					type="button"
 					class="pause large"
-					aria-label="Pause"
+					aria-label="Play"
+					disabled
 					use:morph={{ id: 'control:pause', slot: 'poster', kind: 'control' }}
-					><Icon name="pause" size={22} /></button
+					><Icon name="play" size={22} /></button
 				>
 				<button
 					type="button"
 					class="skip"
 					aria-label="Next"
+					disabled
 					use:morph={{ id: 'control:next', slot: 'poster', kind: 'control' }}
 					><Icon name="next" size={22} /></button
 				>
@@ -77,42 +83,51 @@
 				</div>
 				<span class="time">{duration}</span>
 			</div>
-			<button type="button" class="skip favorite" aria-label="Favorite" aria-pressed="true"
-				><Icon name="heart" size={20} /></button
+			<button
+				type="button"
+				class="skip favorite"
+				aria-label="Favorite"
+				aria-pressed="false"
+				disabled><Icon name="heart-outline" size={20} /></button
 			>
 		{:else}
-			<a class="now" href={resolve('/now-playing')}>
-				<span
-					class="thumb"
-					use:morph={{ id: `cover:${playing.album.id}`, slot: 'island', kind: 'cover' }}
-					><GeneratedCover albumId={playing.album.id} /></span
-				>
-				<span class="names">
-					<span class="song" use:morph={{ id: 'song', slot: 'island', kind: 'title' }}
-						>{playing.track.title}</span
+			{#key playing.track.id}
+				<a class="now" href={resolve('/now-playing')}>
+					<span
+						class="thumb"
+						use:morph={{ id: `cover:${playing.album.id}`, slot: 'island', kind: 'cover' }}
+						><Cover albumId={playing.album.id} entry={playing.album} place="small" /></span
 					>
-					<span class="artist">{playing.album.artist}</span>
-				</span>
-			</a>
-			<span class="time compact">{position} / {duration}</span>
+					<span class="names">
+						<span class="song" use:morph={{ id: 'song', slot: 'island', kind: 'title' }}
+							>{playing.track.title}</span
+						>
+						<span class="artist">{playing.album.artist}</span>
+					</span>
+				</a>
+				<span class="time compact">{position} / {duration}</span>
+			{/key}
 			<button
 				type="button"
 				class="skip"
 				aria-label="Previous"
+				disabled
 				use:morph={{ id: 'control:previous', slot: 'island', kind: 'control' }}
 				><Icon name="previous" /></button
 			>
 			<button
 				type="button"
 				class="pause"
-				aria-label="Pause"
+				aria-label="Play"
+				disabled
 				use:morph={{ id: 'control:pause', slot: 'island', kind: 'control' }}
-				><Icon name="pause" size={20} /></button
+				><Icon name="play" size={20} /></button
 			>
 			<button
 				type="button"
 				class="skip"
 				aria-label="Next"
+				disabled
 				use:morph={{ id: 'control:next', slot: 'island', kind: 'control' }}
 				><Icon name="next" /></button
 			>
@@ -142,6 +157,18 @@
 		bottom: auto;
 		width: var(--slot-width);
 		transform: none;
+	}
+
+	.rises .glass,
+	.rises .content {
+		animation: island-rises var(--morph) var(--curve-morph);
+	}
+
+	@keyframes island-rises {
+		from {
+			opacity: 0;
+			transform: translateY(32px);
+		}
 	}
 
 	.glass {
@@ -178,6 +205,25 @@
 		padding: 17px 21px;
 	}
 
+	/* A new cue arrives at rest, in place: this is the one change here no morph carries. */
+	.now,
+	.compact {
+		animation: cue-in var(--morph-fast) var(--curve-morph);
+	}
+
+	@keyframes cue-in {
+		from {
+			opacity: 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.now,
+		.compact {
+			animation-duration: 120ms;
+		}
+	}
+
 	.now {
 		display: flex;
 		align-items: center;
@@ -212,8 +258,11 @@
 	}
 
 	.artist {
+		overflow: hidden;
 		font-size: 13px;
 		color: var(--text-meta);
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.time {
@@ -235,6 +284,21 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+	}
+
+	/* Nothing can sound until plan 018: the controls say so without leaving their places. */
+	button:disabled {
+		cursor: default;
+	}
+
+	.skip:disabled {
+		color: var(--text-label);
+	}
+
+	.pause:disabled {
+		background: transparent;
+		box-shadow: inset 0 0 0 2px var(--fox);
+		color: var(--fox);
 	}
 
 	.skip {

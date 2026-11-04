@@ -155,7 +155,7 @@ export type Role =
 
 export type StageName = 'album' | 'poster';
 
-export type RouteName = 'home' | 'album' | 'now-playing';
+export type RouteName = 'login' | 'home' | 'album' | 'now-playing';
 
 export type ChoreographyName =
 	| 'home-to-album'
@@ -164,11 +164,13 @@ export type ChoreographyName =
 	| 'now-playing-to-home'
 	| 'album-to-now-playing'
 	| 'now-playing-to-album'
+	| 'login-to-home'
+	| 'login-to-album'
 	| 'blend';
 
 interface SharedTravel {
-	/** Whose things travel: the album at either end of the journey, or what's playing. */
-	subject: 'from' | 'to' | 'playing';
+	/** Whose things travel: the album at either end of the journey, what's playing, or the mark. */
+	subject: 'from' | 'to' | 'playing' | 'fox';
 	sourceSlots: readonly MorphSlot[];
 	targetSlots: readonly MorphSlot[];
 }
@@ -195,6 +197,8 @@ export interface Choreography {
 	bloom: Bloom | null;
 	/** What's inside the island, when it changes shape on this journey. */
 	island: Part | null;
+	/** How the island first appears, on the one journey that starts without it. */
+	islandForms?: Part;
 }
 
 const bloomShape = { rest: 0.12, full: 2.6, peak: 0.9 } as const;
@@ -366,6 +370,42 @@ const nowPlayingToAlbum: Choreography = {
 	island: islandCloses
 };
 
+const throughTheDoor = { subject: 'fox', sourceSlots: ['door'], targetSlots: ['nav'] } as const;
+
+/** One beat behind the page: the island closes the frame the fox has opened. */
+const islandForms = rise(32, 220);
+
+/**
+ * Login to Home. The door is the shallowest place on the axis, so this is going deeper: the fox
+ * leaves the form and takes its seat in the nav as the glass forms around it, the form falls back,
+ * and Home rises under them with the island closing the frame from below. Login to Now playing
+ * has no fox's journey to make: it blends, and so does anything back to the door.
+ */
+const loginToHome: Choreography = {
+	name: 'login-to-home',
+	motion: slow,
+	travel: throughTheDoor,
+	leaving: fallBack,
+	arriving: { intro: rise(20, 160), card: rise(48, 160, slow) },
+	stages: {},
+	bloom: null,
+	island: null,
+	islandForms
+};
+
+/** Login to Album: the same door, returning after an expired session to the album left behind. */
+const loginToAlbum: Choreography = {
+	name: 'login-to-album',
+	motion: slow,
+	travel: throughTheDoor,
+	leaving: fallBack,
+	arriving: { art: rise(48, 160, slow), words: rise(20, 160), panel: rise(96, 160, slow) },
+	stages: homeToAlbum.stages,
+	bloom: null,
+	island: null,
+	islandForms
+};
+
 /** All of reduced motion: never a hard cut. */
 export const blend: Choreography = {
 	name: 'blend',
@@ -384,7 +424,9 @@ const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
 	'home>now-playing': homeToNowPlaying,
 	'now-playing>home': nowPlayingToHome,
 	'album>now-playing': albumToNowPlaying,
-	'now-playing>album': nowPlayingToAlbum
+	'now-playing>album': nowPlayingToAlbum,
+	'login>home': loginToHome,
+	'login>album': loginToAlbum
 };
 
 /**

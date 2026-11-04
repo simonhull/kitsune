@@ -81,19 +81,28 @@ export interface TitleMeasure {
 	/** The words' full width, and how much of it shows if the element truncates them. */
 	drawnWidth: number;
 	shownWidth: number;
+	/** A long title can wrap at one end of its flight and not the other. */
+	wrapped: boolean;
 }
 
 /** Measures a title in full, baseline probe included: once per target, never per frame. */
 export function measureTitle(element: HTMLElement): TitleMeasure {
-	const drawnSize = Number.parseFloat(getComputedStyle(element).fontSize);
+	const style = getComputedStyle(element);
+	const drawnSize = Number.parseFloat(style.fontSize);
 	const drawnBaseline = baselineOffset(element);
 	return {
 		shape: placeTitle(element, drawnSize, drawnBaseline),
 		drawnSize,
 		drawnBaseline,
 		drawnWidth: element.scrollWidth,
-		shownWidth: element.clientWidth
+		shownWidth: element.clientWidth,
+		wrapped: wraps(element, style)
 	};
+}
+
+/** Reports whether a title runs to more than one line where it sits. */
+function wraps({ clientHeight }: HTMLElement, style: CSSStyleDeclaration): boolean {
+	return style.whiteSpace !== 'nowrap' && clientHeight > Number.parseFloat(style.lineHeight) * 1.5;
 }
 
 /** Finds a title whose metrics are already known. */
@@ -113,7 +122,11 @@ export function drawTitle(element: HTMLElement): HTMLElement {
 		element.scrollWidth > element.clientWidth
 			? `max-width:${String(element.clientWidth)}px;overflow:hidden;text-overflow:ellipsis;`
 			: '';
-	picture.style.cssText = `${clipped}position:absolute;left:0;top:0;white-space:nowrap;transform-origin:0 0;will-change:transform,opacity;
+	// Same for one on two lines. The width rounds up, or a line that just fits would break again.
+	const layout = wraps(element, style)
+		? `display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:${style.webkitLineClamp};overflow:hidden;width:${String(element.clientWidth + 1)}px;padding-bottom:${style.paddingBottom};text-wrap:${style.textWrap};text-align:${style.textAlign};`
+		: `${clipped}white-space:nowrap;`;
+	picture.style.cssText = `${layout}position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform,opacity;
 		font-family:${style.fontFamily};font-size:${style.fontSize};font-weight:${style.fontWeight};
 		letter-spacing:${style.letterSpacing};line-height:${style.lineHeight};color:${style.color}`;
 	return picture;
@@ -194,6 +207,23 @@ export class CoverFlier implements Flier {
 	#restingShadow({ element }: MorphEntry): string {
 		const { boxShadow } = getComputedStyle(element);
 		return scaleShadow(boxShadow, this.#base / element.offsetWidth);
+	}
+
+	/**
+	 * Lays a sharper picture over the one in flight, once it has decoded. Never the other way: a
+	 * flight can't wait for bytes, so it leaves on what's already on screen. It's the same picture,
+	 * so no crossfade: the only change is that it stops being soft.
+	 */
+	sharpen(url: string): void {
+		const image = new Image();
+		image.src = url;
+		image.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover';
+		image
+			.decode()
+			.then(() => {
+				this.#face.append(image);
+			})
+			.catch(() => undefined);
 	}
 
 	get target(): MorphEntry | null {
@@ -426,6 +456,8 @@ export class TitleFlier implements Flier {
 	readonly #small: TitlePicture;
 	readonly #large: TitlePicture;
 	readonly #dissolve: Channel;
+	/** The two ends break differently, so their widths mean nothing to each other. */
+	readonly #reflows: boolean;
 
 	constructor(
 		from: TitleMeasure,
@@ -442,6 +474,7 @@ export class TitleFlier implements Flier {
 		const landing = pictureFrom(toPicture, to);
 		const growing = to.drawnSize >= from.drawnSize;
 		this.#dissolve = new Channel(growing ? 0 : 1);
+		this.#reflows = from.wrapped !== to.wrapped;
 		this.#small = growing ? source : landing;
 		this.#large = growing ? landing : source;
 		this.element.style.cssText = 'position:absolute;left:0;top:0';
@@ -489,9 +522,13 @@ export class TitleFlier implements Flier {
 	#place(picture: TitlePicture): void {
 		const scale = this.#fontSize.value / picture.size;
 		const top = this.#baseline.value - picture.baseline * scale;
+		const { style } = picture.element;
+		if (this.#reflows) {
+			style.transform = `translate(${this.#left.value.toFixed(2)}px, ${top.toFixed(2)}px) scale(${scale.toFixed(4)})`;
+			return;
+		}
 		const width = sharedWidth(this.#small.width, this.#large.width, this.#grown);
 		const stretch = width / picture.width;
-		const { style } = picture.element;
 		style.transform = `translate(${this.#left.value.toFixed(2)}px, ${top.toFixed(2)}px) scale(${stretch.toFixed(4)}, ${scale.toFixed(4)})`;
 		// A truncated end clips the other picture too, or its extra letters show past the cut.
 		const shown = sharedWidth(this.#small.shown, this.#large.shown, this.#grown) / stretch;

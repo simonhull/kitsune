@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { coverFor } from '#lib/cover/cover.ts';
-	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
-	import { balancedLines, gain } from '#lib/library/format.ts';
+	import Cover from '#lib/cover/Cover.svelte';
+	import { emWidth } from '#lib/library/fit.ts';
+	import { balancedLines, credit, gain, trackGain } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
 	import { morph } from '#lib/morph/registry.ts';
@@ -11,7 +11,11 @@
 
 	const playing = $derived(library.playing);
 	const lines = $derived(playing === null ? ['', ''] : balancedLines(playing.track.title));
-	const longest = $derived(Math.max(...lines.map((line) => line.length)));
+	const longest = $derived(Math.max(...lines.map((line) => emWidth(line, 900, -0.075)), 1));
+	const others = $derived(
+		playing === null ? undefined : credit(playing.track, playing.album.artist)
+	);
+	const rg = $derived(playing === null ? null : trackGain(playing.track));
 
 	function goUp(event: MouseEvent & { currentTarget: HTMLAnchorElement }): void {
 		goUpToAlbum(event, event.currentTarget.pathname);
@@ -29,7 +33,13 @@
 	<title>{playing?.track.title ?? 'Now playing'} · Kitsune</title>
 </svelte:head>
 
-{#if playing !== null}
+{#if playing === null}
+	<!-- Plan 018 replaces this: with real playback there's always a last thing played. -->
+	<div class="stage quiet">
+		<p>Nothing is cued yet.</p>
+		<a href={resolve('/')} data-sveltekit-reset="false">Back to Home</a>
+	</div>
+{:else}
 	<div class="stage">
 		<div class="column">
 			<div class="top" data-morph-part="chrome">
@@ -48,20 +58,20 @@
 						data-sveltekit-replacestate
 						onclick={goUp}>{playing.album.title.toUpperCase()}</a
 					>
-					· {playing.track.number} / {playing.trackCount}
+					· {playing.index + 1} / {playing.trackCount}
 				</span>
 				<span class="chips">
 					<span class="chip">{playing.format}</span>
-					{#if playing.track.replayGain !== null}
-						<span class="chip">RG {gain(playing.track.replayGain)} dB</span>
+					{#if rg !== null}
+						<span class="chip">RG {gain(rg)} dB</span>
 					{/if}
 				</span>
 			</div>
 
 			<div class="center">
 				<div class="stack">
-					<div class="poster" aria-hidden="true" style:--chars={longest}>
-						{#each lines as line, index (line)}
+					<div class="poster" aria-hidden="true" style:--width={longest}>
+						{#each lines as line, index (index)}
 							<span data-morph-part={`line-${String(index + 1)}`}>{line}</span>
 						{/each}
 					</div>
@@ -73,29 +83,33 @@
 						onclick={goUp}
 						use:morph={{ id: `cover:${playing.album.id}`, slot: 'poster', kind: 'cover' }}
 					>
-						<GeneratedCover albumId={playing.album.id} />
+						<Cover albumId={playing.album.id} entry={playing.album} place="stage" />
 					</a>
 				</div>
 				<div class="names">
 					<h1 use:morph={{ id: 'song', slot: 'poster', kind: 'title' }}>{playing.track.title}</h1>
 					<span class="artist" data-morph-part="details">
 						<strong>{playing.album.artist}</strong>
-						{#if playing.track.featuring !== undefined}feat. {playing.track.featuring}{/if}
+						{#if others !== undefined}{others}{/if}
 					</span>
 				</div>
 				<div class="controls-slot" use:reserveIslandSlot></div>
 			</div>
 
-			<section aria-label="Up next" class="next" data-morph-part="panel">
-				<span class="next-label">UP NEXT</span>
-				{#each playing.upNext as upcoming, index (upcoming.title)}
-					<span class="pill" style:opacity={1 - index * 0.2}>
-						<span class="dot" style:background={coverFor(upcoming.albumId).palette.base}></span>
-						<span class="pill-name" class:lead={index === 0}>{upcoming.title}</span>
-					</span>
-				{/each}
-				<span class="more">+{playing.moreCount} more</span>
-			</section>
+			{#if playing.upNext.length > 0}
+				<section aria-label="Up next" class="next" data-morph-part="panel">
+					<span class="next-label">UP NEXT</span>
+					{#each playing.upNext as upcoming, index (upcoming.id)}
+						<span class="pill" style:opacity={1 - index * 0.2}>
+							<span class="dot"
+								><Cover albumId={playing.album.id} entry={playing.album} place="small" /></span
+							>
+							<span class="pill-name" class:lead={index === 0}>{upcoming.title}</span>
+						</span>
+					{/each}
+					{#if playing.moreCount > 0}<span class="more">+{playing.moreCount} more</span>{/if}
+				</section>
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -106,6 +120,24 @@
 		position: relative;
 		min-height: 100dvh;
 		overflow: hidden;
+	}
+
+	.quiet {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 16px;
+		text-align: center;
+		color: var(--text-secondary);
+	}
+
+	.quiet a {
+		min-height: var(--target);
+		display: flex;
+		align-items: center;
+		color: var(--fox);
 	}
 
 	/* The cover and the title behind it share a center, so they can't drift apart with height. */
@@ -124,7 +156,7 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		font-size: min(230px, 25.6dvh, calc((100cqw - 32px) / (var(--chars) * 0.5)));
+		font-size: min(230px, 25.6dvh, calc((100cqw - 32px) / var(--width)));
 		font-weight: 900;
 		letter-spacing: -0.075em;
 		line-height: 0.8;
@@ -173,6 +205,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.6em;
+		min-width: 0;
 		letter-spacing: 0.06em;
 		white-space: nowrap;
 	}
@@ -183,9 +216,11 @@
 		min-height: var(--target);
 		padding: 0 6px;
 		margin: 0 -6px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
+		display: block;
+		overflow: hidden;
+		line-height: var(--target);
+		text-align: center;
+		text-overflow: ellipsis;
 		text-underline-offset: 3px;
 	}
 
@@ -198,6 +233,7 @@
 	}
 
 	.chips {
+		flex: none;
 		margin-left: auto;
 		display: flex;
 		gap: 8px;
@@ -244,14 +280,23 @@
 	}
 
 	h1 {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		overflow: hidden;
+		max-width: min(640px, 100cqw - 32px);
 		font-size: 28px;
 		font-weight: 800;
 		letter-spacing: -0.03em;
+		line-height: 1.15;
+		text-wrap: balance;
 	}
 
 	.artist {
 		font-size: 16px;
 		color: var(--wash);
+		max-width: min(640px, 100cqw - 32px);
 	}
 
 	.artist strong {
@@ -288,13 +333,23 @@
 	}
 
 	.dot {
+		position: relative;
+		flex: none;
 		width: 36px;
 		height: 36px;
 		border-radius: 50%;
+		overflow: hidden;
+	}
+
+	.pill {
+		min-width: 0;
 	}
 
 	.pill-name {
+		overflow: hidden;
 		font-size: 14px;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.lead {
@@ -325,16 +380,11 @@
 			position: static;
 			transform: none;
 			margin-bottom: -16px;
-			font-size: min(11dvh, calc((100cqw - 32px) / (var(--chars) * 0.5)));
+			font-size: min(11dvh, calc((100cqw - 32px) / var(--width)));
 		}
 
 		.chips {
 			display: none;
-		}
-
-		.where {
-			min-width: 0;
-			overflow: hidden;
 		}
 
 		.art {

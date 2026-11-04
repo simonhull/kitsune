@@ -268,6 +268,37 @@ describe('choreographyFor', () => {
 	});
 });
 
+describe('the door', () => {
+	const away = ['home', 'album', 'now-playing'] as const;
+
+	it('sends the fox to the nav, going deeper, into Home and Album', () => {
+		for (const to of ['home', 'album'] as const) {
+			const { travel, leaving, motion, islandForms } = choreographyFor('login', to);
+			expect(travel).toMatchObject({ subject: 'fox', sourceSlots: ['door'], targetSlots: ['nav'] });
+			expect(leaving.to.scale).toBeLessThan(1);
+			expect(motion.token).toBe('--morph-slow');
+			expect(islandForms?.from.opacity).toBe(0);
+		}
+	});
+
+	it('leaves the island alone apart from forming it: nothing reshapes', () => {
+		expect(choreographyFor('login', 'home').island).toBeNull();
+		expect(choreographyFor('login', 'album').island).toBeNull();
+	});
+
+	it('moves every unit it brings in, with no spread: an entrance must not queue', () => {
+		const { arriving } = choreographyFor('login', 'home');
+		expect(arriving.intro?.delay).toBe(arriving.card?.delay);
+	});
+
+	it('blends into Now playing, and back to the door from anywhere', () => {
+		expect(choreographyFor('login', 'now-playing')).toBe(blend);
+		for (const from of away) {
+			expect(choreographyFor(from, 'login')).toBe(blend);
+		}
+	});
+});
+
 describe('parseTime', () => {
 	it('reads both CSS time units', () => {
 		expect(parseTime(' 420ms')).toBe(420);

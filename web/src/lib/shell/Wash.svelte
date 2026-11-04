@@ -1,15 +1,13 @@
 <script lang="ts">
-	import { coverFor } from '#lib/cover/cover.ts';
+	import type { AlbumPalette } from '#lib/cover/palette.ts';
 
 	interface Props {
-		albumId: string;
+		palette: AlbumPalette;
 		/** `tile` is Home's card; `hero` is the album page. */
 		variant: 'tile' | 'hero';
 	}
 
-	let { albumId, variant }: Props = $props();
-
-	const palette = $derived(coverFor(albumId).palette);
+	let { palette, variant }: Props = $props();
 </script>
 
 <!-- The album's cover, melted: the same palette, blurred past recognition. -->

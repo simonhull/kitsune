@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
+	import Cover from '#lib/cover/Cover.svelte';
 	import type { AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
 
@@ -17,7 +17,7 @@
 	aria-label={`${album.title} by ${album.artist}`}
 >
 	<span class="art" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}>
-		<GeneratedCover albumId={album.id} />
+		<Cover albumId={album.id} entry={album} place="small" />
 	</span>
 </a>
 

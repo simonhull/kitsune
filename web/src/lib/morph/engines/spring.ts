@@ -31,6 +31,7 @@ import {
 	type Flier,
 	type TitleMeasure
 } from './flier.ts';
+import { markMoving } from '../settled.ts';
 import { IslandShape } from './island.ts';
 import { Layer } from './layer.ts';
 
@@ -101,7 +102,11 @@ function capture(source: MorphEntry): Capture {
 /** Draws what a flier shows: a cover's art, or a control as it stands. */
 function pictureOf({ element, kind }: MorphEntry): Node {
 	if (kind === 'cover') {
-		return (element.firstElementChild ?? element).cloneNode(true);
+		const picture = (element.firstElementChild ?? element).cloneNode(true);
+		if (picture instanceof Element) {
+			settleImages(picture);
+		}
+		return picture;
 	}
 	const picture = element.cloneNode(true);
 	if (picture instanceof HTMLElement) {
@@ -111,17 +116,99 @@ function pictureOf({ element, kind }: MorphEntry): Node {
 	return picture;
 }
 
+/**
+ * Makes a clone's images paint on its first frame, from what's already decoded. One still on its
+ * way shows nothing where it stands, so its clone mustn't start a fetch of its own.
+ */
+function settleImages(picture: Element): void {
+	for (const image of picture.querySelectorAll('img')) {
+		if (image.hasAttribute('data-cover-pending')) {
+			image.removeAttribute('src');
+			image.remove();
+		} else {
+			image.loading = 'eager';
+			image.decoding = 'sync';
+		}
+	}
+}
+
 /** The outgoing page, as an inert picture of itself. */
 interface Ghost {
 	path: string;
 	element: HTMLElement;
-	/** One layer per unit, in document order, so the real page can take over unit by unit. */
 	layers: Layer[];
+	/** Each unit's layer by name, so the real page can take over from its ghost unit by unit. */
+	units: Map<string, Layer>;
 }
+
+const partAttribute = 'data-morph-part';
 
 /** Finds the parts of a page that move on their own. */
 function unitsOf(root: Element): HTMLElement[] {
-	return [...root.querySelectorAll<HTMLElement>('[data-morph-part]')];
+	return [...root.querySelectorAll<HTMLElement>(`[${partAttribute}]`)];
+}
+
+/**
+ * How far past the viewport a unit still takes part in a morph, as a share of its height. Nobody
+ * can see past this, and a long page holds hundreds of units whose pictures would each cost.
+ */
+const reach = 0.25;
+
+function nearFold(unit: HTMLElement): boolean {
+	const { top, bottom } = unit.getBoundingClientRect();
+	const margin = innerHeight * reach;
+	return bottom > -margin && top < innerHeight + margin;
+}
+
+/** Finds the units a morph moves: a ghost, an arrival and a ripple all work on this one set. */
+function unitsNearFold(root: Element): HTMLElement[] {
+	return unitsOf(root).filter(nearFold);
+}
+
+/** Names units so a ghost and the page behind it agree, whichever cards each has mounted. */
+function keysOf(units: readonly HTMLElement[]): string[] {
+	const seen = new Map<string, number>();
+	return units.map((unit) => {
+		const { morphKey, morphPart = '' } = unit.dataset;
+		const ordinal = seen.get(morphPart) ?? 0;
+		seen.set(morphPart, ordinal + 1);
+		return morphKey ?? `${morphPart}:${String(ordinal)}`;
+	});
+}
+
+/** A far unit's stand-in: it keeps its place in the layout, and costs no images or layer. */
+function standIn(unit: HTMLElement): Node {
+	const stand = unit.cloneNode(false);
+	if (stand instanceof HTMLElement) {
+		stand.removeAttribute(partAttribute);
+		stand.style.visibility = 'hidden';
+		stand.style.height = `${String(unit.offsetHeight)}px`;
+	}
+	return stand;
+}
+
+/**
+ * Clones a page for a ghost, in full only near the fold. `cloneNode` on the whole of it would fetch
+ * every lazy image at once: an image ignores `loading` the moment it's cloned with a `src`.
+ */
+function pictureOfPage(root: Element, near: ReadonlySet<Element>): Node {
+	const picture = root.cloneNode(false);
+	for (const child of root.childNodes) {
+		if (!(child instanceof HTMLElement)) {
+			picture.appendChild(child.cloneNode(true));
+		} else if (child.hasAttribute(partAttribute) && !near.has(child)) {
+			picture.appendChild(standIn(child));
+		} else if (!child.hasAttribute(partAttribute) && child.querySelector(`[${partAttribute}]`)) {
+			picture.appendChild(pictureOfPage(child, near));
+		} else {
+			const whole = child.cloneNode(true);
+			if (whole instanceof Element) {
+				settleImages(whole);
+			}
+			picture.appendChild(whole);
+		}
+	}
+	return picture;
 }
 
 function roleOf(unit: HTMLElement): Role {
@@ -227,7 +314,8 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			hide(element);
 		}
 		const { left, top, width, height } = main.getBoundingClientRect();
-		const clone = main.cloneNode(true);
+		const real = unitsNearFold(main);
+		const clone = pictureOfPage(main, new Set(real));
 		if (!(clone instanceof HTMLElement)) {
 			return null;
 		}
@@ -243,7 +331,6 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 
 		const cover = [...sources.values()].find((entry) => entry.kind === 'cover');
 		const center = cover === undefined ? null : centerOf(cover.element);
-		const real = unitsOf(main);
 		const units = unitsOf(clone);
 		// A page with no units yet, still loading say, leaves as one.
 		const movers = units.length > 0 ? units : [clone];
@@ -262,10 +349,15 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			}
 			return layer;
 		});
-		for (const unit of real) {
+		for (const unit of unitsOf(main)) {
 			landing.delete(unit);
 		}
-		const ghost = { path, element: clone, layers };
+		const keys = keysOf(units);
+		const named = layers.flatMap((layer, index) => {
+			const key = keys.at(index);
+			return key === undefined ? [] : [[key, layer] as const];
+		});
+		const ghost = { path, element: clone, layers, units: new Map(named) };
 		ghosts.push(ghost);
 		return ghost;
 	}
@@ -326,14 +418,13 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 				drawTitle(target.element)
 			);
 		}
-		const to = measureCover(target.element);
-		const growing = to.width >= source.shape.width;
-		return new CoverFlier(
-			source.shape,
-			target,
-			growing ? pictureOf(target) : source.picture,
-			source.shadow
-		);
+		const flier = new CoverFlier(source.shape, target, source.picture, source.shadow);
+		const want =
+			target.element.querySelector<HTMLElement>('[data-cover-want]')?.dataset['coverWant'];
+		if (want !== undefined && measureCover(target.element).width >= source.shape.width) {
+			flier.sharpen(want);
+		}
+		return flier;
 	}
 
 	function arrive(journey: Journey, path: string, targets: Map<string, MorphEntry>): void {
@@ -342,7 +433,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			return;
 		}
 		const { arriving, motion } = journey.choreography;
-		const units = unitsOf(main);
+		const units = unitsNearFold(main);
 		const cover = [...targets.values()].find((entry) => entry.kind === 'cover');
 		const center = cover === undefined ? null : centerOf(cover.element);
 		const flying = new Set([...targets.values()].map((entry) => entry.element));
@@ -352,8 +443,9 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		const ghost = ghosts.at(returning);
 		if (returning >= 0 && ghost !== undefined) {
 			ghosts.splice(returning, 1);
+			const keys = keysOf(units);
 			for (const [index, unit] of units.entries()) {
-				const from = ghost.layers.at(index);
+				const from = ghost.units.get(keys.at(index) ?? '');
 				if (from === undefined || flying.has(unit)) {
 					continue;
 				}
@@ -420,7 +512,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		clone.removeAttribute('data-morph-stage');
 		freeze(clone, stage.getBoundingClientRect().top);
 		stage.after(clone);
-		ghosts.push({ path: '', element: clone, layers: [new Layer(clone, part)] });
+		ghosts.push({ path: '', element: clone, layers: [new Layer(clone, part)], units: new Map() });
 	}
 
 	/** Picks up the glass and leaves a picture of the island's old contents to fade. */
@@ -454,7 +546,17 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			layer.adopt(inherited);
 		}
 		landing.delete(content);
-		ghosts.push({ path: '', element: stand, layers: [layer] });
+		ghosts.push({ path: '', element: stand, layers: [layer], units: new Map() });
+	}
+
+	/** The island's first appearance: glass and contents rise as one, under the frame. */
+	function formIsland(part: Part): void {
+		for (const selector of ['[data-island-glass]', '[data-island-content]']) {
+			const element = surfaceFor(selector);
+			if (element !== null) {
+				landing.set(element, new Layer(element, part));
+			}
+		}
 	}
 
 	function landIsland(part: Part): void {
@@ -579,6 +681,9 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		retire();
 
 		frame = active() ? requestAnimationFrame(tick) : 0;
+		if (frame === 0) {
+			markMoving(false);
+		}
 	}
 
 	function active(): boolean {
@@ -650,6 +755,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 
 	async function fly(journey: Journey, navigation: OnNavigate): Promise<void> {
 		const { choreography, ids, sources } = journey;
+		markMoving(true);
 		const fromPath = navigation.from?.url.pathname ?? '';
 		const toPath = navigation.to?.url.pathname ?? '';
 
@@ -689,6 +795,9 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 				ghost.element.remove();
 				ghosts.splice(ghosts.indexOf(ghost), 1);
 			}
+			if (!active()) {
+				markMoving(false);
+			}
 			return;
 		}
 
@@ -711,10 +820,17 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		}
 
 		launch(journey, captures, targets);
+		// Every target is known now: a card that mounts from here on isn't one of them.
+		for (const id of ids) {
+			inFlight.delete(id);
+		}
 		moveStages(journey, frozen, changesAlbum);
 		arrive(journey, toPath, targets);
 		if (choreography.island !== null) {
 			landIsland(choreography.island);
+		}
+		if (choreography.islandForms !== undefined) {
+			formIsland(choreography.islandForms);
 		}
 		openBloom(journey);
 		run();
@@ -724,13 +840,15 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 	async function blendTo(navigation: OnNavigate): Promise<void> {
 		abandon();
 		const shell = surfaceFor('.shell');
+		const main = surfaceFor('main');
 		const air = surfaceFor('.morph-layer');
-		if (shell === null || air === null) {
+		if (shell === null || main === null || air === null) {
 			return;
 		}
+		markMoving(true);
 		const picture = document.createElement('div');
 		picture.style.cssText = `position:fixed;inset:0;overflow:clip;background:var(--ground)`;
-		const clone = shell.cloneNode(true);
+		const clone = pictureOfPage(shell, new Set(unitsNearFold(main)));
 		if (clone instanceof HTMLElement) {
 			clone.inert = true;
 			clone.style.marginTop = `${String(-scrollY)}px`;
@@ -746,6 +864,9 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		);
 		await fade.finished.catch(() => undefined);
 		picture.remove();
+		if (!active()) {
+			markMoving(false);
+		}
 	}
 
 	return (navigation) => {

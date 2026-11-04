@@ -1,52 +1,48 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { coverFor } from '#lib/cover/cover.ts';
-	import GeneratedCover from '#lib/cover/GeneratedCover.svelte';
-	import { clock } from '#lib/library/format.ts';
-	import type { Home } from '#lib/library/source.ts';
+	import Cover from '#lib/cover/Cover.svelte';
+	import { paletteFor } from '#lib/cover/palette.ts';
+	import { emWidth } from '#lib/library/fit.ts';
+	import type { AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
-	import Icon from '#lib/shell/Icon.svelte';
 	import Wash from '#lib/shell/Wash.svelte';
 
 	interface Props {
-		listening: Home['continueListening'];
+		album: AlbumEntry;
 	}
 
-	let { listening }: Props = $props();
+	let { album }: Props = $props();
 
-	const album = $derived(listening.album);
-	const palette = $derived(coverFor(album.id).palette);
+	const palette = $derived(paletteFor(album));
 </script>
 
 <a
 	class="tile"
 	data-morph-part="card"
+	data-morph-key="feature"
 	href={resolve('/album/[id]', { id: album.id })}
 	style:background={palette.stage}
-	style:--tile-accent={palette.accent}
-	style:--tile-on-accent={palette.onAccent}
 	style:--tile-wash={palette.wash}
 >
-	<Wash albumId={album.id} variant="tile" />
+	<Wash {palette} variant="tile" />
 	<span class="art" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
-		><GeneratedCover albumId={album.id} /></span
+		><Cover albumId={album.id} entry={album} place="card" /></span
 	>
 	<span class="words">
-		<span class="label">Continue listening</span>
-		<span class="title" use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}
-			>{album.title}</span
+		<span class="label">Just added</span>
+		<span
+			class="title"
+			title={album.title}
+			style:--width={emWidth(album.title, 800, -0.05)}
+			use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}>{album.title}</span
 		>
-		<span class="detail"
-			>{album.artist} · track {listening.trackNumber} of {listening.trackCount} · {clock(
-				listening.positionSeconds
-			)} in</span
-		>
-		<span class="resume"><Icon name="play" />Resume</span>
+		<span class="detail">{album.artist}</span>
 	</span>
 </a>
 
 <style>
 	.tile {
+		container-type: inline-size;
 		grid-column: span 2;
 		grid-row: span 2;
 		position: relative;
@@ -75,6 +71,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
+		min-width: 0;
 	}
 
 	.label {
@@ -85,32 +82,32 @@
 		color: var(--tile-wash);
 	}
 
+	/* Fit to one line if it can, then two, and a long title is cut rather than left to spill. */
 	.title {
+		--fit: calc((100cqw - 64px) / max(var(--width), 1));
+
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		overflow: hidden;
 		width: fit-content;
-		font-size: 64px;
+		max-width: 100%;
+		padding-bottom: 0.09em;
+		margin-bottom: -0.09em;
+		font-size: clamp(30px, var(--fit), 64px);
 		font-weight: 800;
 		letter-spacing: -0.05em;
-		line-height: 0.9;
+		line-height: 0.96;
+		text-wrap: balance;
 	}
 
 	.detail {
+		overflow: hidden;
 		font-size: var(--type-title);
 		color: var(--tile-wash);
-	}
-
-	.resume {
-		align-self: flex-start;
-		margin-top: 8px;
-		height: 52px;
-		padding: 0 26px 0 20px;
-		border-radius: var(--radius-pill);
-		background: var(--tile-accent);
-		color: var(--tile-on-accent);
-		font-weight: 700;
-		font-size: 16px;
-		display: flex;
-		align-items: center;
-		gap: 10px;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	@media (max-width: 720px) {
@@ -128,7 +125,9 @@
 		}
 
 		.title {
-			font-size: 52px;
+			--fit: calc((100cqw - 48px) / max(var(--width), 1));
+
+			font-size: clamp(28px, var(--fit), 52px);
 		}
 
 		.detail {

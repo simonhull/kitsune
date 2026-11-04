@@ -4,13 +4,16 @@
 	import '#lib/styles/tokens.css';
 	import '#lib/styles/base.css';
 	import { onMount } from 'svelte';
-	import { onNavigate, preloadCode } from '$app/navigation';
 	import { page } from '$app/state';
-	import { coverFor } from '#lib/cover/cover.ts';
+	import { goto, onNavigate, preloadCode } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { paletteFor } from '#lib/cover/palette.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import { loginPath } from '#lib/library/session.ts';
 	import { startMorphs } from '#lib/morph/engine.ts';
 	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
+	import { gridWindow } from '#lib/pages/gridWindow.svelte.ts';
 	import Backdrop from '#lib/shell/Backdrop.svelte';
 	import Bloom from '#lib/shell/Bloom.svelte';
 	import Nav from '#lib/shell/Nav.svelte';
@@ -22,6 +25,7 @@
 	const routeId = $derived(page.route.id);
 	const onNowPlaying = $derived(routeId === '/now-playing');
 	const onAlbum = $derived(routeId === '/album/[id]');
+	const onLogin = $derived(routeId === '/login');
 	const albumParam = $derived(page.params['id']);
 
 	// The stage keeps its last album so it has something to fade away. It's derived, not an
@@ -33,13 +37,20 @@
 		return lastStageAlbum;
 	});
 
-	const palette = $derived(stageAlbum === null ? null : coverFor(stageAlbum).palette);
+	const stageEntry = $derived(stageAlbum === null ? undefined : library.entry(stageAlbum));
+	const palette = $derived(stageAlbum === null ? null : paletteFor(stageEntry));
 
 	onNavigate(startMorphs());
 
 	onMount(() => {
-		void library.loadShell();
-		void Promise.all(['/', '/album/[id]', '/now-playing'] as const).then((routes) =>
+		library.onExpired = async () => {
+			if (location.pathname !== resolve('/login')) {
+				// eslint-disable-next-line svelte/no-navigation-without-resolve -- Built from resolve('/login') and the current path, with its `next`.
+				await goto(loginPath(location), { replaceState: true });
+			}
+			gridWindow.reset();
+		};
+		void Promise.all(['/', '/album/[id]', '/now-playing', '/login'] as const).then((routes) =>
 			Promise.all(routes.map((route) => preloadCode(route)))
 		);
 		return watchInput();
@@ -53,16 +64,27 @@
 	style:--wash={palette?.wash}
 	style:--stage={palette?.stage}
 >
-	<Backdrop albumId={stageAlbum} mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : 'clear'} />
-	<Nav
-		route={onNowPlaying ? 'gone' : onAlbum ? 'album' : 'home'}
-		healthIssues={library.home?.health.issues}
+	<Backdrop
+		albumId={stageAlbum}
+		{palette}
+		known={stageEntry !== undefined}
+		mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : 'clear'}
 	/>
-	<main>{@render children()}</main>
+	<Nav
+		route={onLogin ? 'door' : onNowPlaying ? 'gone' : onAlbum ? 'album' : 'home'}
+		healthIssues={library.facts?.issues}
+	/>
+	<main>
+		{#if library.down && library.facts === null && !onLogin}
+			<p class="down" role="status">The server isn't answering. Trying again…</p>
+		{:else}
+			{@render children()}
+		{/if}
+	</main>
 	<div class="ghost-layer" aria-hidden="true"></div>
-	{#if stageAlbum !== null}<Bloom albumId={stageAlbum} />{/if}
-	{#if library.playing !== null}
-		<PlayerIsland playing={library.playing} expanded={onNowPlaying} />
+	{#if palette !== null}<Bloom {palette} />{/if}
+	{#if library.playing !== null && !onLogin}
+		<PlayerIsland playing={library.playing} expanded={onNowPlaying} rises={library.arrivedLate} />
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
 	{#if import.meta.env.DEV}<Hud />{/if}
@@ -83,6 +105,16 @@
 	main {
 		position: relative;
 		z-index: 1;
+	}
+
+	.down {
+		min-height: 100dvh;
+		padding: 16px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		text-align: center;
+		color: var(--text-secondary);
 	}
 
 	/* Under the shell: what's left of the outgoing page. */

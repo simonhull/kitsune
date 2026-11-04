@@ -1,21 +1,30 @@
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 
-export default defineConfig({
-	plugins: [
-		sveltekit({
-			compilerOptions: {
-				// Force runes mode for the project, except for libraries. Can be removed in svelte 6.
-				runes: ({ filename }) =>
-					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
-			},
-			// A single-page client: the Go server hands every unknown path to index.html.
-			adapter: adapter({ fallback: 'index.html' })
-		})
-	],
-	test: {
-		include: ['src/**/*.test.ts'],
-		environment: 'node'
-	}
+export default defineConfig(({ mode }) => {
+	// Same origin as the client, so the session cookie just works in dev and preview.
+	const api = loadEnv(mode, '.', 'KITSUNE_')['KITSUNE_API'] ?? 'http://localhost:4533';
+	const proxy = { '/api': api };
+
+	return {
+		server: { proxy },
+		preview: { proxy },
+		plugins: [
+			sveltekit({
+				compilerOptions: {
+					// Force runes mode for the project, except for libraries. Can be removed in svelte 6.
+					runes: ({ filename }) =>
+						filename.split(/[/\\]/).includes('node_modules') ? undefined : true
+				},
+				// A single-page client: the Go server hands every unknown path to index.html.
+				adapter: adapter({ fallback: 'index.html' })
+			})
+		],
+		test: {
+			include: ['src/**/*.test.ts'],
+			environment: 'node'
+		}
+	};
 });
