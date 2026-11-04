@@ -78,6 +78,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   only benchmarks use `auth.DefaultParams()`.
 - Changing `DefaultParams` is safe: hashes carry their parameters, and logins rehash.
 
+## Library
+- `internal/library` turns audiometa files into store writes. Identity keys always go
+  through `MatchKey` (trim, collapse spaces, NFC, case fold); no punctuation stripping,
+  no splitting of names.
+- Raw tag names live only in `keys.go`'s candidate tables, verified per format against
+  real files written by audiometa. Add a key there, never inline.
+- audiometa reports tags as stored; display fallbacks (title from file name, sort name
+  from name, disc folders) are Kitsune's and live here.
+
 ## Operations
 - `cmd/kitsune-server` is the only place that reads the environment, signals or flags;
   `internal/server` takes everything through `server.Config`.
