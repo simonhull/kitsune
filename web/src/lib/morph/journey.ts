@@ -10,6 +10,7 @@ import {
 	type MotionToken,
 	type RouteName
 } from './choreography.ts';
+import { markClick } from './hud.svelte.ts';
 import { pick, recordOrigins, type Origins } from './pairs.ts';
 import { registry, type MorphEntry } from './registry.ts';
 
@@ -37,9 +38,11 @@ let visualTransition = false;
 export function watchInput(): () => void {
 	function onClick(event: MouseEvent): void {
 		lastClick = event.target;
+		markClick(performance.now());
 	}
 	function onPopState(event: PopStateEvent): void {
 		visualTransition = event.hasUAVisualTransition;
+		markClick(performance.now());
 	}
 	document.addEventListener('click', onClick, { capture: true });
 	window.addEventListener('popstate', onPopState, { capture: true });

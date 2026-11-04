@@ -12,31 +12,36 @@
 
 <header class="bar">
 	<nav aria-label="Main" class="nav" data-route={route}>
-		<a class="fox" href={resolve('/')} aria-label="Kitsune home" data-sveltekit-noscroll
+		<a class="fox" href={resolve('/')} aria-label="Kitsune home" data-sveltekit-reset="false"
 			><Icon name="fox" size={22} /></a
 		>
 		<a
 			class="item"
 			href={resolve('/')}
 			aria-current={route === 'home' ? 'page' : undefined}
-			data-sveltekit-noscroll>Home</a
+			data-sveltekit-reset="false">Home</a
 		>
 		<span class="item" aria-disabled="true" aria-current={route === 'album' ? 'page' : undefined}
 			>Albums</span
 		>
 		<span class="fold wide"><span class="item" aria-disabled="true">Artists</span></span>
-		<span class="fold wide home-only"><span class="item" aria-disabled="true">Playlists</span></span
-		>
 		<span class="fold wide home-only">
-			<span class="item health" aria-disabled="true">
-				Health
-				{#if healthIssues !== undefined}<span class="badge">{healthIssues}</span>{/if}
+			<span class="fold-in"><span class="item" aria-disabled="true">Playlists</span></span>
+		</span>
+		<span class="fold wide home-only">
+			<span class="fold-in">
+				<span class="item health" aria-disabled="true">
+					Health
+					{#if healthIssues !== undefined}<span class="badge">{healthIssues}</span>{/if}
+				</span>
 			</span>
 		</span>
 		<span class="search" aria-disabled="true" aria-label="Search">
 			<Icon name="search" size={16} />
 			<span class="fold home-only wide">
-				<span class="search-label">Search or jump to…<span class="key">⌘K</span></span>
+				<span class="fold-in">
+					<span class="search-label">Search or jump to…<span class="key">⌘K</span></span>
+				</span>
 			</span>
 		</span>
 	</nav>
@@ -65,6 +70,10 @@
 		box-shadow: var(--glass-shadow);
 		pointer-events: auto;
 		white-space: nowrap;
+		transition:
+			background var(--morph) var(--curve-morph),
+			border-color var(--morph) var(--curve-morph),
+			box-shadow var(--morph) var(--curve-morph);
 	}
 
 	.nav[data-route='album'] {
@@ -93,6 +102,9 @@
 		align-items: center;
 		font-size: 14px;
 		color: var(--text-secondary);
+		transition:
+			background var(--morph) var(--curve-morph),
+			color var(--morph) var(--curve-morph);
 	}
 
 	[data-route='album'] .item {
@@ -141,6 +153,9 @@
 		padding: 0 14px;
 		border-radius: var(--radius-pill);
 		background: rgb(255 255 255 / 6%);
+		transition:
+			background var(--morph) var(--curve-morph),
+			margin var(--morph) var(--curve-morph);
 		display: flex;
 		align-items: center;
 		color: var(--text-meta);
@@ -170,12 +185,44 @@
 		padding: 4px 10px;
 	}
 
+	/* The nav really narrows on Album: its width animates, it isn't a scaled picture. */
 	.fold {
-		display: flex;
+		display: grid;
+		grid-template-columns: 1fr;
+		overflow: hidden;
+		transition:
+			grid-template-columns var(--morph) var(--curve-morph),
+			opacity var(--morph-fast) var(--curve-morph),
+			margin var(--morph) var(--curve-morph);
+	}
+
+	/* Padding lives inside, so a closed fold really reaches zero. */
+	.fold-in {
+		min-width: 0;
+		overflow: hidden;
 	}
 
 	[data-route='album'] .home-only {
-		display: none;
+		grid-template-columns: 0fr;
+		opacity: 0;
+		margin-right: -4px;
+	}
+
+	[data-route='album'] .search .home-only {
+		margin-right: 0;
+	}
+
+	/* View transitions capture the final layout: nothing may still be moving at that moment. */
+	:global([data-morph-engine='vt']) .nav,
+	:global([data-morph-engine='vt']) .nav * {
+		transition: none;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.nav,
+		.nav * {
+			transition-duration: 120ms;
+		}
 	}
 
 	@media (max-width: 900px) {

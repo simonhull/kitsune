@@ -8,6 +8,7 @@ import {
 	type Pose
 } from '../choreography.ts';
 import type { Engine } from '../engine.ts';
+import { reportStart } from '../hud.svelte.ts';
 import { beginJourney, centerOf, landJourney, motionOf, type Journey } from '../journey.ts';
 import type { MorphEntry } from '../registry.ts';
 
@@ -19,11 +20,14 @@ export function viewTransitionName(id: string): string {
 	return `m-${id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 }
 
-/** Stacking, bottom to top. Everything above the opaque root must carry the shell with it. */
+/**
+ * Stacking, bottom to top. The root snapshot is opaque, so anything that moves sits above it,
+ * and the shell has to be named to stay above that: not to reshape, but to keep its place.
+ */
 const layers = {
 	stage: 1,
-	bloom: 2,
 	page: 3,
+	bloom: 4,
 	shell: 6,
 	title: 7,
 	cover: 8
@@ -229,7 +233,7 @@ function flightStyles(
 		const name = `m-arriving-${part}`;
 		names.set(element, name);
 		// Chromium keeps a snapshot's backdrop blur, at full strength even while it's invisible.
-		element?.setAttribute('data-morph-square', 'flat');
+		element?.setAttribute('data-morph-flat', '');
 		rules.push(layer(name, layers.page));
 		const pivot =
 			part === 'page' && element !== null
@@ -296,8 +300,9 @@ export function createVtEngine(): Engine {
 		names.clear();
 		style.remove();
 		closeBloom();
-		for (const element of document.querySelectorAll('[data-morph-square]')) {
+		for (const element of document.querySelectorAll('[data-morph-square], [data-morph-flat]')) {
 			element.removeAttribute('data-morph-square');
+			element.removeAttribute('data-morph-flat');
 		}
 	}
 
@@ -368,7 +373,7 @@ export function createVtEngine(): Engine {
 		});
 
 		current = transition;
-		transition.ready.catch(() => undefined);
+		transition.ready.then(reportStart).catch(() => undefined);
 		void transition.finished.finally(() => {
 			cleanUp(transition);
 		});

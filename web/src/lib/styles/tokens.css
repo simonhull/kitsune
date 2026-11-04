@@ -58,4 +58,5 @@
 	--morph-fast: 280ms;
 	--morph: 420ms;
 	--morph-slow: 600ms;
+	--curve-morph: ease-out;
 }

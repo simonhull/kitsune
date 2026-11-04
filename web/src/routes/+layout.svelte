@@ -6,12 +6,13 @@
 	import { onMount } from 'svelte';
 	import { onNavigate, preloadCode } from '$app/navigation';
 	import { page } from '$app/state';
-	import favicon from '#lib/assets/favicon.svg';
 	import { coverFor } from '#lib/cover/cover.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import { currentEngine } from '#lib/morph/engine.ts';
+	import { currentEngine, startEngines } from '#lib/morph/engine.ts';
+	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
 	import Backdrop from '#lib/shell/Backdrop.svelte';
+	import Bloom from '#lib/shell/Bloom.svelte';
 	import Nav from '#lib/shell/Nav.svelte';
 	import PlayerIsland from '#lib/shell/PlayerIsland.svelte';
 	import type { LayoutProps } from './$types';
@@ -23,17 +24,18 @@
 	const onAlbum = $derived(routeId === '/album/[id]');
 	const albumParam = $derived(page.params['id']);
 
-	// The stage keeps its last album so it has something to fade away.
-	let stageAlbum = $state<string | null>(null);
-	$effect(() => {
+	// The stage keeps its last album so it has something to fade away. It's derived, not an
+	// effect: the stage must exist the moment the route changes, for the morph to pick it up.
+	let lastStageAlbum: string | null = null;
+	const stageAlbum = $derived.by(() => {
 		const next = onAlbum ? albumParam : onNowPlaying ? library.playing?.album.id : undefined;
-		if (next !== undefined) {
-			stageAlbum = next;
-		}
+		lastStageAlbum = next ?? lastStageAlbum;
+		return lastStageAlbum;
 	});
 
 	const palette = $derived(stageAlbum === null ? null : coverFor(stageAlbum).palette);
 
+	startEngines();
 	onNavigate((navigation) => currentEngine().navigate(navigation));
 
 	onMount(() => {
@@ -44,10 +46,6 @@
 		return watchInput();
 	});
 </script>
-
-<svelte:head>
-	<link rel="icon" href={favicon} />
-</svelte:head>
 
 <div
 	class="shell"
@@ -61,10 +59,13 @@
 		<Nav route={onAlbum ? 'album' : 'home'} healthIssues={library.home?.health.issues} />
 	{/if}
 	<main>{@render children()}</main>
+	<div class="ghost-layer" aria-hidden="true"></div>
+	{#if stageAlbum !== null}<Bloom albumId={stageAlbum} />{/if}
 	{#if library.playing !== null}
 		<PlayerIsland playing={library.playing} expanded={onNowPlaying} />
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
+	{#if import.meta.env.DEV}<Hud />{/if}
 </div>
 
 <style>
@@ -84,6 +85,16 @@
 		z-index: 1;
 	}
 
+	/* Under the shell: what's left of the outgoing page. */
+	.ghost-layer {
+		position: fixed;
+		inset: 0;
+		z-index: 2;
+		overflow: clip;
+		pointer-events: none;
+	}
+
+	/* Over everything: what's in the air. */
 	.morph-layer {
 		position: fixed;
 		inset: 0;

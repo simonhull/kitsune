@@ -48,12 +48,24 @@ button {
 	outline-offset: 2px;
 }
 
+/* Pictures of a page: a clone must not replay what the original already played. */
+.ghost-layer *,
+.morph-layer * {
+	animation: none !important;
+	transition: none !important;
+}
+
+/* A shared element waiting for its flier to land. */
+[data-morph-hidden] {
+	visibility: hidden !important;
+}
+
 /* View transitions: while a cover flies, its group carries the corners and the shadow. */
-[data-morph-square=''] {
+[data-morph-square] {
 	border-radius: 0 !important;
 	box-shadow: none !important;
 }
 
-[data-morph-square='flat'] {
+[data-morph-flat] {
 	backdrop-filter: none !important;
 }

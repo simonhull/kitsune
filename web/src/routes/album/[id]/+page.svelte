@@ -27,7 +27,7 @@
 {#if library.failed(id)}
 	<div class="missing">
 		<h1>That album isn't in the library</h1>
-		<a href={resolve('/')} data-sveltekit-noscroll>Back to Home</a>
+		<a href={resolve('/')} data-sveltekit-reset="false">Back to Home</a>
 	</div>
 {:else}
 	<div class="album">

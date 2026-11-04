@@ -152,7 +152,7 @@ const homeToAlbum: Choreography = {
 		words: { from: { opacity: 0, y: 28 }, to: {}, delay: 200, motion: base },
 		panel: { from: { opacity: 0, y: 120 }, to: {}, delay: 140, motion: slow }
 	},
-	stage: { from: { opacity: 0, scale: 1.08 }, to: {}, delay: 160, motion: slow },
+	stage: { from: { opacity: 0, scale: 1.08 }, to: {}, delay: 120, motion: slow },
 	bloom: { direction: 'out', rest: 0.12, full: 2.6, peak: 0.95 }
 };
 

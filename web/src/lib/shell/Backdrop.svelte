@@ -20,12 +20,6 @@
 			<div class="fade"></div>
 		</div>
 		<div
-			class="bloom"
-			data-morph-bloom=""
-			style:--glow={palette.glow}
-			style:--field={palette.field}
-		></div>
-		<div
 			class="poster"
 			style:--field={palette.field}
 			style:--band={palette.band}
@@ -59,31 +53,6 @@
 			rgb(10 9 8 / 55%) 70%,
 			var(--ground) 100%
 		);
-	}
-
-	/* Light breaking out of the cover: soft by construction, so it can only scale and fade. */
-	.bloom {
-		--bloom-size: 100vmax;
-
-		position: fixed;
-		left: calc(50% - var(--bloom-size) / 2);
-		top: calc(50% - var(--bloom-size) / 2);
-		width: var(--bloom-size);
-		height: var(--bloom-size);
-		border-radius: 50%;
-		background: radial-gradient(
-			closest-side,
-			var(--glow) 0%,
-			color-mix(in srgb, var(--field) 80%, transparent) 42%,
-			transparent 100%
-		);
-		opacity: 0;
-		visibility: hidden;
-	}
-
-	:global(.bloom[data-morph-bloom='open']) {
-		opacity: 1;
-		visibility: visible;
 	}
 
 	.poster {
