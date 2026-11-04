@@ -7,6 +7,7 @@ package sqlcdb
 import (
 	"context"
 	"database/sql"
+	"fmt"
 )
 
 type DBTX interface {
@@ -20,12 +21,328 @@ func New(db DBTX) *Queries {
 	return &Queries{db: db}
 }
 
+func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
+	q := Queries{db: db}
+	var err error
+	if q.countUsersStmt, err = db.PrepareContext(ctx, countUsers); err != nil {
+		return nil, fmt.Errorf("error preparing query CountUsers: %w", err)
+	}
+	if q.createSessionStmt, err = db.PrepareContext(ctx, createSession); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateSession: %w", err)
+	}
+	if q.createUserStmt, err = db.PrepareContext(ctx, createUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateUser: %w", err)
+	}
+	if q.deleteExpiredSessionsStmt, err = db.PrepareContext(ctx, deleteExpiredSessions); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteExpiredSessions: %w", err)
+	}
+	if q.deleteMissingBeforeStmt, err = db.PrepareContext(ctx, deleteMissingBefore); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteMissingBefore: %w", err)
+	}
+	if q.deleteScanIssueStmt, err = db.PrepareContext(ctx, deleteScanIssue); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteScanIssue: %w", err)
+	}
+	if q.deleteSessionStmt, err = db.PrepareContext(ctx, deleteSession); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteSession: %w", err)
+	}
+	if q.deleteTrackArtistsStmt, err = db.PrepareContext(ctx, deleteTrackArtists); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTrackArtists: %w", err)
+	}
+	if q.deleteTrackTagsStmt, err = db.PrepareContext(ctx, deleteTrackTags); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTrackTags: %w", err)
+	}
+	if q.insertTrackStmt, err = db.PrepareContext(ctx, insertTrack); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertTrack: %w", err)
+	}
+	if q.insertTrackArtistStmt, err = db.PrepareContext(ctx, insertTrackArtist); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertTrackArtist: %w", err)
+	}
+	if q.insertTrackTagStmt, err = db.PrepareContext(ctx, insertTrackTag); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertTrackTag: %w", err)
+	}
+	if q.issueStatesStmt, err = db.PrepareContext(ctx, issueStates); err != nil {
+		return nil, fmt.Errorf("error preparing query IssueStates: %w", err)
+	}
+	if q.knownRootsStmt, err = db.PrepareContext(ctx, knownRoots); err != nil {
+		return nil, fmt.Errorf("error preparing query KnownRoots: %w", err)
+	}
+	if q.markMissingStmt, err = db.PrepareContext(ctx, markMissing); err != nil {
+		return nil, fmt.Errorf("error preparing query MarkMissing: %w", err)
+	}
+	if q.missingByDigestStmt, err = db.PrepareContext(ctx, missingByDigest); err != nil {
+		return nil, fmt.Errorf("error preparing query MissingByDigest: %w", err)
+	}
+	if q.pruneAlbumsStmt, err = db.PrepareContext(ctx, pruneAlbums); err != nil {
+		return nil, fmt.Errorf("error preparing query PruneAlbums: %w", err)
+	}
+	if q.pruneArtistsStmt, err = db.PrepareContext(ctx, pruneArtists); err != nil {
+		return nil, fmt.Errorf("error preparing query PruneArtists: %w", err)
+	}
+	if q.sessionByTokenHashStmt, err = db.PrepareContext(ctx, sessionByTokenHash); err != nil {
+		return nil, fmt.Errorf("error preparing query SessionByTokenHash: %w", err)
+	}
+	if q.setPasswordHashStmt, err = db.PrepareContext(ctx, setPasswordHash); err != nil {
+		return nil, fmt.Errorf("error preparing query SetPasswordHash: %w", err)
+	}
+	if q.touchSessionStmt, err = db.PrepareContext(ctx, touchSession); err != nil {
+		return nil, fmt.Errorf("error preparing query TouchSession: %w", err)
+	}
+	if q.trackStatesStmt, err = db.PrepareContext(ctx, trackStates); err != nil {
+		return nil, fmt.Errorf("error preparing query TrackStates: %w", err)
+	}
+	if q.updateTrackStmt, err = db.PrepareContext(ctx, updateTrack); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTrack: %w", err)
+	}
+	if q.upsertAlbumStmt, err = db.PrepareContext(ctx, upsertAlbum); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertAlbum: %w", err)
+	}
+	if q.upsertArtistStmt, err = db.PrepareContext(ctx, upsertArtist); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertArtist: %w", err)
+	}
+	if q.upsertScanIssueStmt, err = db.PrepareContext(ctx, upsertScanIssue); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertScanIssue: %w", err)
+	}
+	if q.userByNameStmt, err = db.PrepareContext(ctx, userByName); err != nil {
+		return nil, fmt.Errorf("error preparing query UserByName: %w", err)
+	}
+	return &q, nil
+}
+
+func (q *Queries) Close() error {
+	var err error
+	if q.countUsersStmt != nil {
+		if cerr := q.countUsersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countUsersStmt: %w", cerr)
+		}
+	}
+	if q.createSessionStmt != nil {
+		if cerr := q.createSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createSessionStmt: %w", cerr)
+		}
+	}
+	if q.createUserStmt != nil {
+		if cerr := q.createUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createUserStmt: %w", cerr)
+		}
+	}
+	if q.deleteExpiredSessionsStmt != nil {
+		if cerr := q.deleteExpiredSessionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteExpiredSessionsStmt: %w", cerr)
+		}
+	}
+	if q.deleteMissingBeforeStmt != nil {
+		if cerr := q.deleteMissingBeforeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteMissingBeforeStmt: %w", cerr)
+		}
+	}
+	if q.deleteScanIssueStmt != nil {
+		if cerr := q.deleteScanIssueStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteScanIssueStmt: %w", cerr)
+		}
+	}
+	if q.deleteSessionStmt != nil {
+		if cerr := q.deleteSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteSessionStmt: %w", cerr)
+		}
+	}
+	if q.deleteTrackArtistsStmt != nil {
+		if cerr := q.deleteTrackArtistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTrackArtistsStmt: %w", cerr)
+		}
+	}
+	if q.deleteTrackTagsStmt != nil {
+		if cerr := q.deleteTrackTagsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTrackTagsStmt: %w", cerr)
+		}
+	}
+	if q.insertTrackStmt != nil {
+		if cerr := q.insertTrackStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertTrackStmt: %w", cerr)
+		}
+	}
+	if q.insertTrackArtistStmt != nil {
+		if cerr := q.insertTrackArtistStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertTrackArtistStmt: %w", cerr)
+		}
+	}
+	if q.insertTrackTagStmt != nil {
+		if cerr := q.insertTrackTagStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertTrackTagStmt: %w", cerr)
+		}
+	}
+	if q.issueStatesStmt != nil {
+		if cerr := q.issueStatesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing issueStatesStmt: %w", cerr)
+		}
+	}
+	if q.knownRootsStmt != nil {
+		if cerr := q.knownRootsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing knownRootsStmt: %w", cerr)
+		}
+	}
+	if q.markMissingStmt != nil {
+		if cerr := q.markMissingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing markMissingStmt: %w", cerr)
+		}
+	}
+	if q.missingByDigestStmt != nil {
+		if cerr := q.missingByDigestStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing missingByDigestStmt: %w", cerr)
+		}
+	}
+	if q.pruneAlbumsStmt != nil {
+		if cerr := q.pruneAlbumsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing pruneAlbumsStmt: %w", cerr)
+		}
+	}
+	if q.pruneArtistsStmt != nil {
+		if cerr := q.pruneArtistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing pruneArtistsStmt: %w", cerr)
+		}
+	}
+	if q.sessionByTokenHashStmt != nil {
+		if cerr := q.sessionByTokenHashStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing sessionByTokenHashStmt: %w", cerr)
+		}
+	}
+	if q.setPasswordHashStmt != nil {
+		if cerr := q.setPasswordHashStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setPasswordHashStmt: %w", cerr)
+		}
+	}
+	if q.touchSessionStmt != nil {
+		if cerr := q.touchSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing touchSessionStmt: %w", cerr)
+		}
+	}
+	if q.trackStatesStmt != nil {
+		if cerr := q.trackStatesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing trackStatesStmt: %w", cerr)
+		}
+	}
+	if q.updateTrackStmt != nil {
+		if cerr := q.updateTrackStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTrackStmt: %w", cerr)
+		}
+	}
+	if q.upsertAlbumStmt != nil {
+		if cerr := q.upsertAlbumStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertAlbumStmt: %w", cerr)
+		}
+	}
+	if q.upsertArtistStmt != nil {
+		if cerr := q.upsertArtistStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertArtistStmt: %w", cerr)
+		}
+	}
+	if q.upsertScanIssueStmt != nil {
+		if cerr := q.upsertScanIssueStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertScanIssueStmt: %w", cerr)
+		}
+	}
+	if q.userByNameStmt != nil {
+		if cerr := q.userByNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing userByNameStmt: %w", cerr)
+		}
+	}
+	return err
+}
+
+func (q *Queries) exec(ctx context.Context, stmt *sql.Stmt, query string, args ...interface{}) (sql.Result, error) {
+	switch {
+	case stmt != nil && q.tx != nil:
+		return q.tx.StmtContext(ctx, stmt).ExecContext(ctx, args...)
+	case stmt != nil:
+		return stmt.ExecContext(ctx, args...)
+	default:
+		return q.db.ExecContext(ctx, query, args...)
+	}
+}
+
+func (q *Queries) query(ctx context.Context, stmt *sql.Stmt, query string, args ...interface{}) (*sql.Rows, error) {
+	switch {
+	case stmt != nil && q.tx != nil:
+		return q.tx.StmtContext(ctx, stmt).QueryContext(ctx, args...)
+	case stmt != nil:
+		return stmt.QueryContext(ctx, args...)
+	default:
+		return q.db.QueryContext(ctx, query, args...)
+	}
+}
+
+func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, args ...interface{}) *sql.Row {
+	switch {
+	case stmt != nil && q.tx != nil:
+		return q.tx.StmtContext(ctx, stmt).QueryRowContext(ctx, args...)
+	case stmt != nil:
+		return stmt.QueryRowContext(ctx, args...)
+	default:
+		return q.db.QueryRowContext(ctx, query, args...)
+	}
+}
+
 type Queries struct {
-	db DBTX
+	db                        DBTX
+	tx                        *sql.Tx
+	countUsersStmt            *sql.Stmt
+	createSessionStmt         *sql.Stmt
+	createUserStmt            *sql.Stmt
+	deleteExpiredSessionsStmt *sql.Stmt
+	deleteMissingBeforeStmt   *sql.Stmt
+	deleteScanIssueStmt       *sql.Stmt
+	deleteSessionStmt         *sql.Stmt
+	deleteTrackArtistsStmt    *sql.Stmt
+	deleteTrackTagsStmt       *sql.Stmt
+	insertTrackStmt           *sql.Stmt
+	insertTrackArtistStmt     *sql.Stmt
+	insertTrackTagStmt        *sql.Stmt
+	issueStatesStmt           *sql.Stmt
+	knownRootsStmt            *sql.Stmt
+	markMissingStmt           *sql.Stmt
+	missingByDigestStmt       *sql.Stmt
+	pruneAlbumsStmt           *sql.Stmt
+	pruneArtistsStmt          *sql.Stmt
+	sessionByTokenHashStmt    *sql.Stmt
+	setPasswordHashStmt       *sql.Stmt
+	touchSessionStmt          *sql.Stmt
+	trackStatesStmt           *sql.Stmt
+	updateTrackStmt           *sql.Stmt
+	upsertAlbumStmt           *sql.Stmt
+	upsertArtistStmt          *sql.Stmt
+	upsertScanIssueStmt       *sql.Stmt
+	userByNameStmt            *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db: tx,
+		db:                        tx,
+		tx:                        tx,
+		countUsersStmt:            q.countUsersStmt,
+		createSessionStmt:         q.createSessionStmt,
+		createUserStmt:            q.createUserStmt,
+		deleteExpiredSessionsStmt: q.deleteExpiredSessionsStmt,
+		deleteMissingBeforeStmt:   q.deleteMissingBeforeStmt,
+		deleteScanIssueStmt:       q.deleteScanIssueStmt,
+		deleteSessionStmt:         q.deleteSessionStmt,
+		deleteTrackArtistsStmt:    q.deleteTrackArtistsStmt,
+		deleteTrackTagsStmt:       q.deleteTrackTagsStmt,
+		insertTrackStmt:           q.insertTrackStmt,
+		insertTrackArtistStmt:     q.insertTrackArtistStmt,
+		insertTrackTagStmt:        q.insertTrackTagStmt,
+		issueStatesStmt:           q.issueStatesStmt,
+		knownRootsStmt:            q.knownRootsStmt,
+		markMissingStmt:           q.markMissingStmt,
+		missingByDigestStmt:       q.missingByDigestStmt,
+		pruneAlbumsStmt:           q.pruneAlbumsStmt,
+		pruneArtistsStmt:          q.pruneArtistsStmt,
+		sessionByTokenHashStmt:    q.sessionByTokenHashStmt,
+		setPasswordHashStmt:       q.setPasswordHashStmt,
+		touchSessionStmt:          q.touchSessionStmt,
+		trackStatesStmt:           q.trackStatesStmt,
+		updateTrackStmt:           q.updateTrackStmt,
+		upsertAlbumStmt:           q.upsertAlbumStmt,
+		upsertArtistStmt:          q.upsertArtistStmt,
+		upsertScanIssueStmt:       q.upsertScanIssueStmt,
+		userByNameStmt:            q.userByNameStmt,
 	}
 }

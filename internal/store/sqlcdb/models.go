@@ -4,6 +4,34 @@
 
 package sqlcdb
 
+type Album struct {
+	ID          int64
+	GroupKey    string
+	Name        string
+	SortName    string
+	Mbid        *string
+	Year        *int64
+	Compilation int64
+}
+
+type Artist struct {
+	ID       int64
+	MatchKey string
+	Name     string
+	SortName string
+	Mbid     *string
+}
+
+type ScanIssue struct {
+	Root    string
+	RelPath string
+	Kind    string
+	Message string
+	Size    int64
+	Mtime   int64
+	SeenAt  int64
+}
+
 type Session struct {
 	TokenHash []byte
 	UserID    int64
@@ -11,6 +39,62 @@ type Session struct {
 	LastSeen  int64
 	ExpiresAt int64
 	UserAgent string
+}
+
+type Track struct {
+	ID           int64
+	Ulid         string
+	Root         string
+	RelPath      string
+	Size         int64
+	Mtime        int64
+	AudioDigest  []byte
+	AlbumID      int64
+	Format       string
+	Codec        string
+	DurationMs   int64
+	SampleRate   *int64
+	BitDepth     *int64
+	Channels     *int64
+	Bitrate      *int64
+	Lossless     int64
+	Title        string
+	SortTitle    string
+	TrackNo      *int64
+	TrackTotal   *int64
+	DiscNo       *int64
+	DiscTotal    *int64
+	Year         *int64
+	OriginalYear *int64
+	Compilation  int64
+	RgTrackGain  *float64
+	RgTrackPeak  *float64
+	RgAlbumGain  *float64
+	RgAlbumPeak  *float64
+	ScanWarnings string
+	AddedAt      int64
+	MissingSince *int64
+}
+
+type TrackArtist struct {
+	TrackID  int64
+	Role     string
+	Ord      int64
+	ArtistID int64
+}
+
+type TrackTag struct {
+	TrackID int64
+	Key     string
+	Ord     int64
+	Value   string
+}
+
+type TracksFt struct {
+	Title       string
+	Artists     string
+	Album       string
+	AlbumArtist string
 }
 
 type User struct {
