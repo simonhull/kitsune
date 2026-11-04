@@ -461,6 +461,16 @@ func TestSurveyMissingRootIsSkipped(t *testing.T) {
 	}
 }
 
+// A root that can't be read is an outage even with nothing stored under it.
+func TestSurveyMissingRootWithNothingStoredIsSkipped(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 0)
+	l.use(filepath.Join(t.TempDir(), "unmounted"))
+	if sv := l.survey(Quick); sv.SkippedRoots != 1 {
+		t.Errorf("SkippedRoots = %d, want 1", sv.SkippedRoots)
+	}
+}
+
 func TestSurveyEmptyRootIsSkipped(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
