@@ -166,6 +166,7 @@ export type ChoreographyName =
 	| 'now-playing-to-album'
 	| 'login-to-home'
 	| 'login-to-album'
+	| 'deck-to-home'
 	| 'blend';
 
 interface SharedTravel {
@@ -192,6 +193,8 @@ export interface Choreography {
 	leaving: Part;
 	/** The incoming page's units, by role. */
 	arriving: Partial<Record<Role, Part>>;
+	/** The few units that arrive their own way whatever their role, by `data-morph-key`. */
+	arrivingByKey?: Readonly<Record<string, Part>>;
 	/** The two full-bleed stages behind the page. */
 	stages: Partial<Record<StageName, Part>>;
 	bloom: Bloom | null;
@@ -416,6 +419,35 @@ const loginToAlbum: Choreography = {
 	island: null,
 	islandForms
 };
+
+/** What fliers land on: already in place, and already there by the time the first one arrives. */
+const landingPad = fadeIn(40, base);
+
+/**
+ * The first scan ends and the deck deals out into Home: one journey with no navigation. The cards
+ * fly to the album tiles they are, on the short spring because a dozen must land in about 600 ms,
+ * and the rest of Home rises under them as it does through the door. The greeting never moves: it
+ * has been here all along. The fliers themselves aren't in here, because they're worked out from
+ * what's on screen.
+ */
+export const deckToHome: Choreography = {
+	name: 'deck-to-home',
+	motion: quick,
+	travel: null,
+	leaving: { from: {}, to: { opacity: 0, scale: 0.86 }, delay: 0, motion: exit },
+	arriving: { card: rise(48, 160, slow) },
+	arrivingByKey: { feature: landingPad, recent: landingPad },
+	stages: {},
+	bloom: null,
+	island: null,
+	islandForms
+};
+
+/** The deck's count line, once there's a Home to say it instead. */
+export const countFades = fadeOut(0, quick);
+
+/** A card riffling onto the pile: the same landing, in the time a deal can spare. */
+export const riffleDrop: Part = { ...drop, motion: exit };
 
 /** All of reduced motion: never a hard cut. */
 export const blend: Choreography = {

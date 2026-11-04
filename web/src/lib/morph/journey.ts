@@ -219,6 +219,31 @@ function inTheClear(element: HTMLElement): boolean {
 	return top >= clearTop && bottom <= clearBottom();
 }
 
+/** The most cards a deal sends out: a dozen is as many as can land in its time. */
+const mostDealt = 12;
+
+/** Reports whether a cover shows whole, not cut off by the unit it's in. */
+function shownWhole(element: HTMLElement): boolean {
+	const unit = element.closest('[data-morph-part]')?.getBoundingClientRect();
+	const { left, right } = element.getBoundingClientRect();
+	return unit !== undefined && left >= unit.left && right <= unit.right;
+}
+
+/**
+ * Finds the covers a deal lands on, in reading order: whatever Home shows clear of the nav and the
+ * island, one for each album. A card with no such place doesn't fly, and goes down with the pile.
+ */
+export function dealTargets(): Map<string, MorphEntry> {
+	const clear = registry
+		.list()
+		.filter(
+			({ element, kind, slot }) =>
+				kind === 'cover' && slot === 'card' && inTheClear(element) && shownWhole(element)
+		);
+	const ids = [...new Set(clear.map(({ id }) => id))].slice(0, mostDealt);
+	return pick(clear, { ids, slots: ['card'] });
+}
+
 /** Scrolls instantly, under the outgoing page, so a card isn't behind the nav or the island. */
 function bringIntoView(element: HTMLElement): void {
 	const { top, bottom } = element.getBoundingClientRect();

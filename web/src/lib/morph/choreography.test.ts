@@ -3,6 +3,8 @@ import { Channel, landsWithin } from './channel';
 import {
 	blend,
 	bloomStrength,
+	deckToHome,
+	drop,
 	choreographyFor,
 	linearEasing,
 	parseTime,
@@ -303,5 +305,23 @@ describe('parseTime', () => {
 	it('reads both CSS time units', () => {
 		expect(parseTime(' 420ms')).toBe(420);
 		expect(parseTime('0.6s')).toBe(600);
+	});
+});
+
+describe('the deal', () => {
+	it('leaves the greeting still, and lands the fliers on what is already in place', () => {
+		expect(deckToHome.arriving.intro).toBeUndefined();
+		expect(deckToHome.arrivingByKey?.['feature']?.from.y).toBeUndefined();
+		expect(deckToHome.arrivingByKey?.['recent']?.from.y).toBeUndefined();
+	});
+
+	it('rises the rest of Home as cards rise through the door', () => {
+		expect(deckToHome.arriving.card).toEqual(choreographyFor('login', 'home').arriving.card);
+	});
+
+	it('is only scale and opacity on the way down, and never overshoots', () => {
+		expect(deckToHome.leaving.to.y).toBeUndefined();
+		expect(deckToHome.leaving.motion.bounce).toBe(0);
+		expect(drop.motion.bounce).toBe(0);
 	});
 });

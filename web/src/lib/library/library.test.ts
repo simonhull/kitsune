@@ -347,6 +347,128 @@ describe('the deck', () => {
 		library.reset();
 	});
 
+	describe('at the end of the scan', () => {
+		async function finished(
+			dealer: (open: () => void) => Promise<void>
+		): Promise<{ scan: Scripted; library: Library }> {
+			const scan = new Scripted();
+			const library = new Library(scan.source(), { readyMemory: forgetful() });
+			await library.loadShell();
+			library.dealer = dealer;
+			scan.found = 4;
+			await vi.advanceTimersByTimeAsync(3001);
+			scan.done = true;
+			await vi.advanceTimersByTimeAsync(3001);
+			return { scan, library };
+		}
+
+		it('leaves mounting Home to the deck, which stays until the deal is over', async () => {
+			let finish = (): void => undefined;
+			let opened = false;
+			const { library } = await finished(
+				(open) =>
+					new Promise((resolve) => {
+						open();
+						opened = true;
+						finish = resolve;
+					})
+			);
+			expect(opened).toBe(true);
+			expect(library.deck).toBe(true);
+			expect(library.dealing).toBe('held');
+			expect(library.recent.length).toBeGreaterThan(0);
+			expect(library.playing?.album.id).toBe('album-3');
+			finish();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(library.deck).toBe(false);
+			expect(library.dealing).toBe('no');
+			expect(library.pile).toEqual([]);
+			library.reset();
+		});
+
+		it('does not cue anything before Home opens, so the island can form with it', async () => {
+			const scan = new Scripted();
+			const library = new Library(scan.source(), { readyMemory: forgetful() });
+			await library.loadShell();
+			const dealer = vi.fn((open: () => void) => {
+				expect(library.playing).toBeNull();
+				open();
+				expect(library.playing).not.toBeNull();
+				return Promise.resolve();
+			});
+			library.dealer = dealer;
+			scan.found = 4;
+			scan.done = true;
+			await vi.advanceTimersByTimeAsync(3001);
+			expect(dealer).toHaveBeenCalledOnce();
+			expect(library.down).toBe(false);
+			library.reset();
+		});
+
+		it('stops landing cards while the deal is on', async () => {
+			let pile: AlbumEntry[] = [];
+			const scan = new Scripted();
+			const library = new Library(scan.source(), { readyMemory: forgetful() });
+			await library.loadShell();
+			library.dealer = async (open) => {
+				open();
+				pile = library.pile;
+				await new Promise((resolve) => setTimeout(resolve, 20_000));
+				expect(library.pile).toBe(pile);
+			};
+			scan.found = 30;
+			await vi.advanceTimersByTimeAsync(3001);
+			scan.done = true;
+			await vi.advanceTimersByTimeAsync(24_000);
+			expect(library.deck).toBe(false);
+			library.reset();
+		});
+
+		it('never deals an empty library', async () => {
+			const dealer = vi.fn(() => Promise.resolve());
+			const scan = new Scripted();
+			const library = new Library(scan.source(), { readyMemory: forgetful() });
+			await library.loadShell();
+			library.dealer = dealer;
+			scan.done = true;
+			await vi.advanceTimersByTimeAsync(3001);
+			expect(dealer).not.toHaveBeenCalled();
+			expect(library.deck).toBe(false);
+			library.reset();
+		});
+	});
+
+	describe('a riffle', () => {
+		const card = (index: number): AlbumEntry => entry(100 + index);
+
+		it('lands a card on top, and makes room with the oldest it may lose', async () => {
+			const scan = new Scripted();
+			scan.found = 12;
+			const library = new Library(scan.source(), { readyMemory: forgetful() });
+			await library.loadShell();
+			await vi.advanceTimersByTimeAsync(1500);
+			expect(library.pile.length).toBe(pileSize);
+
+			library.riffle(card(0), new Set(['album-11', 'album-0']));
+			expect(ids(library).at(-1)).toBe('album-100');
+			expect(library.pile.length).toBe(pileSize);
+			expect(ids(library)).toContain('album-0');
+			expect(ids(library)).not.toContain('album-1');
+			library.reset();
+		});
+
+		it('never loses what it has been told to keep, even past a full pile', async () => {
+			const scan = new Scripted();
+			scan.found = 12;
+			const library = new Library(scan.source(), { readyMemory: forgetful() });
+			await library.loadShell();
+			await vi.advanceTimersByTimeAsync(1500);
+			library.riffle(card(0), new Set(ids(library)));
+			expect(library.pile.length).toBe(pileSize + 1);
+			library.reset();
+		});
+	});
+
 	describe('after a reset', () => {
 		it('drops a poll still in flight: no writes, and no next poll', async () => {
 			const scan = new Scripted();

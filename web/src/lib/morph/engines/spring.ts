@@ -278,8 +278,41 @@ function thaw(stage: HTMLElement): void {
 	}
 }
 
+/** One card of a deal: leaves `source` for `target`, `delay` milliseconds in. */
+export interface DealtCard {
+	source: MorphEntry;
+	target: MorphEntry;
+	delay: number;
+}
+
+/** Something that goes as a deal plays out, and stays gone until whoever owns it removes it. */
+export interface Departure {
+	element: HTMLElement;
+	part: Part;
+}
+
+/** What the engine does for the shell. */
+export interface Morphs {
+	/** What the one `onNavigate` calls. */
+	navigate: (navigation: OnNavigate) => void;
+	/**
+	 * Plays a journey with no navigation: Home is already mounted, under what's being dealt. Resolves
+	 * once it's all at rest, or at once when a navigation cuts it short.
+	 */
+	deal: (
+		choreography: Choreography,
+		cards: readonly DealtCard[],
+		departures: readonly Departure[]
+	) => Promise<void>;
+	/** Blends a picture of everything into whatever `change` leaves behind. */
+	blend: (change: () => Promise<void>) => Promise<void>;
+}
+
+/** A deal has no route to name it by, and no ghost must ever answer to this. */
+const dealPath = 'deal';
+
 /** The spring engine: real elements, a persistent overlay, and physics that can turn around. */
-export function createSpringEngine(): (navigation: OnNavigate) => void {
+export function createSpringEngine(): Morphs {
 	const fliers = new Map<string, Flier>();
 	const landing = new Map<HTMLElement, Layer>();
 	const ghosts: Ghost[] = [];
@@ -291,6 +324,11 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 	let frame = 0;
 	let lastFrame = 0;
 	let startReported = true;
+	/** A deal's cards still on the pile, each counting down to its turn. */
+	let pendingCards: (DealtCard & { wait: number })[] = [];
+	/** Unlike `landing` these are never handed back: their elements leave with the deck. */
+	let departing: Layer[] = [];
+	let dealDone: (() => void) | null = null;
 
 	// The moment a shared element mounts, before it can paint: this is what stops a flash.
 	registry.subscribe((entry) => {
@@ -432,7 +470,9 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		if (main === null) {
 			return;
 		}
-		const { arriving, motion } = journey.choreography;
+		const { arriving, arrivingByKey, motion } = journey.choreography;
+		const partOf = (unit: HTMLElement): Part | undefined =>
+			arrivingByKey?.[unit.dataset['morphKey'] ?? ''] ?? arriving[roleOf(unit)];
 		const units = unitsNearFold(main);
 		const cover = [...targets.values()].find((entry) => entry.kind === 'cover');
 		const center = cover === undefined ? null : centerOf(cover.element);
@@ -462,10 +502,8 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			return;
 		}
 
-		const moving = units.filter(
-			(unit) => arriving[roleOf(unit)] !== undefined && !flying.has(unit)
-		);
-		const wave = shapeWave(moving, (unit) => arriving[roleOf(unit)] as Part, center);
+		const moving = units.filter((unit) => partOf(unit) !== undefined && !flying.has(unit));
+		const wave = shapeWave(moving, (unit) => partOf(unit) as Part, center);
 		for (const [index, unit] of moving.entries()) {
 			const shaped = wave.at(index);
 			if (shaped === undefined) {
@@ -647,6 +685,8 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 			reportStart();
 		}
 
+		dealCards(seconds);
+
 		// All reads, then all writes: scrolling mid-flight still lands, without layout thrash.
 		island?.measure();
 		const carry = island?.offset ?? { x: 0, y: 0 };
@@ -656,7 +696,8 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		const layers = [
 			...landing.values(),
 			...ghosts.flatMap((ghost) => ghost.layers),
-			...stages.values()
+			...stages.values(),
+			...departing
 		];
 		for (const layer of layers) {
 			layer.step(seconds);
@@ -683,11 +724,78 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		frame = active() ? requestAnimationFrame(tick) : 0;
 		if (frame === 0) {
 			markMoving(false);
+			endDeal();
 		}
 	}
 
 	function active(): boolean {
-		return fliers.size + landing.size + ghosts.length + stages.size > 0 || island !== null;
+		return (
+			fliers.size + landing.size + ghosts.length + stages.size + pendingCards.length > 0 ||
+			departing.some((layer) => !layer.settled) ||
+			island !== null
+		);
+	}
+
+	/** Sends off every card whose turn has come. */
+	function dealCards(seconds: number): void {
+		pendingCards = pendingCards.filter((card) => {
+			card.wait -= seconds;
+			if (card.wait > 0) {
+				return true;
+			}
+			launchCard(card);
+			return false;
+		});
+	}
+
+	function launchCard({ source, target }: DealtCard): void {
+		const air = surfaceFor('.morph-layer');
+		if (air === null || !source.element.isConnected || !target.element.isConnected) {
+			show(target.element);
+			return;
+		}
+		const flier = createFlier(capture(source), target);
+		hide(source.element);
+		fliers.set(source.id, flier);
+		// The one dealt first stays on top, as it was on the pile.
+		air.prepend(flier.element);
+	}
+
+	/** Lets go of a deal, finished or not: nothing still waiting may stay hidden, or go on waiting. */
+	function endDeal(): void {
+		for (const { target } of pendingCards) {
+			show(target.element);
+		}
+		pendingCards = [];
+		departing = [];
+		dealDone?.();
+		dealDone = null;
+	}
+
+	function deal(
+		choreography: Choreography,
+		cards: readonly DealtCard[],
+		departures: readonly Departure[]
+	): Promise<void> {
+		for (const element of document.querySelectorAll(`[${hiddenAttribute}]`)) {
+			show(element);
+		}
+		const targets = new Map(cards.map(({ source, target }) => [source.id, target]));
+		for (const { element } of targets.values()) {
+			hide(element);
+		}
+		arrive({ choreography, ids: [...targets.keys()], sources: new Map() }, dealPath, targets);
+		if (choreography.islandForms !== undefined) {
+			formIsland(choreography.islandForms);
+		}
+		departing = departures.map(({ element, part }) => new Layer(element, part));
+		pendingCards = cards.map((card) => ({ ...card, wait: card.delay / 1000 }));
+		flight = springParams(motionOf(choreography.motion));
+		markMoving(true);
+		run();
+		return new Promise((resolve) => {
+			dealDone = resolve;
+		});
 	}
 
 	/** Lets go of whatever has come to rest. */
@@ -729,6 +837,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 
 	/** Puts everything down at once: for a blend, or a navigation that fell through. */
 	function abandon(): void {
+		endDeal();
 		for (const [id, flier] of fliers) {
 			land(id, flier);
 		}
@@ -755,6 +864,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 
 	async function fly(journey: Journey, navigation: OnNavigate): Promise<void> {
 		const { choreography, ids, sources } = journey;
+		endDeal();
 		markMoving(true);
 		const fromPath = navigation.from?.url.pathname ?? '';
 		const toPath = navigation.to?.url.pathname ?? '';
@@ -837,7 +947,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 	}
 
 	/** Blends a picture of everything into the new page, at final positions. */
-	async function blendTo(navigation: OnNavigate): Promise<void> {
+	async function blendTo(changed: Promise<unknown>): Promise<void> {
 		abandon();
 		const shell = surfaceFor('.shell');
 		const main = surfaceFor('main');
@@ -857,7 +967,7 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		}
 		air.append(picture);
 		reportStart();
-		await navigation.complete.catch(() => undefined);
+		await changed.catch(() => undefined);
 		const fade = picture.animate(
 			{ opacity: [1, 0] },
 			{ duration: blendDuration, easing: 'linear' }
@@ -869,11 +979,15 @@ export function createSpringEngine(): (navigation: OnNavigate) => void {
 		}
 	}
 
-	return (navigation) => {
+	function navigate(navigation: OnNavigate): void {
 		const journey = beginJourney(navigation);
 		if (journey === null) {
 			return;
 		}
-		void (journey.choreography.travel === null ? blendTo(navigation) : fly(journey, navigation));
-	};
+		void (journey.choreography.travel === null
+			? blendTo(navigation.complete)
+			: fly(journey, navigation));
+	}
+
+	return { navigate, deal, blend: (change) => blendTo(change()) };
 }

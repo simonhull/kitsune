@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { dealInterval, expectedGap, openingFor, queueCap, restOf, seedGapMs, wobble } from './deck';
+import {
+	dealInterval,
+	expectedGap,
+	openingFor,
+	queueCap,
+	restOf,
+	seedGapMs,
+	shrinkingDelays,
+	wobble
+} from './deck';
 
 describe('dealInterval', () => {
 	it('spreads a burst over the gap, within a quarter either side', () => {
@@ -54,6 +63,31 @@ describe('restOf', () => {
 	it('gives the same album the same place', () => {
 		expect(restOf('album-1')).toBe(restOf('album-1'));
 		expect(restOf('album-1')).not.toBe(restOf('album-2'));
+	});
+});
+
+describe('shrinkingDelays', () => {
+	const ids = Array.from({ length: 12 }, (_, index) => `album-${String(index)}`);
+
+	it('starts at once, and every step is shorter than the last', () => {
+		const delays = shrinkingDelays(ids, 30);
+		expect(delays.at(0)).toBe(0);
+		expect(delays.at(1)).toBe(30);
+		const steps = delays.slice(1).map((delay, index) => delay - (delays.at(index) ?? 0));
+		for (const [index, step] of steps.slice(1).entries()) {
+			expect(step).toBeLessThan(steps.at(index) ?? 0);
+		}
+	});
+
+	it('is not uniform: the steps shrink by different amounts', () => {
+		const delays = shrinkingDelays(ids, 30);
+		const steps = delays.slice(1).map((delay, index) => delay - (delays.at(index) ?? 0));
+		const ratios = steps.slice(1).map((step, index) => step / (steps.at(index) ?? 1));
+		expect(new Set(ratios.map((ratio) => ratio.toFixed(3))).size).toBeGreaterThan(3);
+	});
+
+	it('leaves a dozen cards time to land by about 600 ms', () => {
+		expect(shrinkingDelays(ids, 30).at(-1)).toBeLessThanOrEqual(220);
 	});
 });
 

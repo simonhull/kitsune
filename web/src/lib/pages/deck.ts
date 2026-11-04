@@ -31,6 +31,21 @@ export function restOf(id: string): string {
 	return `translate(${x}px, ${y}px) rotate(${(tiltDegrees * wobble(id, 'tilt')).toFixed(2)}deg)`;
 }
 
+/**
+ * Spaces a run of cards, returning when each one goes, from 0. Every step is shorter than the one
+ * before by its own amount: the run gathers pace, and never ticks.
+ */
+export function shrinkingDelays(ids: readonly string[], firstStepMs: number): number[] {
+	let at = 0;
+	let step = firstStepMs;
+	return ids.map((id) => {
+		const delay = at;
+		at += step;
+		step *= 0.875 + 0.075 * wobble(id, 'step');
+		return delay;
+	});
+}
+
 /** Folds one measured gap between bursts into the expected one. */
 export function expectedGap(gapMs: number, measuredMs: number): number {
 	return gapMs + (measuredMs - gapMs) * gapWeight;

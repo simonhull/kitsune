@@ -99,6 +99,13 @@ export class Library {
 	deck = $state(false);
 	/** The covers on the deck, the top one last. */
 	pile = $state.raw<AlbumEntry[]>([]);
+	/** How far the deck has got into Home: mounted under it and held back, then dealt to. */
+	dealing = $state<'no' | 'held' | 'dealt'>('no');
+	/**
+	 * Set by a deck on screen: plays the end of the scan, calling `open` to mount Home. With nobody
+	 * there to play it, the moment has been missed, and Home is simply there.
+	 */
+	dealer: ((open: () => void) => Promise<void>) | null = null;
 	playing = $state.raw<NowPlaying | null>(null);
 	/** Sends the app to the door. Set by the shell once it can navigate. */
 	onExpired: (() => Promise<void>) | null = null;
@@ -244,11 +251,24 @@ export class Library {
 			this.albums = first.albums;
 			this.#cursor = first.nextCursor;
 			this.hasMoreAlbums = first.nextCursor !== undefined;
-			await this.#cueOpening(leavingDeck);
-			this.facts = facts;
-			this.down = false;
-			this.deck = false;
-			this.pile = [];
+			const cue = await this.#openingCue(leavingDeck);
+			if (epoch !== this.#epoch) {
+				return;
+			}
+			const open = (): void => {
+				if (cue !== null) {
+					this.#cue(cue);
+				}
+				this.facts = facts;
+				this.down = false;
+				this.dealing = leavingDeck ? 'held' : 'no';
+			};
+			if (leavingDeck && facts.albums > 0 && this.dealer !== null) {
+				await this.dealer(open);
+			} else {
+				open();
+			}
+			this.leaveDeck();
 			if (facts.albums === 0) {
 				this.#retryLater(() => this.#pollForAlbums());
 			}
@@ -345,6 +365,7 @@ export class Library {
 			for (const { id } of newestFirst) {
 				this.#seen.add(id);
 			}
+			void this.#checkCovers();
 			return;
 		}
 		const fresh = newestFirst.filter(({ id }) => !this.#seen.has(id));
@@ -361,6 +382,12 @@ export class Library {
 		}
 	}
 
+	/** Gives a pile that went straight on, with no landing, the generated covers it turns out to need. */
+	async #checkCovers(): Promise<void> {
+		const cards = await this.cardsFor(this.pile);
+		this.pile = this.pile.map((entry) => cards.find(({ id }) => id === entry.id) ?? entry);
+	}
+
 	/** A burst has landed: it re-measures the gap, and the queue is spread over that from here. */
 	#markBurst(): void {
 		const now = performance.now();
@@ -371,6 +398,25 @@ export class Library {
 		this.#burstQueue = this.#queue.length;
 	}
 
+	/** Takes the deck away, leaving Home. */
+	leaveDeck(): void {
+		this.deck = false;
+		this.dealing = 'no';
+		this.pile = [];
+	}
+
+	/** Gets these cards ready to land, together: what a riffle waits for is the slowest one. */
+	cardsFor(entries: readonly AlbumEntry[]): Promise<AlbumEntry[]> {
+		return Promise.all(entries.map(cardFor));
+	}
+
+	/** Lands a card now, in the riffle before a deal. Whatever's in `keep` stays on the pile. */
+	riffle(card: AlbumEntry, keep: ReadonlySet<string>): void {
+		const oldest = this.pile.find(({ id }) => !keep.has(id));
+		const room = this.pile.length < pileSize || oldest === undefined;
+		this.pile = [...this.pile.filter((entry) => room || entry !== oldest), card];
+	}
+
 	/** Lands the next card after `waitMs`, its cover decoding meanwhile, and lines up the one after. */
 	#dealCard(waitMs: number): void {
 		const next = this.#queue.shift();
@@ -378,15 +424,16 @@ export class Library {
 			this.#nextCard = undefined;
 			return;
 		}
-		const epoch = this.#epoch;
 		const card = cardFor(next);
-		this.#nextCard = setTimeout(() => {
+		const timer = setTimeout(() => {
 			void card.then((ready) => {
-				if (epoch === this.#epoch && this.deck) {
+				// A card still decoding when the following stopped has missed its turn.
+				if (this.#nextCard === timer) {
 					this.#land(ready);
 				}
 			});
 		}, waitMs);
+		this.#nextCard = timer;
 	}
 
 	#land(card: AlbumEntry): void {
@@ -413,17 +460,19 @@ export class Library {
 	}
 
 	/**
-	 * Cues something for the island's first frame, without holding up the page if it can't. Leaving
-	 * the deck it cues again what's already cued, because that was read part way through the scan.
+	 * Finds what to cue for the island's first frame, without holding up the page if it can't, or null
+	 * to leave the cue as it is. It only reads: the cue is what makes the island appear, and that's
+	 * for whoever opens Home. Leaving the deck it asks again for what's already cued, because that
+	 * was read part way through the scan.
 	 */
-	async #cueOpening(again: boolean): Promise<void> {
+	async #openingCue(again: boolean): Promise<Album | undefined | null> {
 		const cued = again ? this.playing?.album.id : undefined;
 		const id = this.#pinnedAlbumId ?? cued ?? this.recent.at(0)?.id;
 		if ((this.playing !== null && !again) || id === undefined) {
-			return;
+			return null;
 		}
 		await this.loadAlbum(id);
-		this.#cue(this.#albums.get(id));
+		return this.#albums.get(id);
 	}
 
 	#cue(album: Album | undefined): void {
@@ -511,8 +560,7 @@ export class Library {
 		this.albums = [];
 		this.hasMoreAlbums = false;
 		this.down = false;
-		this.deck = false;
-		this.pile = [];
+		this.leaveDeck();
 		this.playing = null;
 		this.#cursor = undefined;
 		this.#session = Promise.resolve('signed-out');

@@ -1,10 +1,12 @@
-import type { OnNavigate } from '$app/navigation';
 import { linearEasing } from './choreography.ts';
-import { createSpringEngine } from './engines/spring.ts';
+import { createSpringEngine, type Morphs } from './engines/spring.ts';
 import { motionOf } from './journey.ts';
 
-/** Starts the morphs, and returns what the one `onNavigate` calls. */
-export function startMorphs(): (navigation: OnNavigate) => void {
+/** Where a page below the shell finds the engine, through Svelte's context. */
+export const morphsKey = Symbol('morphs');
+
+/** Starts the morphs. */
+export function startMorphs(): Morphs {
 	// The shell's own small changes ride the same curve as the morphs around them.
 	document.documentElement.style.setProperty(
 		'--curve-morph',
