@@ -19,6 +19,7 @@ const (
 	minAccentLum   = 0.25 // ...and its lightness range.
 	maxAccentLum   = 0.80
 	minAccentFrac  = 50  // An accent needs at least 1/50 (2%) of the pixels.
+	hueBins        = 12  // Accent candidates: one bin per 30 degrees of hue.
 	minContrast    = 4.5 // WCAG AA for text on the ground.
 	lumStep        = 0.005
 	fallbackAccent = "#f28c28" // The fox.
@@ -60,6 +61,14 @@ type bucket struct {
 	r, g, b int // Channel sums.
 }
 
+// add counts one pixel.
+func (b *bucket) add(red, green, blue int) {
+	b.n++
+	b.r += red
+	b.g += green
+	b.b += blue
+}
+
 func (b *bucket) mean() rgb {
 	//nolint:gosec // A mean of bytes is a byte.
 	return rgb{uint8(b.r / b.n), uint8(b.g / b.n), uint8(b.b / b.n)}
@@ -80,6 +89,7 @@ func colorsOf(encoded []byte) (palette, error) {
 		return palette{}, fmt.Errorf("decode: %w", err)
 	}
 	var buckets [bucketCount]bucket
+	var hues [hueBins]bucket
 	bounds := img.Bounds()
 	total := 0
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
@@ -87,37 +97,45 @@ func colorsOf(encoded []byte) (palette, error) {
 			r, g, b, _ := img.At(x, y).RGBA()
 			r8, g8, b8 := int(r>>channelBits), int(g>>channelBits), int(b>>channelBits)
 			k := (r8>>bucketShift)<<(bucketBits+bucketBits) | (g8>>bucketShift)<<bucketBits | b8>>bucketShift
-			buckets[k].n++
-			buckets[k].r += r8
-			buckets[k].g += g8
-			buckets[k].b += b8
+			buckets[k].add(r8, g8, b8)
+			//nolint:gosec // Each channel is a byte: it was shifted down from 16 bits.
+			if v := toHSL(rgb{uint8(r8), uint8(g8), uint8(b8)}); vivid(v) {
+				hues[hueBin(v)].add(r8, g8, b8)
+			}
 			total++
 		}
 	}
-	return palette{accent: pickAccent(&buckets, total), ground: pickGround(&buckets)}, nil
+	return palette{accent: pickAccent(&hues, total), ground: pickGround(&buckets)}, nil
 }
 
-// pickAccent is the largest vivid bucket holding enough of the image. Ties go
-// to the lowest key.
-func pickAccent(buckets *[bucketCount]bucket, total int) string {
+// vivid reports whether a pixel is colorful enough to be part of an accent.
+func vivid(v hsl) bool {
+	return v.s >= minAccentSat && v.l >= minAccentLum && v.l <= maxAccentLum
+}
+
+// hueBin returns the bin of a hue. A cover's color is spread over many shades,
+// so an accent is found by hue: exact-color cells split one red across dozens.
+func hueBin(v hsl) int {
+	return int(v.h/(hueTurn/hueBins)) % hueBins
+}
+
+// pickAccent is the mean color of the largest hue bin holding enough of the
+// image. Ties go to the lowest hue.
+func pickAccent(hues *[hueBins]bucket, total int) string {
 	best := -1
-	for k := range buckets {
-		bk := &buckets[k]
-		if bk.n == 0 || bk.n*minAccentFrac < total {
+	for k := range hues {
+		bin := &hues[k]
+		if bin.n == 0 || bin.n*minAccentFrac < total {
 			continue
 		}
-		c := toHSL(bk.mean())
-		if c.s < minAccentSat || c.l < minAccentLum || c.l > maxAccentLum {
-			continue
-		}
-		if best < 0 || bk.n > buckets[best].n {
+		if best < 0 || bin.n > hues[best].n {
 			best = k
 		}
 	}
 	if best < 0 {
 		return fallbackAccent
 	}
-	return buckets[best].mean().String()
+	return hues[best].mean().String()
 }
 
 // pickGround is the largest bucket, darkened until text reads on it. Ties go

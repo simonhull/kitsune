@@ -599,6 +599,39 @@ func TestColors(t *testing.T) {
 	}
 }
 
+// TestAccentGathersShades covers the common real cover: one color spread over
+// many shades, none of which alone reaches 2% of the pixels.
+func TestAccentGathersShades(t *testing.T) {
+	t.Parallel()
+	img := solid(400, 400, color.RGBA{0x78, 0x78, 0x88, 0xFF})
+	for x := range 160 { // 40% of the image, a band of reds from dark to bright.
+		shade := color.RGBA{uint8(0x70 + x), 0x20, 0x18, 0xFF}
+		draw.Draw(img, image.Rect(x, 0, x+1, 400), image.NewUniform(shade), image.Point{}, draw.Src)
+	}
+	got, err := artwork.NewCache(t.TempDir()).Put(t.Context(), encodePNG(t, img))
+	if err != nil {
+		t.Fatal(err)
+	}
+	accent := parseHex(t, got.Accent)
+	if got.Accent == "#f28c28" || accent[0] < 2*accent[1] || accent[0] < 2*accent[2] {
+		t.Errorf("accent %s, want the mean of the reds", got.Accent)
+	}
+}
+
+// TestAccentTakesTheLargerHue checks that hue bins compete by size, and that a
+// vivid area under 2% loses however saturated it is.
+func TestAccentTakesTheLargerHue(t *testing.T) {
+	t.Parallel()
+	img := solid(400, 400, color.RGBA{0x78, 0x78, 0x88, 0xFF})
+	draw.Draw(img, image.Rect(0, 0, 400, 40), image.NewUniform(color.RGBA{0x28, 0x48, 0xD8, 0xFF}), image.Point{}, draw.Src)   // Blue, 10%.
+	draw.Draw(img, image.Rect(0, 40, 400, 160), image.NewUniform(color.RGBA{0x28, 0xC8, 0x48, 0xFF}), image.Point{}, draw.Src) // Green, 30%.
+	got, err := artwork.NewCache(t.TempDir()).Put(t.Context(), encodePNG(t, img))
+	if err != nil {
+		t.Fatal(err)
+	}
+	near(t, "accent", parseHex(t, got.Accent), [3]int{0x28, 0xC8, 0x48}, 6)
+}
+
 func TestGroundKeepsHueOfLightCover(t *testing.T) {
 	t.Parallel()
 	img, err := artwork.NewCache(t.TempDir()).Put(t.Context(), encodePNG(t, solid(300, 300, color.RGBA{0xE8, 0xD8, 0x78, 0xFF})))
