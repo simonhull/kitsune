@@ -67,6 +67,22 @@ path only, never the query. `GET /api/v1/healthz` reports that the process is up
 `GET /api/v1/readyz` that it is ready to serve. On SIGINT or SIGTERM the server stops accepting
 connections and drains in-flight requests for up to 8 seconds; a second signal quits at once.
 
+### Browsing the library
+
+Every route is under `/api/v1` and, except login, needs a session. `api/openapi.yaml` is the contract.
+
+- `GET /albums` lists albums that have a live track, a page at a time: `sort=added` (the default,
+  newest first) or `sort=name` (ignoring case), `limit` 1 to 200 (default 60), and `cursor`, the
+  previous page's `nextCursor`. Paging is by keyset, so albums added between pages never repeat or
+  skip one. A cursor belongs to the sort that issued it; a bad one is a 400. Each entry carries what
+  a page transition needs: title, artist, track count and the cover's hash and colors.
+- `GET /albums/{id}` returns an album with its tracks, in disc and track order (an unset disc counts
+  as disc 1), its total duration and its formats.
+- `GET /library` counts live albums and tracks, their duration, the configured roots and the files
+  the scanner could not read.
+
+An album with no live track is left out everywhere.
+
 ### Behind a reverse proxy
 
 - Set `base_url` to the public URL, such as `https://example.com/music`, and

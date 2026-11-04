@@ -49,6 +49,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `X-Kitsune-Request: 1`. Handlers read the caller with `currentUser`.
 - Problem `type`s come from the status (`urn:kitsune:problem:<kind>`); write problems only
   through `writeProblem`.
+- The whole API is served under `/api/v1` (`servers` in the contract; the paths in it and in the
+  route table don't carry the prefix). `internal/server` strips it after the base path.
+- Browse lists page by keyset (`GET /albums`: `sort` `added` or `name`, opaque `cursor`), never
+  `OFFSET`. The two sorts are fixed sqlc queries, one per index, with identical SELECT lists; they are
+  not built dynamically, which supersedes the dynamic-sorts rule in the Store section for these two.
+  This also supersedes the spec's `next_cursor`, limit 500 and album ETag: the API says `nextCursor`,
+  caps `limit` at 200 and sends no album ETag.
 - Responses carry `api` types built field by field (`toAPIUser`); never marshal a
   `store` type, so a new store column can't leak.
 - Nothing the server writes (bodies, headers, logs) contains a password or token, except
@@ -63,8 +70,12 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Fixed queries live in `internal/store/queries/*.sql` and are generated into
   `internal/store/sqlcdb` (committed, never edited) by `mise run generate`. That builds
   sqlc cgo-free from `tools/go.mod`; never use the release binary, which links C.
-- Dynamic queries (browse filters and sorts) are built in Go over allow-listed columns,
+- Dynamic queries (browse filters; the album list's two sorts are fixed queries, see API) are built in Go over allow-listed columns,
   with bound parameters only. Never interpolate request input into SQL.
+- Albums have a public ULID and a display `artist`. Their `sort_name` column is `COLLATE NOCASE`:
+  the collation must be on the column, because one on a row value never seeks. `LiveTrackFacts` uses
+  `INDEXED BY tracks_live`, since a partial index's WHERE column doesn't count as covered; a test
+  fails if the index is renamed.
 - Library writes go through `WriteBatch`, one transaction per batch. The store never
   normalizes names or decides identity: callers pass match keys, group keys and ULIDs.
 - FTS rows are written in the same transaction as their track and through `foldSearch`;
