@@ -1,4 +1,4 @@
-import { Channel } from '../channel.ts';
+import { Channel, landsWithin } from '../channel.ts';
 import { springParams, type SpringParams } from '../choreography.ts';
 import type { MorphEntry } from '../registry.ts';
 import {
@@ -263,10 +263,10 @@ export class CoverFlier implements Flier {
 
 	get settled(): boolean {
 		return (
-			this.#x.settled(0.4) &&
-			this.#y.settled(0.4) &&
-			this.#width.settled(0.4) &&
-			this.#rotation.settled(0.05)
+			this.#x.settled(landsWithin) &&
+			this.#y.settled(landsWithin) &&
+			this.#width.settled(landsWithin) &&
+			this.#rotation.settled(0.2)
 		);
 	}
 }
@@ -379,7 +379,11 @@ export class BarFlier implements Flier {
 	}
 
 	get settled(): boolean {
-		return this.#along.settled(0.004) && this.#left.settled(0.4) && this.#width.settled(0.4);
+		return (
+			this.#along.settled(0.01) &&
+			this.#left.settled(landsWithin) &&
+			this.#width.settled(landsWithin)
+		);
 	}
 }
 
@@ -505,9 +509,9 @@ export class TitleFlier implements Flier {
 
 	get settled(): boolean {
 		return (
-			this.#left.settled(0.4) &&
-			this.#baseline.settled(0.4) &&
-			this.#fontSize.settled(0.15) &&
+			this.#left.settled(landsWithin) &&
+			this.#baseline.settled(landsWithin) &&
+			this.#fontSize.settled(landsWithin / 2) &&
 			this.#dissolve.settled(0.02)
 		);
 	}

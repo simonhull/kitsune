@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Channel } from './channel';
+import { Channel, landsWithin } from './channel';
 import {
 	blend,
 	bloomStrength,
@@ -189,6 +189,33 @@ describe('ripple', () => {
 
 	it('adds no spread on the way back: an entrance must not queue', () => {
 		expect(choreographyFor('album', 'home').arriving.card?.ripple?.spread).toBe(0);
+	});
+});
+
+describe('landing', () => {
+	function framesToLand(tolerance: number): number {
+		const params = springParams(motion);
+		const channel = new Channel(0, 900);
+		let frames = 0;
+		while (!channel.settled(tolerance) && frames < 600) {
+			channel.step(params, 1 / 60);
+			frames += 1;
+		}
+		return frames;
+	}
+
+	it('stops at about a pixel, well before the spring has finished creeping', () => {
+		expect(landsWithin).toBe(1);
+		expect(framesToLand(0.4)).toBeGreaterThan(framesToLand(landsWithin));
+	});
+
+	it('lands within a pixel of the target', () => {
+		const params = springParams(motion);
+		const channel = new Channel(0, 900);
+		while (!channel.settled(landsWithin)) {
+			channel.step(params, 1 / 60);
+		}
+		expect(Math.abs(channel.value - 900)).toBeLessThan(landsWithin);
 	});
 });
 

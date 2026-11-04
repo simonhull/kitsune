@@ -1,4 +1,4 @@
-import { Channel } from '../channel.ts';
+import { Channel, landsWithin } from '../channel.ts';
 import { springParams, type Part, type Pose, type SpringParams } from '../choreography.ts';
 import { motionOf } from '../journey.ts';
 
@@ -71,9 +71,9 @@ export class Layer {
 	get settled(): boolean {
 		return (
 			this.#wait === 0 &&
-			this.opacity.settled(0.004) &&
-			this.y.settled(0.3) &&
-			this.scale.settled(0.0008)
+			this.opacity.settled(0.01) &&
+			this.y.settled(landsWithin) &&
+			this.scale.settled(0.002)
 		);
 	}
 

@@ -56,7 +56,7 @@ button {
 	backdrop-filter: none !important;
 }
 
-/* A shared element waiting for its flier to land. */
+/* A shared element under its flier: unseen, but already the real thing, so it takes the click. */
 [data-morph-hidden] {
-	visibility: hidden !important;
+	opacity: 0 !important;
 }

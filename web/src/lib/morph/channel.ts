@@ -1,6 +1,12 @@
 import { stepSpring, type SpringParams } from './choreography.ts';
 
 /**
+ * How close a flier must be to count as landed, in pixels. A critically damped spring spends its
+ * last 200 ms inside a pixel, where nothing visible happens, so that's where it can stop.
+ */
+export const landsWithin = 1;
+
+/**
  * One animated number. It always knows where it is and how fast it's going, so changing the
  * target mid-flight carries on from here, at this speed: a snap can't be expressed.
  */

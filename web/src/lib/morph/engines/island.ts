@@ -1,4 +1,4 @@
-import { Channel } from '../channel.ts';
+import { Channel, landsWithin } from '../channel.ts';
 import type { SpringParams } from '../choreography.ts';
 import { carryOffset, type Point } from './path.ts';
 
@@ -111,7 +111,7 @@ export class IslandShape {
 	}
 
 	get settled(): boolean {
-		return this.#channels.every((channel) => channel.settled(0.4));
+		return this.#channels.every((channel) => channel.settled(landsWithin));
 	}
 
 	release(): void {
