@@ -18,6 +18,7 @@
 <a
 	class="tile"
 	data-morph-part="card"
+	data-morph-key="feature"
 	href={resolve('/album/[id]', { id: album.id })}
 	style:background={palette.stage}
 	style:--tile-wash={palette.wash}
@@ -28,8 +29,11 @@
 	>
 	<span class="words">
 		<span class="label">Just added</span>
-		<span class="title" use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}
-			>{album.title}</span
+		<span
+			class="title"
+			title={album.title}
+			style:--chars={album.title.length}
+			use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}>{album.title}</span
 		>
 		<span class="detail">{album.artist}</span>
 	</span>
@@ -37,6 +41,7 @@
 
 <style>
 	.tile {
+		container-type: inline-size;
 		grid-column: span 2;
 		grid-row: span 2;
 		position: relative;
@@ -65,6 +70,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
+		min-width: 0;
 	}
 
 	.label {
@@ -75,17 +81,32 @@
 		color: var(--tile-wash);
 	}
 
+	/* Fit to one line if it can, then two, and a long title is cut rather than left to spill. */
 	.title {
+		--fit: calc((100cqw - 64px) / (var(--chars) * 0.5));
+
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		overflow: hidden;
 		width: fit-content;
-		font-size: 64px;
+		max-width: 100%;
+		padding-bottom: 0.09em;
+		margin-bottom: -0.09em;
+		font-size: clamp(30px, var(--fit), 64px);
 		font-weight: 800;
 		letter-spacing: -0.05em;
-		line-height: 0.9;
+		line-height: 0.96;
+		text-wrap: balance;
 	}
 
 	.detail {
+		overflow: hidden;
 		font-size: var(--type-title);
 		color: var(--tile-wash);
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	@media (max-width: 720px) {
@@ -103,7 +124,9 @@
 		}
 
 		.title {
-			font-size: 52px;
+			--fit: calc((100cqw - 48px) / (var(--chars) * 0.5));
+
+			font-size: clamp(28px, var(--fit), 52px);
 		}
 
 		.detail {

@@ -12,6 +12,8 @@ import {
 	type User
 } from './source.ts';
 
+/** The grid's page: 60 divides evenly into every column count, so pages stack with no seam. */
+export const albumPageSize = 60;
 /** The feature tile and the five beside it. */
 const recentCount = 6;
 /** How long to leave a server that isn't answering, or a library still empty. */
@@ -131,7 +133,7 @@ export class Library {
 			const [facts, recent, first] = await Promise.all([
 				this.#source.facts(),
 				this.#source.albumsPage('added', undefined, recentCount),
-				this.#source.albumsPage('name')
+				this.#source.albumsPage('name', undefined, albumPageSize)
 			]);
 			this.#remember([...recent.albums, ...first.albums]);
 			this.recent = recent.albums;
@@ -178,6 +180,16 @@ export class Library {
 		this.playing = album === undefined ? null : cueOf(album);
 	}
 
+	/**
+	 * Cues the album just opened. The caller waits until its details are here and the flight has
+	 * settled, so the island can't change under anything in the air.
+	 */
+	cueAlbum(album: Album): void {
+		if (this.#pinnedAlbumId === undefined && this.playing?.album.id !== album.id) {
+			this.#cue(album);
+		}
+	}
+
 	/** Loads the next page of {@link Library.albums}. Only one page is ever in flight. */
 	loadMoreAlbums(): Promise<void> {
 		this.#more ??= this.#loadMoreAlbums().finally(() => {
@@ -191,7 +203,7 @@ export class Library {
 			return;
 		}
 		try {
-			const page = await this.#source.albumsPage('name', this.#cursor);
+			const page = await this.#source.albumsPage('name', this.#cursor, albumPageSize);
 			this.#remember(page.albums);
 			this.albums = [...this.albums, ...page.albums];
 			this.#cursor = page.nextCursor;

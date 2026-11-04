@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
+	import { whenSettled } from '#lib/morph/settled.ts';
 	import AlbumHero from '#lib/pages/AlbumHero.svelte';
 	import TrackList from '#lib/pages/TrackList.svelte';
 	import type { PageProps } from './$types';
@@ -15,6 +16,16 @@
 	// Never awaited: the first frame is built from the list entry, and tracks stream in.
 	$effect(() => {
 		void library.loadAlbum(id);
+	});
+
+	// The album last opened is the one cued, but the island mustn't change under a flight.
+	$effect(() => {
+		const loaded = album;
+		if (loaded !== undefined) {
+			return whenSettled(() => {
+				library.cueAlbum(loaded);
+			});
+		}
 	});
 </script>
 

@@ -88,20 +88,22 @@
 				disabled><Icon name="heart-outline" size={20} /></button
 			>
 		{:else}
-			<a class="now" href={resolve('/now-playing')}>
-				<span
-					class="thumb"
-					use:morph={{ id: `cover:${playing.album.id}`, slot: 'island', kind: 'cover' }}
-					><Cover albumId={playing.album.id} entry={playing.album} place="small" /></span
-				>
-				<span class="names">
-					<span class="song" use:morph={{ id: 'song', slot: 'island', kind: 'title' }}
-						>{playing.track.title}</span
+			{#key playing.track.id}
+				<a class="now" href={resolve('/now-playing')}>
+					<span
+						class="thumb"
+						use:morph={{ id: `cover:${playing.album.id}`, slot: 'island', kind: 'cover' }}
+						><Cover albumId={playing.album.id} entry={playing.album} place="small" /></span
 					>
-					<span class="artist">{playing.album.artist}</span>
-				</span>
-			</a>
-			<span class="time compact">{position} / {duration}</span>
+					<span class="names">
+						<span class="song" use:morph={{ id: 'song', slot: 'island', kind: 'title' }}
+							>{playing.track.title}</span
+						>
+						<span class="artist">{playing.album.artist}</span>
+					</span>
+				</a>
+				<span class="time compact">{position} / {duration}</span>
+			{/key}
 			<button
 				type="button"
 				class="skip"
@@ -188,6 +190,25 @@
 		padding: 17px 21px;
 	}
 
+	/* A new cue arrives at rest, in place: this is the one change here no morph carries. */
+	.now,
+	.compact {
+		animation: cue-in var(--morph-fast) var(--curve-morph);
+	}
+
+	@keyframes cue-in {
+		from {
+			opacity: 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.now,
+		.compact {
+			animation-duration: 120ms;
+		}
+	}
+
 	.now {
 		display: flex;
 		align-items: center;
@@ -222,8 +243,11 @@
 	}
 
 	.artist {
+		overflow: hidden;
 		font-size: 13px;
 		color: var(--text-meta);
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.time {

@@ -13,6 +13,7 @@
 	import { startMorphs } from '#lib/morph/engine.ts';
 	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
+	import { gridWindow } from '#lib/pages/gridWindow.svelte.ts';
 	import Backdrop from '#lib/shell/Backdrop.svelte';
 	import Bloom from '#lib/shell/Bloom.svelte';
 	import Nav from '#lib/shell/Nav.svelte';
@@ -47,6 +48,7 @@
 				// eslint-disable-next-line svelte/no-navigation-without-resolve -- Built from resolve('/login') and the current path, with its `next`.
 				await goto(loginPath(location), { replaceState: true });
 			}
+			gridWindow.reset();
 		};
 		void Promise.all(['/', '/album/[id]', '/now-playing', '/login'] as const).then((routes) =>
 			Promise.all(routes.map((route) => preloadCode(route)))

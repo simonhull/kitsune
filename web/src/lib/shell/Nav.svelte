@@ -34,7 +34,9 @@
 			<span class="fold-in">
 				<span class="item health" aria-disabled="true">
 					Health
-					{#if healthIssues !== undefined}<span class="badge">{healthIssues}</span>{/if}
+					{#if healthIssues !== undefined && healthIssues > 0}<span class="badge"
+							>{healthIssues.toLocaleString('en-US')}</span
+						>{/if}
 				</span>
 			</span>
 		</span>

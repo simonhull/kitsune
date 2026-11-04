@@ -30,6 +30,7 @@
 		<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>
 		<!-- The fit divides by length so the first frame is final: nothing measures, nothing jumps. -->
 		<h1
+			title={entry?.title}
 			style:--chars={entry?.title.length ?? 10}
 			use:morph={{ id: `title:${albumId}`, slot: 'hero', kind: 'title' }}
 		>
@@ -92,16 +93,28 @@
 		opacity: 1;
 	}
 
+	/*
+	 * One line, fit by length, while it can stay headline-sized; past that two lines at a floor.
+	 * The padding keeps descenders out of the clip: this line height is tighter than the glyphs.
+	 */
 	h1 {
+		--room: calc(100cqw - 2 * var(--hero-pad) - var(--hero-cover) - 32px);
+		--fit: calc(var(--room) / (var(--chars) * 0.5));
+
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		overflow: hidden;
 		width: fit-content;
-		font-size: min(
-			var(--type-hero),
-			calc((100cqw - 2 * var(--hero-pad) - var(--hero-cover) - 32px) / (var(--chars) * 0.5))
-		);
+		max-width: var(--room);
+		padding-bottom: 0.09em;
+		margin-bottom: -0.09em;
+		font-size: max(min(var(--type-hero), var(--fit)), clamp(32px, var(--fit) * 2, 44px));
 		font-weight: 900;
 		letter-spacing: var(--tracking-hero);
-		line-height: 0.82;
-		white-space: nowrap;
+		line-height: 0.92;
+		text-wrap: balance;
 	}
 
 	.actions {
@@ -125,10 +138,12 @@
 	}
 
 	.artist {
+		min-width: 0;
 		font-size: 22px;
 		font-weight: 700;
 		letter-spacing: var(--tracking-title);
 		margin-right: 12px;
+		overflow-wrap: anywhere;
 	}
 
 	.ghost {
@@ -177,7 +192,9 @@
 		}
 
 		h1 {
-			font-size: min(96px, calc((100cqw - 2 * var(--hero-pad)) / (var(--chars) * 0.5)));
+			--room: calc(100cqw - 2 * var(--hero-pad));
+
+			font-size: max(min(96px, var(--fit)), clamp(22px, var(--fit) * 2, 30px));
 		}
 
 		.play {

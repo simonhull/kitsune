@@ -32,7 +32,13 @@
 	<title>{playing?.track.title ?? 'Now playing'} · Kitsune</title>
 </svelte:head>
 
-{#if playing !== null}
+{#if playing === null}
+	<!-- Plan 018 replaces this: with real playback there's always a last thing played. -->
+	<div class="stage quiet">
+		<p>Nothing is cued yet.</p>
+		<a href={resolve('/')} data-sveltekit-reset="false">Back to Home</a>
+	</div>
+{:else}
 	<div class="stage">
 		<div class="column">
 			<div class="top" data-morph-part="chrome">
@@ -115,6 +121,24 @@
 		overflow: hidden;
 	}
 
+	.quiet {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 16px;
+		text-align: center;
+		color: var(--text-secondary);
+	}
+
+	.quiet a {
+		min-height: var(--target);
+		display: flex;
+		align-items: center;
+		color: var(--fox);
+	}
+
 	/* The cover and the title behind it share a center, so they can't drift apart with height. */
 	.stack {
 		position: relative;
@@ -180,6 +204,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.6em;
+		min-width: 0;
 		letter-spacing: 0.06em;
 		white-space: nowrap;
 	}
@@ -190,9 +215,11 @@
 		min-height: var(--target);
 		padding: 0 6px;
 		margin: 0 -6px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
+		display: block;
+		overflow: hidden;
+		line-height: var(--target);
+		text-align: center;
+		text-overflow: ellipsis;
 		text-underline-offset: 3px;
 	}
 
@@ -205,6 +232,7 @@
 	}
 
 	.chips {
+		flex: none;
 		margin-left: auto;
 		display: flex;
 		gap: 8px;
@@ -251,14 +279,23 @@
 	}
 
 	h1 {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		overflow: hidden;
+		max-width: min(640px, 100cqw - 32px);
 		font-size: 28px;
 		font-weight: 800;
 		letter-spacing: -0.03em;
+		line-height: 1.15;
+		text-wrap: balance;
 	}
 
 	.artist {
 		font-size: 16px;
 		color: var(--wash);
+		max-width: min(640px, 100cqw - 32px);
 	}
 
 	.artist strong {
@@ -303,8 +340,15 @@
 		overflow: hidden;
 	}
 
+	.pill {
+		min-width: 0;
+	}
+
 	.pill-name {
+		overflow: hidden;
 		font-size: 14px;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.lead {
@@ -340,11 +384,6 @@
 
 		.chips {
 			display: none;
-		}
-
-		.where {
-			min-width: 0;
-			overflow: hidden;
 		}
 
 		.art {
