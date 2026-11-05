@@ -83,6 +83,25 @@ func (q *Queries) GetAlbum(ctx context.Context, ulid string) (GetAlbumRow, error
 	return i, err
 }
 
+const getTrackFile = `-- name: GetTrackFile :one
+SELECT root, rel_path, format
+FROM tracks
+WHERE ulid = ? AND missing_since IS NULL
+`
+
+type GetTrackFileRow struct {
+	Root    string
+	RelPath string
+	Format  string
+}
+
+func (q *Queries) GetTrackFile(ctx context.Context, ulid string) (GetTrackFileRow, error) {
+	row := q.queryRow(ctx, q.getTrackFileStmt, getTrackFile, ulid)
+	var i GetTrackFileRow
+	err := row.Scan(&i.Root, &i.RelPath, &i.Format)
+	return i, err
+}
+
 const listAlbumTrackArtists = `-- name: ListAlbumTrackArtists :many
 SELECT ta.track_id, ar.name
 FROM track_artists ta

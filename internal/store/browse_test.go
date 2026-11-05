@@ -335,6 +335,51 @@ func TestAlbumsWithoutLiveTracks(t *testing.T) {
 	}
 }
 
+func TestTrackFile(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	w := albumTrack(1, 1, "a")
+	w.Format = "Ogg Vorbis"
+	writeAll(t, s, w)
+
+	got, err := s.TrackFile(t.Context(), w.ULID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := store.TrackFile{Root: w.Root, RelPath: w.RelPath, Format: w.Format}
+	if got != want {
+		t.Errorf("TrackFile = %+v, want %+v", got, want)
+	}
+}
+
+func TestTrackFileNotFound(t *testing.T) {
+	t.Parallel()
+	s, clock := openBrowse(t)
+	live, gone := albumTrack(1, 1, "a"), albumTrack(1, 2, "a")
+	writeAll(t, s, live, gone)
+	markMissing(t, s, clock, gone.RelPath)
+
+	for _, id := range []string{gone.ULID, "01J00000000000000000009999", "not-a-ulid", ""} {
+		if _, err := s.TrackFile(t.Context(), id); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("TrackFile(%q) err = %v, want ErrNotFound", id, err)
+		}
+	}
+	if _, err := s.TrackFile(t.Context(), live.ULID); err != nil {
+		t.Errorf("the live track: %v", err)
+	}
+}
+
+func TestTrackFileQueryFails(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TrackFile(t.Context(), albumID(1)); err == nil || errors.Is(err, store.ErrNotFound) {
+		t.Errorf("TrackFile on a closed store err = %v, want a query error", err)
+	}
+}
+
 // trackSpec is one track of album 1 in TestAlbumTracks.
 type trackSpec struct {
 	title        string

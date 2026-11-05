@@ -60,6 +60,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getAlbumStmt, err = db.PrepareContext(ctx, getAlbum); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAlbum: %w", err)
 	}
+	if q.getTrackFileStmt, err = db.PrepareContext(ctx, getTrackFile); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTrackFile: %w", err)
+	}
 	if q.insertTrackStmt, err = db.PrepareContext(ctx, insertTrack); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTrack: %w", err)
 	}
@@ -198,6 +201,11 @@ func (q *Queries) Close() error {
 	if q.getAlbumStmt != nil {
 		if cerr := q.getAlbumStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAlbumStmt: %w", cerr)
+		}
+	}
+	if q.getTrackFileStmt != nil {
+		if cerr := q.getTrackFileStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTrackFileStmt: %w", cerr)
 		}
 	}
 	if q.insertTrackStmt != nil {
@@ -376,6 +384,7 @@ type Queries struct {
 	deleteTrackArtistsStmt    *sql.Stmt
 	deleteTrackTagsStmt       *sql.Stmt
 	getAlbumStmt              *sql.Stmt
+	getTrackFileStmt          *sql.Stmt
 	insertTrackStmt           *sql.Stmt
 	insertTrackArtistStmt     *sql.Stmt
 	insertTrackTagStmt        *sql.Stmt
@@ -419,6 +428,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteTrackArtistsStmt:    q.deleteTrackArtistsStmt,
 		deleteTrackTagsStmt:       q.deleteTrackTagsStmt,
 		getAlbumStmt:              q.getAlbumStmt,
+		getTrackFileStmt:          q.getTrackFileStmt,
 		insertTrackStmt:           q.insertTrackStmt,
 		insertTrackArtistStmt:     q.insertTrackArtistStmt,
 		insertTrackTagStmt:        q.insertTrackTagStmt,
