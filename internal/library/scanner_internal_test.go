@@ -36,6 +36,23 @@ func (l *testLib) scan(mode Mode) *Stats {
 	return &stats
 }
 
+// albumDetail returns the library's only album.
+func (l *testLib) albumDetail() store.AlbumDetail {
+	l.t.Helper()
+	page, err := l.st.Albums(l.t.Context(), store.SortAdded, 2, "")
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	if len(page.Albums) != 1 {
+		l.t.Fatalf("albums = %+v, want 1", page.Albums)
+	}
+	d, err := l.st.Album(l.t.Context(), page.Albums[0].ID)
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	return d
+}
+
 // bump moves the file's mtime forward by n minutes from a fixed point, so a
 // rewrite is always a change at millisecond precision.
 func bump(t *testing.T, path string, n int) {
@@ -498,6 +515,63 @@ func TestScanRunningIsRefused(t *testing.T) {
 	defer l.scanner.mu.Unlock()
 	if _, err := l.scanner.Scan(t.Context(), Quick); !errors.Is(err, ErrScanRunning) {
 		t.Errorf("Scan = %v, want ErrScanRunning", err)
+	}
+}
+
+// retitled returns the titles in after that before's tracks, by ID, did not have.
+func retitled(before, after *store.AlbumDetail) []string {
+	titles := make(map[string]string, len(before.Tracks))
+	for i := range before.Tracks {
+		titles[before.Tracks[i].ID] = before.Tracks[i].Title
+	}
+	var changed []string
+	for i := range after.Tracks {
+		if titles[after.Tracks[i].ID] != after.Tracks[i].Title {
+			changed = append(changed, after.Tracks[i].Title)
+		}
+	}
+	return changed
+}
+
+func TestReindexOneFile(t *testing.T) {
+	t.Parallel()
+	const newTitle = "New Title"
+	l := newTestLib(t, 1)
+	root := l.roots[0]
+	l.copyTo(root, aFLAC, sampleFLAC)
+	l.copyTo(root, bystander, sampleFLAC)
+	l.scan(Quick)
+	before := l.albumDetail()
+	err := audiometa.Write(filepath.Join(root, aFLAC), func(f *audiometa.File) error {
+		f.Tags.Title = newTitle
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = l.scanner.reindex(t.Context(), l.states(root)[aFLAC].TrackID, root, aFLAC); err != nil {
+		t.Fatal(err)
+	}
+	after := l.albumDetail()
+	if after.ID != before.ID || !after.AddedAt.Equal(before.AddedAt) {
+		t.Errorf("album %s added %v, want %s added %v", after.ID, after.AddedAt, before.ID, before.AddedAt)
+	}
+	if got := retitled(&before, &after); !slices.Equal(got, []string{newTitle}) {
+		t.Errorf("titles that changed = %q, want only %q", got, newTitle)
+	}
+	wantStats(t, l.scan(Quick), &Stats{Seen: 2}) // The store already matches the disk.
+}
+
+func TestReindexMissingFile(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	root := l.roots[0]
+	l.copyTo(root, aFLAC, sampleFLAC)
+	l.scan(Quick)
+	id := l.states(root)[aFLAC].TrackID
+	remove(t, root, aFLAC)
+	if err := l.scanner.reindex(t.Context(), id, root, aFLAC); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("reindex = %v, want fs.ErrNotExist", err)
 	}
 }
 
