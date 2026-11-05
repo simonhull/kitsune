@@ -24,8 +24,9 @@ type Edit struct {
 
 // writeKeys lists the raw keys the editable fields own in one format, beside
 // the ones a typed field of [audiometa.Tags] writes for itself. Track and disc
-// numbers need no entry: their typed fields own them. ID3 and M4A keep a total in
-// the same tag, so it survives; a Vorbis "3/12" loses "/12", which Kitsune never read.
+// numbers mostly need no entry: their typed fields own them. ID3 and M4A keep a
+// total in the same tag, so it survives; a Vorbis "3/12" loses "/12", which Kitsune
+// never read.
 type writeKeys struct {
 	// titleSort is the sort form of the title. A new title deletes it: the
 	// form was made for the old title, and on ID3v2.3 the frame can't be written.
@@ -37,6 +38,9 @@ type writeKeys struct {
 	dateParts []string
 	// minYear and maxYear are what the format's reader takes back.
 	minYear, maxYear int
+	// trackCopies and discCopies repeat a number under another key. A new number
+	// replaces each one that exists.
+	trackCopies, discCopies []string
 	// genres is the key genres are written to.
 	genres string
 	// genreCodes holds numeric genres, which genres replaces.
@@ -67,7 +71,9 @@ var (
 			titleSort: "TITLESORT",
 			year:      []string{"DATE", "YEAR"},
 			minYear:   minYear, maxYear: maxYear,
-			genres: "GENRE",
+			trackCopies: []string{"TRACK"},
+			discCopies:  []string{"DISC"},
+			genres:      "GENRE",
 		},
 		audiometa.FormatMP3: {
 			titleSort: "TSOT",
@@ -98,9 +104,11 @@ func (e *Edit) apply(f *audiometa.File) error {
 	t := &f.Tags
 	if e.TrackNo != nil {
 		t.TrackNumber = *e.TrackNo
+		setCopies(t, keys.trackCopies, *e.TrackNo)
 	}
 	if e.DiscNo != nil {
 		t.DiscNumber = *e.DiscNo
+		setCopies(t, keys.discCopies, *e.DiscNo)
 	}
 	keys.setGenres(t, e.Genres)
 	if err := keys.setTitle(t, e.Title); err != nil {
@@ -115,6 +123,15 @@ func (e *Edit) apply(f *audiometa.File) error {
 func readsFromID3v1(f *audiometa.File) bool {
 	t := &f.Tags
 	return f.Format == audiometa.FormatMP3 && (t.Title != "" || t.Artist != "") && multi(t, keysID3v2Names) == nil
+}
+
+// setCopies writes n over each of keys that exists.
+func setCopies(t *audiometa.Tags, keys []string, n int) {
+	for _, key := range keys {
+		if t.Get(key) != nil {
+			t.Set(key, strconv.Itoa(n))
+		}
+	}
 }
 
 func (k *writeKeys) setTitle(t *audiometa.Tags, title *string) error {
