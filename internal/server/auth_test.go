@@ -58,6 +58,8 @@ func TestMeWithBearer(t *testing.T) {
 		"name":      simonName,
 		"role":      "admin",
 		"createdAt": u.CreatedAt.Format(time.RFC3339Nano),
+
+		"canEditTags": false,
 	}
 	if len(got) != len(want) {
 		t.Errorf("body = %v, want exactly the fields of %v", got, want)
@@ -193,5 +195,30 @@ func TestMeShowsTheRole(t *testing.T) {
 	}
 	if u.Name != "kit" || u.Role != "user" {
 		t.Errorf("user = %+v, want kit with role user", u)
+	}
+}
+
+func TestMeReportsTagEditing(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		tagWrites bool
+		role      store.Role
+		want      bool
+	}{
+		{"writes on, admin", true, store.RoleAdmin, true},
+		{"writes on, user", true, store.RoleUser, false},
+		{"writes off, admin", false, store.RoleAdmin, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ts := newTestServer(t, testServerOptions{TagWrites: tt.tagWrites})
+			var me api.Me
+			ts.getJSON(t, ts.tokenFor(t, tt.role), mePath, &me)
+			if me.CanEditTags != tt.want || me.Role != string(tt.role) {
+				t.Errorf("GET /me = %+v, want canEditTags %t", me, tt.want)
+			}
+		})
 	}
 }

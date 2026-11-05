@@ -89,6 +89,7 @@ type testServerOptions struct {
 	LogLevel      slog.Level // The zero value is Info.
 	Artwork       *artwork.Cache
 	Roots         int
+	TagWrites     bool
 }
 
 // testServer is a running API over a real store and auth service.
@@ -138,6 +139,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		Artwork:       o.Artwork,
 		Library:       st,
 		Roots:         o.Roots,
+		TagWrites:     o.TagWrites,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)
@@ -161,6 +163,18 @@ func (ts *testServer) seedUser(tb testing.TB, name, password string, role store.
 		tb.Fatalf("seed user %q: %v", name, err)
 	}
 	return u
+}
+
+// tokenFor seeds a user with role and returns a session token for it.
+func (ts *testServer) tokenFor(tb testing.TB, role store.Role) string {
+	tb.Helper()
+	name, password := "user-"+string(role), "a password"
+	ts.seedUser(tb, name, password, role)
+	res, err := ts.Auth.Login(tb.Context(), name, password, "test/1")
+	if err != nil {
+		tb.Fatalf("login: %v", err)
+	}
+	return res.Token
 }
 
 // call describes one request to [testServer.send].

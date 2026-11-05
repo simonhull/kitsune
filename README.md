@@ -22,6 +22,7 @@ trusted_proxies = []     # proxies whose X-Forwarded-For is believed: CIDRs or a
 roots = []               # absolute directories to scan; they must not overlap
 missing_grace = "24h"    # how long a vanished file keeps its track
 quick_scan = "03:30"     # daily quick scan, local time; it also runs at startup
+tag_writes = false       # let administrators edit tags, which rewrites files under roots
 
 [storage]
 data_dir = ""            # "" means $XDG_DATA_HOME/kitsune-server

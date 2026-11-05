@@ -37,6 +37,7 @@ type Config struct {
 	Artwork       *artwork.Cache              // Nil means every GET /artwork/{hash} is a 404.
 	Library       *store.Store                // Required; New panics if nil. Backs the browse routes.
 	Roots         int                         // The number of configured library roots, reported by GET /library.
+	TagWrites     bool                        // Administrators may edit tags. Off leaves every file alone.
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -54,6 +55,7 @@ type Server struct {
 	artwork       *artwork.Cache
 	library       *store.Store
 	roots         int
+	tagWrites     bool
 	limiter       *loginLimiter
 }
 
@@ -83,6 +85,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		artwork:       cfg.Artwork,
 		library:       cfg.Library,
 		roots:         cfg.Roots,
+		tagWrites:     cfg.TagWrites,
 		limiter:       newLoginLimiter(maxLimiterKeys),
 	}
 	if s.log == nil {

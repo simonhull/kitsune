@@ -90,7 +90,7 @@ paths:
           description: The authenticated user.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/User" }
+              schema: { $ref: "#/components/schemas/Me" }
         "401":
           description: Credentials are missing, invalid or expired.
           headers:
@@ -453,6 +453,19 @@ components:
         name: { type: string }
         role: { type: string, enum: [admin, user] }
         createdAt: { type: string, format: date-time }
+    Me:
+      description: A user's properties, repeated (allOf does not mix with additionalProperties false), plus what the user may do.
+      type: object
+      additionalProperties: false
+      required: [id, name, role, createdAt, canEditTags]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        role: { type: string, enum: [admin, user] }
+        createdAt: { type: string, format: date-time }
+        canEditTags:
+          type: boolean
+          description: True for an administrator on a server with `library.tag_writes` on.
     LoginRequest:
       type: object
       additionalProperties: false

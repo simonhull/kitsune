@@ -44,6 +44,14 @@ type User struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// Me is the response to GET /me: the [User], and what the user may do.
+type Me struct {
+	User `json:",inline"`
+
+	// CanEditTags is true for an administrator on a server with tag writes on.
+	CanEditTags bool `json:"canEditTags"`
+}
+
 // Session is the response to a successful login.
 type Session struct {
 	// Token is present only when the login did not ask for a cookie.
