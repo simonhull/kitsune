@@ -145,7 +145,7 @@ func openApp(ctx context.Context, cfg *config.Config, configPath string, log *sl
 	if err = requireUsers(ctx, st, noUsers); err != nil {
 		return nil, errors.Join(err, st.Close())
 	}
-	a, err := buildApp(cfg, st, log)
+	a, err := buildApp(ctx, cfg, st, log)
 	if err != nil {
 		return nil, errors.Join(err, st.Close())
 	}
@@ -164,8 +164,9 @@ func requireUsers(ctx context.Context, st *store.Store, noUsers *noUsersError) e
 	return nil
 }
 
-// buildApp wires the auth service and the HTTP server over st.
-func buildApp(cfg *config.Config, st *store.Store, log *slog.Logger) (*app, error) {
+// buildApp wires the auth service and the HTTP server over st. ctx ends tag edits:
+// a shutdown stops one between files, inside the drain.
+func buildApp(ctx context.Context, cfg *config.Config, st *store.Store, log *slog.Logger) (*app, error) {
 	svc, err := auth.New(st, auth.Options{Params: authParams()})
 	if err != nil {
 		return nil, fmt.Errorf("start auth: %w", err)
@@ -205,6 +206,8 @@ func buildApp(cfg *config.Config, st *store.Store, log *slog.Logger) (*app, erro
 		Library:       st,
 		Roots:         len(cfg.Library.Roots),
 		TagWrites:     cfg.Library.TagWrites,
+		Scanner:       a.scanner,
+		Context:       ctx,
 	})
 	a.http = newHTTPServer(handler, log)
 	if cfg.Server.BaseURL != "" && len(trusted) == 0 {

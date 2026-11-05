@@ -28,6 +28,16 @@ type Problem struct {
 	RequestID string `json:"requestId,omitzero"`
 }
 
+// EditProblem is the [Problem] of a tag edit that was refused or stopped. Each
+// track is atomic and an album is not: the tracks in Changed hold the edit and
+// the ones in Remaining don't. The first of Remaining is the one that failed.
+type EditProblem struct {
+	Problem `json:",inline"`
+
+	Changed   []string `json:"changed"`
+	Remaining []string `json:"remaining"`
+}
+
 // LoginRequest is the body of POST /auth/login.
 type LoginRequest struct {
 	Name     string `json:"name"`
@@ -109,6 +119,35 @@ type Track struct {
 	SampleRate int         `json:"sampleRate,omitzero"`
 	BitDepth   int         `json:"bitDepth,omitzero"`
 	ReplayGain *ReplayGain `json:"replayGain,omitzero"`
+	TrackTotal int         `json:"trackTotal,omitzero"`
+	DiscTotal  int         `json:"discTotal,omitzero"`
+	Year       int         `json:"year,omitzero"`
+	Genres     []string    `json:"genres"`
+	// Etag is the If-Match value for PATCH /tracks/{id}. It is not the stream's ETag.
+	Etag string `json:"etag"`
+}
+
+// TrackDetail is the response to GET and PATCH /tracks/{id}: a [Track], and its
+// album with the album's new If-Match value.
+type TrackDetail struct {
+	Track `json:",inline"`
+
+	AlbumID   string `json:"albumId"`
+	AlbumEtag string `json:"albumEtag"`
+}
+
+// TrackEdit is the body of PATCH /tracks/{id}. An absent field stays as it is.
+type TrackEdit struct {
+	Title   *string `json:"title,omitzero"`
+	TrackNo *int    `json:"trackNo,omitzero"`
+	DiscNo  *int    `json:"discNo,omitzero"`
+}
+
+// AlbumEdit is the body of PATCH /albums/{id}, applied to every track. An
+// absent field stays as it is; empty Genres removes them.
+type AlbumEdit struct {
+	Year   *int     `json:"year,omitzero"`
+	Genres []string `json:"genres,omitzero"`
 }
 
 // AlbumDetail is the response to GET /albums/{id}: an [AlbumEntry]'s fields,
@@ -127,6 +166,10 @@ type AlbumDetail struct {
 	DurationMs  int64        `json:"durationMs"`
 	Formats     []string     `json:"formats"`
 	AddedAt     time.Time    `json:"addedAt"`
+	// Genres is every genre of the tracks, each once, in track order.
+	Genres []string `json:"genres"`
+	// Etag is the If-Match value for PATCH /albums/{id}.
+	Etag string `json:"etag"`
 }
 
 // ArtistEntry is an artist as a list shows it. AlbumCount counts the albums it owns.

@@ -19,6 +19,7 @@ import (
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
+	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/openapitest"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -90,6 +91,8 @@ type testServerOptions struct {
 	Artwork       *artwork.Cache
 	Roots         int
 	TagWrites     bool
+	LibraryRoot   string            // "" means no scanner.
+	Write         library.WriteFunc // Nil means real writes.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -101,6 +104,8 @@ type testServer struct {
 	Auth   *auth.Service
 	Handle *Server
 	Store  *store.Store
+	// Scanner is set when testServerOptions.LibraryRoot is.
+	Scanner *library.Scanner
 }
 
 // newTestServer starts a server over a temporary store.
@@ -127,6 +132,12 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	if err != nil {
 		tb.Fatalf("auth.New: %v", err)
 	}
+	var scanner *library.Scanner
+	if o.LibraryRoot != "" {
+		scanner = library.NewScanner(st, library.Options{
+			Roots: []string{o.LibraryRoot}, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
+		})
+	}
 	logs := &syncBuffer{}
 	h := New(Config{
 		Auth:          svc,
@@ -140,10 +151,11 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		Library:       st,
 		Roots:         o.Roots,
 		TagWrites:     o.TagWrites,
+		Scanner:       scanner,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)
-	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st}
+	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st, Scanner: scanner}
 }
 
 // testClientIP reads the client IP from testClientIPHeader, falling back to

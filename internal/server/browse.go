@@ -1,13 +1,17 @@
 package server
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -69,7 +73,12 @@ func parseAlbumsQuery(v url.Values) (albumsQuery, error) {
 
 // getAlbum returns one album with its tracks.
 func (s *Server) getAlbum(w http.ResponseWriter, r *http.Request) {
-	d, err := s.library.Album(r.Context(), r.PathValue("id"))
+	s.writeAlbum(w, r, r.PathValue("id"))
+}
+
+// writeAlbum answers with the album id.
+func (s *Server) writeAlbum(w http.ResponseWriter, r *http.Request, id string) {
+	body, err := s.albumDetail(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeProblem(w, r, http.StatusNotFound, "no such album")
 		return
@@ -78,8 +87,57 @@ func (s *Server) getAlbum(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, "get album", err)
 		return
 	}
-	body := toAPIAlbumDetail(&d)
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+}
+
+// albumDetail returns the wire form of the album id. Genres live only in the raw
+// tags, so they come separately.
+func (s *Server) albumDetail(ctx context.Context, id string) (api.AlbumDetail, error) {
+	d, err := s.library.Album(ctx, id)
+	if err != nil {
+		return api.AlbumDetail{}, fmt.Errorf("album detail: %w", err)
+	}
+	genres, err := s.library.AlbumTagValues(ctx, id, library.GenreKeys())
+	if err != nil {
+		return api.AlbumDetail{}, fmt.Errorf("album detail: %w", err)
+	}
+	return toAPIAlbumDetail(&d, genres), nil
+}
+
+// getTrack returns one track and what it takes to edit it.
+func (s *Server) getTrack(w http.ResponseWriter, r *http.Request) {
+	s.writeTrack(w, r, r.PathValue("id"))
+}
+
+// writeTrack answers with the track id. It reads the whole album, which has the
+// track's validators and the album's.
+func (s *Server) writeTrack(w http.ResponseWriter, r *http.Request, id string) {
+	body, err := s.trackDetail(r.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeProblem(w, r, http.StatusNotFound, "no such track")
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, "get track", err)
+		return
+	}
+	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+}
+
+func (s *Server) trackDetail(ctx context.Context, id string) (api.TrackDetail, error) {
+	albumID, err := s.library.TrackAlbum(ctx, id)
+	if err != nil {
+		return api.TrackDetail{}, fmt.Errorf("track detail: %w", err)
+	}
+	album, err := s.albumDetail(ctx, albumID)
+	if err != nil {
+		return api.TrackDetail{}, err
+	}
+	i := slices.IndexFunc(album.Tracks, func(t api.Track) bool { return t.ID == id })
+	if i < 0 { // It left the album between the two reads.
+		return api.TrackDetail{}, fmt.Errorf("track detail: %w", store.ErrNotFound)
+	}
+	return api.TrackDetail{Track: album.Tracks[i], AlbumID: album.ID, AlbumEtag: album.Etag}, nil
 }
 
 // getLibrary reports what the library holds.
@@ -111,7 +169,8 @@ func toAPIAlbumEntry(a *store.AlbumSummary) api.AlbumEntry {
 	}
 }
 
-func toAPIAlbumDetail(d *store.AlbumDetail) api.AlbumDetail {
+// toAPIAlbumDetail builds the wire form of d, with genres by track ID.
+func toAPIAlbumDetail(d *store.AlbumDetail, genres map[string][]string) api.AlbumDetail {
 	out := api.AlbumDetail{
 		ID: d.ID, Title: d.Title, Artist: d.Artist, Year: d.Year, TrackCount: d.TrackCount,
 		Compilation: d.Compilation, Artwork: toAPIArtwork(d.Cover),
@@ -120,18 +179,27 @@ func toAPIAlbumDetail(d *store.AlbumDetail) api.AlbumDetail {
 		DurationMs: d.Duration.Milliseconds(),
 		Formats:    append([]string{}, d.Formats...),
 		AddedAt:    d.AddedAt,
+		Genres:     []string{},
+		Etag:       d.ETag,
 	}
 	for i := range d.Tracks {
-		out.Tracks[i] = toAPITrack(&d.Tracks[i])
+		out.Tracks[i] = toAPITrack(&d.Tracks[i], genres[d.Tracks[i].ID])
+		for _, g := range out.Tracks[i].Genres {
+			if !slices.Contains(out.Genres, g) {
+				out.Genres = append(out.Genres, g)
+			}
+		}
 	}
 	return out
 }
 
-func toAPITrack(t *store.Track) api.Track {
+func toAPITrack(t *store.Track, genres []string) api.Track {
 	out := api.Track{
 		ID: t.ID, Title: t.Title, Artists: append([]string{}, t.Artists...),
 		DiscNo: t.DiscNo, TrackNo: t.TrackNo, DurationMs: t.Duration.Milliseconds(),
 		Format: t.Format, SampleRate: t.SampleRate, BitDepth: t.BitDepth,
+		TrackTotal: t.TrackTotal, DiscTotal: t.DiscTotal, Year: t.Year,
+		Genres: append([]string{}, genres...), Etag: t.ETag,
 	}
 	if rg := t.ReplayGain; rg != (store.ReplayGain{}) {
 		out.ReplayGain = &api.ReplayGain{TrackGain: rg.TrackGain, AlbumGain: rg.AlbumGain, TrackPeak: rg.TrackPeak, AlbumPeak: rg.AlbumPeak}

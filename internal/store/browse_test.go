@@ -452,7 +452,7 @@ func TestAlbumTracks(t *testing.T) {
 		t.Errorf("Formats = %v, want %v", d.Formats, want)
 	}
 	want := store.Track{
-		ID: tws[2].ULID, Title: titleD1T2, Artists: []string{"X", "Y", "Z"}, DiscNo: 0, TrackNo: 2,
+		ID: tws[2].ULID, Title: titleD1T2, Artists: []string{"X", "Y", "Z"}, DiscNo: 0, TrackNo: 2, ETag: d.Tracks[1].ETag,
 		Duration: 3 * time.Second, Format: flacFormat, SampleRate: 44100, BitDepth: 16,
 		ReplayGain: store.ReplayGain{TrackGain: -6.5, TrackPeak: 0.9, AlbumGain: -7, AlbumPeak: 1},
 	}
@@ -461,6 +461,87 @@ func TestAlbumTracks(t *testing.T) {
 	}
 	if first := d.Tracks[0]; first.DiscNo != 1 || first.TrackNo != 1 || len(first.Artists) != 0 {
 		t.Errorf("first = %+v, want disc 1 track 1 and no artists", first)
+	}
+}
+
+// detail returns the album with the public ID id.
+func detail(t *testing.T, s *store.Store, id string) store.AlbumDetail {
+	t.Helper()
+	d, err := s.Album(t.Context(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+func TestEditLookupsCarryTheETagsOfReads(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	writeAll(t, s, albumTracksFixture()...)
+	d := detail(t, s, albumID(1))
+	files, etag, err := s.AlbumEditFiles(t.Context(), albumID(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if etag != d.ETag || len(files) != len(d.Tracks) {
+		t.Errorf("%d files with ETag %s, want %d with %s", len(files), etag, len(d.Tracks), d.ETag)
+	}
+	file, trackETag, err := s.TrackEditFile(t.Context(), d.Tracks[1].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.RelPath == "" || file.ID == 0 || trackETag != d.Tracks[1].ETag || !strings.HasPrefix(trackETag, `"`) {
+		t.Errorf("file %+v with ETag %s, want the track's %s", file, trackETag, d.Tracks[1].ETag)
+	}
+}
+
+func TestAlbumETagCoversLiveTracksOnly(t *testing.T) {
+	t.Parallel()
+	s, clock := openBrowse(t)
+	writeAll(t, s, albumTracksFixture()...)
+	before := detail(t, s, albumID(1))
+	markMissing(t, s, clock, "album1/9.flac")
+	after := detail(t, s, albumID(1))
+	if after.ETag == before.ETag {
+		t.Error("the album's ETag covers a missing track")
+	}
+	if after.Tracks[1].ETag != before.Tracks[1].ETag {
+		t.Error("a neighbor's ETag changed")
+	}
+}
+
+func TestEditLookupsNotFound(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	if _, _, err := s.AlbumEditFiles(t.Context(), "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("AlbumEditFiles = %v", err)
+	}
+	if _, _, err := s.TrackEditFile(t.Context(), "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("TrackEditFile = %v", err)
+	}
+	if _, err := s.TrackAlbum(t.Context(), "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("TrackAlbum = %v", err)
+	}
+}
+
+const genreKey = "GENRE"
+
+func TestAlbumTagValues(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	tws := albumTracksFixture()
+	tws[0].Tags = []store.Tag{{Key: genreKey, Value: "Rock"}, {Key: genreKey, Value: "Pop"}, {Key: "MOOD", Value: "Calm"}}
+	writeAll(t, s, tws...)
+	got, err := s.AlbumTagValues(t.Context(), albumID(1), []string{genreKey, "TCON"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string][]string{tws[0].ULID: {"Rock", "Pop"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("AlbumTagValues = %v, want %v", got, want)
+	}
+	album, err := s.TrackAlbum(t.Context(), tws[0].ULID)
+	if err != nil || album != albumID(1) {
+		t.Errorf("TrackAlbum = %q, %v", album, err)
 	}
 }
 

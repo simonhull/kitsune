@@ -39,7 +39,17 @@ var (
 	keysAlbumArtistMBID = []string{"MUSICBRAINZ_ALBUMARTISTID", "MUSICBRAINZ ALBUM ARTIST ID"}
 	keysCompilation     = []string{"COMPILATION", "TCMP", "cpil"}
 	keysAlbumMBID       = []string{"MUSICBRAINZ_ALBUMID", "MUSICBRAINZ ALBUM ID"}
+	keysGenre           = []string{"GENRE", "TCON", "\xA9gen"}
 )
+
+// GenreKeys returns the raw tag keys that hold genres, as the store keeps them.
+func GenreKeys() []string {
+	out := make([]string, len(keysGenre))
+	for i, k := range keysGenre {
+		out[i] = tagKey(k)
+	}
+	return out
+}
 
 // multi returns the values of the first key in keys that has any.
 func multi(t *audiometa.Tags, keys []string) []string {

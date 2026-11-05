@@ -2,13 +2,17 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
@@ -67,15 +71,18 @@ type AlbumPage struct {
 
 // Track is a live track as an album page shows it.
 type Track struct {
-	ID              string // The track's ULID.
-	Title           string
-	Artists         []string
-	DiscNo, TrackNo int // 0 is unknown.
-	Duration        time.Duration
-	Format          string
-	SampleRate      int // 0 is unknown.
-	BitDepth        int // 0 is unknown.
-	ReplayGain      ReplayGain
+	ID                    string // The track's ULID.
+	Title                 string
+	Artists               []string
+	DiscNo, TrackNo       int // 0 is unknown.
+	DiscTotal, TrackTotal int // 0 is unknown.
+	Year                  int // 0 is unknown.
+	ETag                  string
+	Duration              time.Duration
+	Format                string
+	SampleRate            int // 0 is unknown.
+	BitDepth              int // 0 is unknown.
+	ReplayGain            ReplayGain
 }
 
 // TrackFile says where a live track's file is and what it holds.
@@ -93,6 +100,16 @@ type AlbumDetail struct {
 	Tracks   []Track
 	Duration time.Duration
 	Formats  []string // Distinct and sorted.
+	ETag     string   // Covers the live tracks' files; see [etag].
+}
+
+// EditFile is a live track's file as an edit needs it.
+type EditFile struct {
+	ID            int64  // The track's row.
+	ULID          string // The track's public ID.
+	Root, RelPath string
+	Size          int64
+	MTime         time.Time // Millisecond precision: compare with a truncated stat time.
 }
 
 // LibraryFacts counts what the library holds. Albums and tracks are live ones.
@@ -324,11 +341,15 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 
 	summary := sqlcdb.ListAlbumsByNameRow(row)
 	d := AlbumDetail{AlbumSummary: summarize(&summary), Artists: owners, Tracks: make([]Track, 0, len(tracks))}
+	stamps := make([]string, 0, len(tracks))
 	for i := range tracks {
 		t := &tracks[i]
+		st := stamp(t.Ulid, t.Size, t.Mtime)
+		stamps = append(stamps, st)
 		tr := Track{
-			ID: t.Ulid, Title: t.Title, Artists: artists[t.ID],
+			ID: t.Ulid, Title: t.Title, Artists: artists[t.ID], ETag: etag(st),
 			DiscNo: intOr0(t.DiscNo), TrackNo: intOr0(t.TrackNo),
+			DiscTotal: intOr0(t.DiscTotal), TrackTotal: intOr0(t.TrackTotal), Year: intOr0(t.Year),
 			Duration: time.Duration(t.DurationMs) * time.Millisecond, Format: t.Format,
 			SampleRate: intOr0(t.SampleRate), BitDepth: intOr0(t.BitDepth),
 			ReplayGain: ReplayGain{
@@ -342,7 +363,88 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 	}
 	slices.Sort(d.Formats)
 	d.Formats = slices.Compact(d.Formats)
+	d.ETag = etag(stamps...)
 	return d, nil
+}
+
+// stamp is what an ETag covers of one track. It uses the stored size and time:
+// a file that changed since the scan shows up when an edit stats it.
+func stamp(ulid string, size, mtime int64) string {
+	return ulid + ":" + strconv.FormatInt(size, 10) + ":" + strconv.FormatInt(mtime, 10)
+}
+
+// etag returns the strong validator of the given stamps, in any order. It is
+// the If-Match value of an edit. It is not the stream's ETag, which comes from
+// the open file.
+func etag(stamps ...string) string {
+	sorted := slices.Sorted(slices.Values(stamps))
+	sum := sha256.Sum256([]byte(strings.Join(sorted, "\n")))
+	return `"` + hex.EncodeToString(sum[:etagBytes]) + `"`
+}
+
+// etagBytes is how much of the hash an ETag keeps.
+const etagBytes = 16
+
+// TrackAlbum returns the public ID of the album of the live track id. It returns
+// an error wrapping [ErrNotFound] for an unknown ID or a missing track.
+func (s *Store) TrackAlbum(ctx context.Context, id string) (string, error) {
+	album, err := s.rq.GetTrackAlbum(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("track %s: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return "", fmt.Errorf("track %s: %w", id, err)
+	}
+	return album, nil
+}
+
+// AlbumTagValues returns the values of the raw tags keys for each live track of
+// an album, by track ULID and in tag order. An unknown album gives an empty map.
+func (s *Store) AlbumTagValues(ctx context.Context, albumID string, keys []string) (map[string][]string, error) {
+	rows, err := s.rq.ListAlbumTagValues(ctx, sqlcdb.ListAlbumTagValuesParams{Album: albumID, TagKeys: keys})
+	if err != nil {
+		return nil, fmt.Errorf("album %s: tags: %w", albumID, err)
+	}
+	out := make(map[string][]string)
+	for i := range rows {
+		out[rows[i].Ulid] = append(out[rows[i].Ulid], rows[i].Value)
+	}
+	return out, nil
+}
+
+// AlbumEditFiles returns the files of an album's live tracks and the album's
+// ETag. It returns an error wrapping [ErrNotFound] for an unknown ID or an album
+// with no live track.
+func (s *Store) AlbumEditFiles(ctx context.Context, id string) ([]EditFile, string, error) {
+	rows, err := s.rq.ListAlbumFiles(ctx, id)
+	if err != nil {
+		return nil, "", fmt.Errorf("album %s: files: %w", id, err)
+	}
+	if len(rows) == 0 {
+		return nil, "", fmt.Errorf("album %s: %w", id, ErrNotFound)
+	}
+	files := make([]EditFile, len(rows))
+	stamps := make([]string, len(rows))
+	for i := range rows {
+		r := &rows[i]
+		files[i] = EditFile{ID: r.ID, ULID: r.Ulid, Root: r.Root, RelPath: r.RelPath, Size: r.Size, MTime: fromMS(r.Mtime)}
+		stamps[i] = stamp(r.Ulid, r.Size, r.Mtime)
+	}
+	return files, etag(stamps...), nil
+}
+
+// TrackEditFile returns the file of the live track id and the track's ETag. It
+// returns an error wrapping [ErrNotFound] for an unknown ID or a missing track.
+func (s *Store) TrackEditFile(ctx context.Context, id string) (EditFile, string, error) {
+	r, err := s.rq.GetEditFile(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return EditFile{}, "", fmt.Errorf("track %s: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return EditFile{}, "", fmt.Errorf("track %s: %w", id, err)
+	}
+	file := EditFile{ID: r.ID, ULID: r.Ulid, Root: r.Root, RelPath: r.RelPath, Size: r.Size, MTime: fromMS(r.Mtime)}
+	return file, etag(stamp(r.Ulid, r.Size, r.Mtime)), nil
 }
 
 // TrackFile returns the file of the live track with the public ID id. It

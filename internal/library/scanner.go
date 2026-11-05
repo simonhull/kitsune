@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/simonhull/audiometa"
+
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -35,7 +37,11 @@ type Options struct {
 	Now          func() time.Time // Nil means time.Now.
 	Artwork      *artwork.Cache   // Nil skips album art.
 	TagWrites    bool             // Files may be rewritten. Off, a scan changes nothing under the roots.
+	Write        WriteFunc        // Nil means audiometa.WriteContext.
 }
+
+// WriteFunc saves edit to the audio file at path, as [audiometa.WriteContext] does.
+type WriteFunc func(ctx context.Context, path string, edit func(*audiometa.File) error) error
 
 // Stats counts what a scan did.
 type Stats struct {
@@ -59,16 +65,17 @@ type Scanner struct {
 	now       func() time.Time
 	artwork   *artwork.Cache
 	tagWrites bool
+	write     WriteFunc
 	mu        sync.Mutex  // Held by the one scan, from before it waits for lock.
 	lock      libraryLock // Held by a running scan or edit.
 }
 
 // NewScanner returns a scanner that writes to st.
-func NewScanner(st *store.Store, opts Options) *Scanner {
+func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // hugeParam: Options is built once at startup; a value keeps every caller a plain literal.
 	s := &Scanner{
 		st: st, roots: opts.Roots, grace: opts.MissingGrace, workers: opts.Workers,
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
-		tagWrites: opts.TagWrites, lock: newLibraryLock(),
+		tagWrites: opts.TagWrites, write: opts.Write, lock: newLibraryLock(),
 	}
 	if s.workers <= 0 {
 		s.workers = runtime.NumCPU()
@@ -78,6 +85,11 @@ func NewScanner(st *store.Store, opts Options) *Scanner {
 	}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	if s.write == nil {
+		s.write = func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+			return audiometa.WriteContext(ctx, path, edit)
+		}
 	}
 	return s
 }

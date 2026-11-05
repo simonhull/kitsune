@@ -214,7 +214,7 @@ func TestMeReportsTagEditing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ts := newTestServer(t, testServerOptions{TagWrites: tt.tagWrites})
+			ts := newTestServer(t, testServerOptions{TagWrites: tt.tagWrites, LibraryRoot: t.TempDir()})
 			var me api.Me
 			ts.getJSON(t, ts.tokenFor(t, tt.role), mePath, &me)
 			if me.CanEditTags != tt.want || me.Role != string(tt.role) {
