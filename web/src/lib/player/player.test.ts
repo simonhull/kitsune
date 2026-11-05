@@ -605,6 +605,100 @@ describe('Player failures', () => {
 		expect(player.current?.id).toBe('t0');
 	});
 
+	it('picks up where it was when a file changes under a track', async () => {
+		const { player, output } = setup();
+		player.play(album(2));
+		await settle();
+		output.elapse(40);
+		output.fail();
+		await settle();
+		expect(player.current?.id).toBe('t0');
+		expect(output.url).toBe('t0');
+		expect(output.position).toBe(40);
+		expect(player.position).toBe(40);
+		expect(player.status).toBe('playing');
+		expect(player.failure).toBe(false);
+	});
+
+	it('shows no trip through the start on the way back', async () => {
+		const { player, output } = setup();
+		player.play(album(2));
+		await settle();
+		output.elapse(40);
+		output.fail();
+		await settle();
+		output.seek(0);
+		expect(player.position).toBe(40);
+		output.seek(41);
+		expect(player.position).toBe(41);
+	});
+
+	it('moves on when the reload fails too: the file has gone', async () => {
+		const { player, output } = setup();
+		player.play(album(2));
+		await settle();
+		output.elapse(40);
+		output.fail();
+		await settle();
+		output.fail();
+		await settle();
+		expect(player.current?.id).toBe('t1');
+	});
+
+	it('spends the reload until the track has played on from it', async () => {
+		const { player, output } = setup();
+		player.play(album(2));
+		await settle();
+		output.elapse(40);
+		output.fail();
+		await settle();
+		output.elapse(10);
+		output.fail();
+		await settle();
+		expect(player.current?.id).toBe('t0');
+		expect(output.position).toBe(50);
+	});
+
+	it('goes where someone seeks, straight after a reload', async () => {
+		const { player, output } = setup();
+		player.play(album(2));
+		await settle();
+		output.elapse(40);
+		output.fail();
+		await settle();
+		player.seek(5);
+		expect(player.position).toBe(5);
+		output.elapse(1);
+		expect(player.position).toBe(6);
+	});
+
+	it('gives every track its own reload', async () => {
+		const { player, output } = setup();
+		player.play(album(3));
+		await settle();
+		output.elapse(40);
+		output.fail();
+		await settle();
+		player.next();
+		await settle();
+		output.elapse(40);
+		output.fail();
+		await settle();
+		expect(player.current?.id).toBe('t1');
+		expect(output.position).toBe(40);
+	});
+
+	it('leaves a lost session to the door rather than reloading', async () => {
+		const { player, output } = setup({ me: () => Promise.reject(new UnauthorizedError()) });
+		player.play(album(2));
+		await settle();
+		output.elapse(40);
+		output.fail();
+		await settle();
+		expect(player.status).toBe('paused');
+		expect(player.position).toBe(40);
+	});
+
 	it('skips what the browser says it cannot play, without asking the server', async () => {
 		const me = vi.fn(createFixtureSource().me);
 		const { player, output } = setup({ me });
