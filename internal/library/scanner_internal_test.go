@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -497,6 +498,133 @@ func TestScanRunningIsRefused(t *testing.T) {
 	defer l.scanner.mu.Unlock()
 	if _, err := l.scanner.Scan(t.Context(), Quick); !errors.Is(err, ErrScanRunning) {
 		t.Errorf("Scan = %v, want ErrScanRunning", err)
+	}
+}
+
+func TestEditDuringScanIsRefused(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	l.scanner.lock <- struct{}{} // What a running scan holds.
+	defer l.scanner.lock.unlock()
+	err := l.scanner.exclusive(func() error {
+		t.Error("the edit ran during a scan")
+		return nil
+	})
+	if !errors.Is(err, ErrBusy) {
+		t.Errorf("exclusive = %v, want ErrBusy", err)
+	}
+}
+
+// TestScanHoldsTheLockUntilItEnds stops a scan just after its walk and checks
+// an edit is refused until the scan is done.
+func TestScanHoldsTheLockUntilItEnds(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	l.copyTo(l.roots[0], "one.flac", sampleFLAC)
+	walked, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	l.scanner.now = func() time.Time {
+		once.Do(func() {
+			close(walked)
+			<-release
+		})
+		return l.clock.Now()
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := l.scanner.Scan(t.Context(), Quick)
+		done <- err
+	}()
+	<-walked
+	if err := l.scanner.exclusive(func() error { return nil }); !errors.Is(err, ErrBusy) {
+		t.Errorf("exclusive during a scan = %v, want ErrBusy", err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err := l.scanner.exclusive(func() error { return nil }); err != nil {
+		t.Errorf("exclusive after the scan = %v", err)
+	}
+}
+
+func TestScanWaitsForAnEdit(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	l.copyTo(l.roots[0], "one.flac", sampleFLAC)
+	started, scanned := make(chan struct{}), make(chan error, 1)
+	err := l.scanner.exclusive(func() error {
+		go func() {
+			close(started)
+			_, scanErr := l.scanner.Scan(t.Context(), Quick)
+			scanned <- scanErr
+		}()
+		<-started
+		select {
+		case scanErr := <-scanned:
+			t.Errorf("Scan returned during the edit: %v", scanErr)
+		case <-time.After(50 * time.Millisecond):
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = <-scanned; err != nil {
+		t.Errorf("Scan after the edit = %v", err)
+	}
+	if st := l.states(l.roots[0]); len(st) != 1 {
+		t.Errorf("states = %+v, want the file scanned", st)
+	}
+}
+
+func TestScanWaitingForAnEditStopsWithItsContext(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err := l.scanner.exclusive(func() error {
+		_, scanErr := l.scanner.Scan(ctx, Quick)
+		return scanErr
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Scan = %v, want context.Canceled", err)
+	}
+}
+
+func TestSweepRemovesLeftoverTemps(t *testing.T) {
+	t.Parallel()
+	const (
+		temp   = "a/.one.flac.audiometa-123.tmp"
+		hidden = "a/.keep.tmp"
+	)
+	tests := []struct {
+		name      string
+		tagWrites bool
+		wantGone  bool
+		wantSwept int
+	}{
+		{"writes on", true, true, 1},
+		{"writes off", false, false, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			l := newTestLib(t, 1)
+			l.scanner.tagWrites = tt.tagWrites
+			root := l.roots[0]
+			l.copyTo(root, "a/one.flac", sampleFLAC)
+			l.copyTo(root, temp, sampleFLAC)
+			l.copyTo(root, hidden, sampleFLAC)
+			wantStats(t, l.scan(Quick), &Stats{Seen: 1, Read: 1, Added: 1, Swept: tt.wantSwept})
+			_, err := os.Stat(filepath.Join(root, temp))
+			if gone := errors.Is(err, os.ErrNotExist); gone != tt.wantGone {
+				t.Errorf("temp gone = %t (%v), want %t", gone, err, tt.wantGone)
+			}
+			if _, err = os.Stat(filepath.Join(root, hidden)); err != nil {
+				t.Errorf("another hidden file: %v", err)
+			}
+		})
 	}
 }
 

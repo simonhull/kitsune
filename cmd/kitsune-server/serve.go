@@ -187,6 +187,7 @@ func buildApp(cfg *config.Config, st *store.Store, log *slog.Logger) (*app, erro
 			MissingGrace: cfg.Library.MissingGrace,
 			Logger:       log,
 			Artwork:      covers,
+			TagWrites:    cfg.Library.TagWrites,
 		}),
 		quickScan: cfg.Library.QuickScan,
 		drain:     shutdownTimeout,

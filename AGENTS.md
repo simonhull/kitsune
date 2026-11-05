@@ -123,6 +123,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   track may be behind an outage.
 - Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
   wait for the file to change.
+- One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it
+  gets `ErrBusy`; a scan that meets an edit waits. Readers never take it.
+- Scans remove audiometa's temp files (`isWriteTemp`), and only with `library.tag_writes` on: off,
+  nothing under a root ever changes.
 
 ## Artwork
 - `internal/artwork` renders covers during the scan and knows nothing of the store or the
