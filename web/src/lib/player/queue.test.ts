@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Album, Track } from '#lib/library/source.ts';
-import { currentOf, inOrder, next, previous, rewound, shuffled, upcoming } from './queue';
+import { currentOf, inOrder, next, previous, retagged, rewound, shuffled, upcoming } from './queue';
 
 function album(count: number): Album {
 	const tracks: Track[] = Array.from({ length: count }, (_, index) => ({
@@ -8,7 +8,9 @@ function album(count: number): Album {
 		title: `T${String(index)}`,
 		artists: [],
 		durationMs: 1000,
-		format: 'FLAC'
+		format: 'FLAC',
+		genres: [],
+		etag: ''
 	}));
 	return {
 		id: 'a',
@@ -20,7 +22,9 @@ function album(count: number): Album {
 		tracks,
 		durationMs: 1000,
 		formats: ['FLAC'],
-		addedAt: '2026-10-12T18:00:00Z'
+		addedAt: '2026-10-12T18:00:00Z',
+		genres: [],
+		etag: ''
 	};
 }
 
@@ -94,5 +98,27 @@ describe('a shuffled queue', () => {
 
 	it('copes with an album of one', () => {
 		expect(ids(shuffled(album(1), 1).tracks)).toEqual(['t0']);
+	});
+});
+
+describe('retagged', () => {
+	it('takes the new names and keeps the order and the place', () => {
+		const queue = { ...shuffled(album(4), 7), index: 2 };
+		const edited = {
+			...album(4),
+			tracks: album(4).tracks.map((track) => ({ ...track, title: `New ${track.id}` }))
+		};
+		const after = retagged(queue, edited);
+		expect(after.album).toBe(edited);
+		expect(after.index).toBe(2);
+		expect(after.ordered).toBe(false);
+		expect(after.tracks.map(({ id }) => id)).toEqual(queue.tracks.map(({ id }) => id));
+		expect(after.tracks.every(({ title, id }) => title === `New ${id}`)).toBe(true);
+	});
+
+	it('keeps a track the album no longer holds', () => {
+		const queue = inOrder(album(2));
+		const after = retagged(queue, { ...album(2), tracks: [] });
+		expect(after.tracks).toEqual(queue.tracks);
 	});
 });

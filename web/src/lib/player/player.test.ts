@@ -18,6 +18,8 @@ function track(index: number, extra: Partial<Track> = {}): Track {
 		artists: [],
 		durationMs: 100_000,
 		format: 'FLAC',
+		genres: [],
+		etag: '',
 		...extra
 	};
 }
@@ -33,7 +35,9 @@ function album(count: number, id = 'a', extra: Partial<Track> = {}): Album {
 		tracks: Array.from({ length: count }, (_, index) => track(index, extra)),
 		durationMs: 1000,
 		formats: ['FLAC'],
-		addedAt: '2026-10-12T18:00:00Z'
+		addedAt: '2026-10-12T18:00:00Z',
+		genres: [],
+		etag: ''
 	};
 }
 

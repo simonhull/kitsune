@@ -8,6 +8,7 @@ import {
 	inOrder,
 	next,
 	previous,
+	retagged,
 	rewound,
 	shuffled,
 	upcoming,
@@ -190,6 +191,13 @@ export class Player implements PlayerView {
 		this.#reloadedAt = null;
 		if (!this.#stale) {
 			this.#output.seek(this.position);
+		}
+	}
+
+	/** Takes in an album just edited: the names move at once, and the sound doesn't notice. */
+	retag(album: Album): void {
+		if (this.queue?.album.id === album.id) {
+			this.queue = retagged(this.queue, album);
 		}
 	}
 

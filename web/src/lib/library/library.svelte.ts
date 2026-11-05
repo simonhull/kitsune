@@ -2,7 +2,7 @@ import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { preload } from '#lib/cover/rungs.ts';
 import { decodesAhead, mostQueued, openingFor, throwGap } from '#lib/pages/deck.ts';
 import { createApiSource } from './api.ts';
-import { cueOf, type NowPlaying } from './cue.ts';
+import { cueOf, retagged, type NowPlaying } from './cue.ts';
 import {
 	createFixtureSource,
 	createScanFixtureSource,
@@ -15,14 +15,18 @@ import {
 	ArtistNotFoundError,
 	UnauthorizedError,
 	type Album,
+	type AlbumEdit,
 	type AlbumEntry,
 	type ArtistDetail,
 	type ArtistEntry,
 	type ArtistLink,
+	type EditedTrack,
 	type LibraryFacts,
 	type LibrarySource,
-	type User
+	type Me,
+	type TrackEdit
 } from './source.ts';
+import { inAlbumOrder, type Tagger } from './tags.ts';
 
 /** The grid's page: 60 divides evenly into every column count, so pages stack with no seam. */
 export const albumPageSize = 60;
@@ -97,6 +101,8 @@ export interface PlayerView {
 	/** From the first play until a reset, whatever has happened since. */
 	readonly started: boolean;
 	readonly cue: NowPlaying | null;
+	/** Takes in an album just edited. */
+	retag(album: Album): void;
 	reset(): void;
 }
 
@@ -118,8 +124,8 @@ async function cardFor(entry: AlbumEntry): Promise<AlbumEntry> {
 }
 
 /** The client's view of the library. List entries seed the first frame of the next page. */
-export class Library {
-	user = $state.raw<User | null>(null);
+export class Library implements Tagger {
+	user = $state.raw<Me | null>(null);
 	facts = $state.raw<LibraryFacts | null>(null);
 	/** Newest first: the feature album, then what's beside it. */
 	recent = $state.raw<AlbumEntry[]>([]);
@@ -261,7 +267,9 @@ export class Library {
 
 	/** Exchanges a name and password for a session. Rejects with `LoginError`. */
 	async login(name: string, password: string): Promise<void> {
-		this.user = await this.#source.login(name, password);
+		await this.#source.login(name, password);
+		// Logging in names the user; only `/me` says what they may do.
+		this.user = await this.#source.me();
 		this.#session = Promise.resolve('signed-in');
 	}
 
@@ -665,6 +673,60 @@ export class Library {
 		} finally {
 			this.#loading.delete(id);
 		}
+	}
+
+	/** Saves an edit of every track, on the ETag held now. Rejects with `EditError`. */
+	async editAlbum(id: string, edit: AlbumEdit): Promise<void> {
+		this.#adopt(await this.#source.editAlbum(id, this.#albums.get(id)?.etag ?? '', edit));
+	}
+
+	/** Saves an edit of one track, on the ETag held now. Rejects with `EditError`. */
+	async editTrack(albumId: string, trackId: string, edit: TrackEdit): Promise<void> {
+		const etag = this.#albums.get(albumId)?.tracks.find(({ id }) => id === trackId)?.etag;
+		this.#adoptTrack(await this.#source.editTrack(trackId, etag ?? '', edit));
+	}
+
+	/** Reads an album again, for when what's held has turned out to be behind the server. */
+	async reread(id: string): Promise<Album> {
+		const album = await this.#source.album(id);
+		this.#adopt(album);
+		return album;
+	}
+
+	#adoptTrack({ albumId, albumEtag, ...track }: EditedTrack): void {
+		const album = this.#albums.get(albumId);
+		if (album !== undefined) {
+			const tracks = album.tracks.map((held) => (held.id === track.id ? track : held));
+			this.#adopt({ ...album, etag: albumEtag, tracks: inAlbumOrder(tracks) });
+		}
+	}
+
+	/** Puts an album everywhere it's shown, so nothing waits for a reload to catch up. */
+	#adopt(album: Album): void {
+		this.#albums.set(album.id, album);
+		const dated = (entry: AlbumEntry): AlbumEntry =>
+			entry.id === album.id ? { ...entry, year: album.year } : entry;
+		const entry = this.#entries.get(album.id);
+		if (entry !== undefined) {
+			this.#entries.set(album.id, dated(entry));
+		}
+		this.recent = this.recent.map(dated);
+		this.albums = this.albums.map(dated);
+		this.#player?.retag(album);
+		this.#recue(album);
+	}
+
+	/** A cue only shows what would play, so it follows the album's order; a queue keeps its own. */
+	#recue(album: Album): void {
+		const { playing } = this;
+		if (playing?.album.id !== album.id) {
+			return;
+		}
+		const index = album.tracks.findIndex(({ id }) => id === playing.track.id);
+		this.playing =
+			this.#player?.started === true || index < 0
+				? retagged(playing, album)
+				: cueOf(album, album.tracks, index);
 	}
 
 	/** Reacts to a lost session. Parallel calls are one event: the app leaves once. */

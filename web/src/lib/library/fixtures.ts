@@ -2,6 +2,7 @@ import { fnv1a } from '#lib/cover/cover.ts';
 import {
 	AlbumNotFoundError,
 	ArtistNotFoundError,
+	EditError,
 	LoginError,
 	type Album,
 	type AlbumEntry,
@@ -12,10 +13,10 @@ import {
 	type ArtistLink,
 	type LibraryFacts,
 	type LibrarySource,
+	type Me,
 	type SearchResults,
 	type Track,
-	type TrackHit,
-	type User
+	type TrackHit
 } from './source';
 
 // The slugs are chosen so FNV-1a lands each album on the cover its board shows.
@@ -67,7 +68,11 @@ function track(
 		format: 'FLAC',
 		sampleRate: 96_000,
 		bitDepth: 24,
-		...(gain === null ? {} : { replayGain: { trackGain: gain } })
+		...(gain === null ? {} : { replayGain: { trackGain: gain } }),
+		trackTotal: album.trackCount,
+		discTotal: 1,
+		genres: ['Ambient', 'Dream Pop'],
+		etag: `${album.id}-${String(trackNo)}:0`
 	};
 }
 
@@ -108,10 +113,12 @@ function albumFrom(entry: AlbumEntry, tracks: Track[], year: number): Album {
 		...entry,
 		artists: entry.compilation ? [] : [artistLink(entry.artist)],
 		year,
-		tracks,
+		tracks: tracks.map((track) => ({ ...track, year })),
 		durationMs: tracks.reduce((sum, { durationMs }) => sum + durationMs, 0),
 		formats: ['FLAC'],
-		addedAt: '2026-10-12T18:00:00Z'
+		addedAt: '2026-10-12T18:00:00Z',
+		genres: ['Ambient', 'Dream Pop'],
+		etag: `${entry.id}:0`
 	};
 }
 
@@ -140,11 +147,12 @@ const byName = [...albums.values()]
 	.filter((album) => album.id !== tinLantern.id)
 	.toSorted((a, b) => a.title.localeCompare(b.title));
 
-const user: User = {
+const user: Me = {
 	id: 1,
 	name: 'Simon',
 	role: 'admin',
-	createdAt: '2026-01-01T00:00:00Z'
+	createdAt: '2026-01-01T00:00:00Z',
+	canEditTags: true
 };
 
 const facts: LibraryFacts = {
@@ -211,6 +219,24 @@ function find(query: string): SearchResults {
 	};
 }
 
+/** Moves an ETag on, as a rewrite of the file would. */
+function nextEtag(etag: string): string {
+	const [name = '', count = '0'] = etag.split(':');
+	return `${name}:${String(Number(count) + 1)}`;
+}
+
+/** Rewrites an album's tracks, moving on the ETag of each one `edit` touches, and the album's. */
+function rewritten(album: Album, edit: (track: Track) => Track | undefined): Album {
+	return {
+		...album,
+		etag: nextEtag(album.etag),
+		tracks: album.tracks.map((track) => {
+			const changed = edit(track);
+			return changed === undefined ? track : { ...changed, etag: nextEtag(track.etag) };
+		})
+	};
+}
+
 export interface FixtureOptions {
 	/** Delay every response by this many milliseconds, as a real server would. */
 	latencyMs?: number;
@@ -219,6 +245,17 @@ export interface FixtureOptions {
 /** Builds a {@link LibrarySource} from the boards' fake library. */
 export function createFixtureSource(options: FixtureOptions = {}): LibrarySource {
 	const { latencyMs = 0 } = options;
+	// Each source has its own: an edit is for this tab, until a reload.
+	const held = new Map(albums);
+
+	/** The album holding a track, as the server would find it. */
+	function albumOf(trackId: string): Album {
+		const found = [...held.values()].find(({ tracks }) => tracks.some(({ id }) => id === trackId));
+		if (found === undefined) {
+			throw new EditError({ kind: 'gone' });
+		}
+		return found;
+	}
 
 	async function respond<T>(answer: () => T): Promise<T> {
 		if (latencyMs > 0) {
@@ -242,7 +279,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			respond(() => ({ albums: (sort === 'added' ? newestFirst : byName).slice(0, limit) })),
 		album: (id) =>
 			respond(() => {
-				const album = albums.get(id);
+				const album = held.get(id);
 				if (album === undefined) {
 					throw new AlbumNotFoundError(id);
 				}
@@ -261,6 +298,33 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			respond(() => {
 				signal?.throwIfAborted();
 				return find(query);
+			}),
+		editTrack: (id, etag, edit) =>
+			respond(() => {
+				const album = albumOf(id);
+				const current = album.tracks.find((track) => track.id === id);
+				if (current?.etag !== etag) {
+					throw new EditError({ kind: 'stale' });
+				}
+				const after = rewritten(album, (track) =>
+					track.id === id ? { ...track, ...edit } : undefined
+				);
+				held.set(album.id, after);
+				const track = after.tracks.find((candidate) => candidate.id === id) ?? current;
+				return { ...track, albumId: after.id, albumEtag: after.etag };
+			}),
+		editAlbum: (id, etag, edit) =>
+			respond(() => {
+				const album = held.get(id);
+				if (album === undefined) {
+					throw new EditError({ kind: 'gone' });
+				}
+				if (album.etag !== etag) {
+					throw new EditError({ kind: 'stale' });
+				}
+				const after = { ...rewritten(album, (track) => ({ ...track, ...edit })), ...edit };
+				held.set(id, after);
+				return after;
 			}),
 		// Never fetched: the fixtures play on a silent clock.
 		streamUrl: (trackId) => `fixture:${trackId}`
@@ -362,8 +426,16 @@ export function createScanFixtureSource({
 		return answer();
 	}
 
+	/** The real thing has the library locked for the whole of a scan. */
+	const busy = (): Promise<never> =>
+		respond(() => {
+			throw new EditError({ kind: 'busy', retryAfterSeconds: 30 });
+		});
+
 	return {
 		...base,
+		editTrack: busy,
+		editAlbum: busy,
 		facts: () =>
 			respond(() => {
 				const albums = found();

@@ -63,3 +63,9 @@ export function previous(queue: Queue): Queue | null {
 export function rewound(queue: Queue): Queue {
 	return { ...queue, index: 0 };
 }
+
+/** Takes in an album just edited, keeping the order and the place. Renumbering moves neither. */
+export function retagged(queue: Queue, album: Album): Queue {
+	const fresh = new Map(album.tracks.map((track) => [track.id, track]));
+	return { ...queue, album, tracks: queue.tracks.map((track) => fresh.get(track.id) ?? track) };
+}

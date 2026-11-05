@@ -7,6 +7,7 @@ import {
 	AlbumNotFoundError,
 	ArtistNotFoundError,
 	ServerError,
+	EditError,
 	UnauthorizedError,
 	type AlbumEntry,
 	type AlbumPage,
@@ -20,7 +21,7 @@ function source(overrides: Partial<LibrarySource> = {}): LibrarySource {
 }
 
 function track(id: string): Track {
-	return { id, title: id, artists: [], durationMs: 100_000, format: 'FLAC' };
+	return { id, title: id, artists: [], durationMs: 100_000, format: 'FLAC', genres: [], etag: '' };
 }
 
 function forgetful(seen = false): ReadyMemory {
@@ -262,10 +263,22 @@ class Scripted {
 				answer(() => ({
 					...entry(Number(id.slice('album-'.length))),
 					artists: [],
-					tracks: [{ id: `${id}-1`, title: 'One', artists: [], durationMs: 1000, format: 'FLAC' }],
+					tracks: [
+						{
+							id: `${id}-1`,
+							title: 'One',
+							artists: [],
+							durationMs: 1000,
+							format: 'FLAC',
+							genres: [],
+							etag: ''
+						}
+					],
 					durationMs: 0,
 					formats: [],
-					addedAt: ''
+					addedAt: '',
+					genres: [],
+					etag: ''
 				}))
 		});
 	}
@@ -856,5 +869,119 @@ describe('the deck', () => {
 			expect(mark).toHaveBeenCalled();
 			library.reset();
 		});
+	});
+});
+
+describe('tag edits', () => {
+	const id = 'glasshouse-66';
+
+	async function opened(overrides: Partial<LibrarySource> = {}) {
+		const library = new Library(source(overrides));
+		const output = new SilentOutput({ ticking: false });
+		const player = new Player(library, () => output);
+		await library.loadShell();
+		await library.loadAlbum(id);
+		const album = library.album(id);
+		if (album === undefined) {
+			throw new Error('no album');
+		}
+		return { library, player, output, album };
+	}
+
+	function trackAt(library: Library, index: number): Track {
+		const track = library.album(id)?.tracks.at(index);
+		if (track === undefined) {
+			throw new Error('no such track');
+		}
+		return track;
+	}
+
+	it('asks who it is after logging in: only /me says what they may do', async () => {
+		const plain = { id: 1, name: 'S', role: 'admin', createdAt: '2026-01-01T00:00:00Z' } as const;
+		const library = new Library(source({ login: () => Promise.resolve(plain) }));
+		await library.login('simon', 'pw');
+		expect(library.user?.canEditTags).toBe(true);
+	});
+
+	it('shows an album edit everywhere at once', async () => {
+		const { library, album } = await opened();
+		await library.editAlbum(id, { year: 1999, genres: ['Noise'] });
+		expect(library.album(id)?.year).toBe(1999);
+		expect(library.album(id)?.etag).not.toBe(album.etag);
+		expect(library.entry(id)?.year).toBe(1999);
+		expect(library.recent.find((entry) => entry.id === id)?.year).toBe(1999);
+		expect(library.albums.find((entry) => entry.id === id)?.year).toBe(1999);
+		expect(library.playing?.album.year).toBe(1999);
+	});
+
+	it('chains on the ETag each edit left', async () => {
+		const { library } = await opened();
+		await library.editAlbum(id, { year: 1999 });
+		await library.editTrack(id, trackAt(library, 0).id, { title: 'One' });
+		await library.editTrack(id, trackAt(library, 1).id, { title: 'Two' });
+		await library.editAlbum(id, { year: 2000 });
+		expect(library.album(id)?.tracks.at(1)?.title).toBe('Two');
+		expect(library.album(id)?.year).toBe(2000);
+	});
+
+	it('moves a renumbered track to where a reload would put it', async () => {
+		const { library } = await opened();
+		const first = trackAt(library, 0);
+		await library.editTrack(id, first.id, { trackNo: 99 });
+		expect(library.album(id)?.tracks.at(-1)?.id).toBe(first.id);
+	});
+
+	it('renames the cued track, and follows it if it moves', async () => {
+		const { library } = await opened();
+		const first = trackAt(library, 0);
+		await library.editTrack(id, first.id, { title: 'New', trackNo: 99 });
+		expect(library.playing?.track.title).toBe('New');
+		expect(library.playing?.index).toBe(9);
+	});
+
+	it('renames what is playing without touching the sound or the order', async () => {
+		const { library, player, output, album } = await opened();
+		player.play(album, 1);
+		await vi.waitFor(() => {
+			expect(player.status).toBe('playing');
+		});
+		output.elapse(30);
+		const playing = trackAt(library, 1);
+		const following = trackAt(library, 2);
+		await library.editTrack(id, playing.id, { title: 'New', trackNo: 99 });
+		await library.editTrack(id, following.id, { title: 'Next' });
+		expect(player.current?.title).toBe('New');
+		expect(library.playing?.track.title).toBe('New');
+		expect(library.playing?.index).toBe(1);
+		expect(library.playing?.upNext.at(0)?.title).toBe('Next');
+		expect(player.queue?.tracks.at(1)?.id).toBe(playing.id);
+		expect(player.position).toBe(30);
+		expect(output.playing).toBe(true);
+	});
+
+	it('leaves another album in the player alone', async () => {
+		const { library, player } = await opened();
+		const other = await createFixtureSource().album('night-ferry-94');
+		player.play(other);
+		await library.editAlbum(id, { year: 1999 });
+		expect(library.playing?.album.id).toBe('night-ferry-94');
+		expect(player.queue?.album.year).toBe(other.year);
+	});
+
+	it('changes nothing when an edit is refused', async () => {
+		const { library, album } = await opened({
+			editAlbum: () => Promise.reject(new EditError({ kind: 'stale' }))
+		});
+		await expect(library.editAlbum(id, { year: 1999 })).rejects.toBeInstanceOf(EditError);
+		expect(library.album(id)).toEqual(album);
+	});
+
+	it('reads an album again over what it holds', async () => {
+		const fixtures = createFixtureSource();
+		const { library, album } = await opened({ album: fixtures.album });
+		await fixtures.editAlbum(id, album.etag, { year: 1999 });
+		await library.reread(id);
+		expect(library.album(id)?.year).toBe(1999);
+		expect(library.playing?.album.year).toBe(1999);
 	});
 });

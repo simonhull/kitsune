@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import {
 		addedOn,
 		clock,
@@ -25,15 +26,19 @@
 		/** It couldn't be fetched this time. */
 		unavailable: boolean;
 		retry: () => void;
+		/** Takes the rows' place in the panel, while the album is being edited. */
+		editor: Snippet<[Album]> | undefined;
 	}
 
-	let { album, cuedId, sounding, play, gone, unavailable, retry }: Props = $props();
+	let { album, cuedId, sounding, play, gone, unavailable, retry, editor }: Props = $props();
 
 	const multiDisc = $derived(isMultiDisc(album?.tracks ?? []));
 </script>
 
 <section aria-label="Tracks" class="panel" data-morph-part="panel">
-	{#if gone}
+	{#if album !== undefined && editor !== undefined}
+		{@render editor(album)}
+	{:else if gone}
 		<p class="note">This album isn't in the library any more.</p>
 	{:else if unavailable}
 		<p class="note">

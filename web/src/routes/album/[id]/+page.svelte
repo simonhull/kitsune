@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
+	import type { Album } from '#lib/library/source.ts';
 	import { whenSettled } from '#lib/morph/settled.ts';
 	import AlbumHero from '#lib/pages/AlbumHero.svelte';
+	import TagEditor from '#lib/pages/TagEditor.svelte';
 	import TrackList from '#lib/pages/TrackList.svelte';
 	import { player } from '#lib/player/player.svelte.ts';
 	import type { PageProps } from './$types';
@@ -14,6 +16,12 @@
 	const entry = $derived(library.entry(id));
 	const album = $derived(library.album(id));
 	const cuedId = $derived(library.playing?.album.id === id ? library.playing.track.id : undefined);
+
+	/** The album being edited: this page stays mounted from one album to another. */
+	let editingId = $state<string | null>(null);
+	let editButton: HTMLButtonElement | undefined = $state();
+	let announcement = $state('');
+	const editing = $derived(editingId === id);
 
 	// Never awaited: the first frame is built from the list entry, and tracks stream in.
 	$effect(() => {
@@ -33,7 +41,23 @@
 			});
 		}
 	});
+
+	function openEditor(): void {
+		editingId = id;
+		announcement = '';
+	}
+
+	async function closeEditor(saved: boolean): Promise<void> {
+		editingId = null;
+		announcement = saved ? 'Tags saved.' : '';
+		await tick();
+		editButton?.focus();
+	}
 </script>
+
+{#snippet editor(held: Album)}
+	<TagEditor album={held} close={(saved) => void closeEditor(saved)} />
+{/snippet}
 
 <svelte:head>
 	<title>{entry?.title ?? 'Album'} · Kitsune</title>
@@ -46,7 +70,13 @@
 	</div>
 {:else}
 	<div class="album">
-		<AlbumHero albumId={id} {entry} {album} />
+		<AlbumHero
+			albumId={id}
+			{entry}
+			{album}
+			edit={library.user?.canEditTags === true && !editing ? openEditor : undefined}
+			bind:editButton
+		/>
 		<TrackList
 			{album}
 			{cuedId}
@@ -59,7 +89,9 @@
 			gone={library.failed(id)}
 			unavailable={library.unavailable(id)}
 			retry={() => void library.loadAlbum(id)}
+			editor={editing ? editor : undefined}
 		/>
+		<p class="visually-hidden" role="status">{announcement}</p>
 	</div>
 {/if}
 

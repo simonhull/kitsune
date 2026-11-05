@@ -14,9 +14,12 @@
 		entry: AlbumEntry | undefined;
 		/** The full album, once it has streamed in. */
 		album: Album | undefined;
+		/** Opens the editor. Left out for anyone who can't edit, and while it's open. */
+		edit: (() => void) | undefined;
+		editButton?: HTMLButtonElement | undefined;
 	}
 
-	let { albumId, entry, album }: Props = $props();
+	let { albumId, entry, album, edit, editButton = $bindable() }: Props = $props();
 
 	/** Until the album streams in, and on a compilation, the name is plain text. */
 	const owners = $derived(album?.artists ?? []);
@@ -85,7 +88,15 @@
 			<button type="button" class="ghost round" aria-label="Favorite" disabled
 				><Icon name="heart-outline" /></button
 			>
-			<span class="ghost" aria-disabled="true">Edit tags</span>
+			{#if edit !== undefined}
+				<button
+					type="button"
+					class="ghost"
+					disabled={!playable}
+					bind:this={editButton}
+					onclick={edit}>Edit tags</button
+				>
+			{/if}
 		</div>
 	</div>
 </section>
@@ -226,8 +237,7 @@
 		justify-content: center;
 	}
 
-	.ghost:disabled,
-	.ghost[aria-disabled] {
+	.ghost:disabled {
 		color: var(--text-label);
 		cursor: default;
 	}

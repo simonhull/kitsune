@@ -14,6 +14,7 @@
 	const outlines = {
 		search: { path: 'm20 20-3.5-3.5', circle: true },
 		'chevron-down': { path: 'M6 9l6 6 6-6', circle: false },
+		close: { path: 'M6 6l12 12M18 6L6 18', circle: false },
 		'heart-outline': { path: glyphs.heart.path, circle: false }
 	} as const;
 
