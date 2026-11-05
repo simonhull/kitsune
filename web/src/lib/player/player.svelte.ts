@@ -1,0 +1,330 @@
+import { library, type Library, type PlayerView } from '#lib/library/library.svelte.ts';
+import type { Album, Track } from '#lib/library/source.ts';
+import { appliedGain } from './gain.ts';
+import { HtmlOutput, mediaTypeOf, SilentOutput, type AudioOutput } from './output.ts';
+import {
+	currentOf,
+	inOrder,
+	next,
+	previous,
+	rewound,
+	shuffled,
+	upcoming,
+	type Queue
+} from './queue.ts';
+
+export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused';
+
+/** How many tracks may fail in a row before the player stops trying. */
+const mostFailures = 3;
+/** How far before the end the next track starts loading. */
+const preloadSeconds = 15;
+/** Past this far into a track, Previous means the start of it. */
+const restartSeconds = 3;
+
+/** What's playing, whatever the page is doing. Sound never waits for a picture. */
+export class Player implements PlayerView {
+	queue = $state.raw<Queue | null>(null);
+	current = $derived<Track | null>(this.queue === null ? null : (currentOf(this.queue) ?? null));
+	status = $state<PlayerStatus>('idle');
+	/** Seconds into {@link Player.current}. */
+	position = $state(0);
+	/** Set when it stopped because tracks wouldn't play. */
+	failure = $state(false);
+
+	readonly #library: Library;
+	readonly #create: () => AudioOutput;
+	#built: AudioOutput | null = null;
+	/** Moves on with every new intent: anything older that answers late is ignored. */
+	#run = 0;
+	/** The last run sent to find out why it failed: an error event and a rejection are one failure. */
+	#asked = -1;
+	#failures = 0;
+	/** The output no longer holds this track as it should: the next play loads it again. */
+	#stale = false;
+	/** The track already sent to preload. */
+	#ahead: string | null = null;
+
+	/** Nothing audio-related exists until the first play: this module loads with no window. */
+	constructor(host: Library, create: () => AudioOutput) {
+		this.#library = host;
+		this.#create = create;
+		host.follow(this);
+	}
+
+	/** Reports whether a queue has started. It stays started, paused or finished, until a reset. */
+	get started(): boolean {
+		return this.queue !== null;
+	}
+
+	get #output(): AudioOutput {
+		if (this.#built === null) {
+			this.#built = this.#create();
+			this.#built.listen({
+				time: (seconds) => {
+					this.#timed(seconds);
+				},
+				running: () => {
+					this.#sounding();
+				},
+				stopped: () => {
+					this.#stopped();
+				},
+				ended: () => {
+					this.#advance();
+				},
+				failed: () => void this.#mediaFailed(this.#run)
+			});
+		}
+		return this.#built;
+	}
+
+	/** Plays an album in its own order, from `index`. */
+	play(album: Album, index = 0): void {
+		this.#fresh();
+		this.#begin(inOrder(album, index));
+	}
+
+	shuffle(album: Album): void {
+		this.#fresh();
+		this.#begin(shuffled(album, Math.floor(Math.random() * 2 ** 32)));
+	}
+
+	/** Plays an album from the top, or toggles it if it's the one in the player. */
+	playOrToggle(album: Album): void {
+		if (this.queue?.album.id === album.id) {
+			this.toggle();
+		} else {
+			this.play(album);
+		}
+	}
+
+	toggle(): void {
+		if (this.status === 'playing' || this.status === 'loading') {
+			this.pause();
+		} else {
+			this.resume();
+		}
+	}
+
+	pause(): void {
+		this.#run += 1;
+		this.status = 'paused';
+		this.#built?.pause();
+	}
+
+	resume(): void {
+		const { current } = this;
+		if (current === null) {
+			return;
+		}
+		this.#fresh();
+		this.#run += 1;
+		this.status = 'loading';
+		if (this.#stale) {
+			this.#stale = false;
+			this.#load(current);
+			if (this.position > 0) {
+				this.#output.seek(this.position);
+			}
+		}
+		void this.#sound(this.#run);
+	}
+
+	next(): void {
+		this.#fresh();
+		this.#advance();
+	}
+
+	/** Goes back to the start of the track, or past that to the one before. */
+	previous(): void {
+		if (this.queue === null) {
+			return;
+		}
+		this.#fresh();
+		const back = previous(this.queue);
+		if (back === null || this.position > restartSeconds) {
+			this.seek(0);
+		} else {
+			this.#begin(back);
+		}
+	}
+
+	seek(seconds: number): void {
+		const { current } = this;
+		if (current === null) {
+			return;
+		}
+		this.position = Math.min(Math.max(seconds, 0), current.durationMs / 1000);
+		if (!this.#stale) {
+			this.#output.seek(this.position);
+		}
+	}
+
+	/** Stops and forgets the queue, so the next user can't inherit it. The output stays built. */
+	reset(): void {
+		this.#run += 1;
+		this.#built?.stop();
+		this.queue = null;
+		this.status = 'idle';
+		this.position = 0;
+		this.failure = false;
+		this.#failures = 0;
+		this.#stale = false;
+		this.#ahead = null;
+	}
+
+	/** Someone asked for this, so whatever went wrong before is behind us. */
+	#fresh(): void {
+		this.#failures = 0;
+		this.failure = false;
+	}
+
+	#begin(queue: Queue): void {
+		this.#run += 1;
+		const run = this.#run;
+		this.queue = queue;
+		this.position = 0;
+		this.status = 'loading';
+		this.#stale = false;
+		const track = currentOf(queue);
+		if (track === undefined) {
+			return;
+		}
+		if (this.#playable(track)) {
+			this.#load(track);
+			void this.#sound(run);
+		} else {
+			this.#trackFailed();
+		}
+	}
+
+	#load(track: Track): void {
+		const output = this.#output;
+		output.load(this.#source(track));
+		output.setGain(appliedGain(track, this.queue?.ordered ?? true) ?? 0);
+	}
+
+	#source({ id, durationMs }: Track): { url: string; seconds: number } {
+		return { url: this.#library.streamUrl(id), seconds: durationMs / 1000 };
+	}
+
+	#playable({ format }: Track): boolean {
+		const mediaType = mediaTypeOf(format);
+		return mediaType === undefined || this.#output.canPlay(mediaType);
+	}
+
+	async #sound(run: number): Promise<void> {
+		try {
+			await this.#output.play();
+			if (run === this.#run) {
+				this.#sounding();
+			}
+		} catch (error) {
+			if (run !== this.#run) {
+				return;
+			}
+			const name = error instanceof Error ? error.name : '';
+			if (name === 'NotAllowedError') {
+				this.#hold(false);
+			} else if (name !== 'AbortError') {
+				await this.#mediaFailed(run);
+			}
+		}
+	}
+
+	#sounding(): void {
+		if (this.status === 'loading') {
+			this.status = 'playing';
+			this.#failures = 0;
+		}
+	}
+
+	#stopped(): void {
+		if (this.status === 'playing' || this.status === 'loading') {
+			this.#hold(false);
+		}
+	}
+
+	/** Pauses here, for a reason that isn't a person pressing pause. */
+	#hold(stale: boolean): void {
+		this.#run += 1;
+		this.status = 'paused';
+		this.#stale ||= stale;
+	}
+
+	#timed(seconds: number): void {
+		this.position = seconds;
+		const { queue, current } = this;
+		const following = queue === null ? undefined : upcoming(queue);
+		if (
+			current !== null &&
+			following !== undefined &&
+			following.id !== this.#ahead &&
+			current.durationMs / 1000 - seconds <= preloadSeconds &&
+			this.#playable(following)
+		) {
+			this.#ahead = following.id;
+			this.#output.preload(this.#source(following));
+		}
+	}
+
+	#advance(): void {
+		if (this.queue === null) {
+			return;
+		}
+		const onward = next(this.queue);
+		if (onward === null) {
+			this.#finish(this.queue);
+		} else {
+			this.#begin(onward);
+		}
+	}
+
+	/** The end of the queue: back at the first track, paused, ready to go round again. */
+	#finish(queue: Queue): void {
+		this.#built?.pause();
+		this.queue = rewound(queue);
+		this.position = 0;
+		this.#hold(true);
+	}
+
+	/** Finds out what a media failure was: the element can't tell a lost session from a bad file. */
+	async #mediaFailed(run: number): Promise<void> {
+		if (this.#asked === run) {
+			return;
+		}
+		if (this.status === 'paused') {
+			this.#stale = true;
+			return;
+		}
+		this.#asked = run;
+		const session = await this.#library.askSession();
+		if (run !== this.#run) {
+			return;
+		}
+		if (session === 'signed-in') {
+			this.#trackFailed();
+		} else {
+			// A lost session has gone to the door. A server restarting must not burn the queue.
+			this.#hold(true);
+		}
+	}
+
+	/** Skips a track that won't play, unless that's enough of them or there's nothing left. */
+	#trackFailed(): void {
+		this.#failures += 1;
+		const onward = this.queue === null ? null : next(this.queue);
+		if (onward === null || this.#failures >= mostFailures) {
+			this.failure = true;
+			this.#hold(true);
+		} else {
+			this.#begin(onward);
+		}
+	}
+}
+
+/** The one player. The fixtures have nothing to hear, so they get the clock and no sound. */
+export const player = new Player(library, () =>
+	library.simulated ? new SilentOutput() : new HtmlOutput()
+);

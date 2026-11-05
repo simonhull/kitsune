@@ -167,7 +167,9 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 					throw new AlbumNotFoundError(id);
 				}
 				return album;
-			})
+			}),
+		// Never fetched: the fixtures play on a silent clock.
+		streamUrl: (trackId) => `fixture:${trackId}`
 	};
 }
 
