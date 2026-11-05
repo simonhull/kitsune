@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"strings"
@@ -140,6 +141,25 @@ func (w *problemWriter) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	n, err := w.ResponseWriter.Write(p)
+	if err != nil {
+		return n, fmt.Errorf("write response: %w", err)
+	}
+	return n, nil
+}
+
+// ReadFrom implements [io.ReaderFrom]. [io.Copy] looks for it and nothing else,
+// so without it a served file would lose sendfile and pass through a buffer.
+// Like Write it sends the implicit 200, but it discards the body of an error
+// being converted: the error keeps its status and loses only its detail.
+func (w *problemWriter) ReadFrom(src io.Reader) (int64, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	dst := io.Writer(w.ResponseWriter)
+	if w.status != 0 {
+		dst = io.Discard
+	}
+	n, err := io.Copy(dst, src)
 	if err != nil {
 		return n, fmt.Errorf("write response: %w", err)
 	}
