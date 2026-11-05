@@ -597,6 +597,9 @@ export function createSpringEngine(): Morphs {
 			return;
 		}
 
+		if (way?.sheet?.slides === true) {
+			main.style.overflowX = 'clip';
+		}
 		const moving = units.filter((unit) => partOf(unit) !== undefined && !flying.has(unit));
 		const wave = shapeWave(moving, (unit) => partOf(unit) as Part, center);
 		for (const [index, unit] of moving.entries()) {
@@ -950,6 +953,9 @@ export function createSpringEngine(): Morphs {
 				landing.delete(unit);
 			}
 		}
+		if (landing.size === 0) {
+			surfaceFor('main')?.style.removeProperty('overflow-x');
+		}
 		for (const ghost of [...ghosts]) {
 			if (ghost.layers.every((layer) => layer.settled)) {
 				ghost.element.remove();
@@ -999,6 +1005,7 @@ export function createSpringEngine(): Morphs {
 			layer.release();
 		}
 		landing.clear();
+		surfaceFor('main')?.style.removeProperty('overflow-x');
 		for (const ghost of ghosts.splice(0)) {
 			ghost.element.remove();
 		}

@@ -44,12 +44,15 @@ const playingAlbum = query.get('playing');
 
 function wayFromQuery(): WayName | undefined {
 	const named = query.get('back');
-	return named === 'a' || named === 'b' || named === 'c' || named === 'd' ? named : undefined;
+	return named === 'a' || named === 'b' || named === 'c' || named === 'd' || named === 'e'
+		? named
+		: undefined;
 }
 
 /** A sheet leaves the record with its page, unless that's the record playing: then it comes along. */
 function wayLeaving(album: string | undefined): WayName | undefined {
-	return way === 'd' && album !== undefined && album === playingAlbum ? 'c' : way;
+	const sheet = way === 'd' || way === 'e';
+	return sheet && album !== undefined && album === playingAlbum ? 'c' : way;
 }
 
 const playerParts = ['control:previous', 'control:pause', 'control:next', 'progress'];

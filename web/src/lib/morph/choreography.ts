@@ -231,6 +231,8 @@ export interface Sheet {
 	hinged?: boolean;
 	/** How dark it gets as it turns from the light, from 0 to 1. */
 	shade?: number;
+	/** The page behind comes in from beside it, so it can't be allowed to widen the document. */
+	slides?: boolean;
 }
 
 /** A way back of its own. Only the cover travels: the words stay with their page. */
@@ -245,7 +247,7 @@ export interface Way {
 }
 
 /** Which of the candidate ways back Album to Home takes. Unset, it plays its way in backward. */
-export type WayName = 'a' | 'b' | 'c' | 'd';
+export type WayName = 'a' | 'b' | 'c' | 'd' | 'e';
 
 export interface Choreography {
 	name: ChoreographyName;
@@ -471,11 +473,32 @@ const flippedPast: Choreography = {
 	way: { sheet: { hinged: true, shade: 0.5 } }
 };
 
+/** The space between two things on a shelf, as a share of the viewport. */
+const shelfGap = 0.04;
+const nextAlong: Part = { from: { across: 1 + shelfGap }, to: {}, delay: 0, motion: base };
+
+/**
+ * Album to Home, along the shelf. The album keeps going, and Home is the next thing along, right
+ * behind it on the same spring, so the two travel as one train with a gap between them. It always
+ * runs the way you read: leaving moves you on down the shelf, and nothing ever comes back the way
+ * it went.
+ */
+const alongTheShelf: Choreography = {
+	...albumToHome,
+	motion: base,
+	leaving: { from: {}, to: { across: -(1 + shelfGap) }, delay: 0, motion: base },
+	arriving: { intro: nextAlong, card: nextAlong },
+	stages: {},
+	bloom: null,
+	way: { sheet: { slides: true } }
+};
+
 const waysBack: Partial<Record<WayName, Choreography>> = {
 	a: throughTheRecord,
 	b: filedAway,
 	c: takenAlong,
-	d: flippedPast
+	d: flippedPast,
+	e: alongTheShelf
 };
 
 /**
