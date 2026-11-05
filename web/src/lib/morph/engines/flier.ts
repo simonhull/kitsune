@@ -1,5 +1,11 @@
 import { Channel, landsWithin } from '../channel.ts';
-import { easeBetween, springParams, type Passage, type SpringParams } from '../choreography.ts';
+import {
+	easeBetween,
+	springParams,
+	type Arc,
+	type Passage,
+	type SpringParams
+} from '../choreography.ts';
 import type { MorphEntry } from '../registry.ts';
 import {
 	barRise,
@@ -179,6 +185,7 @@ export class CoverFlier implements Flier {
 	readonly #base: number;
 	readonly #opacity = new Channel(1);
 	#passing: Passing | null = null;
+	#curve: Curve | null = null;
 
 	constructor(from: CoverShape, target: MorphEntry | null, picture: Node, shadow: string) {
 		const to = target === null ? from : measureCover(target.element);
@@ -220,8 +227,21 @@ export class CoverFlier implements Flier {
 		};
 	}
 
+	/**
+	 * Bends the flight, which stays a straight spring underneath: `along` runs with it, and the bow
+	 * and the tip are functions of that. Together they trace a curve that comes at the target from
+	 * above, and a turn in mid-air just unwinds them on the way to wherever it's going now.
+	 */
+	curve({ lift, tip }: Arc, sizing: SpringParams): void {
+		const bow = {
+			x: (this.#x.target - this.#x.value) / 2,
+			y: (this.#y.target - this.#y.value) / 2 - lift
+		};
+		this.#curve = { along: new Channel(0, 1), bow, tip, sizing };
+	}
+
 	get leavesAlone(): boolean {
-		return this.#passing !== null;
+		return this.#passing !== null || this.#curve !== null;
 	}
 
 	/**
@@ -282,6 +302,8 @@ export class CoverFlier implements Flier {
 			this.#aimShadow(entry);
 			this.#passing = null;
 			this.#opacity.target = 1;
+		} else if (this.#curve !== null) {
+			this.#opacity.target = 0;
 		}
 	}
 
@@ -311,23 +333,30 @@ export class CoverFlier implements Flier {
 			this.#stepPassing(this.#passing, seconds);
 			return;
 		}
-		for (const channel of this.#channels) {
+		const sizing = this.#curve?.sizing ?? params;
+		for (const channel of [this.#x, this.#y, this.#rotation]) {
 			channel.step(params, seconds);
 		}
+		for (const channel of [this.#width, this.#height, this.#radius]) {
+			channel.step(sizing, seconds);
+		}
+		this.#curve?.along.step(params, seconds);
 		this.#opacity.step(params, seconds);
 		this.#mix.step(params, seconds);
-	}
-
-	get #channels(): Channel[] {
-		return [this.#x, this.#y, this.#width, this.#height, this.#rotation, this.#radius];
 	}
 
 	write(): void {
 		const scaleX = this.#width.value / this.#base;
 		const scaleY = this.#height.value / this.#base;
-		const left = this.#x.value - this.#base / 2;
-		const top = this.#y.value - this.#base / 2;
-		this.element.style.transform = `translate(${left.toFixed(2)}px, ${top.toFixed(2)}px) rotate(${this.#rotation.value.toFixed(3)}deg) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`;
+		const along = this.#curve?.along.value ?? 0;
+		const bend = 2 * along * (1 - along);
+		const left = this.#x.value + (this.#curve?.bow.x ?? 0) * bend - this.#base / 2;
+		const top = this.#y.value + (this.#curve?.bow.y ?? 0) * bend - this.#base / 2;
+		const tip =
+			this.#curve === null
+				? ''
+				: `perspective(1100px) rotateX(${(this.#curve.tip * Math.sin(Math.PI * along)).toFixed(3)}deg) `;
+		this.element.style.transform = `translate(${left.toFixed(2)}px, ${top.toFixed(2)}px) ${tip}rotate(${this.#rotation.value.toFixed(3)}deg) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`;
 		this.element.style.opacity = this.#opacity.value.toFixed(3);
 		const radius = `${(Math.max(0, this.#radius.value) / Math.max(scaleX, 0.01)).toFixed(2)}px`;
 		this.#face.style.borderRadius = radius;
@@ -343,10 +372,11 @@ export class CoverFlier implements Flier {
 	}
 
 	get settled(): boolean {
-		if (this.#passing !== null) {
+		if (this.#passing !== null || (this.#curve !== null && this.#target === null)) {
 			return this.#opacity.value < 0.01;
 		}
 		return (
+			(this.#curve?.along.settled(0.002) ?? true) &&
 			this.#x.settled(landsWithin) &&
 			this.#y.settled(landsWithin) &&
 			this.#width.settled(landsWithin) &&
@@ -366,6 +396,14 @@ interface Passing {
 	radius: number;
 	height: number;
 	depth: Channel;
+}
+
+/** A cover coming round to its place: all of the bend follows from `along`. */
+interface Curve {
+	along: Channel;
+	bow: Point;
+	tip: number;
+	sizing: SpringParams;
 }
 
 /** Where a bar is. Unlike a cover it changes proportion, so it's drawn at its true size. */

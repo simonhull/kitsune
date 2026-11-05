@@ -448,6 +448,11 @@ export function createSpringEngine(): Morphs {
 				continue;
 			}
 			const flier = createFlier(source, target);
+			const arc = journey.choreography.way?.arc;
+			if (arc !== undefined && flier instanceof CoverFlier) {
+				const { duration, bounce } = motionOf(journey.choreography.motion);
+				flier.curve(arc, springParams({ duration: duration * arc.sizing, bounce }));
+			}
 			fliers.set(id, flier);
 			// Words stay in front of art, so a title never tucks behind the cover it travels with,
 			// and the fox bar passes under the controls it crosses on the way.

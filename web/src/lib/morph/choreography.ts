@@ -205,10 +205,25 @@ export interface Passage {
 	motion: MotionSpec;
 }
 
+/**
+ * A landing that doesn't retrace its way in: the cover curves round to come at its place from above,
+ * tipping back as it goes, and has its size long before it gets there.
+ */
+export interface Arc {
+	/** How far above its place it turns to come down, in pixels. */
+	lift: number;
+	/** How far it tips back at the top of the curve, in degrees. */
+	tip: number;
+	/** A share of the flight's length, which its size arrives in. */
+	sizing: number;
+}
+
 /** A way back of its own. Only the cover travels: the words stay with their page. */
 export interface Way {
 	/** The cover goes past the viewer instead of landing. */
 	passes?: Passage;
+	/** The cover lands, but by a path of its own. */
+	arc?: Arc;
 }
 
 /** Which of the candidate ways back Album to Home takes. Unset, it plays its way in backward. */
@@ -376,7 +391,30 @@ const throughTheRecord: Choreography = {
 	way: { passes: { reach: 0.86, gone: [0.58, 0.93], motion: { ...base, pace: 1.15 } } }
 };
 
-const waysBack: Partial<Record<WayName, Choreography>> = { a: throughTheRecord };
+/** Around the cover, closing on it: from further out, where the way in fell away toward it. */
+const closeIn: Part = {
+	from: { opacity: 0, scale: 1.06 },
+	to: {},
+	delay: 100,
+	motion: quick,
+	ripple: { spread: 0, floor: 0.2 }
+};
+
+/**
+ * Album to Home, filed away. The cover tips back and curves round to come down on its place from
+ * above, the way a record goes into a crate, with its size already right for the slot. The page
+ * carries on up the way it rose, and Home closes in around the cover as it goes down.
+ */
+const filedAway: Choreography = {
+	...albumToHome,
+	leaving: { from: {}, to: { opacity: 0, y: -36 }, delay: 0, motion: exit },
+	arriving: { intro: closeIn, card: closeIn },
+	stages: { album: fadeOut(0, quick) },
+	bloom: null,
+	way: { arc: { lift: 150, tip: 38, sizing: 0.7 } }
+};
+
+const waysBack: Partial<Record<WayName, Choreography>> = { a: throughTheRecord, b: filedAway };
 
 /**
  * Home to Now playing: two levels down in one move. The island's cover rises to the center of
