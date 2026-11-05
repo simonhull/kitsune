@@ -78,6 +78,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   the collation must be on the column, because one on a row value never seeks. `LiveTrackFacts` uses
   `INDEXED BY tracks_live`, since a partial index's WHERE column doesn't count as covered; a test
   fails if the index is renamed.
+- Artists and albums are found by an in-memory name index (`names.go`), not by FTS, which can't
+  take a typo or say which artist matched. A search reads the index without waiting; `RefreshNames`
+  builds a new one and swaps it in. `Open` and the end of every scan call it, and so must anything
+  else that adds, removes or renames an artist or album. Various Artists stays out of it.
 - Artists have a public ULID too, assigned by the scanner and kept across updates. Their row `id` is
   internal: it is reused after a delete.
 - Library writes go through `WriteBatch`, one transaction per batch. The store never

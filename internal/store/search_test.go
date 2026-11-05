@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -192,4 +193,148 @@ func TestSearchCanceled(t *testing.T) {
 	if _, err := s.Search(ctx, store.ParseSearch("fire")); err == nil {
 		t.Error("a canceled search returned no error")
 	}
+}
+
+// seedNames writes one track per artist and album name and refreshes the index.
+func seedNames(t *testing.T, s *store.Store, names ...string) {
+	t.Helper()
+	b := &store.Batch{}
+	for i, name := range names {
+		w := newWrite(i + 1)
+		w.Title = "Track"
+		w.Album.Name = name + " Album"
+		w.Artists[0].Name, w.Artists[0].SortName = name, name
+		w.Artists[0].MatchKey = strings.ToLower(name)
+		b.Tracks = append(b.Tracks, w)
+	}
+	if err := s.WriteBatch(t.Context(), b); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RefreshNames(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSearchFindsArtistsAndAlbums(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	seedNames(t, s, "Radiohead", "Sigur Rós")
+	found, err := s.Search(t.Context(), store.ParseSearch("radiohed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []store.ArtistHit{{ID: artistULID("artist-1"), Name: "Radiohead"}}; !reflect.DeepEqual(found.Artists, want) {
+		t.Errorf("artists = %+v, want %+v", found.Artists, want)
+	}
+	if len(found.Albums) != 1 || found.Albums[0].Title != "Radiohead Album" || found.Albums[0].TrackCount != 1 {
+		t.Errorf("albums = %+v, want the one album with its track count", found.Albums)
+	}
+}
+
+func TestSearchHidesVariousArtists(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	seedNames(t, s, "Various Artists", "Various Moods")
+	found, err := s.Search(t.Context(), store.ParseSearch("various"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Artists) != 1 || found.Artists[0].Name != "Various Moods" {
+		t.Errorf("artists = %+v, want only the real one", found.Artists)
+	}
+}
+
+func TestSearchNamesWaitForRefresh(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	w := newWrite(1)
+	if err := s.WriteBatch(t.Context(), &store.Batch{Tracks: []store.TrackWrite{w}}); err != nil {
+		t.Fatal(err)
+	}
+	q := store.ParseSearch(w.Artists[0].Name)
+	found, err := s.Search(t.Context(), q)
+	if err != nil || len(found.Artists) != 0 {
+		t.Fatalf("before a refresh: %+v, %v; want no artists yet", found.Artists, err)
+	}
+	if err = s.RefreshNames(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if found, err = s.Search(t.Context(), q); err != nil || len(found.Artists) != 1 {
+		t.Errorf("after a refresh: %+v, %v; want the artist", found.Artists, err)
+	}
+}
+
+func TestSearchNamesSurviveReopen(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), store.FileName)
+	s, err := store.Open(t.Context(), path, store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := newWrite(1)
+	if err = s.WriteBatch(t.Context(), &store.Batch{Tracks: []store.TrackWrite{w}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if s, err = store.Open(t.Context(), path, store.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	found, err := s.Search(t.Context(), store.ParseSearch(w.Artists[0].Name))
+	if err != nil || len(found.Artists) != 1 {
+		t.Errorf("after reopening: %+v, %v; want the artist", found.Artists, err)
+	}
+}
+
+func TestSearchDropsGoneNames(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	seedNames(t, s, "Radiohead")
+	states, err := s.FileStates(t.Context(), testRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.MarkMissing(t.Context(), []int64{states["a/1.flac"].TrackID}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	q := store.ParseSearch("radiohead")
+	found, err := s.Search(t.Context(), q)
+	if err != nil || len(found.Albums) != 0 {
+		t.Errorf("before a refresh: %+v, %v; want a dead album left out", found.Albums, err)
+	}
+	if err = s.RefreshNames(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if found, err = s.Search(t.Context(), q); err != nil || len(found.Artists) != 0 {
+		t.Errorf("after a refresh: %+v, %v; want the artist gone", found.Artists, err)
+	}
+}
+
+// TestSearchDuringRefresh searches while the index is rebuilt over and over, and
+// every search must find what was there before and after.
+func TestSearchDuringRefresh(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	seedNames(t, s, "Radiohead")
+	ctx, stop := context.WithCancel(t.Context())
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for ctx.Err() == nil {
+			if err := s.RefreshNames(ctx); err != nil && ctx.Err() == nil {
+				t.Errorf("refresh: %v", err)
+			}
+		}
+	})
+	q := store.ParseSearch("radiohead")
+	for range 200 {
+		found, err := s.Search(t.Context(), q)
+		if err != nil || len(found.Artists) != 1 {
+			t.Errorf("during a refresh: %+v, %v", found.Artists, err)
+			break
+		}
+	}
+	stop()
+	wg.Wait()
 }

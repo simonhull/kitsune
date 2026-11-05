@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ncruces/go-sqlite3"
@@ -57,6 +59,9 @@ type Store struct {
 	w, r   *sql.DB
 	wq, rq *sqlcdb.Queries // Generated queries bound to w and r.
 	now    func() time.Time
+
+	names      atomic.Pointer[names] // Never nil once Open returns.
+	refreshing sync.Mutex            // Held by a rebuild of names, so an older one can't land last.
 }
 
 // Options configures [Open]. The zero value is ready to use.
@@ -97,18 +102,16 @@ func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 		return nil, closeAfter(fmt.Errorf("open %s: enable WAL: %w", path, err), w)
 	}
 
-	r, err := sql.Open("sqlite3", dsn(path, false))
+	r, err := openReaders(ctx, path, readers)
 	if err != nil {
 		return nil, closeAfter(fmt.Errorf("open %s: readers: %w", path, err), w)
 	}
-	r.SetMaxOpenConns(readers)
-	r.SetMaxIdleConns(readers)
-	r.SetConnMaxLifetime(0)
-	if err = warm(ctx, r, readers); err != nil {
-		return nil, closeAfter(fmt.Errorf("open %s: readers: %w", path, err), w, r)
-	}
 
-	return &Store{w: w, r: r, wq: sqlcdb.New(w), rq: sqlcdb.New(r), now: now}, nil
+	s := &Store{w: w, r: r, wq: sqlcdb.New(w), rq: sqlcdb.New(r), now: now}
+	if err = s.RefreshNames(ctx); err != nil {
+		return nil, closeAfter(fmt.Errorf("open %s: %w", path, err), w, r)
+	}
+	return s, nil
 }
 
 // Close closes both handles.
@@ -163,6 +166,21 @@ func openWriter(ctx context.Context, path string) (*sql.DB, error) {
 		return nil, closeAfter(fmt.Errorf("open %s: %w", path, err), w)
 	}
 	return w, nil
+}
+
+// openReaders opens the read pool and fills it.
+func openReaders(ctx context.Context, path string, readers int) (*sql.DB, error) {
+	r, err := sql.Open("sqlite3", dsn(path, false))
+	if err != nil {
+		return nil, err //nolint:wrapcheck // Open wraps this with the path.
+	}
+	r.SetMaxOpenConns(readers)
+	r.SetMaxIdleConns(readers)
+	r.SetConnMaxLifetime(0)
+	if err = warm(ctx, r, readers); err != nil {
+		return nil, closeAfter(err, r)
+	}
+	return r, nil
 }
 
 // warm opens n connections at once, so the pool starts full and idle.

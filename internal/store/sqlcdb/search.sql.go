@@ -9,6 +9,188 @@ import (
 	"context"
 )
 
+const listAlbumHits = `-- name: ListAlbumHits :many
+SELECT
+    a.id, a.ulid, a.name, a.sort_name, a.artist, a.year, a.compilation, a.added_at,
+    a.artwork_hash, w.width AS artwork_width, w.height AS artwork_height,
+    w.accent AS artwork_accent, w.ground AS artwork_ground,
+    (SELECT count(*) FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL) AS track_count
+FROM albums a
+LEFT JOIN artwork w ON w.hash = a.artwork_hash
+WHERE a.ulid IN (SELECT value FROM json_each(CAST(?1 AS TEXT)))
+  AND EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL)
+`
+
+type ListAlbumHitsRow struct {
+	ID            int64
+	Ulid          string
+	Name          string
+	SortName      string
+	Artist        string
+	Year          *int64
+	Compilation   int64
+	AddedAt       int64
+	ArtworkHash   []byte
+	ArtworkWidth  *int64
+	ArtworkHeight *int64
+	ArtworkAccent *string
+	ArtworkGround *string
+	TrackCount    int64
+}
+
+func (q *Queries) ListAlbumHits(ctx context.Context, ids string) ([]ListAlbumHitsRow, error) {
+	rows, err := q.query(ctx, q.listAlbumHitsStmt, listAlbumHits, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumHitsRow
+	for rows.Next() {
+		var i ListAlbumHitsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ulid,
+			&i.Name,
+			&i.SortName,
+			&i.Artist,
+			&i.Year,
+			&i.Compilation,
+			&i.AddedAt,
+			&i.ArtworkHash,
+			&i.ArtworkWidth,
+			&i.ArtworkHeight,
+			&i.ArtworkAccent,
+			&i.ArtworkGround,
+			&i.TrackCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumNames = `-- name: ListAlbumNames :many
+SELECT a.ulid, a.name
+FROM albums a
+WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL)
+`
+
+type ListAlbumNamesRow struct {
+	Ulid string
+	Name string
+}
+
+func (q *Queries) ListAlbumNames(ctx context.Context) ([]ListAlbumNamesRow, error) {
+	rows, err := q.query(ctx, q.listAlbumNamesStmt, listAlbumNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumNamesRow
+	for rows.Next() {
+		var i ListAlbumNamesRow
+		if err := rows.Scan(&i.Ulid, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listArtistHits = `-- name: ListArtistHits :many
+SELECT ulid, name
+FROM artists
+WHERE ulid IN (SELECT value FROM json_each(CAST(?1 AS TEXT)))
+`
+
+type ListArtistHitsRow struct {
+	Ulid string
+	Name string
+}
+
+func (q *Queries) ListArtistHits(ctx context.Context, ids string) ([]ListArtistHitsRow, error) {
+	rows, err := q.query(ctx, q.listArtistHitsStmt, listArtistHits, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListArtistHitsRow
+	for rows.Next() {
+		var i ListArtistHitsRow
+		if err := rows.Scan(&i.Ulid, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listArtistNames = `-- name: ListArtistNames :many
+
+SELECT ar.ulid, ar.name, ar.match_key, ar.mbid
+FROM artists ar
+WHERE EXISTS (
+    SELECT 1 FROM track_artists ta
+    JOIN tracks t ON t.id = ta.track_id
+    WHERE ta.artist_id = ar.id AND t.missing_since IS NULL
+)
+`
+
+type ListArtistNamesRow struct {
+	Ulid     string
+	Name     string
+	MatchKey string
+	Mbid     *string
+}
+
+// The name index covers what is live, read whole after each scan.
+func (q *Queries) ListArtistNames(ctx context.Context) ([]ListArtistNamesRow, error) {
+	rows, err := q.query(ctx, q.listArtistNamesStmt, listArtistNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListArtistNamesRow
+	for rows.Next() {
+		var i ListArtistNamesRow
+		if err := rows.Scan(
+			&i.Ulid,
+			&i.Name,
+			&i.MatchKey,
+			&i.Mbid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTrackHitArtists = `-- name: ListTrackHitArtists :many
 SELECT ta.track_id, ar.name
 FROM track_artists ta

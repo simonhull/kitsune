@@ -21,9 +21,15 @@ func (s *Server) getSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := api.SearchResults{
-		Artists: []api.ArtistEntry{},
-		Albums:  []api.AlbumEntry{},
+		Artists: make([]api.ArtistEntry, len(found.Artists)),
+		Albums:  make([]api.AlbumEntry, len(found.Albums)),
 		Tracks:  make([]api.TrackHit, len(found.Tracks)),
+	}
+	for i := range found.Artists {
+		body.Artists[i] = api.ArtistEntry{ID: found.Artists[i].ID, Name: found.Artists[i].Name}
+	}
+	for i := range found.Albums {
+		body.Albums[i] = toAPIAlbumEntry(&found.Albums[i])
 	}
 	for i := range found.Tracks {
 		body.Tracks[i] = toAPITrackHit(&found.Tracks[i])

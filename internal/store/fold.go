@@ -78,6 +78,8 @@ const (
 	closeLead                        // The name starts with the query.
 	closeWholeWords                  // Every query word is a word of the name.
 	closeWordStarts                  // Every query word starts a word of the name.
+	closeTypo                        // The whole name, with typos.
+	closeWordTypo                    // Every query word in the name, with typos.
 	closeNone
 )
 

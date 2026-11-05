@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -33,6 +34,26 @@ func TestSearchTracks(t *testing.T) {
 	if hit.Title != "Track 2" || hit.AlbumID != albumULID(1) || hit.Album != "Album 1" ||
 		hit.DurationMs != time.Minute.Milliseconds() || len(hit.Artists) != 1 || hit.Artists[0] != annName {
 		t.Errorf("hit = %+v", hit)
+	}
+}
+
+func TestSearchArtistsAndAlbums(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	token := ts.sessionFor(t).token
+	ts.seedAlbums(t, browseAlbum{n: 1, sortName: "a", tracks: 1})
+	if err := ts.Store.RefreshNames(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	var got api.SearchResults
+	ts.getJSON(t, token, searchFor("album 1"), &got)
+	if len(got.Albums) != 1 || got.Albums[0].ID != albumULID(1) {
+		t.Errorf("albums = %+v, want album 1", got.Albums)
+	}
+	ts.getJSON(t, token, searchFor("an"), &got)
+	if want := []api.ArtistEntry{{ID: artistULID("ann"), Name: annName}}; !reflect.DeepEqual(got.Artists, want) {
+		t.Errorf("artists = %+v, want %+v", got.Artists, want)
 	}
 }
 

@@ -12,6 +12,14 @@ const (
 	acdc    = "AC/DC"
 	love    = "love"
 	lovers  = "Crazy Lovers"
+
+	acdcTyped  = "acdc"
+	acdcSpaced = "ac dc"
+	simon      = "Simon & Garfunkel"
+	simonAnd   = "simon and garfunkel"
+	tokyo      = "東京事変"
+	crazyLove  = "Crazy Love"
+	plainABC   = "abc"
 )
 
 // hostileQueries are the inputs that hurt a raw MATCH, and some that only look as if they should.
@@ -134,14 +142,14 @@ func TestForms(t *testing.T) {
 	}{
 		{"Sigur Rós", []string{"sigur ros"}},
 		{"MØ", []string{"mo"}},
-		{"Simon & Garfunkel", []string{"simon and garfunkel"}},
-		{acdc, []string{"ac dc", "acdc"}},
+		{simon, []string{simonAnd}},
+		{acdc, []string{acdcSpaced, acdcTyped}},
 		{"R.E.M.", []string{"r e m", "rem"}},
 		{"Don't Stop", []string{"don t stop", "dont stop"}},
 		{"  spaced   out ", []string{"spaced out"}},
-		{"ＡＢＣ", []string{"abc"}},
+		{"ＡＢＣ", []string{plainABC}},
 		{"Сплин", []string{"сплин"}},
-		{"東京事変", []string{"東京事変"}},
+		{tokyo, []string{tokyo}},
 		{"한글", []string{"한글"}},
 		{"...", nil},
 		{"", nil},
@@ -165,17 +173,17 @@ func TestCloseness(t *testing.T) {
 	}{
 		{"Love", love, closeExact},
 		{"Lové", "LOVE", closeExact},
-		{acdc, "acdc", closeExact},
-		{acdc, "ac dc", closeExact},
-		{"Simon & Garfunkel", "simon and garfunkel", closeExact},
+		{acdc, acdcTyped, closeExact},
+		{acdc, acdcSpaced, closeExact},
+		{simon, simonAnd, closeExact},
 		{"Love Song", love, closeLeadWords},
 		{"Lovely", love, closeLead},
-		{"Crazy Love", love, closeWholeWords},
+		{crazyLove, love, closeWholeWords},
 		{"The Dark Side of the Moon", "moon dark", closeWholeWords},
 		{lovers, love, closeWordStarts},
 		{lovers, "love cra", closeWordStarts},
 		{"Glove", love, closeNone},
-		{"Crazy Love", "love sick", closeNone},
+		{crazyLove, "love sick", closeNone},
 	}
 	for _, tc := range tests {
 		if got := closenessOf(forms(tc.name), forms(tc.query)); got != tc.want {

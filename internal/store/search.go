@@ -11,6 +11,8 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
 
 // Limits on what reaches MATCH. An FTS5 query's cost grows with its tokens: 2,000
@@ -21,6 +23,8 @@ const (
 )
 
 const (
+	// maxNameHits caps the artists and the albums in a result.
+	maxNameHits = 10
 	// maxTrackHits caps the tracks in a result.
 	maxTrackHits = 20
 	// trackCandidates caps the best-ranked matches that get reordered, so a
@@ -89,9 +93,17 @@ type TrackHit struct {
 	Cover    *Cover // The album's; nil when it has none.
 }
 
+// ArtistHit is an artist as a search result shows it.
+type ArtistHit struct {
+	ID   string // The artist's ULID.
+	Name string
+}
+
 // SearchResults is what a search found, best first, each group capped.
 type SearchResults struct {
-	Tracks []TrackHit
+	Artists []ArtistHit
+	Albums  []AlbumSummary
+	Tracks  []TrackHit
 }
 
 // Search finds what q matches. A canceled ctx ends it with an error that need
@@ -100,11 +112,67 @@ func (s *Store) Search(ctx context.Context, q SearchQuery) (SearchResults, error
 	if q.match == "" {
 		return SearchResults{}, nil
 	}
+	index := s.names.Load()
+	artists, err := s.artistHits(ctx, index.artists.match(q.forms))
+	if err != nil {
+		return SearchResults{}, fmt.Errorf("search: artists: %w", err)
+	}
+	albums, err := s.albumHits(ctx, index.albums.match(q.forms))
+	if err != nil {
+		return SearchResults{}, fmt.Errorf("search: albums: %w", err)
+	}
 	tracks, err := s.searchTracks(ctx, q)
 	if err != nil {
 		return SearchResults{}, fmt.Errorf("search: tracks: %w", err)
 	}
-	return SearchResults{Tracks: tracks}, nil
+	return SearchResults{Artists: artists, Albums: albums, Tracks: tracks}, nil
+}
+
+// inOrder returns the values of byID in the order of ids, leaving out IDs that
+// have none: a row can go after the index was built.
+func inOrder[K comparable, V any](ids []K, byID map[K]V) []V {
+	out := make([]V, 0, len(ids))
+	for _, id := range ids {
+		if v, ok := byID[id]; ok {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// artistHits fetches the artists with the given IDs, in that order.
+func (s *Store) artistHits(ctx context.Context, ids []string) ([]ArtistHit, error) {
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return nil, fmt.Errorf("encode IDs: %w", err)
+	}
+	rows, err := s.rq.ListArtistHits(ctx, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("hits: %w", err)
+	}
+	byID := make(map[string]ArtistHit, len(rows))
+	for i := range rows {
+		byID[rows[i].Ulid] = ArtistHit{ID: rows[i].Ulid, Name: rows[i].Name}
+	}
+	return inOrder(ids, byID), nil
+}
+
+// albumHits fetches the albums with the given IDs, in that order.
+func (s *Store) albumHits(ctx context.Context, ids []string) ([]AlbumSummary, error) {
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return nil, fmt.Errorf("encode IDs: %w", err)
+	}
+	rows, err := s.rq.ListAlbumHits(ctx, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("hits: %w", err)
+	}
+	byID := make(map[string]AlbumSummary, len(rows))
+	for i := range rows {
+		row := sqlcdb.ListAlbumsByNameRow(rows[i])
+		byID[row.Ulid] = summarize(&row)
+	}
+	return inOrder(ids, byID), nil
 }
 
 // trackMatch is a track that matched, ranked by how close its title came.
@@ -180,11 +248,5 @@ func (s *Store) trackHits(ctx context.Context, ids []int64) ([]TrackHit, error) 
 			Cover:    cover(r.ArtworkHash, r.ArtworkWidth, r.ArtworkHeight, r.ArtworkAccent, r.ArtworkGround),
 		}
 	}
-	hits := make([]TrackHit, 0, len(ids))
-	for _, id := range ids {
-		if hit, ok := byID[id]; ok {
-			hits = append(hits, hit)
-		}
-	}
-	return hits, nil
+	return inOrder(ids, byID), nil
 }

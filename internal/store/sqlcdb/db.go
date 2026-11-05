@@ -78,6 +78,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.knownRootsStmt, err = db.PrepareContext(ctx, knownRoots); err != nil {
 		return nil, fmt.Errorf("error preparing query KnownRoots: %w", err)
 	}
+	if q.listAlbumHitsStmt, err = db.PrepareContext(ctx, listAlbumHits); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAlbumHits: %w", err)
+	}
+	if q.listAlbumNamesStmt, err = db.PrepareContext(ctx, listAlbumNames); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAlbumNames: %w", err)
+	}
 	if q.listAlbumTrackArtistsStmt, err = db.PrepareContext(ctx, listAlbumTrackArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumTrackArtists: %w", err)
 	}
@@ -89,6 +95,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listAlbumsByNameStmt, err = db.PrepareContext(ctx, listAlbumsByName); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumsByName: %w", err)
+	}
+	if q.listArtistHitsStmt, err = db.PrepareContext(ctx, listArtistHits); err != nil {
+		return nil, fmt.Errorf("error preparing query ListArtistHits: %w", err)
+	}
+	if q.listArtistNamesStmt, err = db.PrepareContext(ctx, listArtistNames); err != nil {
+		return nil, fmt.Errorf("error preparing query ListArtistNames: %w", err)
 	}
 	if q.listTrackHitArtistsStmt, err = db.PrepareContext(ctx, listTrackHitArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackHitArtists: %w", err)
@@ -239,6 +251,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing knownRootsStmt: %w", cerr)
 		}
 	}
+	if q.listAlbumHitsStmt != nil {
+		if cerr := q.listAlbumHitsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAlbumHitsStmt: %w", cerr)
+		}
+	}
+	if q.listAlbumNamesStmt != nil {
+		if cerr := q.listAlbumNamesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAlbumNamesStmt: %w", cerr)
+		}
+	}
 	if q.listAlbumTrackArtistsStmt != nil {
 		if cerr := q.listAlbumTrackArtistsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAlbumTrackArtistsStmt: %w", cerr)
@@ -257,6 +279,16 @@ func (q *Queries) Close() error {
 	if q.listAlbumsByNameStmt != nil {
 		if cerr := q.listAlbumsByNameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAlbumsByNameStmt: %w", cerr)
+		}
+	}
+	if q.listArtistHitsStmt != nil {
+		if cerr := q.listArtistHitsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listArtistHitsStmt: %w", cerr)
+		}
+	}
+	if q.listArtistNamesStmt != nil {
+		if cerr := q.listArtistNamesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listArtistNamesStmt: %w", cerr)
 		}
 	}
 	if q.listTrackHitArtistsStmt != nil {
@@ -406,10 +438,14 @@ type Queries struct {
 	insertTrackTagStmt        *sql.Stmt
 	issueStatesStmt           *sql.Stmt
 	knownRootsStmt            *sql.Stmt
+	listAlbumHitsStmt         *sql.Stmt
+	listAlbumNamesStmt        *sql.Stmt
 	listAlbumTrackArtistsStmt *sql.Stmt
 	listAlbumTracksStmt       *sql.Stmt
 	listAlbumsByAddedStmt     *sql.Stmt
 	listAlbumsByNameStmt      *sql.Stmt
+	listArtistHitsStmt        *sql.Stmt
+	listArtistNamesStmt       *sql.Stmt
 	listTrackHitArtistsStmt   *sql.Stmt
 	listTrackHitsStmt         *sql.Stmt
 	liveTrackFactsStmt        *sql.Stmt
@@ -452,10 +488,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTrackTagStmt:        q.insertTrackTagStmt,
 		issueStatesStmt:           q.issueStatesStmt,
 		knownRootsStmt:            q.knownRootsStmt,
+		listAlbumHitsStmt:         q.listAlbumHitsStmt,
+		listAlbumNamesStmt:        q.listAlbumNamesStmt,
 		listAlbumTrackArtistsStmt: q.listAlbumTrackArtistsStmt,
 		listAlbumTracksStmt:       q.listAlbumTracksStmt,
 		listAlbumsByAddedStmt:     q.listAlbumsByAddedStmt,
 		listAlbumsByNameStmt:      q.listAlbumsByNameStmt,
+		listArtistHitsStmt:        q.listArtistHitsStmt,
+		listArtistNamesStmt:       q.listArtistNamesStmt,
 		listTrackHitArtistsStmt:   q.listTrackHitArtistsStmt,
 		listTrackHitsStmt:         q.listTrackHitsStmt,
 		liveTrackFactsStmt:        q.liveTrackFactsStmt,

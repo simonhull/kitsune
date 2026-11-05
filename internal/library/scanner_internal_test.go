@@ -674,3 +674,20 @@ func TestScanKeepsArtistIDs(t *testing.T) {
 		t.Error("the unused artist was not pruned")
 	}
 }
+
+func TestScanRefreshesSearchNames(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	path := filepath.Join(l.roots[0], "one.flac")
+	l.copyTo(l.roots[0], "one.flac", sampleFLAC)
+	retag(t, path, "Findable")
+	l.scan(Quick)
+
+	found, err := l.st.Search(t.Context(), store.ParseSearch("findable"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Artists) != 1 || len(found.Albums) != 1 {
+		t.Errorf("after a scan: %+v, want the artist and the album", found)
+	}
+}
