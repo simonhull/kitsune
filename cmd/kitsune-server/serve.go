@@ -45,6 +45,10 @@ const (
 	idleTimeout = 2 * time.Minute
 )
 
+// errStopping means a scan was asked for while the app is not serving: it has
+// not started, or shutdown has begun.
+var errStopping = errors.New("the server is stopping")
+
 // plainShellWord matches a string that a shell reads as one word.
 var plainShellWord = regexp.MustCompile(`^[A-Za-z0-9_./:@%+=,-]+$`)
 
@@ -128,6 +132,12 @@ type app struct {
 	drain     time.Duration // How long shutdown waits for in-flight requests.
 	basePath  string
 	dataDir   string
+
+	// Background work outlives requests. Shutdown cancels it and waits, so a
+	// pending scan batch is written before the store closes.
+	work    sync.WaitGroup
+	workMu  sync.Mutex      // Orders a scan joining work against shutdown's wait.
+	workCtx context.Context //nolint:containedctx // The work's lifetime, not a request's. Nil unless serving.
 }
 
 // openApp opens the database and builds the HTTP server. It refuses to start
@@ -266,12 +276,12 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.log.InfoContext(ctx, "listening",
 		"addr", ln.Addr().String(), "version", version(), "basePath", a.basePath, "dataDir", a.dataDir)
 
-	// The purge loop and the scanner stop together, and shutdown waits for both,
-	// so a pending scan batch is written before the store closes.
 	bgCtx, cancelBackground := context.WithCancel(ctx)
-	var background sync.WaitGroup
-	background.Go(func() { a.purgeSessions(bgCtx) })
-	background.Go(func() {
+	a.workMu.Lock()
+	a.workCtx = bgCtx
+	a.workMu.Unlock()
+	a.work.Go(func() { a.purgeSessions(bgCtx) })
+	a.work.Go(func() {
 		a.scanner.Run(bgCtx, a.quickScan.Hour, a.quickScan.Minute, func() { a.scanned.Store(true) })
 	})
 
@@ -288,10 +298,31 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	case <-ctx.Done():
 		result = a.shutdown(ctx, served)
 	}
+	a.workMu.Lock()
+	a.workCtx = nil
+	a.workMu.Unlock()
 	cancelBackground()
-	background.Wait()
+	a.work.Wait()
 	a.log.InfoContext(context.WithoutCancel(ctx), "stopped")
 	return result
+}
+
+// startScan claims a scan and runs it as background work. It returns
+// [library.ErrScanRunning] while another scan runs, and [errStopping] when the
+// app is not serving.
+func (a *app) startScan(mode library.Mode) error {
+	a.workMu.Lock()
+	defer a.workMu.Unlock()
+	ctx := a.workCtx
+	if ctx == nil {
+		return errStopping
+	}
+	run, err := a.scanner.Claim(mode)
+	if err != nil {
+		return fmt.Errorf("start scan: %w", err)
+	}
+	a.work.Go(func() { _, _ = run(ctx) }) // The scanner logs how it went.
+	return nil
 }
 
 // shutdown drains the HTTP server and waits for Serve to return. Streams are

@@ -156,6 +156,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   wait for the file to change.
 - One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it
   gets `ErrBusy`; a scan that meets an edit waits. Readers never take it.
+- `Scanner.Claim` reserves the one scan without waiting, so a refusal is known before anything starts;
+  `Scan` is a claim that runs at once. A scan a handler starts runs as the app's background work
+  (`app.startScan`), so shutdown cancels it and waits. A scheduled scan that meets a running one retries
+  once, when that one ends.
 - Scans remove audiometa's temp files (`isWriteTemp`), and only with `library.tag_writes` on: off,
   nothing under a root ever changes.
 

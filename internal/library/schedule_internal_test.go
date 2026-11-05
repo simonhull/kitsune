@@ -2,6 +2,9 @@ package library
 
 import (
 	"context"
+	"log/slog"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -85,4 +88,71 @@ func TestRunDaily(t *testing.T) {
 			t.Errorf("scans = %d after cancel, want 2", scans.Load())
 		}
 	})
+}
+
+// scheduledLib is a library that logs to a buffer.
+func scheduledLib(t *testing.T) (*testLib, *safeBuffer) {
+	t.Helper()
+	l := newTestLib(t, 1)
+	logs := &safeBuffer{}
+	l.opts.Logger = slog.New(slog.NewTextHandler(logs, nil))
+	l.scanner = NewScanner(l.st, l.opts)
+	return l, logs
+}
+
+func TestScheduledScanFollowsARunningOne(t *testing.T) {
+	t.Parallel()
+	l, logs := scheduledLib(t)
+	l.copyTo(l.roots[0], xFLAC, sampleFLAC)
+	running, err := l.scanner.Claim(Full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scheduled sync.WaitGroup
+	scheduled.Go(func() { l.scanner.scheduled(t.Context()) })
+	waitForLog(t, logs, "the scheduled scan will retry")
+	if _, err = running(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	scheduled.Wait()
+	got := logs.String()
+	if n := strings.Count(got, "scan finished"); n != 2 {
+		t.Errorf("%d scans finished, want the running one and one retry:\n%s", n, got)
+	}
+	if !strings.Contains(got, "mode=quick") {
+		t.Errorf("no quick scan in:\n%s", got)
+	}
+	if strings.Contains(got, "level=ERROR") {
+		t.Errorf("logged an error:\n%s", got)
+	}
+}
+
+func TestScheduledRetryStopsWithItsContext(t *testing.T) {
+	t.Parallel()
+	l, logs := scheduledLib(t)
+	if _, err := l.scanner.Claim(Full); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	var scheduled sync.WaitGroup
+	scheduled.Go(func() { l.scanner.scheduled(ctx) })
+	waitForLog(t, logs, "the scheduled scan will retry")
+	cancel()
+	scheduled.Wait()
+	if got := logs.String(); strings.Contains(got, "scan finished") {
+		t.Errorf("a scan ran after its context ended:\n%s", got)
+	}
+}
+
+// waitForLog waits for a line holding want. The goroutine that writes it is real
+// work on a real database, so it can't run inside a synctest bubble.
+func waitForLog(t *testing.T, logs *safeBuffer, want string) {
+	t.Helper()
+	const deadline, poll = 5 * time.Second, time.Millisecond
+	for start := time.Now(); time.Since(start) < deadline; time.Sleep(poll) {
+		if strings.Contains(logs.String(), want) {
+			return
+		}
+	}
+	t.Fatalf("no log line with %q in:\n%s", want, logs)
 }

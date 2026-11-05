@@ -511,10 +511,39 @@ func TestScanCancelled(t *testing.T) {
 func TestScanRunningIsRefused(t *testing.T) {
 	t.Parallel()
 	l := newTestLib(t, 1)
-	l.scanner.mu.Lock()
-	defer l.scanner.mu.Unlock()
-	if _, err := l.scanner.Scan(t.Context(), Quick); !errors.Is(err, ErrScanRunning) {
+	run, err := l.scanner.Claim(Full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = l.scanner.Claim(Quick); !errors.Is(err, ErrScanRunning) {
+		t.Errorf("Claim = %v, want ErrScanRunning", err)
+	}
+	if _, err = l.scanner.Scan(t.Context(), Quick); !errors.Is(err, ErrScanRunning) {
 		t.Errorf("Scan = %v, want ErrScanRunning", err)
+	}
+	if _, err = run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = l.scanner.Scan(t.Context(), Quick); err != nil {
+		t.Errorf("Scan after the claimed scan = %v, want nil", err)
+	}
+}
+
+func TestClaimedScanReadsWhatItsModeAsks(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	l.copyTo(l.roots[0], xFLAC, sampleFLAC)
+	l.scan(Quick)
+	run, err := l.scanner.Claim(Full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats, err := run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Read != 1 {
+		t.Errorf("Read = %d, want 1: a Full scan reads every file", stats.Read)
 	}
 }
 

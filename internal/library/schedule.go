@@ -12,21 +12,32 @@ import (
 // ends. A failed scan is logged and does not stop the schedule: a broken scan
 // should not take down a library that plays fine.
 func (s *Scanner) Run(ctx context.Context, hour, minute int, ready func()) {
-	runDaily(ctx, s.now, hour, minute, s.logScan, ready)
+	runDaily(ctx, s.now, hour, minute, s.scheduled, ready)
 }
 
-// logScan runs one quick scan and logs how it went.
-func (s *Scanner) logScan(ctx context.Context) {
-	start := time.Now()
-	stats, err := s.Scan(ctx, Quick)
-	elapsed := time.Since(start)
+// scheduled runs one quick scan. One that meets a running scan retries once,
+// when that scan ends, so a long Full scan never costs the day's scan.
+func (s *Scanner) scheduled(ctx context.Context) {
+	_, err := s.Scan(ctx, Quick)
+	if !errors.Is(err, ErrScanRunning) {
+		return // The scan has logged how it went.
+	}
+	s.log.InfoContext(ctx, "a scan is running; the scheduled scan will retry when it ends")
+	if s.claim.lock(ctx) != nil {
+		return
+	}
+	_, _ = s.run(ctx, Quick) // As above.
+}
+
+// logScan logs how a scan went.
+func (s *Scanner) logScan(ctx context.Context, mode Mode, stats *Stats, err error, elapsed time.Duration) {
 	switch {
 	case err != nil && ctx.Err() != nil && errors.Is(err, ctx.Err()):
-		s.log.InfoContext(ctx, "scan canceled", "duration", elapsed)
+		s.log.InfoContext(ctx, "scan canceled", "mode", mode.String(), "duration", elapsed)
 	case err != nil:
-		s.log.ErrorContext(ctx, "scan failed", "err", err, "duration", elapsed)
+		s.log.ErrorContext(ctx, "scan failed", "mode", mode.String(), "err", err, "duration", elapsed)
 	default:
-		s.log.LogAttrs(ctx, slog.LevelInfo, "scan finished",
+		s.log.LogAttrs(ctx, slog.LevelInfo, "scan finished", slog.String("mode", mode.String()),
 			slog.Int("seen", stats.Seen), slog.Int("read", stats.Read),
 			slog.Int("added", stats.Added), slog.Int("updated", stats.Updated),
 			slog.Int("moved", stats.Moved), slog.Int("missing", stats.Missing),

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/config"
+	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/server"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -603,6 +605,45 @@ func TestServeStopsDuringScan(t *testing.T) { //nolint:paralleltest // overrides
 	}
 	if err := ra.app.close(); err != nil {
 		t.Errorf("close = %v, want nil", err)
+	}
+}
+
+func TestServeWaitsForAStartedScan(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	ra := serveApp(t, libraryEnv(t, 40).env)
+	ra.waitReady(t)
+	if err := ra.app.startScan(library.Full); err != nil {
+		t.Fatalf("startScan = %v, want nil", err)
+	}
+	if err := ra.stop(t); err != nil {
+		t.Errorf("serve = %v, want nil", err)
+	}
+	entries := logEntries(t, ra.logs)
+	ended := slices.IndexFunc(entries, func(e map[string]any) bool {
+		return e["mode"] == library.Full.String() && (e["msg"] == "scan canceled" || e["msg"] == "scan finished")
+	})
+	stopped := slices.IndexFunc(entries, func(e map[string]any) bool { return e["msg"] == "stopped" })
+	if ended < 0 || ended > stopped {
+		t.Errorf("the Full scan ended at log line %d and the app stopped at %d; want it to end first", ended, stopped)
+	}
+	if err := ra.app.startScan(library.Full); !errors.Is(err, errStopping) {
+		t.Errorf("startScan after shutdown = %v, want errStopping", err)
+	}
+}
+
+func TestStartScanIsRefusedWhileAScanRuns(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	ra := serveApp(t, libraryEnv(t, 1).env)
+	ra.waitReady(t)
+	run, err := ra.app.scanner.Claim(library.Full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ra.app.startScan(library.Quick); !errors.Is(err, library.ErrScanRunning) {
+		t.Errorf("startScan = %v, want library.ErrScanRunning", err)
+	}
+	if _, err = run(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 }
 

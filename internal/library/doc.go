@@ -37,5 +37,6 @@
 //     the cover the album has.
 //   - A changed track with different art replaces the album's cover.
 //
-// [Scanner.Run] scans at start and then daily.
+// [Scanner.Run] scans at start and then daily. [Scanner.Claim] lets a caller
+// learn at once whether a scan can start, and run it elsewhere.
 package library
