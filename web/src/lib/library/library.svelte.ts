@@ -9,6 +9,7 @@ import {
 	defaultScanGap,
 	scanStart
 } from './fixtures.ts';
+import { Search } from './search.svelte.ts';
 import {
 	AlbumNotFoundError,
 	UnauthorizedError,
@@ -129,6 +130,12 @@ export class Library {
 	playing = $state.raw<NowPlaying | null>(null);
 	/** Sends the app to the door. Set by the shell once it can navigate. */
 	onExpired: (() => Promise<void>) | null = null;
+	/** The search page's question and answer, kept while the page is away. */
+	readonly search = new Search(async (query, signal) => {
+		const found = await this.#source.search(query, signal);
+		this.#remember(found.albums);
+		return found;
+	});
 	readonly simulated: boolean;
 
 	readonly #source: LibrarySource;
@@ -615,6 +622,7 @@ export class Library {
 		this.#albums.clear();
 		this.#missing.clear();
 		this.#unavailable.clear();
+		this.search.reset();
 	}
 }
 

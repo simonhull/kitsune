@@ -44,14 +44,14 @@
 				</span>
 			</span>
 		</span>
-		<span class="search" aria-disabled="true" aria-label="Search">
+		<a class="search" href={resolve('/search')} aria-label="Search">
 			<Icon name="search" size={16} />
 			<span class="fold home-only wide">
 				<span class="fold-in">
-					<span class="search-label">Search or jump to…<span class="key">⌘K</span></span>
+					<span class="search-label">Search or jump to…</span>
 				</span>
 			</span>
-		</span>
+		</a>
 	</nav>
 </header>
 
@@ -195,7 +195,7 @@
 		height: var(--target);
 		min-width: var(--target);
 		margin-left: 4px;
-		padding: 0 8px 0 14px;
+		padding: 0 18px 0 14px;
 		border-radius: var(--radius-pill);
 		background: rgb(255 255 255 / 6%);
 		transition:
@@ -215,20 +215,13 @@
 		color: var(--wash);
 	}
 
-	.search-label {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding-left: 12px;
+	a.search:hover {
+		color: var(--fox);
 	}
 
-	.key {
-		font-family: var(--font-mono);
-		font-size: var(--type-mono);
-		color: var(--text-secondary);
-		background: rgb(255 255 255 / 8%);
-		border-radius: var(--radius-pill);
-		padding: 4px 10px;
+	.search-label {
+		display: block;
+		padding-left: 12px;
 	}
 
 	/* The nav really narrows on Album: its width animates, it isn't a scaled picture. */
@@ -274,6 +267,10 @@
 		.item,
 		.item[aria-current='page'] {
 			padding: 0 12px;
+		}
+
+		.search {
+			padding: 0 14px;
 		}
 	}
 

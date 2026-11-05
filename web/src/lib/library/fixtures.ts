@@ -7,8 +7,11 @@ import {
 	type AlbumPage,
 	type AlbumSort,
 	type LibraryFacts,
+	type ArtistLink,
 	type LibrarySource,
+	type SearchResults,
 	type Track,
+	type TrackHit,
 	type User
 } from './source';
 
@@ -131,6 +134,38 @@ const facts: LibraryFacts = {
 	issues: 3
 };
 
+function artistLink(name: string): ArtistLink {
+	return { id: `artist-${name.toLowerCase().replaceAll(' ', '-')}`, name };
+}
+
+const artistNames = [...albums.values()].flatMap((album) =>
+	album.tracks.flatMap((entry) => entry.artists)
+);
+
+const artistLinks = [...new Set(artistNames)]
+	.map(artistLink)
+	.toSorted((a, b) => a.name.localeCompare(b.name));
+
+function hit(album: Album, entry: Track): TrackHit {
+	const { id, title, artists, durationMs } = entry;
+	return { id, title, artists, durationMs, albumId: album.id, album: album.title };
+}
+
+const trackHits = [...albums.values()].flatMap((album) =>
+	album.tracks.map((entry) => hit(album, entry))
+);
+
+/** Finds what the real thing would, without the typos: the states are what fixtures are for. */
+function find(query: string): SearchResults {
+	const needle = query.trim().toLowerCase();
+	const matches = (name: string): boolean => needle !== '' && name.toLowerCase().includes(needle);
+	return {
+		artists: artistLinks.filter(({ name }) => matches(name)).slice(0, 10),
+		albums: [...albums.values()].filter(({ title }) => matches(title)).slice(0, 10),
+		tracks: trackHits.filter(({ title }) => matches(title)).slice(0, 20)
+	};
+}
+
 export interface FixtureOptions {
 	/** Delay every response by this many milliseconds, as a real server would. */
 	latencyMs?: number;
@@ -167,6 +202,11 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 					throw new AlbumNotFoundError(id);
 				}
 				return album;
+			}),
+		search: (query, signal) =>
+			respond(() => {
+				signal?.throwIfAborted();
+				return find(query);
 			}),
 		// Never fetched: the fixtures play on a silent clock.
 		streamUrl: (trackId) => `fixture:${trackId}`

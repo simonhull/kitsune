@@ -268,6 +268,13 @@ describe('choreographyFor', () => {
 	it('blends a page into itself', () => {
 		expect(choreographyFor('home', 'home')).toBe(blend);
 	});
+
+	it('blends to and from a page with no journey yet', () => {
+		for (const other of [...routes, 'login'] as const) {
+			expect(choreographyFor(other, 'search')).toBe(blend);
+			expect(choreographyFor('search', other)).toBe(blend);
+		}
+	});
 });
 
 describe('the door', () => {

@@ -13,6 +13,11 @@ describe('the route table', () => {
 		expect(navOf('/now-playing')).toMatchObject({ look: 'gone', current: null });
 	});
 
+	it('has no current item on Search, which is no nav item', () => {
+		expect(navOf('/search')).toMatchObject({ look: 'home', current: null });
+		expect(journeyOf('/search')).toBe('search');
+	});
+
 	it('gives every route a journey name', () => {
 		for (const id of routeIds) {
 			expect(journeyOf(id)).toBeDefined();

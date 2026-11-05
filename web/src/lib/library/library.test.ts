@@ -27,6 +27,25 @@ function forgetful(seen = false): ReadyMemory {
 }
 
 describe('Library', () => {
+	it('remembers the albums a search found, for the next first frame', async () => {
+		const library = new Library(source());
+		library.search.run('glasshouse');
+		await vi.waitFor(() => {
+			expect(library.search.state.kind).toBe('found');
+		});
+		expect(library.entry('glasshouse-66')?.title).toBe('Glasshouse');
+	});
+
+	it('forgets a search with the session', async () => {
+		const library = new Library(source());
+		library.search.run('glasshouse');
+		await vi.waitFor(() => {
+			expect(library.search.state.kind).toBe('found');
+		});
+		library.reset();
+		expect(library.search.state.kind).toBe('idle');
+	});
+
 	it('asks who is signed in only once', async () => {
 		const me = vi.fn(createFixtureSource().me);
 		const library = new Library(source({ me }));

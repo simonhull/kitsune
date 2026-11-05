@@ -22,7 +22,8 @@ const table = {
 	'/': { look: 'home', current: 'home', journey: 'home' },
 	'/album/[id]': { look: 'album', current: 'albums', journey: 'album' },
 	'/login': { look: 'door', current: 'home', journey: 'login' },
-	'/now-playing': { look: 'gone', current: null, journey: 'now-playing' }
+	'/now-playing': { look: 'gone', current: null, journey: 'now-playing' },
+	'/search': { look: 'home', current: null, journey: 'search' }
 } as const satisfies Record<RouteId, RouteFacts>;
 
 const routes = new Map<string, RouteFacts>(Object.entries(table));

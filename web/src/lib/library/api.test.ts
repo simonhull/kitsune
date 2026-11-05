@@ -93,4 +93,22 @@ describe('ApiSource', () => {
 	it('names a rendition', () => {
 		expect(artworkUrl('ab', 512)).toBe('/api/v1/artwork/ab?size=512');
 	});
+
+	it('searches with the query encoded, and carries the signal', async () => {
+		const { send, source } = fake(json(200, { artists: [], albums: [], tracks: [] }));
+		const { signal } = new AbortController();
+		await source.search('a&b c', signal);
+		expect(send.mock.calls.at(0)?.[0]).toBe('/api/v1/search?q=a%26b+c');
+		expect(init(send).signal).toBe(signal);
+	});
+
+	it('lets an aborted search reject as an abort', async () => {
+		const { source } = fake(new DOMException('aborted', 'AbortError'));
+		await expect(source.search('fox')).rejects.toMatchObject({ name: 'AbortError' });
+	});
+
+	it('reports a failed search', async () => {
+		const { source } = fake(json(500));
+		await expect(source.search('fox')).rejects.toBeInstanceOf(ServerError);
+	});
 });

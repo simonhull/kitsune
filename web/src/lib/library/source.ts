@@ -63,6 +63,30 @@ export interface Album extends AlbumEntry {
 	addedAt: string;
 }
 
+/** An artist, as much as it takes to link to one. */
+export interface ArtistLink {
+	id: string;
+	name: string;
+}
+
+/** A track a search found. Everything about it leads to its album. */
+export interface TrackHit {
+	id: string;
+	title: string;
+	artists: string[];
+	albumId: string;
+	album: string;
+	durationMs: number;
+	artwork?: Artwork;
+}
+
+/** What a search found, best first in each group. */
+export interface SearchResults {
+	artists: ArtistLink[];
+	albums: AlbumEntry[];
+	tracks: TrackHit[];
+}
+
 export interface LibraryFacts {
 	albums: number;
 	tracks: number;
@@ -86,6 +110,8 @@ export interface LibrarySource {
 	albumsPage(sort: AlbumSort, cursor?: string, limit?: number): Promise<AlbumPage>;
 	/** Rejects with {@link AlbumNotFoundError} for an unknown ID. */
 	album(id: string): Promise<Album>;
+	/** Finds artists, albums and tracks. Rejects with an `AbortError` when `signal` aborts. */
+	search(query: string, signal?: AbortSignal): Promise<SearchResults>;
 	/** The URL a track's audio streams from. */
 	streamUrl(trackId: string): string;
 }

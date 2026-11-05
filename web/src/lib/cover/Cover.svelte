@@ -8,7 +8,7 @@
 	interface Props {
 		albumId: string;
 		/** Undefined on a cold deep link: nothing is known, so nothing is guessed. */
-		entry: AlbumEntry | undefined;
+		entry: Pick<AlbumEntry, 'artwork'> | undefined;
 		place: CoverPlace;
 		lazy?: boolean;
 	}

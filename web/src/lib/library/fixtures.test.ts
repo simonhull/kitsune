@@ -35,6 +35,34 @@ describe('fixtures', () => {
 		await expect(source.album('tin-lantern-78')).resolves.toBeDefined();
 	});
 
+	it('finds artists, albums and tracks, whatever the case', async () => {
+		const { artists, albums, tracks } = await source.search('GLASSHOUSE');
+		expect(albums.map(({ title }) => title)).toEqual(['Glasshouse']);
+		expect(artists).toEqual([]);
+		expect((await source.search('duarte')).artists.map(({ name }) => name)).toEqual([
+			'Ines Duarte'
+		]);
+		expect(tracks).toEqual([]);
+		expect((await source.search('salt in')).tracks.at(0)).toMatchObject({
+			title: 'Salt in the Lungs',
+			albumId: 'glasshouse-66',
+			album: 'Glasshouse'
+		});
+	});
+
+	it('finds nothing for nothing, or for what it never heard of', async () => {
+		const empty = { artists: [], albums: [], tracks: [] };
+		await expect(source.search('  ')).resolves.toEqual(empty);
+		await expect(source.search('zzzz')).resolves.toEqual(empty);
+	});
+
+	it('rejects a search taken back while it was on its way', async () => {
+		const question = new AbortController();
+		const asked = createFixtureSource({ latencyMs: 5 }).search('fox', question.signal);
+		question.abort();
+		await expect(asked).rejects.toMatchObject({ name: 'AbortError' });
+	});
+
 	it('has a user, and turns away a login with no name', async () => {
 		expect((await source.me()).name).toBe('Simon');
 		await expect(source.login('', 'x')).rejects.toBeInstanceOf(LoginError);
