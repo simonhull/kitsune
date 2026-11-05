@@ -8,7 +8,8 @@ import {
 	type Motion,
 	type MotionSpec,
 	type MotionToken,
-	type RouteName
+	type RouteName,
+	type WayName
 } from './choreography.ts';
 import { preload } from '#lib/cover/rungs.ts';
 import { library } from '#lib/library/library.svelte.ts';
@@ -34,6 +35,16 @@ const routes = new Map<string, RouteName>([
 ]);
 
 const origins: Origins = new Map();
+
+/** Chosen once, from the URL the app opened on, as the fixtures are. */
+const way = wayFromQuery();
+
+function wayFromQuery(): WayName | undefined {
+	const named = new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get(
+		'back'
+	);
+	return named === 'a' || named === 'b' || named === 'c' ? named : undefined;
+}
 
 const playerParts = ['control:previous', 'control:pause', 'control:next', 'progress'];
 
@@ -126,7 +137,7 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 		gridWindow.aim(leaving);
 	}
 
-	const choreography = reducedMotion() ? blend : choreographyFor(fromRoute, toRoute);
+	const choreography = reducedMotion() ? blend : choreographyFor(fromRoute, toRoute, way);
 	const { travel } = choreography;
 	if (travel === null) {
 		return { choreography, ids: [], sources: new Map() };

@@ -4,12 +4,14 @@ import {
 	blendDuration,
 	bloomOpenness,
 	bloomStrength,
+	choreographyFor,
 	rippleDelay,
 	rippleWeight,
 	springParams,
 	weighPart,
 	type Choreography,
 	type Part,
+	type Passage,
 	type Role,
 	type SpringParams,
 	type StageName
@@ -44,6 +46,13 @@ const islandLeaves: Part = {
 	to: { opacity: 0 },
 	delay: 0,
 	motion: { token: '--morph-fast', bounce: 0 }
+};
+/** A bloom cut short clears from wherever it had got to, quickly: something else is starting. */
+const bloomLeaves: Part = {
+	from: {},
+	to: { opacity: 0 },
+	delay: 0,
+	motion: { token: '--morph-fast', bounce: 0, pace: 0.7 }
 };
 /** The largest gap one frame may jump: a stalled main thread shouldn't teleport anything. */
 const longestFrame = 1 / 20;
@@ -258,6 +267,10 @@ interface Bloom {
 	spec: NonNullable<Choreography['bloom']>;
 }
 
+function viewportCenter(): Point {
+	return { x: innerWidth / 2, y: innerHeight / 2 };
+}
+
 function pivot(element: HTMLElement, around: Point): void {
 	element.style.transform = 'none';
 	const { left, top } = element.getBoundingClientRect();
@@ -400,6 +413,18 @@ export function createSpringEngine(): Morphs {
 		return ghost;
 	}
 
+	/** Sends a cover past the viewer, with no target and no way of coming back. */
+	function passBy(id: string, source: Capture, passage: Passage): void {
+		const air = surfaceFor('.morph-layer');
+		if (air === null || source.kind === 'title' || source.kind === 'bar') {
+			return;
+		}
+		const flier = new CoverFlier(source.shape, null, source.picture, source.shadow);
+		flier.pass(passage, viewportCenter(), springParams(motionOf(passage.motion)));
+		fliers.set(id, flier);
+		air.prepend(flier.element);
+	}
+
 	function launch(
 		journey: Journey,
 		captures: Map<string, Capture>,
@@ -470,12 +495,17 @@ export function createSpringEngine(): Morphs {
 		if (main === null) {
 			return;
 		}
-		const { arriving, arrivingByKey, motion } = journey.choreography;
+		const { arriving, arrivingByKey, motion, way } = journey.choreography;
 		const partOf = (unit: HTMLElement): Part | undefined =>
 			arrivingByKey?.[unit.dataset['morphKey'] ?? ''] ?? arriving[roleOf(unit)];
 		const units = unitsNearFold(main);
 		const cover = [...targets.values()].find((entry) => entry.kind === 'cover');
-		const center = cover === undefined ? null : centerOf(cover.element);
+		const center =
+			way?.passes !== undefined
+				? viewportCenter()
+				: cover === undefined
+					? null
+					: centerOf(cover.element);
 		const flying = new Set([...targets.values()].map((entry) => entry.element));
 
 		// Going back mid-morph: the real page takes over from its own ghost, unit by unit.
@@ -645,7 +675,47 @@ export function createSpringEngine(): Morphs {
 		scale.step(flight, seconds);
 		const { x, y } = cover.center;
 		element.style.transform = `translate(${(x - innerWidth / 2).toFixed(1)}px, ${(y - innerHeight / 2).toFixed(1)}px) scale(${scale.value.toFixed(3)})`;
-		element.style.opacity = bloomStrength(bloomOpenness(scale.value, spec), spec.peak).toFixed(3);
+		element.style.opacity = bloomStrength(
+			bloomOpenness(scale.value, spec),
+			spec.peak,
+			spec.clears
+		).toFixed(3);
+	}
+
+	/** Reports whether the bloom is still clearing, after what it came from has gone. */
+	function bloomClearing(): boolean {
+		const clears = bloom?.spec.clears;
+		return (
+			bloom !== null &&
+			clears !== undefined &&
+			bloomOpenness(bloom.scale.value, bloom.spec) < clears[1]
+		);
+	}
+
+	/**
+	 * A bloom still clearing leaves as it is, in the colors it has: the real one is about to change
+	 * album, and starting it over from here would jump. A journey that interrupts it gets a new one.
+	 */
+	function letBloomGo(): void {
+		const under = surfaceFor('.ghost-layer');
+		if (bloom === null || under === null || !bloomClearing()) {
+			return;
+		}
+		const { element } = bloom;
+		const clone = element.cloneNode(true);
+		if (clone instanceof HTMLElement) {
+			const style = getComputedStyle(element);
+			for (const name of ['--glow', '--field']) {
+				clone.style.setProperty(name, style.getPropertyValue(name));
+			}
+			const leaving = document.createElement('div');
+			leaving.style.cssText = 'position:fixed;inset:0';
+			leaving.append(clone);
+			under.append(leaving);
+			const layer = new Layer(leaving, bloomLeaves);
+			ghosts.push({ path: '', element: leaving, layers: [layer], units: new Map() });
+		}
+		closeBloom();
 	}
 
 	function closeBloom(): void {
@@ -712,7 +782,7 @@ export function createSpringEngine(): Morphs {
 		stepBloom(seconds);
 
 		for (const [id, flier] of fliers) {
-			if (flier.target === null) {
+			if (flier.target === null && flier.leavesAlone !== true) {
 				flier.element.style.opacity = '0';
 				land(id, flier);
 			} else if (flier.settled && !held(flier.target)) {
@@ -732,7 +802,8 @@ export function createSpringEngine(): Morphs {
 		return (
 			fliers.size + landing.size + ghosts.length + stages.size + pendingCards.length > 0 ||
 			departing.some((layer) => !layer.settled) ||
-			island !== null
+			island !== null ||
+			bloomClearing()
 		);
 	}
 
@@ -823,16 +894,26 @@ export function createSpringEngine(): Morphs {
 			island.release();
 			island = null;
 		}
-		if (stages.size === 0 && fliers.size === 0) {
+		if (stages.size === 0 && fliers.size === 0 && !bloomClearing()) {
 			closeBloom();
 		}
 	}
 
 	function run(): void {
-		if (frame === 0) {
+		if (document.hidden) {
+			putDown();
+		} else if (frame === 0) {
 			lastFrame = performance.now();
 			frame = requestAnimationFrame(tick);
 		}
+	}
+
+	/** Nobody is watching and no frames are coming: what's waiting for the end mustn't wait with it. */
+	function putDown(): void {
+		cancelAnimationFrame(frame);
+		frame = 0;
+		abandon();
+		markMoving(false);
 	}
 
 	/** Puts everything down at once: for a blend, or a navigation that fell through. */
@@ -862,9 +943,27 @@ export function createSpringEngine(): Morphs {
 		}
 	}
 
-	async function fly(journey: Journey, navigation: OnNavigate): Promise<void> {
+	/**
+	 * Interrupted, a way back has no idea left to play: what's in the air finds its own way to settle
+	 * from where it is, on the plain journey. Otherwise only the cover travels.
+	 */
+	function chooseWay(journey: Journey): Journey {
+		if (journey.choreography.way === undefined) {
+			return journey;
+		}
+		if (journey.ids.some((id) => fliers.has(id))) {
+			return { ...journey, choreography: choreographyFor('album', 'home') };
+		}
+		const ids = journey.ids.filter((id) => id.startsWith('cover:'));
+		const sources = new Map([...journey.sources].filter(([id]) => ids.includes(id)));
+		return { ...journey, ids, sources };
+	}
+
+	async function fly(planned: Journey, navigation: OnNavigate): Promise<void> {
+		const journey = chooseWay(planned);
 		const { choreography, ids, sources } = journey;
 		endDeal();
+		letBloomGo();
 		markMoving(true);
 		const fromPath = navigation.from?.url.pathname ?? '';
 		const toPath = navigation.to?.url.pathname ?? '';
@@ -913,13 +1012,18 @@ export function createSpringEngine(): Morphs {
 
 		// DOM and scroll are final.
 		const targets = landJourney(journey, navigation.type !== 'popstate');
+		const passage = choreography.way?.passes;
+		const passing = passage === undefined ? [] : ids.filter((id) => captures.has(id));
+		for (const id of passing) {
+			targets.delete(id);
+		}
 		for (const entry of registry.list()) {
 			if (ids.includes(entry.id) && targets.get(entry.id) !== entry) {
 				show(entry.element);
 			}
 		}
 		for (const id of ids) {
-			if (!targets.has(id)) {
+			if (!targets.has(id) && !passing.includes(id)) {
 				inFlight.delete(id);
 				for (const element of ghost?.element.querySelectorAll(
 					`[${sourceAttribute}="${CSS.escape(id)}"]`
@@ -930,6 +1034,12 @@ export function createSpringEngine(): Morphs {
 		}
 
 		launch(journey, captures, targets);
+		for (const id of passing) {
+			const source = captures.get(id);
+			if (source !== undefined && passage !== undefined) {
+				passBy(id, source, passage);
+			}
+		}
 		// Every target is known now: a card that mounts from here on isn't one of them.
 		for (const id of ids) {
 			inFlight.delete(id);
@@ -978,6 +1088,12 @@ export function createSpringEngine(): Morphs {
 			markMoving(false);
 		}
 	}
+
+	document.addEventListener('visibilitychange', () => {
+		if (document.hidden && frame !== 0) {
+			putDown();
+		}
+	});
 
 	function navigate(navigation: OnNavigate): void {
 		const journey = beginJourney(navigation);

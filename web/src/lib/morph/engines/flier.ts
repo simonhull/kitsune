@@ -1,5 +1,5 @@
 import { Channel, landsWithin } from '../channel.ts';
-import { springParams, type SpringParams } from '../choreography.ts';
+import { easeBetween, springParams, type Passage, type SpringParams } from '../choreography.ts';
 import type { MorphEntry } from '../registry.ts';
 import {
 	barRise,
@@ -144,6 +144,8 @@ export interface Flier {
 	readonly element: HTMLElement;
 	/** Where it's going; null when the page it was going to has gone. */
 	target: MorphEntry | null;
+	/** Whether it sees itself out with no target, instead of being taken away. */
+	readonly leavesAlone?: boolean;
 	/**
 	 * Reads the target's position, and nothing else. Runs before any writes, once per frame.
 	 * `carry` is how far the island's contents are riding from their place: a flier bound for
@@ -175,15 +177,15 @@ export class CoverFlier implements Flier {
 	readonly #shadows = [document.createElement('div'), document.createElement('div')] as const;
 	readonly #mix: ShadowMix;
 	readonly #base: number;
+	readonly #opacity = new Channel(1);
+	#passing: Passing | null = null;
 
-	constructor(from: CoverShape, target: MorphEntry, picture: Node, shadow: string) {
-		const to = measureCover(target.element);
+	constructor(from: CoverShape, target: MorphEntry | null, picture: Node, shadow: string) {
+		const to = target === null ? from : measureCover(target.element);
 		this.#base = Math.max(from.width, to.width);
 		// Each end's shadow is drawn at the size it has at rest, whatever the box is scaled by.
-		this.#mix = new ShadowMix(
-			scaleShadow(shadow, this.#base / from.width),
-			this.#restingShadow(target)
-		);
+		const scaled = scaleShadow(shadow, this.#base / from.width);
+		this.#mix = new ShadowMix(scaled, target === null ? scaled : this.#restingShadow(target));
 		this.target = target;
 		this.#x = new Channel(from.x, to.x);
 		this.#y = new Channel(from.y, to.y);
@@ -202,6 +204,47 @@ export class CoverFlier implements Flier {
 		}
 		this.element.append(...this.#shadows, this.#face);
 		this.write();
+	}
+
+	/** Sends the cover past the viewer, drifting toward `toward` on the way. */
+	pass({ reach, gone }: Passage, toward: Point, params: SpringParams): void {
+		this.#passing = {
+			reach,
+			gone,
+			toward,
+			params,
+			from: { x: this.#x.value, y: this.#y.value, width: this.#width.value },
+			radius: this.#radius.value,
+			height: this.#height.value,
+			depth: new Channel(0, 1)
+		};
+	}
+
+	get leavesAlone(): boolean {
+		return this.#passing !== null;
+	}
+
+	/**
+	 * Works the shape out from the depth, and writes it to the channels with its speed, so a target
+	 * that turns up in mid-air takes over from here at this speed.
+	 */
+	#stepPassing(
+		{ reach, gone, toward, params, from, radius, height, depth }: Passing,
+		seconds: number
+	): void {
+		depth.step(params, seconds);
+		const grown = 1 / (1 - reach * depth.value);
+		const carry = (channel: Channel, next: number): void => {
+			channel.velocity = seconds > 0 ? (next - channel.value) / seconds : 0;
+			channel.value = next;
+			channel.target = next;
+		};
+		carry(this.#x, from.x + (toward.x - from.x) * depth.value);
+		carry(this.#y, from.y + (toward.y - from.y) * depth.value);
+		carry(this.#width, from.width * grown);
+		carry(this.#height, height * grown);
+		carry(this.#radius, radius * grown);
+		this.#opacity.value = 1 - easeBetween(depth.value, gone);
 	}
 
 	#restingShadow({ element }: MorphEntry): string {
@@ -237,6 +280,8 @@ export class CoverFlier implements Flier {
 			this.#rotation0 = rotation;
 			this.#radius0 = radius;
 			this.#aimShadow(entry);
+			this.#passing = null;
+			this.#opacity.target = 1;
 		}
 	}
 
@@ -262,9 +307,14 @@ export class CoverFlier implements Flier {
 	}
 
 	step(params: SpringParams, seconds: number): void {
+		if (this.#passing !== null) {
+			this.#stepPassing(this.#passing, seconds);
+			return;
+		}
 		for (const channel of this.#channels) {
 			channel.step(params, seconds);
 		}
+		this.#opacity.step(params, seconds);
 		this.#mix.step(params, seconds);
 	}
 
@@ -278,6 +328,7 @@ export class CoverFlier implements Flier {
 		const left = this.#x.value - this.#base / 2;
 		const top = this.#y.value - this.#base / 2;
 		this.element.style.transform = `translate(${left.toFixed(2)}px, ${top.toFixed(2)}px) rotate(${this.#rotation.value.toFixed(3)}deg) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`;
+		this.element.style.opacity = this.#opacity.value.toFixed(3);
 		const radius = `${(Math.max(0, this.#radius.value) / Math.max(scaleX, 0.01)).toFixed(2)}px`;
 		this.#face.style.borderRadius = radius;
 		for (const [index, layer] of this.#shadows.entries()) {
@@ -292,13 +343,29 @@ export class CoverFlier implements Flier {
 	}
 
 	get settled(): boolean {
+		if (this.#passing !== null) {
+			return this.#opacity.value < 0.01;
+		}
 		return (
 			this.#x.settled(landsWithin) &&
 			this.#y.settled(landsWithin) &&
 			this.#width.settled(landsWithin) &&
-			this.#rotation.settled(0.2)
+			this.#rotation.settled(0.2) &&
+			this.#opacity.settled(0.01)
 		);
 	}
+}
+
+/** A cover going past the viewer: all of its shape follows from `depth`. */
+interface Passing {
+	reach: number;
+	gone: readonly [number, number];
+	toward: Point;
+	params: SpringParams;
+	from: Point & { width: number };
+	radius: number;
+	height: number;
+	depth: Channel;
 }
 
 /** Where a bar is. Unlike a cover it changes proportion, so it's drawn at its true size. */

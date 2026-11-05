@@ -186,7 +186,33 @@ export interface Bloom {
 	rest: number;
 	full: number;
 	peak: number;
+	/**
+	 * Where a bloom that outlives the cover clears, as the openness it starts and finishes at. Unset,
+	 * it fades on the one curve and goes with the flight.
+	 */
+	clears?: readonly [number, number];
 }
+
+/**
+ * A cover that has nowhere to land and keeps coming: its depth runs from 0 at rest to 1, and its
+ * size follows the way a thing nearing a viewer's eye does, faster the closer it gets.
+ */
+export interface Passage {
+	/** How much of the distance to the eye it covers, from 0 to 1. */
+	reach: number;
+	/** The depths it starts and finishes going out at, so it's gone before it stops growing. */
+	gone: readonly [number, number];
+	motion: MotionSpec;
+}
+
+/** A way back of its own. Only the cover travels: the words stay with their page. */
+export interface Way {
+	/** The cover goes past the viewer instead of landing. */
+	passes?: Passage;
+}
+
+/** Which of the candidate ways back Album to Home takes. Unset, it plays its way in backward. */
+export type WayName = 'a' | 'b' | 'c';
 
 export interface Choreography {
 	name: ChoreographyName;
@@ -206,6 +232,7 @@ export interface Choreography {
 	island: Part | null;
 	/** How the island first appears, on the one journey that starts without it. */
 	islandForms?: Part;
+	way?: Way;
 }
 
 const bloomShape = { rest: 0.12, full: 2.6, peak: 0.9 } as const;
@@ -329,6 +356,27 @@ const albumToHome: Choreography = {
 	bloom: { direction: 'in', ...bloomShape },
 	island: null
 };
+
+/**
+ * Album to Home, through the record. The cover never turns back: it keeps coming until it goes past
+ * the viewer, its color takes the screen behind it, and the page it was on goes by as well. When
+ * the color clears Home is out in front, still coming closer. Every part of it is one push forward,
+ * and nothing lands.
+ */
+const throughTheRecord: Choreography = {
+	...albumToHome,
+	motion: { ...base, pace: 1.35 },
+	leaving: { from: {}, to: { opacity: 0, scale: 1.16 }, delay: 0, motion: exit },
+	arriving: {
+		intro: { from: { opacity: 0, scale: 0.94 }, to: {}, delay: 210, motion: quick },
+		card: { from: { opacity: 0, scale: 0.94 }, to: {}, delay: 210, motion: quick }
+	},
+	stages: { album: fadeOut(90, quick) },
+	bloom: { direction: 'out', rest: 0.12, full: 5, peak: 1, clears: [0.76, 0.975] },
+	way: { passes: { reach: 0.86, gone: [0.58, 0.93], motion: { ...base, pace: 1.15 } } }
+};
+
+const waysBack: Partial<Record<WayName, Choreography>> = { a: throughTheRecord };
 
 /**
  * Home to Now playing: two levels down in one move. The island's cover rises to the center of
@@ -486,9 +534,16 @@ const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
  * the one bloom curve: it depends only on the bloom's size, never on the clock or the direction,
  * so a turn in mid-air can't make it jump.
  */
-export function bloomStrength(open: number, peak: number): number {
+export function bloomStrength(open: number, peak: number, clears?: Bloom['clears']): number {
 	const clamped = Math.min(1, Math.max(0, open));
-	return peak * Math.min(1, clamped / 0.2) * (1 - clamped ** 6);
+	const fading = clears === undefined ? clamped ** 6 : easeBetween(clamped, clears);
+	return peak * Math.min(1, clamped / 0.2) * (1 - fading);
+}
+
+/** Runs from 0 to 1 with no corners, as `value` crosses from one end of `span` to the other. */
+export function easeBetween(value: number, [start, end]: readonly [number, number]): number {
+	const share = Math.min(1, Math.max(0, (value - start) / (end - start)));
+	return share * share * (3 - 2 * share);
 }
 
 /** Finds how open a bloom of this scale is. */
@@ -500,8 +555,9 @@ export function bloomOpenness(scale: number, { rest, full }: Bloom): number {
 export const blendDuration = 120;
 
 /** Finds the choreography between two routes. */
-export function choreographyFor(from: RouteName, to: RouteName): Choreography {
-	return journeys[`${from}>${to}`] ?? blend;
+export function choreographyFor(from: RouteName, to: RouteName, way?: WayName): Choreography {
+	const chosen = from === 'album' && to === 'home' && way !== undefined ? waysBack[way] : undefined;
+	return chosen ?? journeys[`${from}>${to}`] ?? blend;
 }
 
 /** Reads a motion's duration from its token. */
