@@ -15,6 +15,7 @@ import {
 	type StageName
 } from '../choreography.ts';
 import { library } from '#lib/library/library.svelte.ts';
+import { albumOn } from '#lib/shell/routes.ts';
 import { reportStart } from '../hud.svelte.ts';
 import { beginJourney, centerOf, landJourney, motionOf, type Journey } from '../journey.ts';
 import { registry, type MorphEntry } from '../registry.ts';
@@ -881,7 +882,7 @@ export function createSpringEngine(): Morphs {
 				captures.set(id, capture(source));
 			}
 		}
-		const fromAlbum = navigation.from?.params?.['id'];
+		const fromAlbum = albumOn(navigation.from);
 		const heldStage = choreography.stages.album;
 		const changesAlbum =
 			choreography.name === 'album-to-now-playing' && fromAlbum !== library.playing?.album.id;

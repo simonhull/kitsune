@@ -3,18 +3,19 @@
 	import { morph } from '#lib/morph/registry.ts';
 	import { flowingPill } from './flowingPill.ts';
 	import Icon from './Icon.svelte';
+	import type { NavItem, NavLook } from './routes.ts';
 
 	interface Props {
-		/** `door` is Home's layout, unseen: the fox needs its seat there before anything shows. */
-		route: 'home' | 'album' | 'gone' | 'door';
+		look: NavLook;
+		current: NavItem | null;
 		healthIssues: number | undefined;
 	}
 
-	let { route, healthIssues }: Props = $props();
+	let { look, current, healthIssues }: Props = $props();
 </script>
 
-<header class="bar" data-route={route} inert={route === 'gone' || route === 'door'}>
-	<nav aria-label="Main" class="nav" data-route={route} use:flowingPill={route}>
+<header class="bar" data-route={look} inert={look === 'gone' || look === 'door'}>
+	<nav aria-label="Main" class="nav" data-route={look} use:flowingPill={current}>
 		<span class="pill" aria-hidden="true"></span>
 		<a
 			class="fox"
@@ -26,16 +27,13 @@
 		<a
 			class="item"
 			href={resolve('/')}
-			aria-current={route === 'home' || route === 'door' ? 'page' : undefined}
+			aria-current={current === 'home' ? 'page' : undefined}
 			data-sveltekit-reset="false">Home</a
 		>
-		<span class="item" aria-disabled="true" aria-current={route === 'album' ? 'page' : undefined}
+		<span class="item" aria-disabled="true" aria-current={current === 'albums' ? 'page' : undefined}
 			>Albums</span
 		>
-		<span class="fold wide"><span class="item" aria-disabled="true">Artists</span></span>
-		<span class="fold wide home-only">
-			<span class="fold-in"><span class="item" aria-disabled="true">Playlists</span></span>
-		</span>
+		<span class="item" aria-disabled="true">Artists</span>
 		<span class="fold wide home-only">
 			<span class="fold-in">
 				<span class="item health" aria-disabled="true">
@@ -120,7 +118,9 @@
 		height: var(--target);
 		border-radius: var(--radius-pill);
 		background: rgb(255 255 255 / 10%);
-		transition: background var(--morph) var(--curve-morph);
+		transition:
+			background var(--morph) var(--curve-morph),
+			opacity var(--morph-fast) var(--curve-morph);
 	}
 
 	:is([data-route='album'], [data-route='gone']) .pill {
@@ -269,6 +269,19 @@
 	@media (max-width: 900px) {
 		.wide {
 			display: none;
+		}
+
+		.item,
+		.item[aria-current='page'] {
+			padding: 0 12px;
+		}
+	}
+
+	/* Everything left must still fit a small phone: the targets stay 44px tall. */
+	@media (max-width: 360px) {
+		.item,
+		.item[aria-current='page'] {
+			padding: 0 7px;
 		}
 	}
 </style>
