@@ -99,7 +99,8 @@ func runUsersAdd(args []string, env config.Env, stdin io.Reader, stdout, stderr 
 	return nil
 }
 
-// createUser makes dataDir if needed, opens the database in it and adds the user.
+// createUser makes dataDir if needed, opens the database in it and adds the
+// user. It never migrates: a server may be running on that database.
 func createUser(dataDir, name, password string, role store.Role) (err error) {
 	if err = os.MkdirAll(dataDir, dataDirMode); err != nil {
 		return fmt.Errorf("create data_dir: %w", err)

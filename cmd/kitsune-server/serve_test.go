@@ -107,6 +107,42 @@ func TestServeRefusesWithoutDatabase(t *testing.T) {
 	}
 }
 
+func TestServeMigrates(t *testing.T) {
+	t.Parallel()
+	e := newServeEnv(t, "")
+	if err := os.MkdirAll(e.dataDir, dataDirMode); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(e.dataDir, store.FileName)
+	st, err := store.Open(t.Context(), path, store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.CreateUser(t.Context(), store.NewUser{Name: "simon", PasswordHash: "h", Role: store.RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	markUnmigrated(t, path)
+
+	cfg := e.load(t)
+	a, err := openApp(t.Context(), &cfg, e.config, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatalf("openApp: %v", err)
+	}
+	if err = a.close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = store.Open(t.Context(), path, store.Options{}) // Refused if anything were still pending.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestServeRefusesEmptyDatabase(t *testing.T) {
 	t.Parallel()
 	e := newServeEnv(t, "")

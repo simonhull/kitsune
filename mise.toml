@@ -27,8 +27,11 @@ run = [
 ]
 
 [tasks.generate]
-description = "Regenerate sqlc code with a cgo-free sqlc (tools/go.mod pins it)"
-run = "CGO_ENABLED=0 go -C tools tool sqlc generate -f ../internal/store/sqlc.yaml"
+description = "Regenerate sqlc code with a cgo-free sqlc (tools/go.mod pins it), then the schema snapshot"
+run = [
+  "CGO_ENABLED=0 go -C tools tool sqlc generate -f ../internal/store/sqlc.yaml",
+  "UPDATE_SNAPSHOT=1 go test -count=1 -run '^TestSchemaSnapshot$' ./internal/store",
+]
 
 [tasks.fmt]
 description = "Apply gofumpt and goimports"
