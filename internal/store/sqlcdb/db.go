@@ -90,6 +90,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAlbumsByNameStmt, err = db.PrepareContext(ctx, listAlbumsByName); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumsByName: %w", err)
 	}
+	if q.listTrackHitArtistsStmt, err = db.PrepareContext(ctx, listTrackHitArtists); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTrackHitArtists: %w", err)
+	}
+	if q.listTrackHitsStmt, err = db.PrepareContext(ctx, listTrackHits); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTrackHits: %w", err)
+	}
 	if q.liveTrackFactsStmt, err = db.PrepareContext(ctx, liveTrackFacts); err != nil {
 		return nil, fmt.Errorf("error preparing query LiveTrackFacts: %w", err)
 	}
@@ -253,6 +259,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAlbumsByNameStmt: %w", cerr)
 		}
 	}
+	if q.listTrackHitArtistsStmt != nil {
+		if cerr := q.listTrackHitArtistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTrackHitArtistsStmt: %w", cerr)
+		}
+	}
+	if q.listTrackHitsStmt != nil {
+		if cerr := q.listTrackHitsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTrackHitsStmt: %w", cerr)
+		}
+	}
 	if q.liveTrackFactsStmt != nil {
 		if cerr := q.liveTrackFactsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing liveTrackFactsStmt: %w", cerr)
@@ -394,6 +410,8 @@ type Queries struct {
 	listAlbumTracksStmt       *sql.Stmt
 	listAlbumsByAddedStmt     *sql.Stmt
 	listAlbumsByNameStmt      *sql.Stmt
+	listTrackHitArtistsStmt   *sql.Stmt
+	listTrackHitsStmt         *sql.Stmt
 	liveTrackFactsStmt        *sql.Stmt
 	markMissingStmt           *sql.Stmt
 	missingByDigestStmt       *sql.Stmt
@@ -438,6 +456,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAlbumTracksStmt:       q.listAlbumTracksStmt,
 		listAlbumsByAddedStmt:     q.listAlbumsByAddedStmt,
 		listAlbumsByNameStmt:      q.listAlbumsByNameStmt,
+		listTrackHitArtistsStmt:   q.listTrackHitArtistsStmt,
+		listTrackHitsStmt:         q.listTrackHitsStmt,
 		liveTrackFactsStmt:        q.liveTrackFactsStmt,
 		markMissingStmt:           q.markMissingStmt,
 		missingByDigestStmt:       q.missingByDigestStmt,

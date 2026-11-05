@@ -238,6 +238,34 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /search:
+    get:
+      operationId: getSearch
+      summary: Find artists, albums and tracks.
+      description: >-
+        Each group is capped and ordered best first: the whole name, then names
+        that start with the query, then names with its words, then the rest. A
+        query is cut to 256 bytes and 16 words. One with no letter or digit
+        finds nothing.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: What the query found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResults" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /tracks/{id}/stream:
     get:
       operationId: getTrackStream
@@ -478,6 +506,41 @@ components:
           description: Distinct and sorted.
           items: { type: string }
         addedAt: { type: string, format: date-time }
+    ArtistEntry:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+    TrackHit:
+      type: object
+      additionalProperties: false
+      required: [id, title, artists, albumId, album, durationMs]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artists:
+          type: array
+          items: { type: string }
+        albumId: { type: string }
+        album: { type: string }
+        durationMs: { type: integer, format: int64 }
+        artwork: { $ref: "#/components/schemas/Artwork" }
+    SearchResults:
+      type: object
+      additionalProperties: false
+      required: [artists, albums, tracks]
+      properties:
+        artists:
+          type: array
+          items: { $ref: "#/components/schemas/ArtistEntry" }
+        albums:
+          type: array
+          items: { $ref: "#/components/schemas/AlbumEntry" }
+        tracks:
+          type: array
+          items: { $ref: "#/components/schemas/TrackHit" }
     LibraryFacts:
       type: object
       additionalProperties: false

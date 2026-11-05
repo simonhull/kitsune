@@ -56,6 +56,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   not built dynamically, which supersedes the dynamic-sorts rule in the Store section for these two.
   This also supersedes the spec's `next_cursor`, limit 500 and album ETag: the API says `nextCursor`,
   caps `limit` at 200 and sends no album ETag.
+- A canceled query fails with `sqlite3: interrupted`, not `context.Canceled`: check
+  `r.Context().Err()` before logging an error from a handler a client can abandon.
 - Responses carry `api` types built field by field (`toAPIUser`); never marshal a
   `store` type, so a new store column can't leak.
 - Nothing the server writes (bodies, headers, logs) contains a password or token, except
@@ -82,6 +84,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   normalizes names or decides identity: callers pass match keys, group keys and ULIDs.
 - FTS rows are written in the same transaction as their track and through `foldSearch`;
   a search query must fold the same way.
+- Nothing reaches `MATCH` except a `SearchQuery`, and `ParseSearch` is the only way to make one. Its
+  caps are what stop a long query taking down a read connection; never hand-build an FTS expression.
+  The `tracks_fts` table is contentless: it can rank, but can't say which column matched.
 
 ## Auth
 - `internal/auth` owns credentials. Passwords are Argon2id in PHC format; the store only

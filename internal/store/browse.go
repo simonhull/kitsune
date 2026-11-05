@@ -259,14 +259,21 @@ func summarize(r *sqlcdb.ListAlbumsByNameRow) AlbumSummary {
 		Compilation: r.Compilation != 0,
 		AddedAt:     fromMS(r.AddedAt),
 	}
-	if r.ArtworkHash != nil && r.ArtworkWidth != nil && r.ArtworkHeight != nil && r.ArtworkAccent != nil && r.ArtworkGround != nil {
-		a.Cover = &Cover{
-			Hash:   [32]byte(r.ArtworkHash),
-			Accent: *r.ArtworkAccent, Ground: *r.ArtworkGround,
-			Width: int(*r.ArtworkWidth), Height: int(*r.ArtworkHeight),
-		}
-	}
+	a.Cover = cover(r.ArtworkHash, r.ArtworkWidth, r.ArtworkHeight, r.ArtworkAccent, r.ArtworkGround)
 	return a
+}
+
+// cover builds a Cover from a row's left-joined artwork columns, or nil when
+// the album has none.
+func cover(hash []byte, width, height *int64, accent, ground *string) *Cover {
+	if hash == nil || width == nil || height == nil || accent == nil || ground == nil {
+		return nil
+	}
+	return &Cover{
+		Hash:   [32]byte(hash),
+		Accent: *accent, Ground: *ground,
+		Width: int(*width), Height: int(*height),
+	}
 }
 
 // intOr0 returns *p, or 0 for NULL.

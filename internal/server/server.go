@@ -145,6 +145,7 @@ func (s *Server) routes() []route {
 		{pattern: "GET /albums", handle: s.getAlbums},
 		{pattern: "GET /albums/{id}", handle: s.getAlbum},
 		{pattern: "GET /library", handle: s.getLibrary},
+		{pattern: "GET /search", handle: s.getSearch},
 		{pattern: "GET /tracks/{id}/stream", handle: s.getTrackStream},
 	}
 }
