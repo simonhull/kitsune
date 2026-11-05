@@ -4,14 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	_ "embed" // Embeds schema.sql.
 	"encoding/binary"
 	"errors"
 	"fmt"
 )
-
-//go:embed schema.sql
-var schemaSQL string
 
 // kitsuneAppID marks a SQLite file as Kitsune's ("KTSN").
 const kitsuneAppID = 0x4B54534E
@@ -21,17 +17,21 @@ const kitsuneAppID = 0x4B54534E
 const probeSQL = `SELECT (SELECT count(*) FROM sqlite_schema), application_id, user_version
 FROM pragma_application_id, pragma_user_version`
 
-// schemaVersion derives user_version from the schema text, so any edit to
-// schema.sql is detected.
+// schemaVersion derives user_version from the schema text, so any edit to the
+// baseline is detected.
 func schemaVersion(schema string) int32 {
 	sum := sha256.Sum256([]byte(schema))
 	return int32(binary.BigEndian.Uint32(sum[:4]) >> 1)
 }
 
 // settleSchema creates the schema in an empty database, and checks that a
-// populated one is Kitsune's and was made from the embedded schema.sql.
+// populated one is Kitsune's and was made from the embedded baseline.
 func settleSchema(ctx context.Context, w *sql.DB, path string) error {
-	return settleSchemaWith(ctx, w, path, schemaSQL)
+	steps, err := parseMigrations(migrationFiles)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	return settleSchemaWith(ctx, w, path, steps[0].sql)
 }
 
 // settleSchemaWith is settleSchema with the schema text injected, so tests can

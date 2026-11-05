@@ -1,0 +1,300 @@
+-- table albums
+CREATE TABLE albums (
+	id          INTEGER PRIMARY KEY,
+	ulid        TEXT    NOT NULL UNIQUE CHECK (length(ulid) = 26), -- public ID; kept across updates
+	group_key   TEXT    NOT NULL UNIQUE, -- caller-computed grouping key; the identity
+	name        TEXT    NOT NULL,
+	sort_name   TEXT    NOT NULL COLLATE NOCASE, -- the collation must be on the column for keyset seeks
+	artist      TEXT    NOT NULL,        -- display name
+	mbid        TEXT,
+	year        INTEGER,
+	compilation INTEGER NOT NULL CHECK (compilation IN (0, 1)),
+	artwork_hash BLOB REFERENCES artwork (hash), -- NULL when the album has no cover
+	added_at    INTEGER NOT NULL                 -- first sight; kept across updates
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=ulid type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=group_key type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=name type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=sort_name type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=artist type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=mbid type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=year type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=8 name=compilation type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=9 name=artwork_hash type=BLOB notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=10 name=added_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=artwork from=artwork_hash to=hash on_update=NO ACTION on_delete=NO ACTION match=NONE
+
+-- index albums_added
+CREATE INDEX albums_added ON albums (added_at DESC, id DESC);
+--   key seqno=0 cid=10 name=added_at desc=1 coll=BINARY key=1
+--   key seqno=1 cid=0 name=id desc=1 coll=BINARY key=1
+--   key seqno=2 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index albums_artwork
+CREATE INDEX albums_artwork ON albums (artwork_hash);
+--   key seqno=0 cid=9 name=artwork_hash desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index albums_sort
+CREATE INDEX albums_sort ON albums (sort_name, id);
+--   key seqno=0 cid=4 name=sort_name desc=0 coll=NOCASE key=1
+--   key seqno=1 cid=0 name=id desc=0 coll=BINARY key=1
+--   key seqno=2 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- table artists
+CREATE TABLE artists (
+	id        INTEGER PRIMARY KEY,
+	ulid      TEXT    NOT NULL UNIQUE CHECK (length(ulid) = 26), -- public ID; kept across updates
+	match_key TEXT    NOT NULL UNIQUE,  -- caller-normalized name; the identity
+	name      TEXT    NOT NULL,
+	sort_name TEXT    NOT NULL,
+	mbid      TEXT                      -- NULL when unknown
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=ulid type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=match_key type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=name type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=sort_name type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=mbid type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
+
+-- table artwork
+CREATE TABLE artwork (
+	hash   BLOB    PRIMARY KEY CHECK (length(hash) = 32), -- SHA-256 of the source image; names the files
+	width  INTEGER NOT NULL,                              -- of the source
+	height INTEGER NOT NULL,
+	accent TEXT    NOT NULL,                              -- #rrggbb
+	ground TEXT    NOT NULL,                              -- #rrggbb
+	source TEXT    NOT NULL CHECK (source IN ('embedded', 'folder'))
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=hash type=BLOB notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=width type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=height type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=accent type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=ground type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=source type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+
+-- table scan_issues
+CREATE TABLE scan_issues (
+	root     TEXT    NOT NULL,
+	rel_path TEXT    NOT NULL,
+	kind     TEXT    NOT NULL CHECK (kind IN ('unreadable', 'corrupted', 'unsupported')),
+	message  TEXT    NOT NULL,
+	size     INTEGER NOT NULL,
+	mtime    INTEGER NOT NULL,
+	seen_at  INTEGER NOT NULL,
+	PRIMARY KEY (root, rel_path)
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=root type=TEXT notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=rel_path type=TEXT notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=kind type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=message type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=size type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=mtime type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=seen_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+
+-- table sessions
+CREATE TABLE sessions (
+	token_hash BLOB    PRIMARY KEY CHECK (length(token_hash) = 32),
+	user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	created_at INTEGER NOT NULL,
+	last_seen  INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
+	user_agent TEXT    NOT NULL
+) STRICT;
+--   column cid=0 name=token_hash type=BLOB notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=created_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=last_seen type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=expires_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=user_agent type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index sessions_expires
+CREATE INDEX sessions_expires ON sessions (expires_at);
+--   key seqno=0 cid=4 name=expires_at desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index sessions_user
+CREATE INDEX sessions_user ON sessions (user_id);
+--   key seqno=0 cid=1 name=user_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- table track_artists
+CREATE TABLE track_artists (
+	track_id  INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+	role      TEXT    NOT NULL CHECK (role IN ('artist', 'album_artist')),
+	ord       INTEGER NOT NULL,
+	artist_id INTEGER NOT NULL REFERENCES artists (id),
+	PRIMARY KEY (track_id, role, ord)
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=role type=TEXT notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=ord type=INTEGER notnull=1 dflt_value=<nil> pk=3 hidden=0
+--   column cid=3 name=artist_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=artists from=artist_id to=id on_update=NO ACTION on_delete=NO ACTION match=NONE
+--   foreign key id=1 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index track_artists_artist
+CREATE INDEX track_artists_artist ON track_artists (artist_id);
+--   key seqno=0 cid=3 name=artist_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=0 name=track_id desc=0 coll=BINARY key=0
+--   key seqno=2 cid=1 name=role desc=0 coll=BINARY key=0
+--   key seqno=3 cid=2 name=ord desc=0 coll=BINARY key=0
+
+-- table track_tags
+CREATE TABLE track_tags (
+	track_id INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+	key      TEXT    NOT NULL,
+	ord      INTEGER NOT NULL,
+	value    TEXT    NOT NULL,
+	PRIMARY KEY (track_id, key, ord)
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=key type=TEXT notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=ord type=INTEGER notnull=1 dflt_value=<nil> pk=3 hidden=0
+--   column cid=3 name=value type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- table tracks
+CREATE TABLE tracks (
+	id            INTEGER PRIMARY KEY,  -- internal; the FTS rowid
+	ulid          TEXT    NOT NULL UNIQUE CHECK (length(ulid) = 26),
+	root          TEXT    NOT NULL,
+	rel_path      TEXT    NOT NULL,
+	size          INTEGER NOT NULL,
+	mtime         INTEGER NOT NULL,     -- Unix ms
+	audio_digest  BLOB    NOT NULL CHECK (length(audio_digest) = 32),
+	album_id      INTEGER NOT NULL REFERENCES albums (id),
+	format        TEXT    NOT NULL,
+	codec         TEXT    NOT NULL,
+	duration_ms   INTEGER NOT NULL,
+	sample_rate   INTEGER,
+	bit_depth     INTEGER,
+	channels      INTEGER,
+	bitrate       INTEGER,
+	lossless      INTEGER NOT NULL CHECK (lossless IN (0, 1)),
+	title         TEXT    NOT NULL,
+	sort_title    TEXT    NOT NULL,
+	track_no      INTEGER,
+	track_total   INTEGER,
+	disc_no       INTEGER,
+	disc_total    INTEGER,
+	year          INTEGER,
+	original_year INTEGER,
+	compilation   INTEGER NOT NULL CHECK (compilation IN (0, 1)),
+	rg_track_gain REAL,
+	rg_track_peak REAL,
+	rg_album_gain REAL,
+	rg_album_peak REAL,
+	scan_warnings TEXT    NOT NULL,     -- JSON array of strings
+	added_at      INTEGER NOT NULL,     -- first sight; kept across updates and moves
+	missing_since INTEGER,
+	UNIQUE (root, rel_path)
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=ulid type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=root type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=rel_path type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=size type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=mtime type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=audio_digest type=BLOB notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=album_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=8 name=format type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=9 name=codec type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=10 name=duration_ms type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=11 name=sample_rate type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=12 name=bit_depth type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=13 name=channels type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=14 name=bitrate type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=15 name=lossless type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=16 name=title type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=17 name=sort_title type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=18 name=track_no type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=19 name=track_total type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=20 name=disc_no type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=21 name=disc_total type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=22 name=year type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=23 name=original_year type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=24 name=compilation type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=25 name=rg_track_gain type=REAL notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=26 name=rg_track_peak type=REAL notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=27 name=rg_album_gain type=REAL notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=28 name=rg_album_peak type=REAL notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=29 name=scan_warnings type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=30 name=added_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=31 name=missing_since type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=albums from=album_id to=id on_update=NO ACTION on_delete=NO ACTION match=NONE
+
+-- index tracks_album
+CREATE INDEX tracks_album ON tracks (album_id, disc_no, track_no);
+--   key seqno=0 cid=7 name=album_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=20 name=disc_no desc=0 coll=BINARY key=1
+--   key seqno=2 cid=18 name=track_no desc=0 coll=BINARY key=1
+--   key seqno=3 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index tracks_live
+CREATE INDEX tracks_live ON tracks (album_id, duration_ms) WHERE missing_since IS NULL;
+--   key seqno=0 cid=7 name=album_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=10 name=duration_ms desc=0 coll=BINARY key=1
+--   key seqno=2 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index tracks_missing_digest
+CREATE INDEX tracks_missing_digest ON tracks (audio_digest) WHERE missing_since IS NOT NULL;
+--   key seqno=0 cid=6 name=audio_digest desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index tracks_missing_since
+CREATE INDEX tracks_missing_since ON tracks (missing_since) WHERE missing_since IS NOT NULL;
+--   key seqno=0 cid=31 name=missing_since desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- table tracks_fts
+CREATE VIRTUAL TABLE tracks_fts USING fts5 (
+	title, artists, album, album_artist,
+	content = '', contentless_delete = 1,
+	tokenize = 'unicode61 remove_diacritics 2'
+);
+--   column cid=0 name=title type= notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=1 name=artists type= notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=album type= notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=album_artist type= notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=tracks_fts type= notnull=0 dflt_value=<nil> pk=0 hidden=1
+--   column cid=5 name=rank type= notnull=0 dflt_value=<nil> pk=0 hidden=1
+
+-- table tracks_fts_config
+CREATE TABLE 'tracks_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID;
+--   column cid=0 name=k type= notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=v type= notnull=0 dflt_value=<nil> pk=0 hidden=0
+
+-- table tracks_fts_data
+CREATE TABLE 'tracks_fts_data'(id INTEGER PRIMARY KEY, block BLOB);
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=block type=BLOB notnull=0 dflt_value=<nil> pk=0 hidden=0
+
+-- table tracks_fts_docsize
+CREATE TABLE 'tracks_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB, origin INTEGER);
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=sz type=BLOB notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=origin type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+
+-- table tracks_fts_idx
+CREATE TABLE 'tracks_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID;
+--   column cid=0 name=segid type= notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=term type= notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=pgno type= notnull=0 dflt_value=<nil> pk=0 hidden=0
+
+-- table users
+CREATE TABLE users (
+	id            INTEGER PRIMARY KEY,
+	name          TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+	password_hash TEXT    NOT NULL,
+	role          TEXT    NOT NULL CHECK (role IN ('admin', 'user')),
+	created_at    INTEGER NOT NULL
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=name type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=password_hash type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=role type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=created_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+

@@ -27,14 +27,14 @@ func rawInt(t *testing.T, db *sql.DB, query string) int64 {
 	return v
 }
 
-func TestSchemaVersionIsPositiveAndStable(t *testing.T) {
+func TestBaselineKeepsItsHash(t *testing.T) {
 	t.Parallel()
-	v := schemaVersion(schemaSQL)
-	if v <= 0 {
-		t.Errorf("schemaVersion = %d, want > 0", v)
+	steps, err := parseMigrations(migrationFiles)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if again := schemaVersion(schemaSQL); again != v {
-		t.Errorf("schemaVersion changed between calls: %d then %d", v, again)
+	if got := schemaVersion(steps[0].sql); got != 852615662 {
+		t.Errorf("schemaVersion(%s) = %d, want 852615662: databases made before migrations carry that hash", steps[0].name, got)
 	}
 	if schemaVersion("x") == schemaVersion("y") {
 		t.Error(`schemaVersion("x") == schemaVersion("y")`)

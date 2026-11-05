@@ -26,8 +26,8 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrNameTaken means a user with that name exists, ignoring ASCII case.
 	ErrNameTaken = errors.New("name already taken")
-	// ErrStaleSchema means the database was created from a different schema.sql.
-	ErrStaleSchema = errors.New("database was created from a different schema.sql; delete it (Kitsune has no migrations before its first release)")
+	// ErrStaleSchema means the database was created from a different schema.
+	ErrStaleSchema = errors.New("database was created from a different schema; delete it (Kitsune has no migrations before its first release)")
 	// ErrNotKitsune means the file is a SQLite database that Kitsune did not create.
 	ErrNotKitsune = errors.New("not a Kitsune database")
 
