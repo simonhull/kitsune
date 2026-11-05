@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { artworkUrl, createApiSource } from './api';
-import { AlbumNotFoundError, LoginError, ServerError, UnauthorizedError } from './source';
+import {
+	AlbumNotFoundError,
+	ArtistNotFoundError,
+	LoginError,
+	ServerError,
+	UnauthorizedError
+} from './source';
 
 function json(status: number, body: unknown = {}, headers: HeadersInit = {}): Response {
 	return new Response(JSON.stringify(body), { status, headers });
@@ -110,5 +116,17 @@ describe('ApiSource', () => {
 	it('reports a failed search', async () => {
 		const { source } = fake(json(500));
 		await expect(source.search('fox')).rejects.toBeInstanceOf(ServerError);
+	});
+
+	it('unwraps the artists', async () => {
+		const artists = [{ id: 'a', name: 'A', albumCount: 1 }];
+		const { source } = fake(json(200, { artists }));
+		await expect(source.artists()).resolves.toEqual(artists);
+	});
+
+	it('tells an artist that does not exist from a server that failed', async () => {
+		const { source } = fake(json(404), json(500));
+		await expect(source.artist('a/b')).rejects.toBeInstanceOf(ArtistNotFoundError);
+		await expect(source.artist('a')).rejects.toBeInstanceOf(ServerError);
 	});
 });

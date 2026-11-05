@@ -9,6 +9,13 @@ describe('the route table', () => {
 		expect(journeyOf('/login')).toBe('login');
 	});
 
+	it('dresses both artist pages alike, as different journeys', () => {
+		for (const id of ['/artists', '/artists/[id]']) {
+			expect(navOf(id)).toMatchObject({ look: 'home', current: 'artists' });
+		}
+		expect(journeyOf('/artists')).not.toBe(journeyOf('/artists/[id]'));
+	});
+
 	it('has no current item on Now playing', () => {
 		expect(navOf('/now-playing')).toMatchObject({ look: 'gone', current: null });
 	});

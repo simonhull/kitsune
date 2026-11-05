@@ -12,9 +12,13 @@ import {
 import { Search } from './search.svelte.ts';
 import {
 	AlbumNotFoundError,
+	ArtistNotFoundError,
 	UnauthorizedError,
 	type Album,
 	type AlbumEntry,
+	type ArtistDetail,
+	type ArtistEntry,
+	type ArtistLink,
 	type LibraryFacts,
 	type LibrarySource,
 	type User
@@ -44,6 +48,15 @@ const readyAhead = 12;
 const hiddenRetryMs = 1000;
 
 export type Session = 'signed-in' | 'signed-out' | 'down';
+
+/** Where something asked for has got to. */
+export type Load<T> =
+	| { kind: 'loading' }
+	| { kind: 'ready'; value: T }
+	/** The server says there's no such thing. */
+	| { kind: 'missing' }
+	/** It couldn't be fetched this time. */
+	| { kind: 'unavailable' };
 
 /** Whether this browser has seen the library ready, which outlives any session. */
 export interface ReadyMemory {
@@ -128,12 +141,15 @@ export class Library {
 	 */
 	dealer: ((open: () => void) => Promise<void>) | null = null;
 	playing = $state.raw<NowPlaying | null>(null);
+	/** The artists who own an album, by name. */
+	artists = $state.raw<Load<ArtistEntry[]>>({ kind: 'loading' });
 	/** Sends the app to the door. Set by the shell once it can navigate. */
 	onExpired: (() => Promise<void>) | null = null;
 	/** The search page's question and answer, kept while the page is away. */
 	readonly search = new Search(async (query, signal) => {
 		const found = await this.#source.search(query, signal);
 		this.#remember(found.albums);
+		this.#rememberNames(found.artists);
 		return found;
 	});
 	readonly simulated: boolean;
@@ -145,6 +161,8 @@ export class Library {
 	readonly #missing = new SvelteSet<string>();
 	readonly #unavailable = new SvelteSet<string>();
 	readonly #loading = new SvelteSet<string>();
+	readonly #artists = new SvelteMap<string, Load<ArtistDetail>>();
+	readonly #artistNames = new SvelteMap<string, string>();
 	#player: PlayerView | null = null;
 	#session: Promise<Session> | null = null;
 	#shell: Promise<void> | null = null;
@@ -565,6 +583,67 @@ export class Library {
 		}
 	}
 
+	/** Returns how far an artist has got. Nothing asked for yet is on its way. */
+	artist(id: string): Load<ArtistDetail> {
+		return this.#artists.get(id) ?? { kind: 'loading' };
+	}
+
+	/** Returns the name of an artist anything has linked to, without waiting. */
+	artistName(id: string): string | undefined {
+		return this.#artistNames.get(id);
+	}
+
+	#rememberNames(artists: readonly ArtistLink[]): void {
+		for (const { id, name } of artists) {
+			this.#artistNames.set(id, name);
+		}
+	}
+
+	/** Asks for the artists. A list already here stays through a refresh, even a failed one. */
+	async loadArtists(): Promise<void> {
+		const epoch = this.#epoch;
+		if (this.artists.kind !== 'ready') {
+			this.artists = { kind: 'loading' };
+		}
+		try {
+			const artists = await this.#source.artists();
+			if (epoch === this.#epoch) {
+				this.#rememberNames(artists);
+				this.artists = { kind: 'ready', value: artists };
+			}
+		} catch (error) {
+			const lost = this.artists.kind !== 'ready' && !(error instanceof UnauthorizedError);
+			if (epoch === this.#epoch && lost) {
+				this.artists = { kind: 'unavailable' };
+			}
+		}
+	}
+
+	/** Asks for an artist. One already here stays through a refresh, unless the server disowns it. */
+	async loadArtist(id: string): Promise<void> {
+		const epoch = this.#epoch;
+		if (this.artist(id).kind !== 'ready') {
+			this.#artists.set(id, { kind: 'loading' });
+		}
+		try {
+			const artist = await this.#source.artist(id);
+			if (epoch === this.#epoch) {
+				this.#remember([...artist.albums, ...artist.appearsOn]);
+				this.#rememberNames([artist]);
+				this.#artists.set(id, { kind: 'ready', value: artist });
+			}
+		} catch (error) {
+			if (epoch !== this.#epoch || error instanceof UnauthorizedError) {
+				return;
+			}
+			if (error instanceof ArtistNotFoundError) {
+				this.#artists.set(id, { kind: 'missing' });
+			} else if (this.artist(id).kind !== 'ready') {
+				this.#artists.set(id, { kind: 'unavailable' });
+			}
+		}
+	}
+
 	/** Streams an album's tracks in. Failures surface through {@link Library.failed}. */
 	async loadAlbum(id: string): Promise<void> {
 		if (this.#albums.has(id) || this.#loading.has(id)) {
@@ -575,6 +654,7 @@ export class Library {
 		try {
 			const album = await this.#source.album(id);
 			this.#albums.set(id, album);
+			this.#rememberNames(album.artists);
 			this.#missing.delete(id);
 		} catch (error) {
 			if (error instanceof AlbumNotFoundError) {
@@ -622,6 +702,9 @@ export class Library {
 		this.#albums.clear();
 		this.#missing.clear();
 		this.#unavailable.clear();
+		this.artists = { kind: 'loading' };
+		this.#artists.clear();
+		this.#artistNames.clear();
 		this.search.reset();
 	}
 }

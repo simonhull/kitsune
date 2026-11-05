@@ -17,6 +17,7 @@ function album(count: number): Album {
 		id: 'a',
 		title: 'A',
 		artist: 'B',
+		artists: [],
 		trackCount: count,
 		compilation: false,
 		tracks: tracks(count),

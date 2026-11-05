@@ -270,9 +270,11 @@ describe('choreographyFor', () => {
 	});
 
 	it('blends to and from a page with no journey yet', () => {
-		for (const other of [...routes, 'login'] as const) {
-			expect(choreographyFor(other, 'search')).toBe(blend);
-			expect(choreographyFor('search', other)).toBe(blend);
+		for (const page of ['search', 'artists', 'artist'] as const) {
+			for (const other of [...routes, 'login', 'search', 'artists', 'artist'] as const) {
+				expect(choreographyFor(other, page)).toBe(blend);
+				expect(choreographyFor(page, other)).toBe(blend);
+			}
 		}
 	});
 });

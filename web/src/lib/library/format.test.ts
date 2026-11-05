@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	albumFacts,
+	artistCount,
+	artistFacts,
 	balancedLines,
 	clock,
 	credit,
@@ -21,6 +23,7 @@ const album: Album = {
 	id: 'a',
 	title: 'Album',
 	artist: 'A',
+	artists: [],
 	trackCount: 2,
 	compilation: false,
 	tracks: [track(), track()],
@@ -133,5 +136,28 @@ describe('albumFacts', () => {
 	it('is singular for one track, and never says zero minutes', () => {
 		const single = { ...album, tracks: [track()], durationMs: 12_000 };
 		expect(albumFacts(single, single)).toBe('ALBUM · 1 TRACK · 1 MIN');
+	});
+});
+
+describe('artistFacts', () => {
+	const artist = { id: 'a', name: 'A', albumCount: 2, albums: [], appearsOn: [] };
+
+	it('counts what an artist owns', () => {
+		expect(artistFacts(artist)).toBe('ARTIST · 2 ALBUMS IN YOUR LIBRARY');
+		expect(artistFacts({ ...artist, albumCount: 1 })).toBe('ARTIST · 1 ALBUM IN YOUR LIBRARY');
+	});
+
+	it('counts where a guest appears', () => {
+		const entry = { id: 'b', title: 'B', artist: 'C', trackCount: 1, compilation: false };
+		expect(artistFacts({ ...artist, albumCount: 0, appearsOn: [entry] })).toBe(
+			'ARTIST · GUEST ON 1 ALBUM'
+		);
+	});
+});
+
+describe('artistCount', () => {
+	it('says one or many', () => {
+		expect(artistCount(1)).toBe('1 artist');
+		expect(artistCount(1200)).toBe('1,200 artists');
 	});
 });

@@ -33,7 +33,11 @@
 		<span class="item" aria-disabled="true" aria-current={current === 'albums' ? 'page' : undefined}
 			>Albums</span
 		>
-		<span class="item" aria-disabled="true">Artists</span>
+		<a
+			class="item"
+			href={resolve('/artists')}
+			aria-current={current === 'artists' ? 'page' : undefined}>Artists</a
+		>
 		<span class="fold wide home-only">
 			<span class="fold-in">
 				<span class="item health" aria-disabled="true">

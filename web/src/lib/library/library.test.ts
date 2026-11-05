@@ -5,6 +5,7 @@ import { createFixtureSource } from './fixtures';
 import { Library, pileSize, type ReadyMemory } from './library.svelte';
 import {
 	AlbumNotFoundError,
+	ArtistNotFoundError,
 	ServerError,
 	UnauthorizedError,
 	type AlbumEntry,
@@ -34,6 +35,57 @@ describe('Library', () => {
 			expect(library.search.state.kind).toBe('found');
 		});
 		expect(library.entry('glasshouse-66')?.title).toBe('Glasshouse');
+	});
+
+	it('loads the artists, and keeps a list through a failed refresh', async () => {
+		const artists = vi.fn(createFixtureSource().artists);
+		const library = new Library(source({ artists }));
+		await library.loadArtists();
+		expect(library.artists.kind).toBe('ready');
+		artists.mockRejectedValueOnce(new ServerError(500));
+		await library.loadArtists();
+		expect(library.artists.kind).toBe('ready');
+	});
+
+	it('says when the artists could not be loaded', async () => {
+		const library = new Library(source({ artists: () => Promise.reject(new TypeError('off')) }));
+		await library.loadArtists();
+		expect(library.artists.kind).toBe('unavailable');
+	});
+
+	it('loads an artist, seeding its albums for the next first frame', async () => {
+		const library = new Library(source());
+		expect(library.artist('artist-low-tide-choir').kind).toBe('loading');
+		await library.loadArtist('artist-low-tide-choir');
+		expect(library.artist('artist-low-tide-choir').kind).toBe('ready');
+		expect(library.entry('glasshouse-66')?.title).toBe('Glasshouse');
+	});
+
+	it('tells a missing artist from one that could not be fetched', async () => {
+		const missing = new Library(
+			source({ artist: (id) => Promise.reject(new ArtistNotFoundError(id)) })
+		);
+		await missing.loadArtist('a');
+		expect(missing.artist('a').kind).toBe('missing');
+		const down = new Library(source({ artist: () => Promise.reject(new ServerError(500)) }));
+		await down.loadArtist('a');
+		expect(down.artist('a').kind).toBe('unavailable');
+	});
+
+	it('knows an artist by name from whatever linked to it', async () => {
+		const library = new Library(source());
+		await library.loadAlbum('glasshouse-66');
+		expect(library.artistName('artist-low-tide-choir')).toBe('Low Tide Choir');
+	});
+
+	it('forgets artists with the session', async () => {
+		const library = new Library(source());
+		await library.loadArtists();
+		await library.loadArtist('artist-low-tide-choir');
+		library.reset();
+		expect(library.artists.kind).toBe('loading');
+		expect(library.artist('artist-low-tide-choir').kind).toBe('loading');
+		expect(library.artistName('artist-low-tide-choir')).toBeUndefined();
 	});
 
 	it('forgets a search with the session', async () => {
@@ -209,6 +261,7 @@ class Scripted {
 			album: (id) =>
 				answer(() => ({
 					...entry(Number(id.slice('album-'.length))),
+					artists: [],
 					tracks: [{ id: `${id}-1`, title: 'One', artists: [], durationMs: 1000, format: 'FLAC' }],
 					durationMs: 0,
 					formats: [],

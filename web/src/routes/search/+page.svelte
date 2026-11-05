@@ -122,7 +122,9 @@
 				<h2 id="found-artists">Artists</h2>
 				<ul class="artists">
 					{#each results.artists as artist (artist.id)}
-						<li><span class="artist">{artist.name}</span></li>
+						<li>
+							<a class="artist" href={resolve('/artists/[id]', { id: artist.id })}>{artist.name}</a>
+						</li>
 					{/each}
 				</ul>
 			</section>
@@ -250,6 +252,10 @@
 		font-size: 14px;
 		font-weight: 600;
 		overflow-wrap: anywhere;
+	}
+
+	.artist:hover {
+		color: var(--fox);
 	}
 
 	@media (max-width: 720px) {

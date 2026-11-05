@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Cover from '#lib/cover/Cover.svelte';
 	import { emWidth } from '#lib/library/fit.ts';
+	import { resolve } from '$app/paths';
 	import { albumFacts } from '#lib/library/format.ts';
 	import type { Album, AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
@@ -17,6 +18,8 @@
 
 	let { albumId, entry, album }: Props = $props();
 
+	/** Until the album streams in, and on a compilation, the name is plain text. */
+	const owners = $derived(album?.artists ?? []);
 	const meta = $derived(album === undefined ? '' : albumFacts(album, album));
 	const playable = $derived(album !== undefined && album.tracks.length > 0);
 	const sounding = $derived(player.queue?.album.id === albumId && player.sounding);
@@ -63,9 +66,20 @@
 				<Icon name={sounding ? 'pause' : 'play'} size={28} />
 			</button>
 			<span class="artist">
-				<span class="name" use:morph={{ id: `artist:${albumId}`, slot: 'hero', kind: 'title' }}
-					>{entry?.artist ?? ''}</span
-				>
+				<span class="name" use:morph={{ id: `artist:${albumId}`, slot: 'hero', kind: 'title' }}>
+					{#if owners.length === 1}
+						<!-- The album's own spelling of the name, which a shared artist row can differ from. -->
+						<a href={resolve('/artists/[id]', { id: owners[0].id })}>{entry?.artist}</a>
+					{:else if owners.length > 1}
+						{#each owners as owner, index (owner.id)}
+							{index === 0 ? '' : ', '}<a href={resolve('/artists/[id]', { id: owner.id })}
+								>{owner.name}</a
+							>
+						{/each}
+					{:else}
+						{entry?.artist ?? ''}
+					{/if}
+				</span>
 			</span>
 			<button type="button" class="ghost" disabled={!playable} onclick={shuffle}>Shuffle</button>
 			<button type="button" class="ghost round" aria-label="Favorite" disabled
@@ -167,6 +181,21 @@
 	.name {
 		display: inline-block;
 		max-width: 100%;
+	}
+
+	/* The name on the stage, and 44px to press however small it gets. */
+	.name a {
+		position: relative;
+	}
+
+	.name a::after {
+		content: '';
+		position: absolute;
+		inset: -11px 0;
+	}
+
+	.name a:hover {
+		color: var(--accent);
 	}
 
 	/* Only until the tracks stream in, which is usually before anyone could press it. */

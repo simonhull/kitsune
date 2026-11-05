@@ -1,11 +1,14 @@
 import {
 	AlbumNotFoundError,
+	ArtistNotFoundError,
 	LoginError,
 	ServerError,
 	UnauthorizedError,
 	type Album,
 	type AlbumPage,
 	type AlbumSort,
+	type ArtistDetail,
+	type ArtistEntry,
 	type LibraryFacts,
 	type LibrarySource,
 	type LoginFailure,
@@ -117,6 +120,22 @@ export function createApiSource({
 			} catch (error) {
 				if (error instanceof ServerError && error.status === 404) {
 					throw new AlbumNotFoundError(id);
+				}
+				throw error;
+			}
+		},
+
+		async artists() {
+			const { artists } = await read<{ artists: ArtistEntry[] }>('/artists');
+			return artists;
+		},
+
+		async artist(id) {
+			try {
+				return await read<ArtistDetail>(`/artists/${encodeURIComponent(id)}`);
+			} catch (error) {
+				if (error instanceof ServerError && error.status === 404) {
+					throw new ArtistNotFoundError(id);
 				}
 				throw error;
 			}

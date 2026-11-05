@@ -10,6 +10,7 @@ const album: Album = {
 	id: 'a',
 	title: 'A',
 	artist: 'B',
+	artists: [],
 	trackCount: 2,
 	compilation: false,
 	artwork: { hash: 'abc', accent: '#112233', ground: '#000000', width: 1, height: 1 },
