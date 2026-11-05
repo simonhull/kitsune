@@ -103,6 +103,10 @@ export interface Pose {
 	scale?: number;
 	/** Degrees. Only a card landing on the deck turns: pages have no such term. */
 	rotate?: number;
+	/** Degrees about the horizontal: a sheet tipping toward the viewer is negative. */
+	tilt?: number;
+	/** Sideways travel as a share of the viewport's width, so a sheet leaves whatever its size. */
+	across?: number;
 }
 
 /**
@@ -218,6 +222,17 @@ export interface Arc {
 	sizing: number;
 }
 
+/**
+ * The outgoing page as one solid thing, stage and all, over a Home that's already there: nothing
+ * flies, and nothing ever hides both pages. It's done once it's out of sight.
+ */
+export interface Sheet {
+	/** Hinged at its foot, seen from above, as a sleeve is at the front of a crate. */
+	hinged?: boolean;
+	/** How dark it gets as it turns from the light, from 0 to 1. */
+	shade?: number;
+}
+
 /** A way back of its own. Only the cover travels: the words stay with their page. */
 export interface Way {
 	/** The cover goes past the viewer instead of landing. */
@@ -226,10 +241,11 @@ export interface Way {
 	arc?: Arc;
 	/** The outgoing page draws in on where the cover is going, not where it was. */
 	gathers?: boolean;
+	sheet?: Sheet;
 }
 
 /** Which of the candidate ways back Album to Home takes. Unset, it plays its way in backward. */
-export type WayName = 'a' | 'b' | 'c';
+export type WayName = 'a' | 'b' | 'c' | 'd';
 
 export interface Choreography {
 	name: ChoreographyName;
@@ -437,10 +453,29 @@ const takenAlong: Choreography = {
 	way: { arc: { lift: 60, tip: 0, sizing: 0.85 }, gathers: true }
 };
 
+/** Already there behind the sheet, and only coming up to full strength as it clears. */
+const uncovered: Part = { from: { opacity: 0.6, scale: 0.97 }, to: {}, delay: 0, motion: base };
+
+/**
+ * Album to Home, flipped past. The whole page tips toward you on its bottom edge and drops past,
+ * the way you flip the front sleeve in a crate, and Home is the next one in, showing from the first
+ * frames. It moves as one object: the cover doesn't go anywhere the page isn't going.
+ */
+const flippedPast: Choreography = {
+	...albumToHome,
+	motion: quick,
+	leaving: { from: {}, to: { tilt: -80 }, delay: 0, motion: { ...base, pace: 1.45 } },
+	arriving: { intro: uncovered, card: uncovered },
+	stages: {},
+	bloom: null,
+	way: { sheet: { hinged: true, shade: 0.5 } }
+};
+
 const waysBack: Partial<Record<WayName, Choreography>> = {
 	a: throughTheRecord,
 	b: filedAway,
-	c: takenAlong
+	c: takenAlong,
+	d: flippedPast
 };
 
 /**

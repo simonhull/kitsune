@@ -2,7 +2,7 @@ import { Channel, landsWithin } from '../channel.ts';
 import { springParams, type Part, type Pose, type SpringParams } from '../choreography.ts';
 import { motionOf } from '../journey.ts';
 
-const rest = { opacity: 1, y: 0, scale: 1, rotate: 0 } as const;
+const rest = { opacity: 1, y: 0, scale: 1, rotate: 0, tilt: 0, across: 0 } as const;
 
 function complete(pose: Pose): Required<Pose> {
 	return { ...rest, ...pose };
@@ -15,6 +15,10 @@ export class Layer {
 	readonly y: Channel;
 	readonly scale: Channel;
 	readonly rotate: Channel;
+	readonly tilt: Channel;
+	readonly x: Channel;
+	/** Set on something that's finished once nobody can see it, whatever its springs are doing. */
+	outOfSight: (() => boolean) | null = null;
 	#params: SpringParams;
 	#fade: SpringParams;
 	#wait: number;
@@ -27,6 +31,8 @@ export class Layer {
 		this.y = new Channel(from.y, to.y);
 		this.scale = new Channel(from.scale, to.scale);
 		this.rotate = new Channel(from.rotate, to.rotate);
+		this.tilt = new Channel(from.tilt, to.tilt);
+		this.x = new Channel(from.across * innerWidth, to.across * innerWidth);
 		this.#params = springParams(motionOf(part.motion));
 		this.#fade = springParams(motionOf(part.fade ?? part.motion));
 		this.#wait = delay / 1000;
@@ -43,6 +49,8 @@ export class Layer {
 		this.y.target = to.y;
 		this.scale.target = to.scale;
 		this.rotate.target = to.rotate;
+		this.tilt.target = to.tilt;
+		this.x.target = to.across * innerWidth;
 		this.#params = springParams(motionOf(part.motion));
 		this.#fade = springParams(motionOf(part.fade ?? part.motion));
 		this.#wait = 0;
@@ -54,6 +62,8 @@ export class Layer {
 		this.y.adopt(other.y);
 		this.scale.adopt(other.scale);
 		this.rotate.adopt(other.rotate);
+		this.tilt.adopt(other.tilt);
+		this.x.adopt(other.x);
 		this.#wait = 0;
 		this.write();
 	}
@@ -65,7 +75,7 @@ export class Layer {
 			return;
 		}
 		this.opacity.step(this.#fade, moving);
-		for (const channel of [this.y, this.scale, this.rotate]) {
+		for (const channel of [this.y, this.scale, this.rotate, this.tilt, this.x]) {
 			channel.step(this.#params, moving);
 		}
 	}
@@ -73,16 +83,23 @@ export class Layer {
 	write(): void {
 		const { style } = this.element;
 		style.opacity = String(Math.min(1, Math.max(0, this.opacity.value)));
-		style.transform = `translateY(${this.y.value.toFixed(2)}px) rotate(${this.rotate.value.toFixed(3)}deg) scale(${this.scale.value.toFixed(4)})`;
+		const across = this.x.value === 0 ? '' : `translateX(${this.x.value.toFixed(2)}px) `;
+		const tilt = this.tilt.value === 0 ? '' : ` rotateX(${this.tilt.value.toFixed(3)}deg)`;
+		style.transform = `${across}translateY(${this.y.value.toFixed(2)}px) rotate(${this.rotate.value.toFixed(3)}deg)${tilt} scale(${this.scale.value.toFixed(4)})`;
 	}
 
 	get settled(): boolean {
+		if (this.outOfSight?.() === true) {
+			return true;
+		}
 		return (
 			this.#wait === 0 &&
 			this.opacity.settled(0.01) &&
 			this.y.settled(landsWithin) &&
 			this.scale.settled(0.002) &&
-			this.rotate.settled(0.2)
+			this.rotate.settled(0.2) &&
+			this.tilt.settled(0.2) &&
+			this.x.settled(landsWithin)
 		);
 	}
 

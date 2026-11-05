@@ -37,13 +37,19 @@ const routes = new Map<string, RouteName>([
 const origins: Origins = new Map();
 
 /** Chosen once, from the URL the app opened on, as the fixtures are. */
+const query = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const way = wayFromQuery();
+/** The album really playing. A cue doesn't count: opening an album isn't playing it. */
+const playingAlbum = query.get('playing');
 
 function wayFromQuery(): WayName | undefined {
-	const named = new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get(
-		'back'
-	);
-	return named === 'a' || named === 'b' || named === 'c' ? named : undefined;
+	const named = query.get('back');
+	return named === 'a' || named === 'b' || named === 'c' || named === 'd' ? named : undefined;
+}
+
+/** A sheet leaves the record with its page, unless that's the record playing: then it comes along. */
+function wayLeaving(album: string | undefined): WayName | undefined {
+	return way === 'd' && album !== undefined && album === playingAlbum ? 'c' : way;
 }
 
 const playerParts = ['control:previous', 'control:pause', 'control:next', 'progress'];
@@ -137,7 +143,9 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 		gridWindow.aim(leaving);
 	}
 
-	const choreography = reducedMotion() ? blend : choreographyFor(fromRoute, toRoute, way);
+	const choreography = reducedMotion()
+		? blend
+		: choreographyFor(fromRoute, toRoute, wayLeaving(leaving));
 	const { travel } = choreography;
 	if (travel === null) {
 		return { choreography, ids: [], sources: new Map() };

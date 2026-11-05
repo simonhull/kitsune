@@ -13,6 +13,7 @@ import {
 	type Part,
 	type Passage,
 	type Role,
+	type Sheet,
 	type SpringParams,
 	type StageName
 } from '../choreography.ts';
@@ -414,6 +415,60 @@ export function createSpringEngine(): Morphs {
 			return key === undefined ? [] : [[key, layer] as const];
 		});
 		const ghost = { path, element: clone, layers, units: new Map(named) };
+		ghosts.push(ghost);
+		return ghost;
+	}
+
+	/**
+	 * Lifts the outgoing page off as one opaque sheet, with its stage inside it. It answers to no
+	 * route, so a journey that interrupts it just lets it finish leaving: it's already on its way out.
+	 */
+	function liftSheet({ hinged, shade }: Sheet, part: Part): Ghost | null {
+		const main = surfaceFor('main');
+		const under = surfaceFor('.ghost-layer');
+		const stage = surfaceFor('[data-morph-stage="album"]');
+		if (main === null || under === null) {
+			return null;
+		}
+		const { left, top, width, height } = main.getBoundingClientRect();
+		const page = pictureOfPage(main, new Set(unitsNearFold(main)));
+		if (!(page instanceof HTMLElement)) {
+			return null;
+		}
+		page.inert = true;
+		page.style.cssText = `position:absolute;left:${String(left)}px;top:${String(top)}px;width:${String(width)}px;height:${String(height)}px;z-index:auto`;
+		keepColors(main, page);
+
+		const paper = document.createElement('div');
+		paper.style.cssText = `position:absolute;inset:0;overflow:clip;background:var(--ground);box-shadow:0 0 90px rgb(0 0 0 / 70%);transform-origin:50% 100%`;
+		const backdrop = stage?.cloneNode(true);
+		if (stage !== null && backdrop instanceof HTMLElement) {
+			backdrop.removeAttribute('data-morph-stage');
+			backdrop.style.cssText = `position:absolute;left:0;right:0;top:${String(stage.getBoundingClientRect().top)}px;opacity:${getComputedStyle(stage).opacity}`;
+			paper.append(backdrop);
+		}
+		paper.append(page);
+
+		const hold = document.createElement('div');
+		const eye =
+			hinged === true ? `perspective:${String(innerHeight * 1.7)}px;perspective-origin:50% 0` : '';
+		hold.style.cssText = `position:absolute;inset:0;${eye}`;
+		hold.append(paper);
+		under.append(hold);
+
+		const layer = new Layer(paper, part);
+		const gone = (): boolean => layer.tilt.value <= -62 || layer.x.value <= -innerWidth;
+		layer.outOfSight = gone;
+		const layers = [layer];
+		if (shade !== undefined) {
+			const dark = document.createElement('div');
+			dark.style.cssText = 'position:absolute;inset:0;background:#000';
+			paper.append(dark);
+			const dimming = new Layer(dark, { ...part, from: { opacity: 0 }, to: { opacity: shade } });
+			dimming.outOfSight = gone;
+			layers.push(dimming);
+		}
+		const ghost = { path: '', element: hold, layers, units: new Map() };
 		ghosts.push(ghost);
 		return ghost;
 	}
@@ -973,7 +1028,8 @@ export function createSpringEngine(): Morphs {
 			return { ...journey, choreography: choreographyFor('album', 'home') };
 		}
 		const ids = journey.ids.filter((id) => id.startsWith('cover:'));
-		const sources = new Map([...journey.sources].filter(([id]) => ids.includes(id)));
+		const stays = journey.choreography.way.sheet !== undefined;
+		const sources = new Map([...journey.sources].filter(([id]) => !stays && ids.includes(id)));
 		return { ...journey, ids, sources };
 	}
 
@@ -1006,7 +1062,11 @@ export function createSpringEngine(): Morphs {
 			holdStage(albumStage, heldStage);
 		}
 		const drawnTo = choreography.way?.gathers === true ? gatheringPoint(ids) : null;
-		const ghost = cloneRoute(fromPath, choreography.leaving, sources, drawnTo);
+		const sheet = choreography.way?.sheet;
+		const ghost =
+			sheet === undefined
+				? cloneRoute(fromPath, choreography.leaving, sources, drawnTo)
+				: liftSheet(sheet, choreography.leaving);
 		if (choreography.island !== null) {
 			liftIsland(islandLeaves);
 		}
