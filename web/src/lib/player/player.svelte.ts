@@ -22,6 +22,8 @@ const mostFailures = 3;
 const preloadSeconds = 15;
 /** Past this far into a track, Previous means the start of it. */
 const restartSeconds = 3;
+/** How far a track must play on from a reload for the file to count as sound again. */
+const recoveredSeconds = 5;
 
 /** What's playing, whatever the page is doing. Sound never waits for a picture. */
 export class Player implements PlayerView {
@@ -54,6 +56,8 @@ export class Player implements PlayerView {
 	#stale = false;
 	/** The track already sent to preload. */
 	#ahead: string | null = null;
+	/** Where the track was reloaded to, until it has played on from there. */
+	#reloadedAt: number | null = null;
 
 	/** Nothing audio-related exists until the first play: this module loads with no window. */
 	constructor(host: Library, create: () => AudioOutput) {
@@ -183,6 +187,7 @@ export class Player implements PlayerView {
 			return;
 		}
 		this.position = Math.min(Math.max(seconds, 0), current.durationMs / 1000);
+		this.#reloadedAt = null;
 		if (!this.#stale) {
 			this.#output.seek(this.position);
 		}
@@ -198,6 +203,7 @@ export class Player implements PlayerView {
 		this.#fresh();
 		this.#stale = false;
 		this.#ahead = null;
+		this.#reloadedAt = null;
 	}
 
 	/** Someone asked for this, so whatever went wrong before is behind us. */
@@ -225,6 +231,7 @@ export class Player implements PlayerView {
 		this.status = 'loading';
 		this.#stale = false;
 		this.#ahead = null;
+		this.#reloadedAt = null;
 		this.#show();
 		const track = currentOf(queue);
 		if (track === undefined) {
@@ -305,6 +312,15 @@ export class Player implements PlayerView {
 	}
 
 	#timed(seconds: number): void {
+		if (this.#reloadedAt !== null) {
+			// A reload starts from nothing, and this is it on its way back.
+			if (seconds < this.#reloadedAt) {
+				return;
+			}
+			if (seconds >= this.#reloadedAt + recoveredSeconds) {
+				this.#reloadedAt = null;
+			}
+		}
 		this.position = seconds;
 		const { queue, current } = this;
 		const following = queue === null ? undefined : upcoming(queue);
@@ -356,12 +372,33 @@ export class Player implements PlayerView {
 		if (run !== this.#run) {
 			return;
 		}
-		if (session === 'signed-in') {
-			this.#trackFailed();
-		} else {
+		if (session !== 'signed-in') {
 			// A lost session has gone to the door. A server restarting must not burn the queue.
 			this.#hold(true);
+		} else if (!this.#reload()) {
+			this.#trackFailed();
 		}
+	}
+
+	/**
+	 * Loads a track that was playing again, where it was. A retag replaces the file under the element,
+	 * and the media dies at its next range request, though the track is fine. A file that has really
+	 * gone fails this too, which is how that gets found out. Reports whether it tried: a track that
+	 * never got going isn't a file that changed, and one reload is all a track gets until it has
+	 * played on.
+	 */
+	#reload(): boolean {
+		const { current, position } = this;
+		if (current === null || position === 0 || this.#reloadedAt !== null) {
+			return false;
+		}
+		this.#run += 1;
+		this.status = 'loading';
+		this.#reloadedAt = position;
+		this.#load(current);
+		this.#output.seek(position);
+		void this.#sound(this.#run);
+		return true;
 	}
 
 	/** Skips a track that won't play, unless that's enough of them or there's nothing left. */
