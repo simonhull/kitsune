@@ -3,6 +3,7 @@
 	import '@fontsource-variable/geist-mono/wght.css';
 	import '#lib/styles/tokens.css';
 	import '#lib/styles/base.css';
+	import '#lib/styles/ink.css';
 	import { onMount, setContext } from 'svelte';
 	import { page } from '$app/state';
 	import { goto, onNavigate, preloadCode } from '$app/navigation';
