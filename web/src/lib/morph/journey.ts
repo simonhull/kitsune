@@ -209,7 +209,14 @@ export function landJourney(journey: Journey, scrollToOrigin: boolean): Map<stri
 		eligible: canTravel
 	});
 	if (landingOnHome) {
-		const cover = [...targets.values()].find((entry) => entry.kind === 'cover');
+		// A cover bound for the island leaves the card behind, and Home still comes back to it.
+		const landing = pick(registry.list(), {
+			ids: journey.ids,
+			slots: ['card', 'deck'],
+			origins,
+			visible: ({ element }) => inTheClear(element)
+		});
+		const cover = [...landing.values()].find((entry) => entry.kind === 'cover');
 		if (cover !== undefined && cover.slot === 'card') {
 			bringIntoView(cover.element);
 		}

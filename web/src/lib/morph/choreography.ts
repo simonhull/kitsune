@@ -224,6 +224,8 @@ export interface Way {
 	passes?: Passage;
 	/** The cover lands, but by a path of its own. */
 	arc?: Arc;
+	/** The outgoing page draws in on where the cover is going, not where it was. */
+	gathers?: boolean;
 }
 
 /** Which of the candidate ways back Album to Home takes. Unset, it plays its way in backward. */
@@ -414,7 +416,32 @@ const filedAway: Choreography = {
 	way: { arc: { lift: 150, tip: 38, sizing: 0.7 } }
 };
 
-const waysBack: Partial<Record<WayName, Choreography>> = { a: throughTheRecord, b: filedAway };
+/**
+ * Album to Home, taken with you. Opening an album cues it, so the record doesn't go back on the
+ * shelf: it goes to the player, and you leave holding it. The hero sets down on the island's thumb,
+ * the page draws in after it with the color riding along, and Home settles from above, the same way everything is
+ * going. The card it came from stays where it was, in view.
+ */
+const takenAlong: Choreography = {
+	...albumToHome,
+	motion: { ...base, pace: 1.02 },
+	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['island', 'card', 'deck'] },
+	leaving: { from: {}, to: { opacity: 0, scale: 0.86 }, delay: 0, motion: exit },
+	arriving: {
+		intro: { from: { opacity: 0, y: -28 }, to: {}, delay: 130, motion: quick },
+		card: { from: { opacity: 0, y: -28 }, to: {}, delay: 130, motion: quick }
+	},
+	stages: { album: fadeOut(0, quick) },
+	// A lit trail, not the flood: it goes where the record goes, and is spent when it gets there.
+	bloom: { direction: 'in', rest: 0.12, full: 1.5, peak: 0.6 },
+	way: { arc: { lift: 60, tip: 0, sizing: 0.85 }, gathers: true }
+};
+
+const waysBack: Partial<Record<WayName, Choreography>> = {
+	a: throughTheRecord,
+	b: filedAway,
+	c: takenAlong
+};
 
 /**
  * Home to Now playing: two levels down in one move. The island's cover rises to the center of

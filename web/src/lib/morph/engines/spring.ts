@@ -354,7 +354,12 @@ export function createSpringEngine(): Morphs {
 		return document.querySelector<HTMLElement>(selector);
 	}
 
-	function cloneRoute(path: string, part: Part, sources: Journey['sources']): Ghost | null {
+	function cloneRoute(
+		path: string,
+		part: Part,
+		sources: Journey['sources'],
+		drawnTo: Point | null
+	): Ghost | null {
 		const main = surfaceFor('main');
 		const under = surfaceFor('.ghost-layer');
 		if (main === null || under === null) {
@@ -381,7 +386,7 @@ export function createSpringEngine(): Morphs {
 		under.append(clone);
 
 		const cover = [...sources.values()].find((entry) => entry.kind === 'cover');
-		const center = cover === undefined ? null : centerOf(cover.element);
+		const center = drawnTo ?? (cover === undefined ? null : centerOf(cover.element));
 		const units = unitsOf(clone);
 		// A page with no units yet, still loading say, leaves as one.
 		const movers = units.length > 0 ? units : [clone];
@@ -549,6 +554,14 @@ export function createSpringEngine(): Morphs {
 			}
 			landing.set(unit, new Layer(unit, shaped.part, shaped.delay));
 		}
+	}
+
+	/** Finds where a gathering page draws in on: the island's cover, if the island holds this album. */
+	function gatheringPoint(ids: readonly string[]): Point | null {
+		const thumb = registry
+			.list()
+			.find(({ id, slot, kind }) => ids.includes(id) && slot === 'island' && kind === 'cover');
+		return thumb === undefined ? null : centerOf(thumb.element);
 	}
 
 	function moveStages(journey: Journey, frozen: Map<StageName, number>, held: boolean): void {
@@ -992,7 +1005,8 @@ export function createSpringEngine(): Morphs {
 		if (changesAlbum && albumStage !== null && heldStage !== undefined) {
 			holdStage(albumStage, heldStage);
 		}
-		const ghost = cloneRoute(fromPath, choreography.leaving, sources);
+		const drawnTo = choreography.way?.gathers === true ? gatheringPoint(ids) : null;
+		const ghost = cloneRoute(fromPath, choreography.leaving, sources, drawnTo);
 		if (choreography.island !== null) {
 			liftIsland(islandLeaves);
 		}
