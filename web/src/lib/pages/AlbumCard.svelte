@@ -26,7 +26,9 @@
 			title={album.title}
 			use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}>{album.title}</span
 		>
-		<span class="artist">{album.artist}</span>
+		<span class="artist" use:morph={{ id: `artist:${album.id}`, slot: 'card', kind: 'title' }}
+			>{album.artist}</span
+		>
 	</span>
 </a>
 
@@ -61,9 +63,14 @@
 		white-space: nowrap;
 	}
 
-	.title {
+	/* As wide as the words: a flight measures the element, and an empty right side would stretch. */
+	.title,
+	.artist {
 		width: fit-content;
 		max-width: 100%;
+	}
+
+	.title {
 		font-size: var(--type-title);
 		font-weight: 700;
 		letter-spacing: var(--tracking-title);

@@ -36,7 +36,9 @@
 			style:--width={emWidth(album.title, 800, -0.05)}
 			use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}>{album.title}</span
 		>
-		<span class="detail">{album.artist}</span>
+		<span class="detail" use:morph={{ id: `artist:${album.id}`, slot: 'card', kind: 'title' }}
+			>{album.artist}</span
+		>
 	</span>
 </a>
 
@@ -104,6 +106,8 @@
 
 	.detail {
 		overflow: hidden;
+		width: fit-content;
+		max-width: 100%;
 		font-size: var(--type-title);
 		color: var(--tile-wash);
 		text-overflow: ellipsis;
