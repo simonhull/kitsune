@@ -24,8 +24,8 @@ type Edit struct {
 
 // writeKeys lists the raw keys the editable fields own in one format, beside
 // the ones a typed field of [audiometa.Tags] writes for itself. Track and disc
-// numbers need no entry: their typed fields own them, and a pair such as
-// "3/12" keeps its total.
+// numbers need no entry: their typed fields own them. ID3 and M4A keep a total in
+// the same tag, so it survives; a Vorbis "3/12" loses "/12", which Kitsune never read.
 type writeKeys struct {
 	// titleSort is the sort form of the title. A new title deletes it: the
 	// form was made for the old title, and on ID3v2.3 the frame can't be written.
