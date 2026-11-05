@@ -151,6 +151,23 @@ func TestEditLandsInEveryOwnedKey(t *testing.T) {
 	}
 }
 
+func TestEditUpdatesNumbersRepeatedUnderOtherKeys(t *testing.T) {
+	t.Parallel()
+	path := copySample(t, sampleFLAC)
+	seed(t, path, map[string][]string{"TRACK": {"3"}, "DISC": {"1"}})
+	edit := Edit{TrackNo: new(7), DiscNo: new(2)}
+	if err := audiometa.Write(path, edit.apply); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	got := reread(t, path)
+	if v := rawValues(&got, "TRACK"); !slices.Equal(v, []string{"7"}) {
+		t.Errorf("TRACK = %q, want the new number", v)
+	}
+	if v := rawValues(&got, "DISC"); !slices.Equal(v, []string{"2"}) {
+		t.Errorf("DISC = %q, want the new number", v)
+	}
+}
+
 func TestEditWritesAYearAFileLacks(t *testing.T) {
 	t.Parallel()
 	for _, sample := range []string{sampleFLAC, sampleMP3, sampleM4A} {
