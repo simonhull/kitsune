@@ -7,8 +7,7 @@ import {
 	type Choreography,
 	type Motion,
 	type MotionSpec,
-	type MotionToken,
-	type RouteName
+	type MotionToken
 } from './choreography.ts';
 import { preload } from '#lib/cover/rungs.ts';
 import { library } from '#lib/library/library.svelte.ts';
@@ -17,6 +16,7 @@ import { gridWindow } from '#lib/pages/gridWindow.svelte.ts';
 import { pick, recordOrigins, type Origins } from './pairs.ts';
 import { albumExit } from './path.ts';
 import { registry, type MorphEntry } from './registry.ts';
+import { albumOn, journeyOf } from '#lib/shell/routes.ts';
 
 /** One navigation's plan. */
 export interface Journey {
@@ -25,13 +25,6 @@ export interface Journey {
 	ids: string[];
 	sources: Map<string, MorphEntry>;
 }
-
-const routes = new Map<string, RouteName>([
-	['/login', 'login'],
-	['/', 'home'],
-	['/album/[id]', 'album'],
-	['/now-playing', 'now-playing']
-]);
 
 const origins: Origins = new Map();
 
@@ -101,8 +94,8 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 		const behind = navigation.type !== 'popstate' || (navigation.delta ?? 0) > 0;
 		behindNowPlaying = behind ? (from?.url.pathname ?? null) : null;
 	}
-	const fromRoute = routes.get(from?.route.id ?? '');
-	const toRoute = routes.get(to?.route.id ?? '');
+	const fromRoute = journeyOf(from?.route.id);
+	const toRoute = journeyOf(to?.route.id);
 	if (fromRoute === undefined || toRoute === undefined) {
 		return null;
 	}
@@ -121,7 +114,7 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 	if (fromRoute === 'home') {
 		homeScroll = scrollY;
 	}
-	const leaving = from?.params?.['id'];
+	const leaving = albumOn(from);
 	if (toRoute === 'home' && leaving !== undefined && !origins.has(`cover:${leaving}`)) {
 		gridWindow.aim(leaving);
 	}
@@ -162,7 +155,7 @@ function idsFor(subject: 'from' | 'to' | 'playing' | 'fox', { from, to }: OnNavi
 		const id = library.playing?.album.id;
 		return id === undefined ? [] : [`cover:${id}`, 'song', ...playerParts];
 	}
-	const id = (subject === 'to' ? to : from)?.params?.['id'];
+	const id = albumOn(subject === 'to' ? to : from);
 	return id === undefined ? [] : [`cover:${id}`, `title:${id}`, `artist:${id}`];
 }
 

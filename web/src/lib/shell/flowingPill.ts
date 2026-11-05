@@ -5,12 +5,15 @@ import { springParams } from '#lib/morph/choreography.ts';
 const leading = springParams({ duration: 260, bounce: 0.04 });
 const trailing = springParams({ duration: 460, bounce: 0 });
 
-/** Keeps the nav's pill under its current item, flowing there when the route changes. */
-export function flowingPill(nav: HTMLElement, route: string) {
+/**
+ * Keeps the nav's pill under its current item, flowing there when that changes. With no current
+ * item it goes away where it stands, and comes back at the next one: nothing flows out of nowhere.
+ */
+export function flowingPill(nav: HTMLElement, item: string | null) {
 	const pill = nav.querySelector<HTMLElement>('.pill');
 	const left = new Channel(0);
 	const right = new Channel(0);
-	let shown = route;
+	let shown = item;
 	let frame = 0;
 	let last = 0;
 
@@ -24,6 +27,12 @@ export function flowingPill(nav: HTMLElement, route: string) {
 	function current(): { from: number; to: number } | null {
 		const item = nav.querySelector<HTMLElement>('[aria-current="page"]');
 		return item === null ? null : { from: item.offsetLeft, to: item.offsetLeft + item.offsetWidth };
+	}
+
+	function show(visible: boolean): void {
+		if (pill !== null) {
+			pill.style.opacity = visible ? '1' : '0';
+		}
 	}
 
 	function settle(): void {
@@ -46,12 +55,13 @@ export function flowingPill(nav: HTMLElement, route: string) {
 		frame = left.settled(0.3) && right.settled(0.3) ? 0 : requestAnimationFrame(tick);
 	}
 
-	function flow(): void {
+	function flow(from: string | null): void {
 		const place = current();
+		show(place !== null);
 		if (place === null) {
 			return;
 		}
-		if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+		if (from === null || matchMedia('(prefers-reduced-motion: reduce)').matches) {
 			settle();
 			return;
 		}
@@ -71,13 +81,17 @@ export function flowingPill(nav: HTMLElement, route: string) {
 	});
 	observer.observe(nav);
 	settle();
+	show(item !== null);
 
 	return {
-		update(next: string) {
+		update(next: string | null) {
 			if (next !== shown) {
+				const from = shown;
 				shown = next;
 				// `aria-current` changes in the same flush as this: wait for it.
-				queueMicrotask(flow);
+				queueMicrotask(() => {
+					flow(from);
+				});
 			}
 		},
 		destroy() {

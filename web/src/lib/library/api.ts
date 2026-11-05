@@ -1,14 +1,18 @@
 import {
 	AlbumNotFoundError,
+	ArtistNotFoundError,
 	LoginError,
 	ServerError,
 	UnauthorizedError,
 	type Album,
 	type AlbumPage,
 	type AlbumSort,
+	type ArtistDetail,
+	type ArtistEntry,
 	type LibraryFacts,
 	type LibrarySource,
 	type LoginFailure,
+	type SearchResults,
 	type User
 } from './source.ts';
 
@@ -46,8 +50,8 @@ export function createApiSource({
 		});
 	}
 
-	async function read<T>(path: string): Promise<T> {
-		const response = await call(path);
+	async function read<T>(path: string, init?: RequestInit): Promise<T> {
+		const response = await call(path, init);
 		if (response.status === 401) {
 			onUnauthorized();
 			throw new UnauthorizedError();
@@ -119,6 +123,27 @@ export function createApiSource({
 				}
 				throw error;
 			}
+		},
+
+		async artists() {
+			const { artists } = await read<{ artists: ArtistEntry[] }>('/artists');
+			return artists;
+		},
+
+		async artist(id) {
+			try {
+				return await read<ArtistDetail>(`/artists/${encodeURIComponent(id)}`);
+			} catch (error) {
+				if (error instanceof ServerError && error.status === 404) {
+					throw new ArtistNotFoundError(id);
+				}
+				throw error;
+			}
+		},
+
+		search(query, signal) {
+			const search = new URLSearchParams({ q: query });
+			return read<SearchResults>(`/search?${search.toString()}`, signal && { signal });
 		},
 
 		streamUrl: (trackId) => `${base}/tracks/${encodeURIComponent(trackId)}/stream`

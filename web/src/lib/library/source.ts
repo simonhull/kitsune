@@ -56,11 +56,50 @@ export interface Track {
 }
 
 export interface Album extends AlbumEntry {
+	/** Who `artist` links to. Empty for a compilation or Various Artists: then it's plain text. */
+	artists: ArtistLink[];
 	tracks: Track[];
 	durationMs: number;
 	/** Distinct and sorted. */
 	formats: string[];
 	addedAt: string;
+}
+
+/** An artist, as much as it takes to link to one. */
+export interface ArtistLink {
+	id: string;
+	name: string;
+}
+
+/** An artist who owns an album, as the list of them shows it. */
+export interface ArtistEntry extends ArtistLink {
+	/** The albums it owns. */
+	albumCount: number;
+}
+
+export interface ArtistDetail extends ArtistEntry {
+	/** The albums it owns, newest first. */
+	albums: AlbumEntry[];
+	/** The other albums it has a track on, newest first. */
+	appearsOn: AlbumEntry[];
+}
+
+/** A track a search found. Everything about it leads to its album. */
+export interface TrackHit {
+	id: string;
+	title: string;
+	artists: string[];
+	albumId: string;
+	album: string;
+	durationMs: number;
+	artwork?: Artwork;
+}
+
+/** What a search found, best first in each group. */
+export interface SearchResults {
+	artists: ArtistLink[];
+	albums: AlbumEntry[];
+	tracks: TrackHit[];
 }
 
 export interface LibraryFacts {
@@ -86,6 +125,12 @@ export interface LibrarySource {
 	albumsPage(sort: AlbumSort, cursor?: string, limit?: number): Promise<AlbumPage>;
 	/** Rejects with {@link AlbumNotFoundError} for an unknown ID. */
 	album(id: string): Promise<Album>;
+	/** Every artist who owns an album, by name. Guests are found through search and links. */
+	artists(): Promise<ArtistEntry[]>;
+	/** Rejects with {@link ArtistNotFoundError} for an unknown ID. */
+	artist(id: string): Promise<ArtistDetail>;
+	/** Finds artists, albums and tracks. Rejects with an `AbortError` when `signal` aborts. */
+	search(query: string, signal?: AbortSignal): Promise<SearchResults>;
 	/** The URL a track's audio streams from. */
 	streamUrl(trackId: string): string;
 }
@@ -95,6 +140,14 @@ export class AlbumNotFoundError extends Error {
 
 	constructor(id: string) {
 		super(`no album with ID ${id}`);
+	}
+}
+
+export class ArtistNotFoundError extends Error {
+	override name = 'ArtistNotFoundError';
+
+	constructor(id: string) {
+		super(`no artist with ID ${id}`);
 	}
 }
 

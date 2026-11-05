@@ -1,4 +1,4 @@
-import type { Album, AlbumEntry, Track } from './source.ts';
+import type { Album, AlbumEntry, ArtistDetail, Track } from './source.ts';
 
 /** Formats seconds as m:ss. */
 export function clock(totalSeconds: number): string {
@@ -93,6 +93,20 @@ export function albumFacts(entry: AlbumEntry, album: Album): string {
 		plural(album.tracks.length, 'TRACK', 'TRACKS'),
 		`${minutes.toLocaleString('en-US')} MIN`
 	].join(' · ');
+}
+
+/** How many artists a list holds. */
+export function artistCount(count: number): string {
+	return plural(count, 'artist', 'artists');
+}
+
+/** An artist's fact line. A guest owns nothing, so it counts where it appears instead. */
+export function artistFacts({ albumCount, appearsOn }: ArtistDetail): string {
+	const standing =
+		albumCount > 0
+			? `${plural(albumCount, 'ALBUM', 'ALBUMS')} IN YOUR LIBRARY`
+			: `GUEST ON ${plural(appearsOn.length, 'ALBUM', 'ALBUMS')}`;
+	return `ARTIST · ${standing}`;
 }
 
 const addedFormat = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' });

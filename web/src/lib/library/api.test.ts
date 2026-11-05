@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { artworkUrl, createApiSource } from './api';
-import { AlbumNotFoundError, LoginError, ServerError, UnauthorizedError } from './source';
+import {
+	AlbumNotFoundError,
+	ArtistNotFoundError,
+	LoginError,
+	ServerError,
+	UnauthorizedError
+} from './source';
 
 function json(status: number, body: unknown = {}, headers: HeadersInit = {}): Response {
 	return new Response(JSON.stringify(body), { status, headers });
@@ -92,5 +98,35 @@ describe('ApiSource', () => {
 
 	it('names a rendition', () => {
 		expect(artworkUrl('ab', 512)).toBe('/api/v1/artwork/ab?size=512');
+	});
+
+	it('searches with the query encoded, and carries the signal', async () => {
+		const { send, source } = fake(json(200, { artists: [], albums: [], tracks: [] }));
+		const { signal } = new AbortController();
+		await source.search('a&b c', signal);
+		expect(send.mock.calls.at(0)?.[0]).toBe('/api/v1/search?q=a%26b+c');
+		expect(init(send).signal).toBe(signal);
+	});
+
+	it('lets an aborted search reject as an abort', async () => {
+		const { source } = fake(new DOMException('aborted', 'AbortError'));
+		await expect(source.search('fox')).rejects.toMatchObject({ name: 'AbortError' });
+	});
+
+	it('reports a failed search', async () => {
+		const { source } = fake(json(500));
+		await expect(source.search('fox')).rejects.toBeInstanceOf(ServerError);
+	});
+
+	it('unwraps the artists', async () => {
+		const artists = [{ id: 'a', name: 'A', albumCount: 1 }];
+		const { source } = fake(json(200, { artists }));
+		await expect(source.artists()).resolves.toEqual(artists);
+	});
+
+	it('tells an artist that does not exist from a server that failed', async () => {
+		const { source } = fake(json(404), json(500));
+		await expect(source.artist('a/b')).rejects.toBeInstanceOf(ArtistNotFoundError);
+		await expect(source.artist('a')).rejects.toBeInstanceOf(ServerError);
 	});
 });

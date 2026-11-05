@@ -27,6 +27,7 @@ function album(count: number, id = 'a', extra: Partial<Track> = {}): Album {
 		id,
 		title: id,
 		artist: 'B',
+		artists: [],
 		trackCount: count,
 		compilation: false,
 		tracks: Array.from({ length: count }, (_, index) => track(index, extra)),

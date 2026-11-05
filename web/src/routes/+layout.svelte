@@ -22,6 +22,7 @@
 	import Bloom from '#lib/shell/Bloom.svelte';
 	import Nav from '#lib/shell/Nav.svelte';
 	import PlayerIsland from '#lib/shell/PlayerIsland.svelte';
+	import { albumOn, navOf, routeIds } from '#lib/shell/routes.ts';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
@@ -30,13 +31,13 @@
 	const onNowPlaying = $derived(routeId === '/now-playing');
 	const onAlbum = $derived(routeId === '/album/[id]');
 	const onLogin = $derived(routeId === '/login');
-	const albumParam = $derived(page.params['id']);
+	const nav = $derived(navOf(routeId));
 
 	// The stage keeps its last album so it has something to fade away. It's derived, not an
 	// effect: the stage must exist the moment the route changes, for the morph to pick it up.
 	let lastStageAlbum: string | null = null;
 	const stageAlbum = $derived.by(() => {
-		const next = onAlbum ? albumParam : onNowPlaying ? library.playing?.album.id : undefined;
+		const next = albumOn(page) ?? (onNowPlaying ? library.playing?.album.id : undefined);
 		lastStageAlbum = next ?? lastStageAlbum;
 		return lastStageAlbum;
 	});
@@ -76,9 +77,7 @@
 			}
 			gridWindow.reset();
 		};
-		void Promise.all(['/', '/album/[id]', '/now-playing', '/login'] as const).then((routes) =>
-			Promise.all(routes.map((route) => preloadCode(route)))
-		);
+		void Promise.all(routeIds.map((route) => preloadCode(route)));
 		const leaveSession = followMediaSession(player);
 		const stopWatching = watchInput();
 		return () => {
@@ -104,10 +103,7 @@
 		known={stageEntry !== undefined}
 		mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : 'clear'}
 	/>
-	<Nav
-		route={onLogin ? 'door' : onNowPlaying ? 'gone' : onAlbum ? 'album' : 'home'}
-		healthIssues={library.facts?.issues}
-	/>
+	<Nav look={nav.look} current={nav.current} healthIssues={library.facts?.issues} />
 	<main>
 		{#if library.down && library.facts === null && !onLogin}
 			<p class="down" role="status">The server isn't answering. Trying again…</p>

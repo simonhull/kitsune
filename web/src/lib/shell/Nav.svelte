@@ -3,18 +3,19 @@
 	import { morph } from '#lib/morph/registry.ts';
 	import { flowingPill } from './flowingPill.ts';
 	import Icon from './Icon.svelte';
+	import type { NavItem, NavLook } from './routes.ts';
 
 	interface Props {
-		/** `door` is Home's layout, unseen: the fox needs its seat there before anything shows. */
-		route: 'home' | 'album' | 'gone' | 'door';
+		look: NavLook;
+		current: NavItem | null;
 		healthIssues: number | undefined;
 	}
 
-	let { route, healthIssues }: Props = $props();
+	let { look, current, healthIssues }: Props = $props();
 </script>
 
-<header class="bar" data-route={route} inert={route === 'gone' || route === 'door'}>
-	<nav aria-label="Main" class="nav" data-route={route} use:flowingPill={route}>
+<header class="bar" data-route={look} inert={look === 'gone' || look === 'door'}>
+	<nav aria-label="Main" class="nav" data-route={look} use:flowingPill={current}>
 		<span class="pill" aria-hidden="true"></span>
 		<a
 			class="fox"
@@ -26,16 +27,17 @@
 		<a
 			class="item"
 			href={resolve('/')}
-			aria-current={route === 'home' || route === 'door' ? 'page' : undefined}
+			aria-current={current === 'home' ? 'page' : undefined}
 			data-sveltekit-reset="false">Home</a
 		>
-		<span class="item" aria-disabled="true" aria-current={route === 'album' ? 'page' : undefined}
+		<span class="item" aria-disabled="true" aria-current={current === 'albums' ? 'page' : undefined}
 			>Albums</span
 		>
-		<span class="fold wide"><span class="item" aria-disabled="true">Artists</span></span>
-		<span class="fold wide home-only">
-			<span class="fold-in"><span class="item" aria-disabled="true">Playlists</span></span>
-		</span>
+		<a
+			class="item"
+			href={resolve('/artists')}
+			aria-current={current === 'artists' ? 'page' : undefined}>Artists</a
+		>
 		<span class="fold wide home-only">
 			<span class="fold-in">
 				<span class="item health" aria-disabled="true">
@@ -46,14 +48,14 @@
 				</span>
 			</span>
 		</span>
-		<span class="search" aria-disabled="true" aria-label="Search">
+		<a class="search" href={resolve('/search')} aria-label="Search">
 			<Icon name="search" size={16} />
 			<span class="fold home-only wide">
 				<span class="fold-in">
-					<span class="search-label">Search or jump to…<span class="key">⌘K</span></span>
+					<span class="search-label">Search or jump to…</span>
 				</span>
 			</span>
-		</span>
+		</a>
 	</nav>
 </header>
 
@@ -120,7 +122,9 @@
 		height: var(--target);
 		border-radius: var(--radius-pill);
 		background: rgb(255 255 255 / 10%);
-		transition: background var(--morph) var(--curve-morph);
+		transition:
+			background var(--morph) var(--curve-morph),
+			opacity var(--morph-fast) var(--curve-morph);
 	}
 
 	:is([data-route='album'], [data-route='gone']) .pill {
@@ -195,7 +199,7 @@
 		height: var(--target);
 		min-width: var(--target);
 		margin-left: 4px;
-		padding: 0 8px 0 14px;
+		padding: 0 18px 0 14px;
 		border-radius: var(--radius-pill);
 		background: rgb(255 255 255 / 6%);
 		transition:
@@ -215,20 +219,13 @@
 		color: var(--wash);
 	}
 
-	.search-label {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding-left: 12px;
+	a.search:hover {
+		color: var(--fox);
 	}
 
-	.key {
-		font-family: var(--font-mono);
-		font-size: var(--type-mono);
-		color: var(--text-secondary);
-		background: rgb(255 255 255 / 8%);
-		border-radius: var(--radius-pill);
-		padding: 4px 10px;
+	.search-label {
+		display: block;
+		padding-left: 12px;
 	}
 
 	/* The nav really narrows on Album: its width animates, it isn't a scaled picture. */
@@ -269,6 +266,23 @@
 	@media (max-width: 900px) {
 		.wide {
 			display: none;
+		}
+
+		.item,
+		.item[aria-current='page'] {
+			padding: 0 12px;
+		}
+
+		.search {
+			padding: 0 14px;
+		}
+	}
+
+	/* Everything left must still fit a small phone: the targets stay 44px tall. */
+	@media (max-width: 360px) {
+		.item,
+		.item[aria-current='page'] {
+			padding: 0 7px;
 		}
 	}
 </style>

@@ -1,14 +1,20 @@
 import { fnv1a } from '#lib/cover/cover.ts';
 import {
 	AlbumNotFoundError,
+	ArtistNotFoundError,
 	LoginError,
 	type Album,
 	type AlbumEntry,
 	type AlbumPage,
 	type AlbumSort,
+	type ArtistDetail,
+	type ArtistEntry,
+	type ArtistLink,
 	type LibraryFacts,
 	type LibrarySource,
+	type SearchResults,
 	type Track,
+	type TrackHit,
 	type User
 } from './source';
 
@@ -32,6 +38,16 @@ const tidewater = board('tidewater-12', 'Tidewater', 'Mere Coast');
 const afterHours = board('after-hours-19', 'After Hours', 'Juno Adeyemi');
 // Not on Home: a deep link here has no card to return to.
 const tinLantern = board('tin-lantern-78', 'Tin Lantern', 'Sorrel Vane');
+// Owned by nobody: its name stays plain text, and its artists appear on it.
+const seaSampler: AlbumEntry = {
+	...board('sea-sampler-31', 'Sea Sampler', 'Various Artists'),
+	trackCount: 3,
+	compilation: true
+};
+
+function artistLink(name: string): ArtistLink {
+	return { id: `artist-${name.toLowerCase().replaceAll(' ', '-')}`, name };
+}
 
 function track(
 	album: AlbumEntry,
@@ -68,6 +84,12 @@ const glasshouseTracks: Track[] = [
 	track(glasshouse, 10, 'Still Water', 236, -6.2)
 ];
 
+const seaSamplerTracks: Track[] = [
+	{ ...track(seaSampler, 1, 'Shoreline', 214, -7.1), artists: ['Ilse Varga'] },
+	{ ...track(seaSampler, 2, 'Undertow', 248, -7.1), artists: ['Mere Coast'] },
+	{ ...track(seaSampler, 3, 'Foghorn', 193, -7.1), artists: ['Ines Duarte'] }
+];
+
 const firstWords = ['Slow', 'Paper', 'Winter', 'Hollow', 'Amber', 'Distant', 'Quiet', 'Broken'];
 const lastWords = ['Light', 'Rooms', 'Signal', 'Rivers', 'Hours', 'Static', 'Gardens', 'Echo'];
 
@@ -84,6 +106,7 @@ function tracksFor(album: AlbumEntry): Track[] {
 function albumFrom(entry: AlbumEntry, tracks: Track[], year: number): Album {
 	return {
 		...entry,
+		artists: entry.compilation ? [] : [artistLink(entry.artist)],
 		year,
 		tracks,
 		durationMs: tracks.reduce((sum, { durationMs }) => sum + durationMs, 0),
@@ -95,6 +118,7 @@ function albumFrom(entry: AlbumEntry, tracks: Track[], year: number): Album {
 const albums = new Map<string, Album>(
 	[
 		albumFrom(glasshouse, glasshouseTracks, 2024),
+		albumFrom(seaSampler, seaSamplerTracks, 2023),
 		...[
 			nightFerry,
 			orbitals,
@@ -130,6 +154,62 @@ const facts: LibraryFacts = {
 	roots: 2,
 	issues: 3
 };
+
+const artistNames = [...albums.values()].flatMap((album) =>
+	album.tracks.flatMap((entry) => entry.artists)
+);
+
+const artistLinks = [...new Set(artistNames)]
+	.map(artistLink)
+	.toSorted((a, b) => a.name.localeCompare(b.name));
+
+function owns({ artists }: Album, { id }: ArtistLink): boolean {
+	return artists.some((owner) => owner.id === id);
+}
+
+function isOn({ tracks }: Album, { name }: ArtistLink): boolean {
+	return tracks.some(({ artists }) => artists.includes(name));
+}
+
+function entryOf({ id, title, artist, year, trackCount, compilation }: Album): AlbumEntry {
+	return { id, title, artist, ...(year === undefined ? {} : { year }), trackCount, compilation };
+}
+
+function detailOf(link: ArtistLink): ArtistDetail {
+	const everything = [...albums.values()];
+	const albumsOwned = everything.filter((album) => owns(album, link));
+	return {
+		...link,
+		albumCount: albumsOwned.length,
+		albums: albumsOwned.map(entryOf),
+		appearsOn: everything.filter((album) => !owns(album, link) && isOn(album, link)).map(entryOf)
+	};
+}
+
+const owners: ArtistEntry[] = artistLinks
+	.map(detailOf)
+	.filter(({ albumCount }) => albumCount > 0)
+	.map(({ id, name, albumCount }) => ({ id, name, albumCount }));
+
+function hit(album: Album, entry: Track): TrackHit {
+	const { id, title, artists, durationMs } = entry;
+	return { id, title, artists, durationMs, albumId: album.id, album: album.title };
+}
+
+const trackHits = [...albums.values()].flatMap((album) =>
+	album.tracks.map((entry) => hit(album, entry))
+);
+
+/** Finds what the real thing would, without the typos: the states are what fixtures are for. */
+function find(query: string): SearchResults {
+	const needle = query.trim().toLowerCase();
+	const matches = (name: string): boolean => needle !== '' && name.toLowerCase().includes(needle);
+	return {
+		artists: artistLinks.filter(({ name }) => matches(name)).slice(0, 10),
+		albums: [...albums.values()].filter(({ title }) => matches(title)).slice(0, 10),
+		tracks: trackHits.filter(({ title }) => matches(title)).slice(0, 20)
+	};
+}
 
 export interface FixtureOptions {
 	/** Delay every response by this many milliseconds, as a real server would. */
@@ -167,6 +247,20 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 					throw new AlbumNotFoundError(id);
 				}
 				return album;
+			}),
+		artists: () => respond(() => owners),
+		artist: (id) =>
+			respond(() => {
+				const link = artistLinks.find((artist) => artist.id === id);
+				if (link === undefined) {
+					throw new ArtistNotFoundError(id);
+				}
+				return detailOf(link);
+			}),
+		search: (query, signal) =>
+			respond(() => {
+				signal?.throwIfAborted();
+				return find(query);
 			}),
 		// Never fetched: the fixtures play on a silent clock.
 		streamUrl: (trackId) => `fixture:${trackId}`

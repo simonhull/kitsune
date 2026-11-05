@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { burstSize, burstTimes, createFixtureSource, createScanFixtureSource } from './fixtures';
-import { AlbumNotFoundError, LoginError, type LibrarySource } from './source';
+import { AlbumNotFoundError, ArtistNotFoundError, LoginError, type LibrarySource } from './source';
 
 const source: LibrarySource = createFixtureSource();
 
@@ -33,6 +33,65 @@ describe('fixtures', () => {
 		const listed = (await source.albumsPage('name')).albums.map((entry) => entry.id);
 		expect(listed).not.toContain('tin-lantern-78');
 		await expect(source.album('tin-lantern-78')).resolves.toBeDefined();
+	});
+
+	it('finds artists, albums and tracks, whatever the case', async () => {
+		const { artists, albums, tracks } = await source.search('GLASSHOUSE');
+		expect(albums.map(({ title }) => title)).toEqual(['Glasshouse']);
+		expect(artists).toEqual([]);
+		expect((await source.search('duarte')).artists.map(({ name }) => name)).toEqual([
+			'Ines Duarte'
+		]);
+		expect(tracks).toEqual([]);
+		expect((await source.search('salt in')).tracks.at(0)).toMatchObject({
+			title: 'Salt in the Lungs',
+			albumId: 'glasshouse-66',
+			album: 'Glasshouse'
+		});
+	});
+
+	it('finds nothing for nothing, or for what it never heard of', async () => {
+		const empty = { artists: [], albums: [], tracks: [] };
+		await expect(source.search('  ')).resolves.toEqual(empty);
+		await expect(source.search('zzzz')).resolves.toEqual(empty);
+	});
+
+	it('rejects a search taken back while it was on its way', async () => {
+		const question = new AbortController();
+		const asked = createFixtureSource({ latencyMs: 5 }).search('fox', question.signal);
+		question.abort();
+		await expect(asked).rejects.toMatchObject({ name: 'AbortError' });
+	});
+
+	it('lists the artists who own an album, and no one else', async () => {
+		const names = (await source.artists()).map(({ name }) => name);
+		expect(names).toContain('Low Tide Choir');
+		expect(names).not.toContain('Ines Duarte');
+		expect(names).not.toContain('Various Artists');
+		expect(names).toEqual(names.toSorted((a, b) => a.localeCompare(b)));
+	});
+
+	it('splits what an artist owns from where it appears', async () => {
+		const ilse = await source.artist('artist-ilse-varga');
+		expect(ilse.albums.map(({ title }) => title)).toEqual(['Quiet Machines']);
+		expect(ilse.appearsOn.map(({ title }) => title)).toEqual(['Sea Sampler']);
+	});
+
+	it('gives a guest a page with nothing of its own', async () => {
+		const guest = await source.artist('artist-ines-duarte');
+		expect(guest.albumCount).toBe(0);
+		expect(guest.appearsOn.map(({ title }) => title)).toEqual(['Glasshouse', 'Sea Sampler']);
+	});
+
+	it('links an album to its artist, and a compilation to nobody', async () => {
+		expect((await source.album('glasshouse-66')).artists).toEqual([
+			{ id: 'artist-low-tide-choir', name: 'Low Tide Choir' }
+		]);
+		expect((await source.album('sea-sampler-31')).artists).toEqual([]);
+	});
+
+	it('finds no one for an unknown artist', async () => {
+		await expect(source.artist('nobody')).rejects.toBeInstanceOf(ArtistNotFoundError);
 	});
 
 	it('has a user, and turns away a login with no name', async () => {
