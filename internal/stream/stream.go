@@ -4,12 +4,14 @@
 package stream
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/simonhull/kitsune/internal/store"
@@ -32,9 +34,14 @@ const (
 // the same second returning part of the changed bytes.
 //
 // It writes nothing when it returns an error. The error wraps [fs.ErrNotExist]
-// if the file is gone, or if something other than a regular file took its place.
+// if the file is gone, if something other than a regular file took its place,
+// or if a file took the place of a folder above it.
 func Serve(w http.ResponseWriter, r *http.Request, file store.TrackFile) error {
+	// Not os.Root: the scanner accepts a symlink that leads out of the library.
 	f, err := os.Open(filepath.Join(file.Root, file.RelPath))
+	if errors.Is(err, syscall.ENOTDIR) {
+		return fmt.Errorf("open track: %w", fs.ErrNotExist) // A file took a parent folder's place.
+	}
 	if err != nil {
 		return fmt.Errorf("open track: %w", err)
 	}

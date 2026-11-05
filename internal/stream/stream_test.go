@@ -73,6 +73,15 @@ func TestServeTreatsADirectoryAsMissing(t *testing.T) {
 	}
 }
 
+func TestServeTreatsAFileInPlaceOfAFolderAsMissing(t *testing.T) {
+	t.Parallel()
+	file := writeTrack(t, t.TempDir(), "x", time.Now())
+	file.RelPath = filepath.Join(trackName, trackName)
+	if _, err := serve(t, file); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("err = %v, want fs.ErrNotExist", err)
+	}
+}
+
 func TestServeReportsOtherOpenErrors(t *testing.T) {
 	t.Parallel()
 	_, err := serve(t, store.TrackFile{Root: t.TempDir(), RelPath: strings.Repeat("x", 1000), Format: flac})
