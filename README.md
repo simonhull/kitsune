@@ -56,8 +56,8 @@ The scan renders each album's cover once, from the first of: an embedded front c
 other embedded picture, or `cover`, `folder`, `front` or `album` (`.jpg`, `.jpeg`, `.png`,
 `.webp`) in the track's folder or the parent of a disc folder. Renditions at 128, 512 and 1024
 pixels (never upscaled) go to `<data_dir>/artwork`, so `GET /api/v1/artwork/{hash}?size=` is a file read,
-cached for a year. The cache is derived data, but it is only rebuilt when an audio file changes:
-a replaced `cover.jpg` is not noticed, and if you delete the folder you need a new database.
+cached for a year. The cache is derived data. A quick scan only looks at changed audio files, so a
+replaced `cover.jpg` or a deleted cache folder takes a full scan.
 
 Albums have public IDs, like tracks. A known limit: an album's ID is not stable across a move
 or a retag, because its identity is its folder, name and artist. A moved album gets a new ID and a
@@ -83,6 +83,10 @@ Every route is under `/api/v1` and, except login, needs a session. `api/openapi.
 - `GET /library` counts live albums and tracks, their duration, the configured roots and the files
   the scanner could not read.
 
+- `POST /admin/library/scan` starts a `quick` or `full` scan, for administrators. It answers 202, or
+  409 while one runs. `GET /library` reports its progress.
+- `GET /admin/library/issues` lists the files a scan couldn't use and the tracks it warned about,
+  for administrators. Paths are relative to their root.
 - `GET /tracks/{id}/stream` serves a track's original file, with no transcoding. It takes single and
   multiple byte ranges, and its ETag comes from the file's size and modification time, so a retag
   that keeps both keeps the ETag. `If-Range` matches an ETag only. A missing track, or one whose file
