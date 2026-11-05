@@ -19,14 +19,14 @@
 //
 // # Album art
 //
-// With [Options.Artwork] set, the read phase gives every album one cover. The
-// first file of an album that a worker reads looks for it: an embedded front
-// cover, then the other embedded pictures, then cover, folder, front or album
-// (.jpg, .jpeg, .png or .webp) in the track's folder, or in the parent of a
-// disc folder. A file that holds no usable image leaves the claim to the next
-// track of the album; a successful look-up is made once per album per scan
-// ([Stats].Covers). Art never fails a file: an image that cannot be decoded or
-// is too large becomes a warning on the track, and a cache failure is logged.
+// With [Options.Artwork] set, the read phase gives every album one cover
+// ([Stats].Covers). A file looks for it unless a track before it, by disc and
+// track number, already has one: an embedded front cover, then the other embedded
+// pictures, then cover, folder, front or album (.jpg, .jpeg, .png or .webp) in the
+// track's folder, or in the parent of a disc folder. So the album ends up with the
+// cover of its first track that has one, whatever order the workers finish in. Art
+// never fails a file: an image that cannot be decoded or is too large becomes a
+// warning on the track, and a cache failure is logged.
 //
 // Known limits:
 //
@@ -34,7 +34,9 @@
 //     lost cache waits for a Full scan.
 //   - Art removed from every file of an album stays: a track without art keeps
 //     the cover the album has.
-//   - A changed track with different art replaces the album's cover.
+//   - A changed track with different art replaces the album's cover until the next
+//     Full scan: a Quick scan ranks only the files it reads.
+//   - A cover a later track rendered and lost stays in the cache.
 //
 // [Scanner.Run] scans at start and then daily. [Scanner.Claim] lets a caller
 // learn at once whether a scan can start, and run it elsewhere.

@@ -68,7 +68,7 @@ type Stats struct {
 	Deleted                                            int64 // Tracks past the grace period.
 	Pruned                                             store.Pruned
 	SkippedRoots                                       int
-	Covers                                             int // Album covers stored: successful artwork.Cache.Put calls.
+	Covers                                             int // Albums the scan found a cover for.
 	Swept                                              int // Temp files left by an interrupted edit, removed.
 }
 

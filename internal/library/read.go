@@ -43,14 +43,14 @@ func (s *Scanner) read(ctx context.Context, jobs []job, stats *Stats) (bool, err
 	}
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
-	w := &writer{s: s, stats: stats, claimed: claimedBy(jobs)}
-	rd := &reader{covers: &covers{cache: s.artwork, log: s.log}}
+	rd := &reader{covers: newCovers(s.artwork, s.log)}
+	w := &writer{s: s, stats: stats, covers: rd.covers, claimed: claimedBy(jobs)}
 	for r := range s.startWorkers(work, jobs, rd) {
 		if w.step(ctx, work, &r) {
 			cancel()
 		}
 	}
-	stats.Covers = int(rd.covers.stored.Load())
+	stats.Covers = rd.covers.count()
 	return w.hold, w.finish(ctx)
 }
 
@@ -201,6 +201,7 @@ func issueFor(j *job, err error) store.ScanIssue {
 type writer struct {
 	s       *Scanner
 	stats   *Stats
+	covers  *covers
 	claimed map[int64]struct{} // Track IDs taken by this scan, flushed or not.
 	batch   store.Batch
 	hold    bool
@@ -253,6 +254,7 @@ func (w *writer) handle(ctx context.Context, r *result) error {
 		if err := w.identify(ctx, r.track, r.job); err != nil {
 			return err
 		}
+		w.covers.settle(r.track)
 		w.batch.Tracks = append(w.batch.Tracks, *r.track)
 	}
 	if len(w.batch.Tracks)+len(w.batch.Issues) >= w.s.batchSize {
