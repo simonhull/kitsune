@@ -479,6 +479,24 @@ func TestNonUTF8NamesKeepTheBatchValid(t *testing.T) {
 	}
 }
 
+func TestReindexKeepsTheCover(t *testing.T) {
+	t.Parallel()
+	l := newArtLib(t)
+	root := l.roots[0]
+	l.copyTo(root, aFLAC, sampleFLAC)
+	path := filepath.Join(root, aFLAC)
+	embed(t, path, pic(testPNG(t, red()), audiometa.ArtworkFrontCover))
+	l.scan(Quick)
+	before := l.albumOf(aFLAC)
+	embed(t, path, pic(testPNG(t, blue()), audiometa.ArtworkFrontCover))
+	if err := l.scanner.reindex(t.Context(), l.states(root)[aFLAC].TrackID, root, aFLAC); err != nil {
+		t.Fatal(err)
+	}
+	if got := l.albumOf(aFLAC); !bytes.Equal(got.hash, before.hash) {
+		t.Errorf("artwork hash = %x, want %x: an edit must not touch the cover", got.hash, before.hash)
+	}
+}
+
 func TestNoArtGivesNil(t *testing.T) {
 	t.Parallel()
 	l := newArtLib(t)

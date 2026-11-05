@@ -41,6 +41,7 @@ type surveyed struct {
 	Jobs         []job
 	Mark         []int64             // Track IDs to mark missing.
 	IssueDeletes map[string][]string // Root → relative paths.
+	Temps        []string            // Absolute paths of temp files left by an interrupted edit.
 	Seen         int
 	SkippedRoots int
 	HoldDeletes  bool // Deleting missing tracks must wait: an outage may be hiding files.
@@ -51,6 +52,7 @@ type rootSurvey struct {
 	jobs         []job
 	mark         []int64
 	issueDeletes []string
+	temps        []string
 	seen         int
 	skipped      bool
 	hold         bool
@@ -66,6 +68,7 @@ type seenFile struct {
 // walked is what walking one root found.
 type walked struct {
 	files      []seenFile
+	temps      []string // Absolute paths of the temp files [isWriteTemp] recognizes.
 	unreadable []string // Relative paths of folders and entries the walk could not read.
 	rootErr    error    // Set when the root itself is unreadable.
 }
@@ -80,6 +83,13 @@ func isAudio(name string) bool {
 	return false
 }
 
+// isWriteTemp reports whether name is audiometa's temp file for a rewrite in
+// progress, ".<name>.audiometa-<random>.tmp". Scans hold the library lock, so one
+// they see was left by a killed edit.
+func isWriteTemp(name string) bool {
+	return strings.HasPrefix(name, ".") && strings.Contains(name, ".audiometa-") && strings.HasSuffix(name, ".tmp")
+}
+
 // survey walks and diffs every root against the store without writing. A
 // canceled ctx returns its error: a partial walk must never reach the diff.
 func (s *Scanner) survey(ctx context.Context, mode Mode) (*surveyed, error) {
@@ -92,6 +102,7 @@ func (s *Scanner) survey(ctx context.Context, mode Mode) (*surveyed, error) {
 		}
 		sv.Jobs = append(sv.Jobs, r.jobs...)
 		sv.Mark = append(sv.Mark, r.mark...)
+		sv.Temps = append(sv.Temps, r.temps...)
 		if len(r.issueDeletes) > 0 {
 			sv.IssueDeletes[root] = r.issueDeletes
 		}
@@ -133,6 +144,7 @@ func (s *Scanner) surveyRoot(ctx context.Context, root string, mode Mode) (rootS
 	}
 	d := diffRoot(root, states, &w, mode)
 	r := d.rootSurvey
+	r.temps = w.temps
 	if massDisappearance(d.absent, d.live, countNew(r.jobs)) {
 		s.log.ErrorContext(ctx, "most of a library root's tracks vanished; is a folder or pool member unmounted? skipping it. "+
 			"If that is deliberate, remove the root from library.roots, restart, then add it back; "+
@@ -254,6 +266,9 @@ func (w *walked) visitEntry(path, rel string, d fs.DirEntry) error {
 	switch {
 	case d.IsDir() && (strings.HasPrefix(name, ".") || strings.HasPrefix(name, "@")):
 		return filepath.SkipDir
+	case d.Type().IsRegular() && isWriteTemp(name):
+		w.temps = append(w.temps, path)
+		return nil
 	case d.IsDir(), strings.HasPrefix(name, "."), !isAudio(name):
 		return nil
 	}
@@ -393,9 +408,10 @@ func (s *Scanner) removedRoots(ctx context.Context, sv *surveyed, everyRootWalke
 	return nil
 }
 
-// applySurvey writes what the survey decided: the missing marks, then the
-// issue deletes per root.
+// applySurvey writes what the survey decided: the temp files go, then the
+// missing marks, then the issue deletes per root.
 func (s *Scanner) applySurvey(ctx context.Context, sv *surveyed, stats *Stats) error {
+	s.sweep(ctx, sv.Temps, stats)
 	if err := s.st.MarkMissing(ctx, sv.Mark, s.now()); err != nil {
 		return err //nolint:wrapcheck // The store's error already says what failed.
 	}
@@ -406,4 +422,20 @@ func (s *Scanner) applySurvey(ctx context.Context, sv *surveyed, stats *Stats) e
 		}
 	}
 	return nil
+}
+
+// sweep removes temp files left by an interrupted edit. Without tag writes it
+// leaves them: a library the server may not write to is not its to tidy. A
+// failure is logged, because leftover files cost disk, never a scan.
+func (s *Scanner) sweep(ctx context.Context, temps []string, stats *Stats) {
+	if !s.tagWrites {
+		return
+	}
+	for _, path := range temps {
+		if err := os.Remove(path); err != nil {
+			s.log.WarnContext(ctx, "removing a leftover temp file failed", "err", err)
+			continue
+		}
+		stats.Swept++
+	}
 }

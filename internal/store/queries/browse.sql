@@ -42,8 +42,9 @@ WHERE a.ulid = ?
 
 -- name: ListAlbumTracks :many
 SELECT
-    id, ulid, title, disc_no, track_no, duration_ms, format, sample_rate, bit_depth,
-    rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak
+    id, ulid, title, disc_no, disc_total, track_no, track_total, year, duration_ms, format,
+    sample_rate, bit_depth, rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak,
+    size, mtime
 FROM tracks
 WHERE album_id = ? AND missing_since IS NULL
 ORDER BY coalesce(disc_no, 1), track_no NULLS LAST, title, id;
@@ -52,6 +53,32 @@ ORDER BY coalesce(disc_no, 1), track_no NULLS LAST, title, id;
 SELECT root, rel_path, format
 FROM tracks
 WHERE ulid = ? AND missing_since IS NULL;
+
+-- name: GetTrackAlbum :one
+SELECT a.ulid
+FROM tracks t
+JOIN albums a ON a.id = t.album_id
+WHERE t.ulid = ? AND t.missing_since IS NULL;
+
+-- name: ListAlbumFiles :many
+SELECT t.id, t.ulid, t.root, t.rel_path, t.size, t.mtime
+FROM tracks t
+JOIN albums a ON a.id = t.album_id
+WHERE a.ulid = ? AND t.missing_since IS NULL
+ORDER BY coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id;
+
+-- name: GetEditFile :one
+SELECT id, ulid, root, rel_path, size, mtime
+FROM tracks
+WHERE ulid = ? AND missing_since IS NULL;
+
+-- name: ListAlbumTagValues :many
+SELECT t.ulid, tt.value
+FROM tracks t
+JOIN albums a ON a.id = t.album_id
+JOIN track_tags tt ON tt.track_id = t.id
+WHERE a.ulid = sqlc.arg(album) AND t.missing_since IS NULL AND tt.key IN (sqlc.slice(tag_keys))
+ORDER BY t.id, tt.key, tt.ord;
 
 -- name: ListAlbumTrackArtists :many
 SELECT ta.track_id, ar.name

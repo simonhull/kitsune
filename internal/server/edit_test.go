@@ -1,0 +1,578 @@
+package server
+
+import (
+	"bytes"
+	"context"
+	"encoding/json/v2"
+	"errors"
+	"maps"
+	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/simonhull/audiometa"
+
+	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/library"
+	"github.com/simonhull/kitsune/internal/store"
+)
+
+const (
+	fileOne    = "album/one.flac"
+	fileTwo    = "album/two.flac"
+	sampleFLAC = "sample.flac"
+	sampleMP3  = "sample_v24.mp3"
+	mp3File    = "album/one.mp3"
+	titleBody  = `{"title":"New Title"}`
+	yearBody   = `{"year":1987}`
+	newTitle   = "New Title"
+	ifMatch    = "If-Match"
+	staleETag  = `"0123456789abcdef0123456789abcdef"`
+	routeTrack = "track route"
+	routeAlbum = "album route"
+)
+
+// editFixture is a server over a scanned temp library of one album.
+type editFixture struct {
+	*testServer
+
+	root  string
+	token string
+	album api.AlbumDetail
+}
+
+// newEditFixture copies samples (path under the root to testdata name) to a temp
+// root, scans it and signs in an admin.
+func newEditFixture(t *testing.T, opts *testServerOptions, samples map[string]string) *editFixture {
+	t.Helper()
+	root := t.TempDir()
+	for rel, sample := range samples {
+		b, err := os.ReadFile(filepath.Join("..", "library", "testdata", sample))
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(root, rel)
+		if err = os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(path, b, 0o600); err != nil { //nolint:gosec // G703: under the test's temp root.
+			t.Fatal(err)
+		}
+	}
+	opts.LibraryRoot = root
+	ts := newTestServer(t, *opts)
+	if _, err := ts.Scanner.Scan(t.Context(), library.Quick); err != nil {
+		t.Fatal(err)
+	}
+	fx := &editFixture{testServer: ts, root: root, token: ts.tokenFor(t, store.RoleAdmin)}
+	fx.reload(t)
+	return fx
+}
+
+func twoFLACs() map[string]string { return map[string]string{fileOne: sampleFLAC, fileTwo: sampleFLAC} }
+
+// reload reads the library's only album again.
+func (fx *editFixture) reload(t *testing.T) {
+	t.Helper()
+	var page api.AlbumPage
+	fx.getJSON(t, fx.token, albumsPath, &page)
+	if len(page.Albums) != 1 {
+		t.Fatalf("albums = %+v, want 1", page.Albums)
+	}
+	fx.album = api.AlbumDetail{}
+	fx.getJSON(t, fx.token, albumsPath+"/"+page.Albums[0].ID, &fx.album)
+}
+
+func (fx *editFixture) albumPath() string { return albumsPath + "/" + fx.album.ID }
+
+func (fx *editFixture) trackPath(i int) string { return "/tracks/" + fx.album.Tracks[i].ID }
+
+// patch sends an authenticated edit with etag as If-Match, unless it is empty.
+func (fx *editFixture) patch(t *testing.T, path, etag, body string) response {
+	t.Helper()
+	return fx.send(t, fx.patchCall(path, etag, body))
+}
+
+func (fx *editFixture) patchCall(path, etag, body string) call {
+	h := bearer(fx.token)
+	h.Set(contentType, api.JSONMediaType)
+	if etag != "" {
+		h.Set(ifMatch, etag)
+	}
+	return call{method: http.MethodPatch, path: path, body: body, header: h}
+}
+
+// editRoute is one of the two edit routes, as a test sends to it.
+type editRoute struct {
+	name string
+	path func(*editFixture) string
+	etag func(*editFixture) string
+	body string
+}
+
+func editRoutes() []editRoute {
+	return []editRoute{
+		{
+			name: routeTrack, body: titleBody,
+			path: func(fx *editFixture) string { return fx.trackPath(0) },
+			etag: func(fx *editFixture) string { return fx.album.Tracks[0].Etag },
+		},
+		{
+			name: routeAlbum, body: yearBody,
+			path: (*editFixture).albumPath,
+			etag: func(fx *editFixture) string { return fx.album.Etag },
+		},
+	}
+}
+
+// send sends the route's usual edit.
+func (e *editRoute) send(t *testing.T, fx *editFixture) response {
+	t.Helper()
+	return fx.patch(t, e.path(fx), e.etag(fx), e.body)
+}
+
+func readFile(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// tagsOf opens the file at path and returns its tags. It also proves it parses.
+func tagsOf(t *testing.T, path string) audiometa.Tags {
+	t.Helper()
+	f, err := audiometa.Open(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer f.Close() //nolint:errcheck // Read-only use is done; nothing to report.
+	return f.Tags
+}
+
+// decodeEditProblem decodes r as a stopped edit with the given status.
+func decodeEditProblem(t *testing.T, r response, status int) api.EditProblem {
+	t.Helper()
+	r.problem(t, status)
+	var p api.EditProblem
+	if err := json.Unmarshal(r.Body, &p); err != nil {
+		t.Fatalf("decode %q: %v", r.Body, err)
+	}
+	return p
+}
+
+func TestEditWithWritesOffChangesNothing(t *testing.T) {
+	t.Parallel()
+	for _, route := range editRoutes() {
+		t.Run(route.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newEditFixture(t, &testServerOptions{}, twoFLACs())
+			path := filepath.Join(fx.root, fileOne)
+			before := readFile(t, path)
+			route.send(t, fx).problem(t, http.StatusForbidden)
+			if !bytes.Equal(before, readFile(t, path)) {
+				t.Error("the file changed with tag writes off")
+			}
+		})
+	}
+}
+
+func TestEditIsForAdmins(t *testing.T) {
+	t.Parallel()
+	for _, route := range editRoutes() {
+		t.Run(route.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+			fx.token = fx.tokenFor(t, store.RoleUser)
+			route.send(t, fx).problem(t, http.StatusForbidden)
+			fx.token = "not a token"
+			route.send(t, fx).problem(t, http.StatusUnauthorized)
+		})
+	}
+}
+
+// decode fails the test unless r is a 200, and decodes its body into v.
+func (r response) decode(t *testing.T, v any) {
+	t.Helper()
+	if r.Status != http.StatusOK {
+		t.Fatalf("status = %d: %s", r.Status, r.Body)
+	}
+	if err := json.Unmarshal(r.Body, v); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// wantStoreFollowed checks the album kept its identity, took got's ETag, and that
+// a quick scan finds nothing to read.
+func (fx *editFixture) wantStoreFollowed(t *testing.T, before *api.AlbumDetail, got *api.TrackDetail) {
+	t.Helper()
+	fx.reload(t)
+	if fx.album.ID != before.ID || !fx.album.AddedAt.Equal(before.AddedAt) || len(fx.album.Tracks) != 2 {
+		t.Errorf("album = %+v, want it kept, with its 2 tracks", fx.album)
+	}
+	if fx.album.Etag != got.AlbumEtag {
+		t.Errorf("album etag = %s, want the PATCH's %s", fx.album.Etag, got.AlbumEtag)
+	}
+	stats, err := fx.Scanner.Scan(t.Context(), library.Quick)
+	if err != nil || stats.Read != 0 {
+		t.Errorf("quick scan read %d files, err %v: want none, the store already matches", stats.Read, err)
+	}
+}
+
+func TestPatchTrackSavesAndReturnsTheEdit(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+	before := fx.album
+	id := before.Tracks[0].ID
+	var got api.TrackDetail
+	fx.patch(t, fx.trackPath(0), before.Tracks[0].Etag, `{"title":"  New Title ","trackNo":7,"discNo":2}`).decode(t, &got)
+	if got.ID != id || got.Title != newTitle || got.TrackNo != 7 || got.DiscNo != 2 {
+		t.Errorf("response = %+v", got)
+	}
+	if got.Etag == before.Tracks[0].Etag || got.AlbumEtag == before.Etag || got.AlbumID != before.ID {
+		t.Errorf("etags %s and %s, album %s: want new etags and the same album", got.Etag, got.AlbumEtag, got.AlbumID)
+	}
+	var read api.TrackDetail
+	fx.getJSON(t, fx.token, "/tracks/"+id, &read)
+	if read.Etag != got.Etag || read.Title != newTitle {
+		t.Errorf("GET after PATCH = %+v, want the patched track", read)
+	}
+	fx.wantStoreFollowed(t, &before, &got)
+}
+
+// wantGenres checks the album and each of its tracks hold genres.
+func wantGenres(t *testing.T, album *api.AlbumDetail, genres []string) {
+	t.Helper()
+	if !slices.Equal(album.Genres, genres) {
+		t.Errorf("album genres = %q, want %q", album.Genres, genres)
+	}
+	for i := range album.Tracks {
+		if g := album.Tracks[i].Genres; !slices.Equal(g, genres) {
+			t.Errorf("track genres = %q, want %q", g, genres)
+		}
+	}
+}
+
+func TestPatchAlbumAppliesToEveryTrackAndChains(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+	var got api.AlbumDetail
+	fx.patch(t, fx.albumPath(), fx.album.Etag, `{"year":1987,"genres":["Jazz"," Blues "]}`).decode(t, &got)
+	genres := []string{"Jazz", "Blues"}
+	if got.Year != 1987 {
+		t.Errorf("album year = %d", got.Year)
+	}
+	wantGenres(t, &got, genres)
+	for _, rel := range []string{fileOne, fileTwo} {
+		if tags := tagsOf(t, filepath.Join(fx.root, rel)); tags.Year != 1987 || !slices.Equal(tags.Genres, genres) {
+			t.Errorf("%s: year %d, genres %q", rel, tags.Year, tags.Genres)
+		}
+	}
+	// The response's track etags are current: a row save goes straight on.
+	fx.album = got
+	if r := fx.patch(t, fx.trackPath(1), got.Tracks[1].Etag, titleBody); r.Status != http.StatusOK {
+		t.Errorf("chained PATCH = %d: %s", r.Status, r.Body)
+	}
+}
+
+func TestEditPreconditions(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		etag func(string) string
+		want int
+	}{
+		{"no If-Match", func(string) string { return "" }, http.StatusPreconditionRequired},
+		{"star", func(string) string { return "*" }, http.StatusPreconditionRequired},
+		{"stale", func(string) string { return staleETag }, http.StatusPreconditionFailed},
+		{"weak", func(s string) string { return "W/" + s }, http.StatusPreconditionFailed},
+		{"a list", func(s string) string { return s + ", " + staleETag }, http.StatusPreconditionFailed},
+	}
+	for _, route := range editRoutes() {
+		for _, tt := range tests {
+			t.Run(route.name+" "+tt.name, func(t *testing.T) {
+				t.Parallel()
+				fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+				path := filepath.Join(fx.root, fileOne)
+				before := readFile(t, path)
+				fx.patch(t, route.path(fx), tt.etag(route.etag(fx)), route.body).problem(t, tt.want)
+				if !bytes.Equal(before, readFile(t, path)) {
+					t.Error("a refused edit changed the file")
+				}
+			})
+		}
+	}
+}
+
+func TestEditOfAFileThatDriftedIsStale(t *testing.T) {
+	t.Parallel()
+	for _, route := range editRoutes() {
+		t.Run(route.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+			for _, rel := range []string{fileOne, fileTwo} {
+				err := audiometa.Write(filepath.Join(fx.root, rel), func(f *audiometa.File) error {
+					f.Tags.Comment = "changed behind the server's back"
+					return nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			route.send(t, fx).problem(t, http.StatusPreconditionFailed)
+		})
+	}
+}
+
+func TestEditOfSomethingUnknownIs404(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+	fx.patch(t, "/tracks/"+missingID, staleETag, titleBody).problem(t, http.StatusNotFound)
+	fx.patch(t, albumsPath+"/"+missingID, staleETag, yearBody).problem(t, http.StatusNotFound)
+}
+
+func TestEditBadBodies(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, route, body string
+		invalid           bool // The contract refuses it too.
+	}{
+		{name: "empty track edit", route: routeTrack, body: `{}`},
+		{name: "empty album edit", route: routeAlbum, body: `{}`},
+		{name: "not JSON", route: routeTrack, body: `title`, invalid: true},
+		{name: "stage 2 album title", route: routeAlbum, body: `{"title":"x"}`, invalid: true},
+		{name: "stage 2 album artist", route: routeAlbum, body: `{"albumArtist":"x"}`, invalid: true},
+		{name: "stage 2 track artists", route: routeTrack, body: `{"artists":["x"]}`, invalid: true},
+		{name: "track year", route: routeTrack, body: yearBody, invalid: true},
+		{name: "album genres on a track", route: routeTrack, body: `{"genres":["x"]}`, invalid: true},
+		{name: "track zero", route: routeTrack, body: `{"trackNo":0}`, invalid: true},
+		{name: "track past 16 bits", route: routeTrack, body: `{"trackNo":65536}`, invalid: true},
+		{name: "disc zero", route: routeTrack, body: `{"discNo":0}`, invalid: true},
+		{name: "year too small", route: routeAlbum, body: `{"year":999}`, invalid: true},
+		{name: "blank genre", route: routeAlbum, body: `{"genres":[" "]}`},
+		{name: "empty genre", route: routeAlbum, body: `{"genres":[""]}`, invalid: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+			c := fx.patchCall(fx.albumPath(), fx.album.Etag, tt.body)
+			if tt.route == routeTrack {
+				c = fx.patchCall(fx.trackPath(0), fx.album.Tracks[0].Etag, tt.body)
+			}
+			c.invalid = tt.invalid
+			fx.send(t, c).problem(t, http.StatusBadRequest)
+		})
+	}
+}
+
+func TestEditNeedsJSON(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+	c := fx.patchCall(fx.trackPath(0), fx.album.Tracks[0].Etag, titleBody)
+	c.header.Set(contentType, "text/plain")
+	c.invalid = true
+	fx.send(t, c).problem(t, http.StatusBadRequest)
+}
+
+// holdingWrite returns a write that signals entered and waits for release
+// before really writing.
+func holdingWrite(entered chan<- struct{}, release <-chan struct{}) library.WriteFunc {
+	return func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+		entered <- struct{}{}
+		<-release
+		return audiometa.WriteContext(ctx, path, edit)
+	}
+}
+
+func TestEditDuringAnEditIsBusy(t *testing.T) {
+	t.Parallel()
+	for _, route := range editRoutes() {
+		t.Run(route.name, func(t *testing.T) {
+			t.Parallel()
+			entered, release := make(chan struct{}, 2), make(chan struct{})
+			fx := newEditFixture(t, &testServerOptions{TagWrites: true, Write: holdingWrite(entered, release)}, twoFLACs())
+			first := make(chan error, 1)
+			c := fx.patchCall(fx.trackPath(1), fx.album.Tracks[1].Etag, titleBody)
+			go func() {
+				_, err := fx.trySend(t, c)
+				first <- err
+			}()
+			<-entered
+			resp := route.send(t, fx)
+			resp.problem(t, http.StatusConflict)
+			if got := resp.Header.Get("Retry-After"); got == "" {
+				t.Error("no Retry-After")
+			}
+			close(release)
+			if err := <-first; err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestEditRefusedByTheFile(t *testing.T) {
+	t.Parallel()
+	mp3Album := map[string]string{mp3File: sampleMP3}
+	tests := []struct {
+		name    string
+		samples map[string]string
+		path    func(*editFixture) (string, string)
+		body    string
+		prepare func(*testing.T, *editFixture)
+		want    int
+	}{
+		{
+			name: "blank title", samples: twoFLACs(), body: `{"title":"  "}`, want: http.StatusUnprocessableEntity,
+			path: func(fx *editFixture) (string, string) { return fx.trackPath(0), fx.album.Tracks[0].Etag },
+		},
+		{
+			name: "a year MP3 can't hold", samples: mp3Album, body: `{"year":1850}`, want: http.StatusUnprocessableEntity,
+			path: func(fx *editFixture) (string, string) { return fx.albumPath(), fx.album.Etag },
+		},
+		{
+			name: "read-only track", samples: twoFLACs(), body: titleBody, want: http.StatusForbidden,
+			path:    func(fx *editFixture) (string, string) { return fx.trackPath(0), fx.album.Tracks[0].Etag },
+			prepare: readOnly(fileOne, fileTwo),
+		},
+		{
+			name: "read-only file in an album", samples: twoFLACs(), body: yearBody, want: http.StatusForbidden,
+			path:    func(fx *editFixture) (string, string) { return fx.albumPath(), fx.album.Etag },
+			prepare: readOnly(fileTwo),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newEditFixture(t, &testServerOptions{TagWrites: true}, tt.samples)
+			if tt.prepare != nil {
+				tt.prepare(t, fx)
+			}
+			path, etag := tt.path(fx)
+			p := decodeEditProblem(t, fx.patch(t, path, etag, tt.body), tt.want)
+			if len(p.Changed) != 0 || len(p.Remaining) == 0 {
+				t.Errorf("changed %q, remaining %q: a preflight failure changes nothing", p.Changed, p.Remaining)
+			}
+			if tags := tagsOf(t, filepath.Join(fx.root, firstFile(tt.samples))); tags.Title == newTitle || tags.Year == 1987 {
+				t.Errorf("a refused edit reached the file: %q %d", tags.Title, tags.Year)
+			}
+		})
+	}
+}
+
+// firstFile returns the first path of samples, sorted.
+func firstFile(samples map[string]string) string {
+	return slices.Sorted(maps.Keys(samples))[0]
+}
+
+// readOnly makes the files read-only, keeping their times, so only the mode differs.
+func readOnly(rels ...string) func(*testing.T, *editFixture) {
+	return func(t *testing.T, fx *editFixture) {
+		t.Helper()
+		for _, rel := range rels {
+			if err := os.Chmod(filepath.Join(fx.root, rel), 0o444); err != nil { //nolint:gosec // G302: read-only is the point.
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+// failingWrite really writes the first n files, then fails.
+func failingWrite(n int32) library.WriteFunc {
+	var writes atomic.Int32
+	return func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+		if writes.Add(1) > n {
+			return errors.New("disk full")
+		}
+		return audiometa.WriteContext(ctx, path, edit)
+	}
+}
+
+func TestAlbumEditStoppedPartwayReportsHowFarItGot(t *testing.T) {
+	t.Parallel()
+	samples := map[string]string{"album/1.flac": sampleFLAC, "album/2.flac": sampleFLAC, "album/3.flac": sampleFLAC}
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true, Write: failingWrite(1)}, samples)
+	p := decodeEditProblem(t, fx.patch(t, fx.albumPath(), fx.album.Etag, yearBody), http.StatusInternalServerError)
+	if len(p.Changed) != 1 || len(p.Remaining) != 2 {
+		t.Fatalf("changed %q, remaining %q: want 1 and 2", p.Changed, p.Remaining)
+	}
+	if strings.Contains(p.Detail, "disk full") {
+		t.Errorf("detail = %q: an internal cause must stay in the log", p.Detail)
+	}
+	years := 0
+	for rel := range samples {
+		if tagsOf(t, filepath.Join(fx.root, rel)).Year == 1987 {
+			years++
+		}
+	}
+	if years != 1 {
+		t.Errorf("%d files hold the edit, want 1", years)
+	}
+	fx.reload(t)
+	for i := range fx.album.Tracks {
+		tr := &fx.album.Tracks[i]
+		if changed := slices.Contains(p.Changed, tr.ID); changed != (tr.Year == 1987) {
+			t.Errorf("track year %d, reported changed = %t: the store must follow the files", tr.Year, changed)
+		}
+	}
+}
+
+func TestTrackEditFailureIs500(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true, Write: failingWrite(0)}, twoFLACs())
+	p := decodeEditProblem(t, fx.patch(t, fx.trackPath(0), fx.album.Tracks[0].Etag, titleBody), http.StatusInternalServerError)
+	if len(p.Changed) != 0 || !slices.Equal(p.Remaining, []string{fx.album.Tracks[0].ID}) {
+		t.Errorf("changed %q, remaining %q", p.Changed, p.Remaining)
+	}
+}
+
+func TestClientDisconnectDoesNotStopAnEdit(t *testing.T) {
+	t.Parallel()
+	entered, release := make(chan struct{}, 2), make(chan struct{})
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true, Write: holdingWrite(entered, release)}, twoFLACs())
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, fx.URL+fx.albumPath(), strings.NewReader(yearBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header = fx.patchCall("", fx.album.Etag, "").header
+	gone := make(chan struct{})
+	go func() {
+		defer close(gone)
+		if resp, doErr := http.DefaultClient.Do(req); doErr == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	<-entered
+	cancel()
+	<-gone
+	close(release)
+	if _, err = fx.Scanner.Scan(t.Context(), library.Quick); err != nil { // It waits for the edit.
+		t.Fatal(err)
+	}
+	for _, rel := range []string{fileOne, fileTwo} {
+		if got := tagsOf(t, filepath.Join(fx.root, rel)).Year; got != 1987 {
+			t.Errorf("%s: year %d, want the edit finished", rel, got)
+		}
+	}
+}
+
+func TestGetTrack(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{}, twoFLACs())
+	want := fx.album.Tracks[0]
+	var got api.TrackDetail
+	fx.getJSON(t, fx.token, fx.trackPath(0), &got)
+	if got.ID != want.ID || got.Etag != want.Etag || got.AlbumID != fx.album.ID || got.AlbumEtag != fx.album.Etag {
+		t.Errorf("GET = %+v, want track %+v of album %s", got, want, fx.album.ID)
+	}
+	fx.send(t, call{method: http.MethodGet, path: fx.trackPath(0), header: bearer("not a token")}).problem(t, http.StatusUnauthorized)
+	fx.send(t, call{method: http.MethodGet, path: "/tracks/" + missingID, header: bearer(fx.token)}).problem(t, http.StatusNotFound)
+}

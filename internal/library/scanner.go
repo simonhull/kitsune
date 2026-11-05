@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/simonhull/audiometa"
+
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -34,7 +36,12 @@ type Options struct {
 	Logger       *slog.Logger     // Nil discards.
 	Now          func() time.Time // Nil means time.Now.
 	Artwork      *artwork.Cache   // Nil skips album art.
+	TagWrites    bool             // Files may be rewritten. Off, a scan changes nothing under the roots.
+	Write        WriteFunc        // Nil means audiometa.WriteContext.
 }
+
+// WriteFunc saves edit to the audio file at path, as [audiometa.WriteContext] does.
+type WriteFunc func(ctx context.Context, path string, edit func(*audiometa.File) error) error
 
 // Stats counts what a scan did.
 type Stats struct {
@@ -43,6 +50,7 @@ type Stats struct {
 	Pruned                                             store.Pruned
 	SkippedRoots                                       int
 	Covers                                             int // Album covers stored: successful artwork.Cache.Put calls.
+	Swept                                              int // Temp files left by an interrupted edit, removed.
 }
 
 // Scanner keeps the store in step with the library roots. It is safe for
@@ -56,14 +64,18 @@ type Scanner struct {
 	log       *slog.Logger
 	now       func() time.Time
 	artwork   *artwork.Cache
-	mu        sync.Mutex
+	tagWrites bool
+	write     WriteFunc
+	mu        sync.Mutex  // Held by the one scan, from before it waits for lock.
+	lock      libraryLock // Held by a running scan or edit.
 }
 
 // NewScanner returns a scanner that writes to st.
-func NewScanner(st *store.Store, opts Options) *Scanner {
+func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // hugeParam: Options is built once at startup; a value keeps every caller a plain literal.
 	s := &Scanner{
 		st: st, roots: opts.Roots, grace: opts.MissingGrace, workers: opts.Workers,
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
+		tagWrites: opts.TagWrites, write: opts.Write, lock: newLibraryLock(),
 	}
 	if s.workers <= 0 {
 		s.workers = runtime.NumCPU()
@@ -74,18 +86,32 @@ func NewScanner(st *store.Store, opts Options) *Scanner {
 	if s.now == nil {
 		s.now = time.Now
 	}
+	if s.write == nil {
+		s.write = func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+			return audiometa.WriteContext(ctx, path, edit)
+		}
+	}
 	return s
 }
 
 // Scan walks the roots, reads the files mode asks for and updates the store.
-// It returns [ErrScanRunning] while another scan runs. A canceled ctx ends the
-// scan with an error wrapping ctx.Err(); everything read by then is stored.
+// It returns [ErrScanRunning] while another scan runs, and waits for an edit to
+// finish. A canceled ctx ends the scan with an error wrapping ctx.Err();
+// everything read by then is stored.
 func (s *Scanner) Scan(ctx context.Context, mode Mode) (Stats, error) {
 	if !s.mu.TryLock() {
 		return Stats{}, ErrScanRunning
 	}
 	defer s.mu.Unlock()
+	if err := s.lock.lock(ctx); err != nil {
+		return Stats{}, fmt.Errorf("scan: %w", err)
+	}
+	defer s.lock.unlock()
+	return s.scan(ctx, mode)
+}
 
+// scan is one scan, with the library lock held.
+func (s *Scanner) scan(ctx context.Context, mode Mode) (Stats, error) {
 	if len(s.roots) == 0 {
 		// A lost config file must not start deleting the library.
 		known, err := s.st.KnownRoots(ctx)

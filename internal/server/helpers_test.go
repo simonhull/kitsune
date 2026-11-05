@@ -19,6 +19,7 @@ import (
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
+	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/openapitest"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -89,6 +90,9 @@ type testServerOptions struct {
 	LogLevel      slog.Level // The zero value is Info.
 	Artwork       *artwork.Cache
 	Roots         int
+	TagWrites     bool
+	LibraryRoot   string            // "" means no scanner.
+	Write         library.WriteFunc // Nil means real writes.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -100,6 +104,8 @@ type testServer struct {
 	Auth   *auth.Service
 	Handle *Server
 	Store  *store.Store
+	// Scanner is set when testServerOptions.LibraryRoot is.
+	Scanner *library.Scanner
 }
 
 // newTestServer starts a server over a temporary store.
@@ -126,6 +132,12 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	if err != nil {
 		tb.Fatalf("auth.New: %v", err)
 	}
+	var scanner *library.Scanner
+	if o.LibraryRoot != "" {
+		scanner = library.NewScanner(st, library.Options{
+			Roots: []string{o.LibraryRoot}, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
+		})
+	}
 	logs := &syncBuffer{}
 	h := New(Config{
 		Auth:          svc,
@@ -138,10 +150,12 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		Artwork:       o.Artwork,
 		Library:       st,
 		Roots:         o.Roots,
+		TagWrites:     o.TagWrites,
+		Scanner:       scanner,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)
-	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st}
+	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st, Scanner: scanner}
 }
 
 // testClientIP reads the client IP from testClientIPHeader, falling back to
@@ -161,6 +175,18 @@ func (ts *testServer) seedUser(tb testing.TB, name, password string, role store.
 		tb.Fatalf("seed user %q: %v", name, err)
 	}
 	return u
+}
+
+// tokenFor seeds a user with role and returns a session token for it.
+func (ts *testServer) tokenFor(tb testing.TB, role store.Role) string {
+	tb.Helper()
+	name, password := "user-"+string(role), "a password"
+	ts.seedUser(tb, name, password, role)
+	res, err := ts.Auth.Login(tb.Context(), name, password, "test/1")
+	if err != nil {
+		tb.Fatalf("login: %v", err)
+	}
+	return res.Token
 }
 
 // call describes one request to [testServer.send].

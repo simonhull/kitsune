@@ -7,6 +7,7 @@ package sqlcdb
 
 import (
 	"context"
+	"strings"
 )
 
 const countLiveAlbums = `-- name: CountLiveAlbums :one
@@ -83,6 +84,49 @@ func (q *Queries) GetAlbum(ctx context.Context, ulid string) (GetAlbumRow, error
 	return i, err
 }
 
+const getEditFile = `-- name: GetEditFile :one
+SELECT id, ulid, root, rel_path, size, mtime
+FROM tracks
+WHERE ulid = ? AND missing_since IS NULL
+`
+
+type GetEditFileRow struct {
+	ID      int64
+	Ulid    string
+	Root    string
+	RelPath string
+	Size    int64
+	Mtime   int64
+}
+
+func (q *Queries) GetEditFile(ctx context.Context, ulid string) (GetEditFileRow, error) {
+	row := q.queryRow(ctx, q.getEditFileStmt, getEditFile, ulid)
+	var i GetEditFileRow
+	err := row.Scan(
+		&i.ID,
+		&i.Ulid,
+		&i.Root,
+		&i.RelPath,
+		&i.Size,
+		&i.Mtime,
+	)
+	return i, err
+}
+
+const getTrackAlbum = `-- name: GetTrackAlbum :one
+SELECT a.ulid
+FROM tracks t
+JOIN albums a ON a.id = t.album_id
+WHERE t.ulid = ? AND t.missing_since IS NULL
+`
+
+func (q *Queries) GetTrackAlbum(ctx context.Context, ulid string) (string, error) {
+	row := q.queryRow(ctx, q.getTrackAlbumStmt, getTrackAlbum, ulid)
+	var ulid_2 string
+	err := row.Scan(&ulid_2)
+	return ulid_2, err
+}
+
 const getTrackFile = `-- name: GetTrackFile :one
 SELECT root, rel_path, format
 FROM tracks
@@ -100,6 +144,106 @@ func (q *Queries) GetTrackFile(ctx context.Context, ulid string) (GetTrackFileRo
 	var i GetTrackFileRow
 	err := row.Scan(&i.Root, &i.RelPath, &i.Format)
 	return i, err
+}
+
+const listAlbumFiles = `-- name: ListAlbumFiles :many
+SELECT t.id, t.ulid, t.root, t.rel_path, t.size, t.mtime
+FROM tracks t
+JOIN albums a ON a.id = t.album_id
+WHERE a.ulid = ? AND t.missing_since IS NULL
+ORDER BY coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id
+`
+
+type ListAlbumFilesRow struct {
+	ID      int64
+	Ulid    string
+	Root    string
+	RelPath string
+	Size    int64
+	Mtime   int64
+}
+
+func (q *Queries) ListAlbumFiles(ctx context.Context, ulid string) ([]ListAlbumFilesRow, error) {
+	rows, err := q.query(ctx, q.listAlbumFilesStmt, listAlbumFiles, ulid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumFilesRow
+	for rows.Next() {
+		var i ListAlbumFilesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ulid,
+			&i.Root,
+			&i.RelPath,
+			&i.Size,
+			&i.Mtime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumTagValues = `-- name: ListAlbumTagValues :many
+SELECT t.ulid, tt.value
+FROM tracks t
+JOIN albums a ON a.id = t.album_id
+JOIN track_tags tt ON tt.track_id = t.id
+WHERE a.ulid = ?1 AND t.missing_since IS NULL AND tt.key IN (/*SLICE:tag_keys*/?)
+ORDER BY t.id, tt.key, tt.ord
+`
+
+type ListAlbumTagValuesParams struct {
+	Album   string
+	TagKeys []string
+}
+
+type ListAlbumTagValuesRow struct {
+	Ulid  string
+	Value string
+}
+
+func (q *Queries) ListAlbumTagValues(ctx context.Context, arg ListAlbumTagValuesParams) ([]ListAlbumTagValuesRow, error) {
+	query := listAlbumTagValues
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Album)
+	if len(arg.TagKeys) > 0 {
+		for _, v := range arg.TagKeys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:tag_keys*/?", strings.Repeat(",?", len(arg.TagKeys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:tag_keys*/?", "NULL", 1)
+	}
+	rows, err := q.query(ctx, nil, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumTagValuesRow
+	for rows.Next() {
+		var i ListAlbumTagValuesRow
+		if err := rows.Scan(&i.Ulid, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAlbumTrackArtists = `-- name: ListAlbumTrackArtists :many
@@ -141,8 +285,9 @@ func (q *Queries) ListAlbumTrackArtists(ctx context.Context, albumID int64) ([]L
 
 const listAlbumTracks = `-- name: ListAlbumTracks :many
 SELECT
-    id, ulid, title, disc_no, track_no, duration_ms, format, sample_rate, bit_depth,
-    rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak
+    id, ulid, title, disc_no, disc_total, track_no, track_total, year, duration_ms, format,
+    sample_rate, bit_depth, rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak,
+    size, mtime
 FROM tracks
 WHERE album_id = ? AND missing_since IS NULL
 ORDER BY coalesce(disc_no, 1), track_no NULLS LAST, title, id
@@ -153,7 +298,10 @@ type ListAlbumTracksRow struct {
 	Ulid        string
 	Title       string
 	DiscNo      *int64
+	DiscTotal   *int64
 	TrackNo     *int64
+	TrackTotal  *int64
+	Year        *int64
 	DurationMs  int64
 	Format      string
 	SampleRate  *int64
@@ -162,6 +310,8 @@ type ListAlbumTracksRow struct {
 	RgTrackPeak *float64
 	RgAlbumGain *float64
 	RgAlbumPeak *float64
+	Size        int64
+	Mtime       int64
 }
 
 func (q *Queries) ListAlbumTracks(ctx context.Context, albumID int64) ([]ListAlbumTracksRow, error) {
@@ -178,7 +328,10 @@ func (q *Queries) ListAlbumTracks(ctx context.Context, albumID int64) ([]ListAlb
 			&i.Ulid,
 			&i.Title,
 			&i.DiscNo,
+			&i.DiscTotal,
 			&i.TrackNo,
+			&i.TrackTotal,
+			&i.Year,
 			&i.DurationMs,
 			&i.Format,
 			&i.SampleRate,
@@ -187,6 +340,8 @@ func (q *Queries) ListAlbumTracks(ctx context.Context, albumID int64) ([]ListAlb
 			&i.RgTrackPeak,
 			&i.RgAlbumGain,
 			&i.RgAlbumPeak,
+			&i.Size,
+			&i.Mtime,
 		); err != nil {
 			return nil, err
 		}

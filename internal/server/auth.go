@@ -73,6 +73,19 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	})
 }
 
+// requireAdmin wraps next so that it runs only for administrators. It belongs
+// inside [Server.authenticate], which knows the caller: outside it, everyone is
+// refused.
+func requireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u, ok := currentUser(r.Context()); !ok || u.Role != store.RoleAdmin {
+			writeProblem(w, r, http.StatusForbidden, "administrators only")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // credentials is the session token a request carries and where it came from.
 type credentials struct {
 	token     string

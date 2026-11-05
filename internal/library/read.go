@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -107,7 +108,7 @@ func (s *Scanner) startWorkers(work context.Context, jobs []job, rd *reader) <-c
 
 // reader reads files for the workers of one scan.
 type reader struct {
-	covers *covers
+	covers *covers // Nil leaves album art out, so an album keeps the cover it has.
 }
 
 // readJob opens, fingerprints and maps one file. It reports false when the
@@ -140,10 +141,36 @@ func (rd *reader) readFile(ctx context.Context, j *job) (*store.TrackWrite, erro
 		return nil, err //nolint:wrapcheck // The message is stored as the scan issue verbatim.
 	}
 	tw := NewTrackWrite(f, &FileInfo{Root: j.Root, RelPath: j.RelPath, Size: j.Size, MTime: j.MTime, Digest: digest})
+	if rd.covers == nil {
+		return &tw, nil
+	}
 	if coverErr := rd.covers.attach(ctx, f, j, &tw); coverErr != nil {
 		return nil, coverErr
 	}
 	return &tw, nil
+}
+
+// reindex reads track id's file again and stores the result in one batch, through
+// the scan's read path. It never touches artwork. Nothing changes identity, so
+// nothing needs pruning. The caller holds the library lock.
+func (s *Scanner) reindex(ctx context.Context, id int64, root, relPath string) error {
+	info, err := os.Stat(filepath.Join(root, relPath))
+	if err != nil {
+		return fmt.Errorf("reindex: %w", err)
+	}
+	j := job{Root: root, RelPath: relPath, Size: info.Size(), MTime: info.ModTime(), TrackID: id}
+	tw, err := (&reader{}).readFile(ctx, &j)
+	if err != nil {
+		return fmt.Errorf("reindex: %w", err)
+	}
+	w := writer{s: s, stats: &Stats{}}
+	if err = w.identify(ctx, tw, &j); err != nil {
+		return fmt.Errorf("reindex: %w", err)
+	}
+	if err = s.st.WriteBatch(ctx, &store.Batch{Tracks: []store.TrackWrite{*tw}}); err != nil {
+		return fmt.Errorf("reindex: %w", err)
+	}
+	return nil
 }
 
 // issueFor turns a failed read into a scan issue. Corrupt and unsupported

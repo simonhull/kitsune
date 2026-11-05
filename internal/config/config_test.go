@@ -68,6 +68,21 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+// TestTagWritesDefaultOff pins the one thing that keeps a read-only library safe.
+func TestTagWritesDefaultOff(t *testing.T) {
+	t.Parallel()
+	if Default().Library.TagWrites {
+		t.Error("Default().Library.TagWrites = true, want false")
+	}
+	got, err := Load(writeConfig(t, "[library]\nmissing_grace = \"1h\"\n"), testPaths(t))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Library.TagWrites {
+		t.Error("a config that leaves tag_writes out turned it on")
+	}
+}
+
 func TestLoadWithoutDefaultFileLocation(t *testing.T) {
 	t.Parallel()
 	got, err := Load("", Paths{DataDir: testDataDir})
@@ -103,6 +118,7 @@ trusted_proxies = ["172.18.0.0/16", "192.168.1.5"]
 roots = ["/srv/music/", "/srv/audiobooks", "/srv/musicals"]
 missing_grace = "1h30m"
 quick_scan = "04:15"
+tag_writes = true
 
 [storage]
 data_dir = "/data/kitsune/"
@@ -124,6 +140,7 @@ level = "debug"
 			Roots:        []string{musicRoot, "/srv/audiobooks", "/srv/musicals"},
 			MissingGrace: 90 * time.Minute,
 			QuickScan:    ClockTime{Hour: 4, Minute: 15},
+			TagWrites:    true,
 		},
 		Storage: Storage{DataDir: "/data/kitsune"},
 		Log:     Log{Level: slog.LevelDebug},

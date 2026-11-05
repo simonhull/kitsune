@@ -34,7 +34,7 @@ var errUnknownKey = errors.New("not a config key")
 func knownKeys() []string {
 	return []string{
 		"server", "server.listen", "server.base_url", "server.trusted_proxies",
-		"library", "library.roots", "library.missing_grace", "library.quick_scan",
+		"library", "library.roots", "library.missing_grace", "library.quick_scan", "library.tag_writes",
 		"storage", "storage.data_dir",
 		"log", "log.level",
 	}
@@ -84,6 +84,10 @@ type Library struct {
 	MissingGrace time.Duration `toml:"missing_grace"`
 	// QuickScan is the daily local time of the quick scan.
 	QuickScan ClockTime `toml:"quick_scan"`
+	// TagWrites lets an administrator edit tags, which rewrites audio files
+	// under Roots. Off by default: nothing else stops a write, so a read-only
+	// library stays safe only while this stays false.
+	TagWrites bool `toml:"tag_writes"`
 }
 
 // Storage configures where the server keeps its state.

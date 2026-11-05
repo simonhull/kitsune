@@ -46,7 +46,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Errors are RFC 9457 problems via `writeProblem`; never `http.Error`.
 - Non-public routes run behind `authenticate`: `Authorization: Bearer` wins over the
   `kitsune_session` cookie; cookie-authenticated unsafe methods must send
-  `X-Kitsune-Request: 1`. Handlers read the caller with `currentUser`.
+  `X-Kitsune-Request: 1`. Handlers read the caller with `currentUser`. A route with `admin: true`
+  also runs behind `requireAdmin`.
 - Problem `type`s come from the status (`urn:kitsune:problem:<kind>`); write problems only
   through `writeProblem`.
 - The whole API is served under `/api/v1` (`servers` in the contract; the paths in it and in the
@@ -54,8 +55,11 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Browse lists page by keyset (`GET /albums`: `sort` `added` or `name`, opaque `cursor`), never
   `OFFSET`. The two sorts are fixed sqlc queries, one per index, with identical SELECT lists; they are
   not built dynamically, which supersedes the dynamic-sorts rule in the Store section for these two.
-  This also supersedes the spec's `next_cursor`, limit 500 and album ETag: the API says `nextCursor`,
-  caps `limit` at 200 and sends no album ETag.
+  This also supersedes the spec's `next_cursor` and limit 500: the API says `nextCursor` and caps
+  `limit` at 200.
+- Tag edits are `PATCH /tracks/{id}` and `PATCH /albums/{id}`. Their validators are the `etag` fields
+  in the body, a hash of `ulid:size:mtime_ms` per track, and not response headers. Clients send one
+  back verbatim as `If-Match`; comparison is strong and happens under the library lock.
 - A canceled query fails with `sqlite3: interrupted`, not `context.Canceled`: check
   `r.Context().Err()` before logging an error from a handler a client can abandon.
 - Responses carry `api` types built field by field (`toAPIUser`); never marshal a
@@ -109,10 +113,12 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   through `MatchKey` (trim, collapse spaces, NFC, case fold); no punctuation stripping,
   no splitting of names.
 - Raw tag names live only in `keys.go`'s candidate tables, verified per format against
-  real files written by audiometa. Add a key there, never inline.
+  real files written by audiometa, and in `writekeys.go`'s write table, which maps each editable
+  field to every key it owns. Add a key there, never inline.
 - audiometa reports tags as stored; display fallbacks (title from file name, sort name
   from name, disc folders) are Kitsune's and live here.
-- The scanner is the only library writer: one goroutine resolves identity and writes.
+- The scanner is the only library writer: one goroutine resolves identity and writes. Tag edits go
+  through it too (`Scanner.EditTrack`, `Scanner.EditAlbum`), holding the library lock.
   Identity order: row at the path, then a single digest match among missing tracks,
   then same relative path, then base name, then a new ULID.
 - An outage must never look like deletions, because a missing track is eventually
@@ -122,6 +128,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   track may be behind an outage.
 - Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
   wait for the file to change.
+- One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it
+  gets `ErrBusy`; a scan that meets an edit waits. Readers never take it.
+- Scans remove audiometa's temp files (`isWriteTemp`), and only with `library.tag_writes` on: off,
+  nothing under a root ever changes.
 
 ## Artwork
 - `internal/artwork` renders covers during the scan and knows nothing of the store or the

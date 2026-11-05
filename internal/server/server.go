@@ -18,6 +18,7 @@ import (
 
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
+	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -37,6 +38,11 @@ type Config struct {
 	Artwork       *artwork.Cache              // Nil means every GET /artwork/{hash} is a 404.
 	Library       *store.Store                // Required; New panics if nil. Backs the browse routes.
 	Roots         int                         // The number of configured library roots, reported by GET /library.
+	TagWrites     bool                        // Administrators may edit tags. Off leaves every file alone.
+	Scanner       *library.Scanner            // Required with TagWrites; New panics if nil. Applies tag edits.
+	// Context bounds tag edits. Nil means context.Background. An edit runs on it and
+	// not on the request, so a client that goes away can't stop an album midway.
+	Context context.Context //nolint:containedctx // The server's lifetime, not a request's.
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -54,21 +60,26 @@ type Server struct {
 	artwork       *artwork.Cache
 	library       *store.Store
 	roots         int
+	tagWrites     bool
+	scanner       *library.Scanner
+	editContext   context.Context //nolint:containedctx // Config.Context: the server's lifetime, not a request's.
 	limiter       *loginLimiter
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
-// method and path, and whether it skips authentication (security: []).
+// method and path, whether it skips authentication (security: []), and whether
+// only administrators may call it.
 type route struct {
 	pattern string
 	public  bool
+	admin   bool
 	handle  http.HandlerFunc
 }
 
 // New returns a server for cfg.
 //
-// New panics if cfg.Auth or cfg.Library is nil or cfg.BasePath is malformed, which are
-// programming errors.
+// New panics if cfg.Auth or cfg.Library is nil, cfg.TagWrites comes without
+// cfg.Scanner or cfg.BasePath is malformed, which are programming errors.
 func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built once at startup; a value keeps every caller a plain literal.
 	checkConfig(&cfg)
 	s := &Server{
@@ -83,6 +94,9 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		artwork:       cfg.Artwork,
 		library:       cfg.Library,
 		roots:         cfg.Roots,
+		tagWrites:     cfg.TagWrites,
+		scanner:       cfg.Scanner,
+		editContext:   cfg.Context,
 		limiter:       newLoginLimiter(maxLimiterKeys),
 	}
 	if s.log == nil {
@@ -94,12 +108,11 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 	if s.clientIP == nil {
 		s.clientIP = remoteHost
 	}
+	if s.editContext == nil {
+		s.editContext = context.Background()
+	}
 	for _, rt := range s.routes() {
-		if rt.public {
-			s.mux.Handle(rt.pattern, rt.handle)
-			continue
-		}
-		s.mux.Handle(rt.pattern, s.authenticate(rt.handle))
+		s.mux.Handle(rt.pattern, s.guarded(&rt))
 	}
 	s.handler = withRequestID(s.withAccessLog(withProblems(s.withBasePath(s.mux))))
 	return s
@@ -112,6 +125,9 @@ func checkConfig(cfg *Config) {
 	}
 	if cfg.Library == nil {
 		panic("server: Config.Library is required")
+	}
+	if cfg.TagWrites && cfg.Scanner == nil {
+		panic("server: Config.Scanner is required with TagWrites")
 	}
 	if b := cfg.BasePath; b != "" && (!strings.HasPrefix(b, "/") || strings.HasSuffix(b, "/")) {
 		panic("server: Config.BasePath must be empty, or start with / and not end with /")
@@ -133,6 +149,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handler.ServeHTTP(w, r)
 }
 
+// guarded returns rt's handler behind the checks its route asks for.
+func (s *Server) guarded(rt *route) http.Handler {
+	switch {
+	case rt.public:
+		return rt.handle
+	case rt.admin:
+		return s.authenticate(requireAdmin(rt.handle))
+	}
+	return s.authenticate(rt.handle)
+}
+
 // routes lists every operation in the contract.
 func (s *Server) routes() []route {
 	return []route{
@@ -144,10 +171,13 @@ func (s *Server) routes() []route {
 		{pattern: "GET /artwork/{hash}", handle: s.getArtwork},
 		{pattern: "GET /albums", handle: s.getAlbums},
 		{pattern: "GET /albums/{id}", handle: s.getAlbum},
+		{pattern: "PATCH /albums/{id}", admin: true, handle: s.patchAlbum},
 		{pattern: "GET /artists", handle: s.getArtists},
 		{pattern: "GET /artists/{id}", handle: s.getArtist},
 		{pattern: "GET /library", handle: s.getLibrary},
 		{pattern: "GET /search", handle: s.getSearch},
+		{pattern: "GET /tracks/{id}", handle: s.getTrack},
+		{pattern: "PATCH /tracks/{id}", admin: true, handle: s.patchTrack},
 		{pattern: "GET /tracks/{id}/stream", handle: s.getTrackStream},
 	}
 }

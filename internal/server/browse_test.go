@@ -251,7 +251,7 @@ func TestNewPanicsWithoutLibrary(t *testing.T) {
 
 func TestToAPIAlbumKeepsEmptyListsNonNull(t *testing.T) {
 	t.Parallel()
-	d := toAPIAlbumDetail(&store.AlbumDetail{Tracks: []store.Track{{}}})
+	d := toAPIAlbumDetail(&store.AlbumDetail{Tracks: []store.Track{{}}}, nil)
 	body, err := json.Marshal(d)
 	if err != nil {
 		t.Fatal(err)
@@ -269,5 +269,8 @@ func TestToAPIAlbumKeepsEmptyListsNonNull(t *testing.T) {
 	}
 	if f, ok := m["formats"].([]any); !ok || len(f) != 0 {
 		t.Errorf("formats = %v, want []", m["formats"])
+	}
+	if g, ok := m["genres"].([]any); !ok || len(g) != 0 {
+		t.Errorf("genres = %v, want []", m["genres"])
 	}
 }
