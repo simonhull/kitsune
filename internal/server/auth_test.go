@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json/v2"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -220,5 +221,50 @@ func TestMeReportsTagEditing(t *testing.T) {
 				t.Errorf("GET /me = %+v, want canEditTags %t", me, tt.want)
 			}
 		})
+	}
+}
+
+func TestAdminRoutesRefuseEveryoneElse(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		role store.Role // Empty sends no credentials.
+		want int
+	}{
+		{"admin", store.RoleAdmin, http.StatusNoContent},
+		{"user", store.RoleUser, http.StatusForbidden},
+		{"nobody", "", http.StatusUnauthorized},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ts := newTestServer(t)
+			ran := false
+			h := ts.Handle.guarded(&route{admin: true, handle: func(w http.ResponseWriter, _ *http.Request) {
+				ran = true
+				w.WriteHeader(http.StatusNoContent)
+			}})
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/", http.NoBody)
+			if tt.role != "" {
+				req.Header.Set(authorizationHeader, "Bearer "+ts.tokenFor(t, tt.role))
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != tt.want || ran != (tt.want == http.StatusNoContent) {
+				t.Errorf("status = %d, ran = %t, want %d", rec.Code, ran, tt.want)
+			}
+		})
+	}
+}
+
+func TestRequireAdminOutsideAuthenticateRefuses(t *testing.T) {
+	t.Parallel()
+	h := requireAdmin(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("the handler ran without a caller")
+	}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/", http.NoBody))
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", rec.Code)
 	}
 }

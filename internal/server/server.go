@@ -60,10 +60,12 @@ type Server struct {
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
-// method and path, and whether it skips authentication (security: []).
+// method and path, whether it skips authentication (security: []), and whether
+// only administrators may call it.
 type route struct {
 	pattern string
 	public  bool
+	admin   bool
 	handle  http.HandlerFunc
 }
 
@@ -98,11 +100,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		s.clientIP = remoteHost
 	}
 	for _, rt := range s.routes() {
-		if rt.public {
-			s.mux.Handle(rt.pattern, rt.handle)
-			continue
-		}
-		s.mux.Handle(rt.pattern, s.authenticate(rt.handle))
+		s.mux.Handle(rt.pattern, s.guarded(&rt))
 	}
 	s.handler = withRequestID(s.withAccessLog(withProblems(s.withBasePath(s.mux))))
 	return s
@@ -134,6 +132,17 @@ func remoteHost(r *http.Request) string {
 // ServeHTTP implements [http.Handler].
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handler.ServeHTTP(w, r)
+}
+
+// guarded returns rt's handler behind the checks its route asks for.
+func (s *Server) guarded(rt *route) http.Handler {
+	switch {
+	case rt.public:
+		return rt.handle
+	case rt.admin:
+		return s.authenticate(requireAdmin(rt.handle))
+	}
+	return s.authenticate(rt.handle)
 }
 
 // routes lists every operation in the contract.

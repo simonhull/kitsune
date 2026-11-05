@@ -46,7 +46,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Errors are RFC 9457 problems via `writeProblem`; never `http.Error`.
 - Non-public routes run behind `authenticate`: `Authorization: Bearer` wins over the
   `kitsune_session` cookie; cookie-authenticated unsafe methods must send
-  `X-Kitsune-Request: 1`. Handlers read the caller with `currentUser`.
+  `X-Kitsune-Request: 1`. Handlers read the caller with `currentUser`. A route with `admin: true`
+  also runs behind `requireAdmin`.
 - Problem `type`s come from the status (`urn:kitsune:problem:<kind>`); write problems only
   through `writeProblem`.
 - The whole API is served under `/api/v1` (`servers` in the contract; the paths in it and in the
