@@ -1,3 +1,4 @@
+import { cueOf, type NowPlaying } from '#lib/library/cue.ts';
 import { library, type Library, type PlayerView } from '#lib/library/library.svelte.ts';
 import type { Album, Track } from '#lib/library/source.ts';
 import { appliedGain } from './gain.ts';
@@ -52,9 +53,20 @@ export class Player implements PlayerView {
 		host.follow(this);
 	}
 
+	/** Reports whether sound is coming, or on its way. */
+	get sounding(): boolean {
+		return this.status === 'playing' || this.status === 'loading';
+	}
+
 	/** Reports whether a queue has started. It stays started, paused or finished, until a reset. */
 	get started(): boolean {
 		return this.queue !== null;
+	}
+
+	/** What the island and Now playing should name: the player owns the order. */
+	get cue(): NowPlaying | null {
+		const { queue } = this;
+		return queue === null ? null : cueOf(queue.album, queue.tracks, queue.index);
 	}
 
 	get #output(): AudioOutput {
@@ -100,7 +112,7 @@ export class Player implements PlayerView {
 	}
 
 	toggle(): void {
-		if (this.status === 'playing' || this.status === 'loading') {
+		if (this.sounding) {
 			this.pause();
 		} else {
 			this.resume();
@@ -187,6 +199,7 @@ export class Player implements PlayerView {
 		this.position = 0;
 		this.status = 'loading';
 		this.#stale = false;
+		this.#library.showQueue();
 		const track = currentOf(queue);
 		if (track === undefined) {
 			return;
@@ -241,7 +254,7 @@ export class Player implements PlayerView {
 	}
 
 	#stopped(): void {
-		if (this.status === 'playing' || this.status === 'loading') {
+		if (this.sounding) {
 			this.#hold(false);
 		}
 	}
@@ -287,6 +300,7 @@ export class Player implements PlayerView {
 		this.queue = rewound(queue);
 		this.position = 0;
 		this.#hold(true);
+		this.#library.showQueue();
 	}
 
 	/** Finds out what a media failure was: the element can't tell a lost session from a bad file. */

@@ -255,6 +255,75 @@ describe('Player', () => {
 	});
 });
 
+describe('the cue under a player', () => {
+	it('names the queue and what follows it when shuffled', async () => {
+		const { library, player } = setup();
+		player.shuffle(album(6));
+		await settle();
+		const order = player.queue?.tracks ?? [];
+		expect(library.playing?.track).toBe(order.at(0));
+		expect(library.playing?.upNext).toEqual(order.slice(1, 4));
+		expect(library.playing?.moreCount).toBe(2);
+		expect(library.playing?.trackCount).toBe(6);
+		player.next();
+		await settle();
+		expect(library.playing?.index).toBe(1);
+		expect(library.playing?.upNext).toEqual(order.slice(2, 5));
+	});
+
+	it('still follows the album opened until the first play', () => {
+		const { library } = setup();
+		library.cueAlbum(album(2, 'first'));
+		library.cueAlbum(album(2, 'second'));
+		expect(library.playing?.album.id).toBe('second');
+	});
+
+	it('leaves cue and sound alone when another album opens during playback', async () => {
+		const { library, player, output } = setup();
+		player.play(album(4), 2);
+		await settle();
+		library.cueAlbum(album(3, 'other'));
+		expect(library.playing?.album.id).toBe('a');
+		expect(library.playing?.track.id).toBe('t2');
+		expect(player.queue?.album.id).toBe('a');
+		expect(output.url).toBe('t2');
+		expect(output.playing).toBe(true);
+	});
+
+	it.each([
+		['paused', (player: Player) => player.pause()],
+		['past the end of the queue', (player: Player) => player.next()]
+	])('stays started when %s', async (_, happen) => {
+		const { library, player } = setup();
+		player.play(album(2), 1);
+		await settle();
+		happen(player);
+		library.cueAlbum(album(3, 'other'));
+		expect(library.playing?.album.id).toBe('a');
+	});
+
+	it('takes over from the pin', async () => {
+		const pinned = new Library(createFixtureSource(), { pinnedAlbumId: 'night-ferry-94' });
+		await pinned.loadShell();
+		expect(pinned.playing?.album.id).toBe('night-ferry-94');
+		const under = new Player(pinned, () => new ScriptedOutput());
+		under.play(album(3, 'glass'), 1);
+		await settle();
+		expect(pinned.playing?.album.id).toBe('glass');
+		expect(pinned.playing?.index).toBe(1);
+	});
+
+	it('leaves nothing in the island after a reset', async () => {
+		const { library, player } = setup();
+		player.play(album(2));
+		await settle();
+		library.reset();
+		expect(library.playing).toBeNull();
+		library.cueAlbum(album(2, 'next-user'));
+		expect(library.playing?.album.id).toBe('next-user');
+	});
+});
+
 describe('Player failures', () => {
 	it('ignores a superseded play', async () => {
 		const { player, output } = setup();

@@ -5,6 +5,7 @@
 	import { whenSettled } from '#lib/morph/settled.ts';
 	import AlbumHero from '#lib/pages/AlbumHero.svelte';
 	import TrackList from '#lib/pages/TrackList.svelte';
+	import { player } from '#lib/player/player.svelte.ts';
 	import type { PageProps } from './$types';
 
 	let { params }: PageProps = $props();
@@ -49,6 +50,12 @@
 		<TrackList
 			{album}
 			{cuedId}
+			sounding={player.sounding}
+			play={(index) => {
+				if (album !== undefined) {
+					player.play(album, index);
+				}
+			}}
 			gone={library.failed(id)}
 			unavailable={library.unavailable(id)}
 			retry={() => void library.loadAlbum(id)}

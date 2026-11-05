@@ -4,6 +4,7 @@
 	import { albumFacts } from '#lib/library/format.ts';
 	import type { Album, AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
+	import { player } from '#lib/player/player.svelte.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 
 	interface Props {
@@ -17,6 +18,20 @@
 	let { albumId, entry, album }: Props = $props();
 
 	const meta = $derived(album === undefined ? '' : albumFacts(album, album));
+	const playable = $derived(album !== undefined && album.tracks.length > 0);
+	const sounding = $derived(player.queue?.album.id === albumId && player.sounding);
+
+	function play(): void {
+		if (album !== undefined) {
+			player.playOrToggle(album);
+		}
+	}
+
+	function shuffle(): void {
+		if (album !== undefined) {
+			player.shuffle(album);
+		}
+	}
 </script>
 
 <section aria-label="Album" class="hero">
@@ -38,15 +53,21 @@
 			{entry?.title ?? ''}
 		</h1>
 		<div class="actions">
-			<button type="button" class="play" aria-label={`Play ${entry?.title ?? 'album'}`} disabled>
-				<Icon name="play" size={28} />
+			<button
+				type="button"
+				class="play"
+				aria-label={`${sounding ? 'Pause' : 'Play'} ${entry?.title ?? 'album'}`}
+				disabled={!playable}
+				onclick={play}
+			>
+				<Icon name={sounding ? 'pause' : 'play'} size={28} />
 			</button>
 			<span class="artist">
 				<span class="name" use:morph={{ id: `artist:${albumId}`, slot: 'hero', kind: 'title' }}
 					>{entry?.artist ?? ''}</span
 				>
 			</span>
-			<button type="button" class="ghost" disabled>Shuffle</button>
+			<button type="button" class="ghost" disabled={!playable} onclick={shuffle}>Shuffle</button>
 			<button type="button" class="ghost round" aria-label="Favorite" disabled
 				><Icon name="heart-outline" /></button
 			>
@@ -148,11 +169,8 @@
 		max-width: 100%;
 	}
 
-	/* Nothing can sound until streaming lands: a hollow button keeps its place and promises nothing. */
+	/* Only until the tracks stream in, which is usually before anyone could press it. */
 	.play:disabled {
-		background: transparent;
-		box-shadow: inset 0 0 0 2px var(--accent);
-		color: var(--accent);
 		cursor: default;
 	}
 

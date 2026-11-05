@@ -80,6 +80,9 @@ export interface LibraryOptions {
 
 /** What the library sees of the player, which is built on it and so can't be imported here. */
 export interface PlayerView {
+	/** From the first play until a reset, whatever has happened since. */
+	readonly started: boolean;
+	readonly cue: NowPlaying | null;
 	reset(): void;
 }
 
@@ -493,9 +496,14 @@ export class Library {
 	 * Finds what to cue for the island's first frame, without holding up the page if it can't, or null
 	 * to leave the cue as it is. It only reads: the cue is what makes the island appear, and that's
 	 * for whoever opens Home. Leaving the deck it asks again for what's already cued, because that
-	 * was read part way through the scan.
+	 * was read part way through the scan. A queue that has started is left alone: it keeps the track
+	 * list it was built from, even one read part way through a scan, because swapping that under
+	 * the sound would lose its place. That list stays short until the album is next played.
 	 */
 	async #openingCue(again: boolean): Promise<Album | undefined | null> {
+		if (this.#player?.started === true) {
+			return null;
+		}
 		const cued = again ? this.playing?.album.id : undefined;
 		const id = this.#pinnedAlbumId ?? cued ?? this.recent.at(0)?.id;
 		if ((this.playing !== null && !again) || id === undefined) {
@@ -505,8 +513,16 @@ export class Library {
 		return this.#albums.get(id);
 	}
 
+	/** Cues an album's first track, unless a queue has started: then the player speaks for the cue. */
 	#cue(album: Album | undefined): void {
-		this.playing = album === undefined ? null : cueOf(album);
+		if (this.#player?.started !== true) {
+			this.playing = album === undefined ? null : cueOf(album);
+		}
+	}
+
+	/** Shows what the player is on. It outranks the lab's pin: that only holds a cue, not a queue. */
+	showQueue(): void {
+		this.playing = this.#player?.cue ?? this.playing;
 	}
 
 	/**
