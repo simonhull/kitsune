@@ -404,7 +404,7 @@ func albumTracksFixture() []store.TrackWrite {
 		w.Duration = time.Duration(i+1) * time.Second
 		w.Artists = nil
 		for _, a := range sp.artists {
-			w.Artists = append(w.Artists, store.ArtistWrite{MatchKey: strings.ToLower(a), Name: a, SortName: a})
+			w.Artists = append(w.Artists, store.ArtistWrite{ULID: artistULID(strings.ToLower(a)), MatchKey: strings.ToLower(a), Name: a, SortName: a})
 		}
 		tws = append(tws, w)
 	}

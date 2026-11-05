@@ -615,3 +615,62 @@ func TestScanGivesEachAlbumAPublicID(t *testing.T) {
 		t.Errorf("%d albums, want at least 2", len(seen))
 	}
 }
+
+// artistIDs returns the public ID of every artist, by name.
+func artistIDs(t *testing.T, dbPath string) map[string]string {
+	t.Helper()
+	db, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	rows, err := db.QueryContext(t.Context(), "SELECT name, ulid FROM artists")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	ids := map[string]string{}
+	for rows.Next() {
+		var name, id string
+		if err = rows.Scan(&name, &id); err != nil {
+			t.Fatal(err)
+		}
+		ids[name] = id
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return ids
+}
+
+func TestScanKeepsArtistIDs(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	root := l.roots[0]
+	l.copyTo(root, "one.flac", sampleFLAC)
+	l.copyTo(root, keepMP3, sampleMP3)
+	path := filepath.Join(root, "one.flac")
+	retag(t, path, "Before")
+	l.scan(Quick)
+	before := artistIDs(t, l.dbPath)
+	id := before["Before"]
+	if len(id) != 26 {
+		t.Fatalf("artist ULID = %q, want 26 characters", id)
+	}
+
+	l.scan(Full)
+	if after := artistIDs(t, l.dbPath); !reflect.DeepEqual(after, before) {
+		t.Errorf("after a full scan: %v, want %v", after, before)
+	}
+
+	retag(t, path, otherName) // The update branch returns early from identify; a new artist still needs an ID.
+	bump(t, path, 2)
+	l.scan(Quick)
+	after := artistIDs(t, l.dbPath)
+	if got := after[otherName]; len(got) != 26 || got == id {
+		t.Errorf("new artist's ULID = %q, want a fresh 26-character ID", got)
+	}
+	if _, kept := after["Before"]; kept {
+		t.Error("the unused artist was not pruned")
+	}
+}

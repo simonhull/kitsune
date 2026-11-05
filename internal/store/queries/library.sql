@@ -1,6 +1,6 @@
 -- name: UpsertArtist :one
-INSERT INTO artists (match_key, name, sort_name, mbid)
-VALUES (?, ?, ?, ?)
+INSERT INTO artists (ulid, match_key, name, sort_name, mbid)
+VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (match_key) DO UPDATE SET
     name = excluded.name,
     sort_name = excluded.sort_name,

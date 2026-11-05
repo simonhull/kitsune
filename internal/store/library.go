@@ -77,7 +77,10 @@ type ArtworkWrite struct {
 }
 
 // ArtistWrite identifies an artist by MatchKey and carries its display fields.
-type ArtistWrite struct{ MatchKey, Name, SortName, MBID string }
+type ArtistWrite struct {
+	MatchKey, Name, SortName, MBID string
+	ULID                           string // Required, 26 characters; the artist's public ID, kept when the artist already exists.
+}
 
 // Tag is one raw tag value.
 type Tag struct{ Key, Value string }
@@ -243,6 +246,9 @@ func (tw *TrackWrite) validateArtists() error {
 			if list[i].MatchKey == "" {
 				return fmt.Errorf("empty MatchKey on artist %q: %w", list[i].Name, ErrInvalidWrite)
 			}
+			if len(list[i].ULID) != ulidLen {
+				return fmt.Errorf("ULID of artist %q is %d characters, want %d: %w", list[i].Name, len(list[i].ULID), ulidLen, ErrInvalidWrite)
+			}
 		}
 	}
 	return nil
@@ -295,8 +301,9 @@ func (f *ftsStmts) close() error {
 //
 // It returns an error wrapping [ErrInvalidWrite], and writes nothing, if a
 // track lacks a 26-character ULID (when inserting), Root, RelPath, an album
-// GroupKey, a 26-character album ULID or an artist MatchKey. It returns an error wrapping [ErrNotFound] if
-// an update names a track that does not exist. Any error rolls the whole batch
+// GroupKey, a 26-character album ULID, or an artist MatchKey and 26-character
+// ULID. It returns an error wrapping [ErrNotFound] if an update names a track
+// that does not exist. Any error rolls the whole batch
 // back. An empty batch does nothing.
 func (s *Store) WriteBatch(ctx context.Context, b *Batch) error {
 	if len(b.Tracks) == 0 && len(b.Issues) == 0 {
@@ -423,6 +430,7 @@ func upsertArtists(ctx context.Context, q *sqlcdb.Queries, list []ArtistWrite) (
 	ids := make([]int64, len(list))
 	for i := range list {
 		id, err := q.UpsertArtist(ctx, sqlcdb.UpsertArtistParams{
+			Ulid:     list[i].ULID,
 			MatchKey: list[i].MatchKey,
 			Name:     list[i].Name,
 			SortName: list[i].SortName,

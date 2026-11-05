@@ -56,6 +56,9 @@ func TestFTSRemovesDiacritics(t *testing.T) {
 
 const testRoot = "/music"
 
+// artistULID returns a 26-character ID for an artist's match key.
+func artistULID(key string) string { return fmt.Sprintf("%026s", key) }
+
 // newWrite returns a distinct valid write: its own album and artist per index.
 // It mirrors library_test.go's helper; the two packages can't share one.
 func newWrite(i int) TrackWrite {
@@ -79,6 +82,7 @@ func newWrite(i int) TrackWrite {
 			SortName: fmt.Sprintf("Album %d", i),
 		},
 		Artists: []ArtistWrite{{
+			ULID:     artistULID(fmt.Sprintf("artist-%d", i)),
 			MatchKey: fmt.Sprintf("artist-%d", i),
 			Name:     fmt.Sprintf("Artist %d", i),
 			SortName: fmt.Sprintf("Artist %d", i),
@@ -145,8 +149,8 @@ func TestWriteBatchInsertsTrack(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	w := newWrite(0)
-	w.Artists = []ArtistWrite{{MatchKey: "a", Name: "A"}, {MatchKey: "b", Name: "B"}}
-	w.AlbumArtists = []ArtistWrite{{MatchKey: "c", Name: "C"}}
+	w.Artists = []ArtistWrite{{ULID: artistULID("a"), MatchKey: "a", Name: "A"}, {ULID: artistULID("b"), MatchKey: "b", Name: "B"}}
+	w.AlbumArtists = []ArtistWrite{{ULID: artistULID("c"), MatchKey: "c", Name: "C"}}
 	w.Tags = []Tag{{"ARTIST", "A"}, {"ARTIST", "B"}, {"TITLE", "T"}}
 	writeAll(t, s, w)
 
@@ -248,19 +252,22 @@ func TestWriteBatchArtistUpsert(t *testing.T) {
 	t.Parallel()
 	s := openTest(t)
 	first, second := newWrite(0), newWrite(1)
-	first.Artists = []ArtistWrite{{MatchKey: "k", Name: "Old", SortName: "Old", MBID: "m"}}
-	second.Artists = []ArtistWrite{{MatchKey: "k", Name: "New", SortName: "New, The"}}
+	first.Artists = []ArtistWrite{{ULID: artistULID("k"), MatchKey: "k", Name: "Old", SortName: "Old", MBID: "m"}}
+	second.Artists = []ArtistWrite{{ULID: artistULID("other"), MatchKey: "k", Name: "New", SortName: "New, The"}}
 	writeAll(t, s, first, second)
 
 	var n int64
-	var name, sortName string
+	var id, name, sortName string
 	var mbid sql.NullString
-	if err := s.r.QueryRowContext(t.Context(), "SELECT count(*), name, sort_name, mbid FROM artists WHERE match_key = 'k'").
-		Scan(&n, &name, &sortName, &mbid); err != nil {
+	if err := s.r.QueryRowContext(t.Context(), "SELECT count(*), ulid, name, sort_name, mbid FROM artists WHERE match_key = 'k'").
+		Scan(&n, &id, &name, &sortName, &mbid); err != nil {
 		t.Fatal(err)
 	}
 	if n != 1 || name != "New" || sortName != "New, The" || mbid.String != "m" {
 		t.Errorf("artist = %d rows, %q, %q, %v; want 1, New, \"New, The\", m", n, name, sortName, mbid)
+	}
+	if id != artistULID("k") {
+		t.Errorf("ulid = %q, want the first write's %q", id, artistULID("k"))
 	}
 	if total := count(t, s, "SELECT count(*) FROM artists"); total != 1 {
 		t.Errorf("artists = %d, want 1", total)
@@ -297,8 +304,8 @@ func TestWriteBatchFTSRow(t *testing.T) {
 	t.Parallel()
 	s := openTest(t)
 	w := newWrite(0)
-	w.Artists = []ArtistWrite{{MatchKey: "zw", Name: "Zayde Wølf"}}
-	w.AlbumArtists = []ArtistWrite{{MatchKey: "bk", Name: "Beyoncé"}}
+	w.Artists = []ArtistWrite{{ULID: artistULID("zw"), MatchKey: "zw", Name: "Zayde Wølf"}}
+	w.AlbumArtists = []ArtistWrite{{ULID: artistULID("bk"), MatchKey: "bk", Name: "Beyoncé"}}
 	writeAll(t, s, w)
 	for _, q := range []string{"wolf", "beyonce", "title", "album"} {
 		if ftsHits(t, s, q) != 1 {
@@ -308,7 +315,7 @@ func TestWriteBatchFTSRow(t *testing.T) {
 
 	u := newWrite(0)
 	u.ID = trackID(t, s, w.RelPath)
-	u.Artists = []ArtistWrite{{MatchKey: "other", Name: "Someone Else"}}
+	u.Artists = []ArtistWrite{{ULID: artistULID("other"), MatchKey: "other", Name: "Someone Else"}}
 	writeAll(t, s, u)
 	if ftsHits(t, s, "wolf") != 0 {
 		t.Error("MATCH wolf still finds the track after the artist was renamed")
@@ -397,7 +404,7 @@ func openBench(b *testing.B) *Store {
 func benchBatch() *Batch {
 	artist := func(i int) ArtistWrite {
 		n := i % benchArtists
-		return ArtistWrite{MatchKey: fmt.Sprintf("artist-%d", n), Name: fmt.Sprintf("Artist %d", n), SortName: fmt.Sprintf("Artist %d", n)}
+		return ArtistWrite{ULID: artistULID(fmt.Sprintf("artist-%d", n)), MatchKey: fmt.Sprintf("artist-%d", n), Name: fmt.Sprintf("Artist %d", n), SortName: fmt.Sprintf("Artist %d", n)}
 	}
 	b := &Batch{Tracks: make([]TrackWrite, benchTracks)}
 	for i := range b.Tracks {

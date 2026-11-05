@@ -34,6 +34,9 @@ type browseAlbum struct {
 
 func albumULID(n int) string { return fmt.Sprintf("02J%023d", n) }
 
+// artistULID returns a 26-character ID for an artist's match key.
+func artistULID(key string) string { return fmt.Sprintf("%026s", key) }
+
 // seedAlbums writes the albums, each track 1 minute long, and returns the track
 // ULID of each album's first track.
 func (ts *testServer) seedAlbums(tb testing.TB, albums ...browseAlbum) {
@@ -50,7 +53,7 @@ func (ts *testServer) seedAlbums(tb testing.TB, albums ...browseAlbum) {
 				Duration: time.Minute,
 				Title:    fmt.Sprintf("Track %d", t),
 				TrackNo:  t,
-				Artists:  []store.ArtistWrite{{MatchKey: "ann", Name: annName, SortName: annName}},
+				Artists:  []store.ArtistWrite{{ULID: artistULID("ann"), MatchKey: "ann", Name: annName, SortName: annName}},
 				Album: store.AlbumWrite{
 					GroupKey: fmt.Sprintf("g%d", a.n), ULID: albumULID(a.n), Name: fmt.Sprintf("Album %d", a.n),
 					SortName: a.sortName, Artist: annName, Year: 2001, Artwork: a.cover,

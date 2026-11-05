@@ -76,6 +76,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   the collation must be on the column, because one on a row value never seeks. `LiveTrackFacts` uses
   `INDEXED BY tracks_live`, since a partial index's WHERE column doesn't count as covered; a test
   fails if the index is renamed.
+- Artists have a public ULID too, assigned by the scanner and kept across updates. Their row `id` is
+  internal: it is reused after a delete.
 - Library writes go through `WriteBatch`, one transaction per batch. The store never
   normalizes names or decides identity: callers pass match keys, group keys and ULIDs.
 - FTS rows are written in the same transaction as their track and through `foldSearch`;

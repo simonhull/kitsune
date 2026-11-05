@@ -19,6 +19,9 @@ const (
 	badPath    = "bad.flac"
 )
 
+// artistULID returns a 26-character ID for an artist's match key.
+func artistULID(key string) string { return fmt.Sprintf("%026s", key) }
+
 // newWrite returns a distinct valid write: its own album and artist per index.
 func newWrite(i int) store.TrackWrite {
 	return store.TrackWrite{
@@ -41,6 +44,7 @@ func newWrite(i int) store.TrackWrite {
 			SortName: fmt.Sprintf("Album %d", i),
 		},
 		Artists: []store.ArtistWrite{{
+			ULID:     artistULID(fmt.Sprintf("artist-%d", i)),
 			MatchKey: fmt.Sprintf("artist-%d", i),
 			Name:     fmt.Sprintf("Artist %d", i),
 			SortName: fmt.Sprintf("Artist %d", i),
@@ -184,6 +188,8 @@ func TestWriteBatchValidation(t *testing.T) {
 		{"25-character Album.ULID", func(w *store.TrackWrite) { w.Album.ULID = strings.Repeat("0", 25) }},
 		{"empty GroupKey", func(w *store.TrackWrite) { w.Album.GroupKey = "" }},
 		{"empty artist MatchKey", func(w *store.TrackWrite) { w.Artists[0].MatchKey = "" }},
+		{"empty artist ULID", func(w *store.TrackWrite) { w.Artists[0].ULID = "" }},
+		{"25-character artist ULID", func(w *store.TrackWrite) { w.Artists[0].ULID = strings.Repeat("0", 25) }},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
