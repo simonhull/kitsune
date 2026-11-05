@@ -34,7 +34,8 @@ const serveName = "serve"
 
 const (
 	// shutdownTimeout is how long in-flight requests get to finish after a
-	// signal. Docker sends SIGKILL 10 s after SIGTERM.
+	// signal, after which the connections left are closed. Docker sends SIGKILL
+	// 10 s after SIGTERM.
 	shutdownTimeout = 8 * time.Second
 	// purgeInterval is how often expired sessions are deleted.
 	purgeInterval = time.Hour
@@ -124,6 +125,7 @@ type app struct {
 	quickScan config.ClockTime
 	scanned   atomic.Bool // Set when the first scan has ended, whatever its outcome.
 	http      *http.Server
+	drain     time.Duration // How long shutdown waits for in-flight requests.
 	basePath  string
 	dataDir   string
 }
@@ -187,6 +189,7 @@ func buildApp(cfg *config.Config, st *store.Store, log *slog.Logger) (*app, erro
 			Artwork:      covers,
 		}),
 		quickScan: cfg.Library.QuickScan,
+		drain:     shutdownTimeout,
 		basePath:  cfg.Server.BasePath(),
 		dataDir:   cfg.Storage.DataDir,
 	}
@@ -252,7 +255,8 @@ func (a *app) close() error {
 }
 
 // serve serves on ln until ctx ends, then drains in-flight requests. It
-// returns an error if the listener fails or the drain overruns.
+// returns an error if the listener fails or the shutdown does. A drain that
+// runs out of time is not a failure: see [app.shutdown].
 func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.log.InfoContext(ctx, "listening",
 		"addr", ln.Addr().String(), "version", version(), "basePath", a.basePath, "dataDir", a.dataDir)
@@ -285,15 +289,23 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	return result
 }
 
-// shutdown drains the HTTP server and waits for Serve to return.
+// shutdown drains the HTTP server and waits for Serve to return. Streams are
+// expected to outlast a drain, since a client may hold one open for as long as
+// it likes, so the connections left at the deadline are closed and that is a
+// clean stop.
 func (a *app) shutdown(ctx context.Context, served <-chan error) error {
-	a.log.InfoContext(context.WithoutCancel(ctx), "shutting down")
-	drain, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	logCtx := context.WithoutCancel(ctx)
+	a.log.InfoContext(logCtx, "shutting down")
+	drain, cancel := context.WithTimeout(logCtx, a.drain)
 	defer cancel()
 	var result error
 	if err := a.http.Shutdown(drain); err != nil {
 		_ = a.http.Close() // Cut off what the drain could not finish.
-		result = fmt.Errorf("shutdown: %w", err)
+		if errors.Is(err, context.DeadlineExceeded) {
+			a.log.InfoContext(logCtx, "closed connections still open after the drain", "drain", a.drain)
+		} else {
+			result = fmt.Errorf("shutdown: %w", err)
+		}
 	}
 	if err := <-served; !errors.Is(err, http.ErrServerClosed) {
 		result = errors.Join(result, fmt.Errorf("serve: %w", err))

@@ -598,6 +598,124 @@ func TestServeRendersAndServesArtwork(t *testing.T) { //nolint:paralleltest // o
 	}
 }
 
+// stalledDrain is the drain a stalled client runs out.
+const stalledDrain = 200 * time.Millisecond
+
+// stalledFileSize is far more than the socket buffers hold, so a client that
+// stops reading keeps the request active.
+const stalledFileSize = 64 << 20
+
+// streamURLPath returns the URL path of the only track in the library.
+func (ra *runningApp) streamURLPath(t *testing.T) string {
+	t.Helper()
+	page, err := ra.app.store.Albums(t.Context(), store.SortAdded, 1, "")
+	if err != nil || len(page.Albums) != 1 {
+		t.Fatalf("Albums = %+v, %v; want one", page.Albums, err)
+	}
+	album, err := ra.app.store.Album(t.Context(), page.Albums[0].ID)
+	if err != nil || len(album.Tracks) != 1 {
+		t.Fatalf("Album = %+v, %v; want one track", album, err)
+	}
+	return apiPrefix + "/tracks/" + album.Tracks[0].ID + "/stream"
+}
+
+// openStream starts streaming path as simon and returns the response, with its
+// body unread and open.
+func (ra *runningApp) openStream(t *testing.T, path string) *http.Response {
+	t.Helper()
+	res, err := ra.app.auth.Login(t.Context(), simonName, goodPassword, "test/1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ra.url+path, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+res.Token)
+	resp, err := ra.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
+func TestServeStopsWithAStalledStream(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	lib := libraryEnv(t, 1)
+	ra := serveApp(t, lib.env)
+	ra.waitReady(t)
+	// Stat comes from the open file, so growing it needs no new scan.
+	if err := os.Truncate(filepath.Join(lib.root, "00.flac"), stalledFileSize); err != nil {
+		t.Fatal(err)
+	}
+	ra.app.drain = stalledDrain
+
+	resp := ra.openStream(t, ra.streamURLPath(t))
+	defer resp.Body.Close() //nolint:errcheck // Read-only.
+	if resp.StatusCode != http.StatusOK || resp.ContentLength != stalledFileSize {
+		t.Fatalf("stream = %d of %d bytes, want 200 of %d", resp.StatusCode, resp.ContentLength, stalledFileSize)
+	}
+	if err := ra.stop(t); err != nil {
+		t.Errorf("serve = %v, want nil", err)
+	}
+	entry := logMessages(t, ra.logs)["closed connections still open after the drain"]
+	if entry == nil {
+		t.Fatalf("no line for the closed connections in %s", ra.logs)
+	}
+	if entry["level"] != "INFO" {
+		t.Errorf("level = %v, want INFO", entry["level"])
+	}
+}
+
+// errCloseListener is what [failingListener] returns from Close.
+var errCloseListener = errors.New("close listener failed")
+
+// failingListener fails to close, which fails the shutdown.
+type failingListener struct{ net.Listener }
+
+func (l failingListener) Close() error {
+	return errors.Join(l.Listener.Close(), errCloseListener)
+}
+
+func TestServeReportsOtherShutdownErrors(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	e := newServeEnv(t, "")
+	if err := createUser(e.dataDir, simonName, goodPassword, store.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := newApp(t, e)
+	t.Cleanup(func() { _ = a.close() })
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", listenAnyPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- a.serve(ctx, failingListener{ln}) }()
+	// A shutdown only closes the listener once Serve has taken it.
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+ln.Addr().String()+healthURLPath, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case err = <-done:
+		if !errors.Is(err, errCloseListener) || !strings.Contains(err.Error(), "shutdown:") {
+			t.Errorf("serve = %v, want a shutdown error wrapping %v", err, errCloseListener)
+		}
+	case <-time.After(stopDeadline):
+		t.Fatal("serve did not return")
+	}
+}
+
 // getArtwork fetches the 128 px rendition of hash as simon.
 func (ra *runningApp) getArtwork(t *testing.T, hash string) artworkReply {
 	t.Helper()

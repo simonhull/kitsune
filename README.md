@@ -65,7 +65,8 @@ fresh added time, while its tracks keep theirs.
 Logs are JSON on stderr. `log.level = "debug"` adds one line per request; it records the
 path only, never the query. `GET /api/v1/healthz` reports that the process is up, and
 `GET /api/v1/readyz` that it is ready to serve. On SIGINT or SIGTERM the server stops accepting
-connections and drains in-flight requests for up to 8 seconds; a second signal quits at once.
+connections and drains in-flight requests for up to 8 seconds, then closes what is left, such as a
+stream a client stopped reading, and exits cleanly; a second signal quits at once.
 
 ### Browsing the library
 
