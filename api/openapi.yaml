@@ -238,6 +238,102 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /tracks/{id}/stream:
+    get:
+      operationId: getTrackStream
+      summary: Stream a track's original file.
+      description: >-
+        Serves the file as it is on disk, with no transcoding, and supports
+        single and multiple byte ranges. The ETag comes from the file's size
+        and modification time, so a client must revalidate what it keeps. There
+        is no Last-Modified: `If-Range` matches an ETag only, and a date in it
+        gets the whole file. A retag that keeps both the size and the
+        modification time keeps the ETag too. A track that is missing, or whose
+        file has left the disk, is a 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: Range
+          in: header
+          required: false
+          description: One or more byte ranges, such as `bytes=0-1023`.
+          schema: { type: string }
+        - name: If-Range
+          in: header
+          required: false
+          description: An ETag. The range is honored only if it is current.
+          schema: { type: string }
+        - name: If-None-Match
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: The whole file.
+          headers:
+            Accept-Ranges:
+              schema: { type: string }
+            ETag:
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string }
+          content:
+            audio/*:
+              schema: { type: string, format: binary }
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "206":
+          description: >-
+            The requested range. Several ranges come as `multipart/byteranges`,
+            each part with its own `Content-Range`.
+          headers:
+            Accept-Ranges:
+              schema: { type: string }
+            Content-Range:
+              description: Absent from a multipart response.
+              schema: { type: string }
+            ETag:
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string }
+          content:
+            audio/*:
+              schema: { type: string, format: binary }
+            application/octet-stream:
+              schema: { type: string, format: binary }
+            multipart/byteranges:
+              schema: { type: string, format: binary }
+        "304":
+          description: The client's copy is current.
+          headers:
+            ETag:
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+        "416":
+          description: >-
+            The range can't be satisfied. `Content-Range` gives the file's size
+            as `bytes */N`, unless the range was malformed.
+          headers:
+            Content-Range:
+              schema: { type: string }
+            X-Content-Type-Options:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 components:
   securitySchemes:
     bearer:

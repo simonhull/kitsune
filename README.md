@@ -65,7 +65,8 @@ fresh added time, while its tracks keep theirs.
 Logs are JSON on stderr. `log.level = "debug"` adds one line per request; it records the
 path only, never the query. `GET /api/v1/healthz` reports that the process is up, and
 `GET /api/v1/readyz` that it is ready to serve. On SIGINT or SIGTERM the server stops accepting
-connections and drains in-flight requests for up to 8 seconds; a second signal quits at once.
+connections and drains in-flight requests for up to 8 seconds, then closes what is left, such as a
+stream a client stopped reading, and exits cleanly; a second signal quits at once.
 
 ### Browsing the library
 
@@ -80,6 +81,11 @@ Every route is under `/api/v1` and, except login, needs a session. `api/openapi.
   as disc 1), its total duration and its formats.
 - `GET /library` counts live albums and tracks, their duration, the configured roots and the files
   the scanner could not read.
+
+- `GET /tracks/{id}/stream` serves a track's original file, with no transcoding. It takes single and
+  multiple byte ranges, and its ETag comes from the file's size and modification time, so a retag
+  that keeps both keeps the ETag. `If-Range` matches an ETag only. A missing track, or one whose file
+  has left the disk, is a 404.
 
 An album with no live track is left out everywhere.
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -105,6 +106,20 @@ func (w *statusRecorder) Write(p []byte) (int, error) {
 	}
 	n, err := w.ResponseWriter.Write(p)
 	w.bytes += int64(n)
+	if err != nil {
+		return n, fmt.Errorf("write response: %w", err)
+	}
+	return n, nil
+}
+
+// ReadFrom implements [io.ReaderFrom], so a served file keeps sendfile when
+// requests are being logged.
+func (w *statusRecorder) ReadFrom(src io.Reader) (int64, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	n, err := io.Copy(w.ResponseWriter, src)
+	w.bytes += n
 	if err != nil {
 		return n, fmt.Errorf("write response: %w", err)
 	}

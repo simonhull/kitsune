@@ -78,6 +78,13 @@ type Track struct {
 	ReplayGain      ReplayGain
 }
 
+// TrackFile says where a live track's file is and what it holds.
+type TrackFile struct {
+	Root    string
+	RelPath string // Relative to Root.
+	Format  string
+}
+
 // AlbumDetail is an album with its live tracks.
 type AlbumDetail struct {
 	AlbumSummary
@@ -323,6 +330,19 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 	slices.Sort(d.Formats)
 	d.Formats = slices.Compact(d.Formats)
 	return d, nil
+}
+
+// TrackFile returns the file of the live track with the public ID id. It
+// returns an error wrapping [ErrNotFound] for an unknown ID or a missing track.
+func (s *Store) TrackFile(ctx context.Context, id string) (TrackFile, error) {
+	row, err := s.rq.GetTrackFile(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return TrackFile{}, fmt.Errorf("track %s: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return TrackFile{}, fmt.Errorf("track %s: %w", id, err)
+	}
+	return TrackFile{Root: row.Root, RelPath: row.RelPath, Format: row.Format}, nil
 }
 
 // Facts returns the library's counts: albums and tracks that are live, their

@@ -48,6 +48,11 @@ FROM tracks
 WHERE album_id = ? AND missing_since IS NULL
 ORDER BY coalesce(disc_no, 1), track_no NULLS LAST, title, id;
 
+-- name: GetTrackFile :one
+SELECT root, rel_path, format
+FROM tracks
+WHERE ulid = ? AND missing_since IS NULL;
+
 -- name: ListAlbumTrackArtists :many
 SELECT ta.track_id, ar.name
 FROM track_artists ta
