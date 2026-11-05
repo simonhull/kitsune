@@ -1,5 +1,6 @@
 import { linearEasing } from './choreography.ts';
 import { createSpringEngine, type Morphs } from './engines/spring.ts';
+import { inked, printTitle, wipePlates } from './ink.ts';
 import { motionOf } from './journey.ts';
 
 /** Where a page below the shell finds the engine, through Svelte's context. */
@@ -12,5 +13,16 @@ export function startMorphs(): Morphs {
 		'--curve-morph',
 		linearEasing(motionOf({ token: '--morph', bounce: 0.04 }))
 	);
-	return createSpringEngine();
+	if (!inked) {
+		return createSpringEngine();
+	}
+	document.documentElement.dataset['ink'] = '';
+	const morphs = createSpringEngine(printTitle);
+	return {
+		...morphs,
+		navigate(navigation) {
+			wipePlates();
+			morphs.navigate(navigation);
+		}
+	};
 }

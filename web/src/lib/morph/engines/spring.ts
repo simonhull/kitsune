@@ -311,8 +311,11 @@ export interface Morphs {
 /** A deal has no route to name it by, and no ghost must ever answer to this. */
 const dealPath = 'deal';
 
-/** The spring engine: real elements, a persistent overlay, and physics that can turn around. */
-export function createSpringEngine(): Morphs {
+/**
+ * The spring engine: real elements, a persistent overlay, and physics that can turn around.
+ * `onLanded` hears of each flier that comes down on its target, in the frame it comes down.
+ */
+export function createSpringEngine(onLanded?: (target: MorphEntry) => void): Morphs {
 	const fliers = new Map<string, Flier>();
 	const landing = new Map<HTMLElement, Layer>();
 	const ghosts: Ghost[] = [];
@@ -717,6 +720,7 @@ export function createSpringEngine(): Morphs {
 				land(id, flier);
 			} else if (flier.settled && !held(flier.target)) {
 				land(id, flier);
+				onLanded?.(flier.target);
 			}
 		}
 		retire();

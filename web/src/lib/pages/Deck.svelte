@@ -17,6 +17,7 @@
 	import { Layer } from '#lib/morph/engines/layer.ts';
 	import type { DealtCard, Departure, Morphs } from '#lib/morph/engines/spring.ts';
 	import { dealTargets, reducedMotion } from '#lib/morph/journey.ts';
+	import { inked, printCard } from '#lib/morph/ink.ts';
 	import { morph, type MorphEntry } from '#lib/morph/registry.ts';
 	import { holdSettled } from '#lib/morph/settled.ts';
 	import { restOf, shrinkingDelays, spinOf } from './deck.ts';
@@ -30,6 +31,8 @@
 	const dealStepMs = 30;
 	/** How long a riffle's last card gets to come to rest, if frames have stopped coming. */
 	const riffleSettlesMs = 320;
+	/** How far above the pile a falling card counts as having hit it. */
+	const hitsWithinPixels = 3;
 
 	let { facts }: Props = $props();
 
@@ -48,6 +51,8 @@
 	/** Where the deck stood, once it's out of the flow and Home has taken its place. */
 	let dealtFrom = $state<number | null>(null);
 	let landing: Layer[] = [];
+	/** Cards still to hit the pile, for the ink that goes down with them. */
+	let falling: { layer: Layer; id: string }[] = [];
 	let frame = 0;
 	let lastFrame = 0;
 	/** Set once a navigation has taken over: whatever the deal was about to do, it mustn't. */
@@ -59,7 +64,11 @@
 		if (alreadyHere.has(id)) {
 			return;
 		}
-		landing.push(new Layer(element, reducedMotion() ? crossfade : drop(spinOf(id))));
+		const layer = new Layer(element, reducedMotion() ? crossfade : drop(spinOf(id)));
+		landing.push(layer);
+		if (inked) {
+			falling.push({ layer, id });
+		}
 		if (frame === 0) {
 			lastFrame = performance.now();
 			frame = requestAnimationFrame(step);
@@ -73,6 +82,14 @@
 			layer.step(seconds);
 			layer.write();
 		}
+		falling = falling.filter(({ layer, id }) => {
+			const hit = layer.y.value > -hitsWithinPixels;
+			const card = hit ? pile.find((entry) => entry.id === id) : undefined;
+			if (card !== undefined) {
+				printCard(layer.element, card);
+			}
+			return !hit;
+		});
 		landing = landing.filter((layer) => {
 			if (layer.settled) {
 				layer.release();
