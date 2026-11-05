@@ -96,22 +96,25 @@
 				disabled><Icon name="heart-outline" size={20} /></button
 			>
 		{:else}
-			{#key playing.track.id}
-				<a class="now" href={resolve('/now-playing')}>
+			<a class="now" href={resolve('/now-playing')}>
+				<!-- Keyed apart: a change of track mustn't remount the cover it shares. -->
+				{#key playing.album.id}
 					<span
 						class="thumb"
 						use:morph={{ id: `cover:${playing.album.id}`, slot: 'island', kind: 'cover' }}
 						><Cover albumId={playing.album.id} entry={playing.album} place="small" /></span
 					>
+				{/key}
+				{#key playing.track.id}
 					<span class="names">
 						<span class="song" use:morph={{ id: 'song', slot: 'island', kind: 'title' }}
 							>{playing.track.title}</span
 						>
 						<span class="artist">{playing.album.artist}</span>
 					</span>
-				</a>
-				<span class="time compact">{clock(position)} / {clock(seconds)}</span>
-			{/key}
+				{/key}
+			</a>
+			<span class="time compact">{clock(position)} / {clock(seconds)}</span>
 			{@render transport('island', undefined, 20)}
 		{/if}
 	</div>
@@ -175,8 +178,8 @@
 		padding: 17px 21px;
 	}
 
-	/* A new cue arrives at rest, in place: this is the one change here no morph carries. */
-	.now,
+	/* A new album arrives at rest, in place: no morph carries this one. */
+	.thumb,
 	.compact {
 		animation: cue-in var(--morph-fast) var(--curve-morph);
 	}
@@ -187,10 +190,23 @@
 		}
 	}
 
+	/* A new track is a needle drop: it lands in three hard steps, and never over the art. */
+	.names {
+		animation: needle-drop 120ms steps(3, jump-end);
+	}
+
+	@keyframes needle-drop {
+		from {
+			opacity: 0;
+			translate: 0 -6px;
+		}
+	}
+
 	@media (prefers-reduced-motion: reduce) {
-		.now,
+		.thumb,
+		.names,
 		.compact {
-			animation-duration: 120ms;
+			animation: cue-in 120ms linear;
 		}
 	}
 

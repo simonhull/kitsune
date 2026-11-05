@@ -2,11 +2,12 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { emWidth } from '#lib/library/fit.ts';
-	import { balancedLines, credit, gain, trackGain } from '#lib/library/format.ts';
+	import { balancedLines, credit, gain } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
+	import { appliedGain } from '#lib/player/gain.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import { reserveIslandSlot } from '#lib/shell/slot.svelte.ts';
 
@@ -16,7 +17,9 @@
 	const others = $derived(
 		playing === null ? undefined : credit(playing.track, playing.album.artist)
 	);
-	const rg = $derived(playing === null ? null : trackGain(playing.track));
+	const rg = $derived(
+		playing === null ? null : appliedGain(playing.track, player.queue?.ordered ?? true)
+	);
 	const note = $derived(
 		player.failure
 			? "Dead air. That wouldn't play, so we stopped."

@@ -149,6 +149,20 @@ describe('Player', () => {
 		expect(preload).toHaveBeenCalledOnce();
 	});
 
+	it('preloads again after going back over the same ground', async () => {
+		const { player, output } = setup();
+		const preload = vi.spyOn(output, 'preload');
+		player.play(album(3), 1);
+		await settle();
+		output.elapse(90);
+		player.previous();
+		player.seek(0);
+		player.play(album(3), 1);
+		await settle();
+		output.elapse(90);
+		expect(preload).toHaveBeenCalledTimes(2);
+	});
+
 	it('preloads straight away under a short track', async () => {
 		const { player, output } = setup();
 		player.play(album(2, 'a', { durationMs: 10_000 }));
@@ -298,6 +312,58 @@ describe('the transport before the first play', () => {
 		player.next();
 		await settle();
 		expect(player.current?.id).toBe('t0');
+	});
+});
+
+describe('a track change', () => {
+	it('moves the sound at once and leaves the names to the shell', async () => {
+		const { library, player, output } = setup();
+		const waiting: (() => void)[] = [];
+		player.play(album(3));
+		await settle();
+		player.carry = (apply) => waiting.push(apply);
+		player.next();
+		expect(output.url).toBe('t1');
+		expect(player.current?.id).toBe('t1');
+		expect(player.position).toBe(0);
+		expect(library.playing?.track.id).toBe('t0');
+		waiting.at(0)?.();
+		expect(library.playing?.track.id).toBe('t1');
+	});
+
+	it('shows the latest track, however late it gets to', async () => {
+		const { library, player } = setup();
+		const waiting: (() => void)[] = [];
+		player.play(album(4));
+		await settle();
+		player.carry = (apply) => waiting.push(apply);
+		player.next();
+		player.next();
+		waiting.at(0)?.();
+		expect(library.playing?.track.id).toBe('t2');
+	});
+
+	it('shows nothing after a reset, however late', async () => {
+		const { library, player } = setup();
+		const waiting: (() => void)[] = [];
+		player.play(album(3));
+		await settle();
+		player.carry = (apply) => waiting.push(apply);
+		player.next();
+		library.reset();
+		waiting.at(0)?.();
+		expect(library.playing).toBeNull();
+	});
+
+	it('has nothing to carry when a queue starts on the cued track', async () => {
+		const { library, player } = setup();
+		const carry = vi.fn();
+		library.cueAlbum(album(3));
+		player.carry = carry;
+		player.play(album(3));
+		await settle();
+		expect(carry).not.toHaveBeenCalled();
+		expect(library.playing?.index).toBe(0);
 	});
 });
 

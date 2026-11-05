@@ -34,6 +34,13 @@ export class Player implements PlayerView {
 	failure = $state(false);
 	/** Set when it came to rest at the end of the queue. */
 	finished = $state(false);
+	/**
+	 * Shows a track change on the page, when the page is ready. The sound doesn't wait for this. Set
+	 * by the shell, which knows what's in the air.
+	 */
+	carry: (apply: () => void) => void = (apply) => {
+		apply();
+	};
 
 	readonly #library: Library;
 	readonly #create: () => AudioOutput;
@@ -217,7 +224,8 @@ export class Player implements PlayerView {
 		this.position = 0;
 		this.status = 'loading';
 		this.#stale = false;
-		this.#library.showQueue();
+		this.#ahead = null;
+		this.#show();
 		const track = currentOf(queue);
 		if (track === undefined) {
 			return;
@@ -227,6 +235,18 @@ export class Player implements PlayerView {
 			void this.#sound(run);
 		} else {
 			this.#trackFailed();
+		}
+	}
+
+	/** Moves the names on. A queue that starts on the track already cued has nothing to carry. */
+	#show(): void {
+		const show = (): void => {
+			this.#library.showQueue();
+		};
+		if (this.#library.playing?.track.id === this.current?.id) {
+			show();
+		} else {
+			this.carry(show);
 		}
 	}
 
@@ -319,7 +339,7 @@ export class Player implements PlayerView {
 		this.position = 0;
 		this.finished = true;
 		this.#hold(true);
-		this.#library.showQueue();
+		this.#show();
 	}
 
 	/** Finds out what a media failure was: the element can't tell a lost session from a bad file. */

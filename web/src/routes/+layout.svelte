@@ -14,6 +14,7 @@
 	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
 	import { gridWindow } from '#lib/pages/gridWindow.svelte.ts';
+	import { createCarrier } from '#lib/player/carry.ts';
 	import { togglesOnSpace } from '#lib/player/keys.ts';
 	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
 	import { player } from '#lib/player/player.svelte.ts';
@@ -47,6 +48,19 @@
 	setContext(morphsKey, morphs);
 	onNavigate(morphs.navigate);
 
+	const carrier = createCarrier({
+		hidden: () => document.hidden,
+		onNowPlaying: () => onNowPlaying,
+		blend: morphs.blend
+	});
+	player.carry = carrier.carry;
+
+	function onVisibilityChange(): void {
+		if (document.hidden) {
+			carrier.flush();
+		}
+	}
+
 	function onKeyDown(event: KeyboardEvent): void {
 		if (togglesOnSpace(event) && library.playing !== null && !onLogin) {
 			event.preventDefault();
@@ -75,6 +89,7 @@
 </script>
 
 <svelte:window onkeydown={onKeyDown} />
+<svelte:document onvisibilitychange={onVisibilityChange} />
 
 <div
 	class="shell"
