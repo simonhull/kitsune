@@ -77,6 +77,12 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Only `serve` migrates (`Options.Migrate`), at startup, one transaction per file with foreign keys
   off; `users add` refuses a database with migrations pending, since a server may be running on it.
   A failed step stops startup and names the file: that step is undone and earlier ones stay.
+- Before migrating a database with data, `serve` writes `kitsune.db.v<from>.<UTC time>.bak` beside it,
+  mode 0600. It wants about 3x the database free, and a failed backup stops the upgrade with nothing
+  changed. After a success, the newest backup of each of the last 3 from-versions stays. To restore:
+  stop the server, delete `kitsune.db-wal` and `kitsune.db-shm`, move the backup over `kitsune.db`,
+  and run a binary at that version. A stale `-wal` beside a restored file reads as
+  `database disk image is malformed`.
 - To change the schema, add `NNNN_name.sql` with the next number and its `manifest.txt` line
   (`sha256sum`), then run `mise run generate` and review the snapshot's diff. The rules:
   - Never edit a shipped file. No transaction control or `PRAGMA` in a file: the runner owns both,

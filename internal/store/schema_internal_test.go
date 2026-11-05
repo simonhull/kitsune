@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"errors"
-	"log/slog"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func rawDB(t *testing.T, path string) *sql.DB {
@@ -83,7 +83,7 @@ func TestFreshCreateIsAtomic(t *testing.T) {
 	t.Cleanup(func() { _ = w.Close() })
 
 	broken := []migration{{version: 1, name: "0001_broken.sql", sql: "CREATE TABLE a (x INTEGER) STRICT; SELECT x FROM nope;"}}
-	err = settleSchemaWith(t.Context(), w, path, broken, false, slog.New(slog.DiscardHandler))
+	err = settleSchemaWith(t.Context(), w, path, broken, newUpgrade(&Options{}, time.Now))
 	if err == nil {
 		t.Fatal("settleSchemaWith accepted a broken schema")
 	}

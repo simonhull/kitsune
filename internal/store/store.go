@@ -94,9 +94,10 @@ func (o *Options) logger() *slog.Logger {
 }
 
 // Open opens the database at path, creating it if it is empty. A database behind
-// this binary is migrated when opts.Migrate is set, and otherwise refused with
-// [ErrMigrationsPending]. A failed migration stops Open with an error naming the
-// file; that step is undone and the ones before it stay.
+// this binary is backed up beside itself and migrated when opts.Migrate is set,
+// and otherwise refused with [ErrMigrationsPending]. A failed backup stops Open
+// with the database untouched. A failed migration stops it with an error naming
+// the file; that step is undone and the ones before it stay.
 //
 // It returns an error wrapping [ErrStaleSchema], [ErrNewerSchema],
 // [ErrUnversioned] or [ErrNotKitsune] if the file can't be used, and an error if
@@ -121,7 +122,7 @@ func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = settleSchema(ctx, w, path, opts.Migrate, opts.logger()); err != nil {
+	if err = settleSchema(ctx, w, path, newUpgrade(&opts, now)); err != nil {
 		return nil, closeAfter(err, w)
 	}
 	if _, err = w.ExecContext(ctx, "PRAGMA journal_mode = WAL"); err != nil {

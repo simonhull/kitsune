@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -45,7 +44,7 @@ func newScratchDB(t *testing.T) scratchDB {
 
 // settle migrates the database to the end of steps.
 func (d scratchDB) settle(ctx context.Context, steps []migration) error {
-	return settleSchemaWith(ctx, d.w, d.path, steps, true, slog.New(slog.DiscardHandler))
+	return settleSchemaWith(ctx, d.w, d.path, steps, newUpgrade(&Options{Migrate: true}, time.Now))
 }
 
 // mustSettle is settle for a step that has to work.
@@ -623,6 +622,9 @@ func TestAdoption(t *testing.T) {
 	if n, countErr := s.CountUsers(t.Context()); countErr != nil || n != 1 {
 		t.Errorf("CountUsers = %d, %v, want 1", n, countErr)
 	}
+	if backups, listErr := listBackups(path); listErr != nil || len(backups) != 0 {
+		t.Errorf("listBackups = %v, %v, want none: adoption applies nothing", backups, listErr)
+	}
 }
 
 func TestPendingMigrationsAreRefusedWithoutMigrate(t *testing.T) {
@@ -643,7 +645,7 @@ func TestPendingMigrationsAreRefusedWithoutMigrate(t *testing.T) {
 func TestPendingStepIsRefusedWithoutMigrate(t *testing.T) {
 	t.Parallel()
 	d, steps := seededDB(t)
-	err := settleSchemaWith(t.Context(), d.w, d.path, withStep(steps, "next", "CREATE TABLE next (x INTEGER) STRICT;"), false, slog.New(slog.DiscardHandler))
+	err := settleSchemaWith(t.Context(), d.w, d.path, withStep(steps, "next", "CREATE TABLE next (x INTEGER) STRICT;"), newUpgrade(&Options{}, time.Now))
 	if !errors.Is(err, ErrMigrationsPending) {
 		t.Fatalf("err = %v, want ErrMigrationsPending", err)
 	}

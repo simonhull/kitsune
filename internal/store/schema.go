@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log/slog"
 )
 
 // kitsuneAppID marks a SQLite file as Kitsune's ("KTSN").
@@ -61,19 +60,19 @@ func (st *schemaState) startVersion(latest int64) (int64, error) {
 }
 
 // settleSchema brings the database to the embedded schema, or says why it
-// can't. With migrate false it only creates an empty database, and refuses one
+// can't. Without u.migrate it only creates an empty database, and refuses one
 // that has migrations pending.
-func settleSchema(ctx context.Context, w *sql.DB, path string, migrate bool, log *slog.Logger) error {
+func settleSchema(ctx context.Context, w *sql.DB, path string, u *upgrade) error {
 	steps, err := parseMigrations(migrationFiles)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}
-	return settleSchemaWith(ctx, w, path, steps, migrate, log)
+	return settleSchemaWith(ctx, w, path, steps, u)
 }
 
 // settleSchemaWith is settleSchema with the migrations injected, so tests can
 // try broken ones and stop short of the latest.
-func settleSchemaWith(ctx context.Context, w *sql.DB, path string, steps []migration, migrate bool, log *slog.Logger) error {
+func settleSchemaWith(ctx context.Context, w *sql.DB, path string, steps []migration, u *upgrade) error {
 	var st schemaState
 	if err := w.QueryRowContext(ctx, probeSQL).Scan(&st.objects, &st.appID, &st.version); err != nil {
 		return fmt.Errorf("open %s: probe: %w", path, err)
@@ -86,14 +85,40 @@ func settleSchemaWith(ctx context.Context, w *sql.DB, path string, steps []migra
 	if st.version == latest {
 		return nil
 	}
-	if st.objects > 0 && !migrate {
+	if st.objects == 0 {
+		if err = runMigrations(ctx, w, steps); err != nil {
+			return fmt.Errorf("open %s: %w", path, err)
+		}
+		return nil
+	}
+	if !u.migrate {
 		return fmt.Errorf("open %s: at version %d, this binary needs %d: %w", path, from, latest, ErrMigrationsPending)
 	}
-	if err = runMigrations(ctx, w, steps[from:]); err != nil {
+	if err = u.apply(ctx, w, path, steps[from:], from); err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}
-	if st.objects > 0 {
-		log.InfoContext(ctx, "database migrated", "from", from, "to", latest)
+	return nil
+}
+
+// apply upgrades a database with data in it from version from. Adoption alone
+// changes nothing but the number, so only real steps get a backup.
+func (u *upgrade) apply(ctx context.Context, w *sql.DB, path string, steps []migration, from int64) error {
+	var saved string
+	if len(steps) > 0 {
+		var err error
+		if saved, err = u.backup(ctx, w, path, from); err != nil {
+			return fmt.Errorf("back up before migrating, which did not start: %w", err)
+		}
+	}
+	if err := runMigrations(ctx, w, steps); err != nil {
+		return err
+	}
+	u.log.InfoContext(ctx, "database migrated", "from", from, "to", from+int64(len(steps)), "backup", saved)
+	if saved == "" {
+		return nil
+	}
+	if err := pruneBackups(path); err != nil {
+		u.log.WarnContext(ctx, "pruning old database backups failed", "err", err)
 	}
 	return nil
 }
