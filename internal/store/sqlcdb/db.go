@@ -87,6 +87,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAlbumNamesStmt, err = db.PrepareContext(ctx, listAlbumNames); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumNames: %w", err)
 	}
+	if q.listAlbumOwnersStmt, err = db.PrepareContext(ctx, listAlbumOwners); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAlbumOwners: %w", err)
+	}
 	if q.listAlbumTrackArtistsStmt, err = db.PrepareContext(ctx, listAlbumTrackArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumTrackArtists: %w", err)
 	}
@@ -273,6 +276,11 @@ func (q *Queries) Close() error {
 	if q.listAlbumNamesStmt != nil {
 		if cerr := q.listAlbumNamesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAlbumNamesStmt: %w", cerr)
+		}
+	}
+	if q.listAlbumOwnersStmt != nil {
+		if cerr := q.listAlbumOwnersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAlbumOwnersStmt: %w", cerr)
 		}
 	}
 	if q.listAlbumTrackArtistsStmt != nil {
@@ -465,6 +473,7 @@ type Queries struct {
 	knownRootsStmt            *sql.Stmt
 	listAlbumHitsStmt         *sql.Stmt
 	listAlbumNamesStmt        *sql.Stmt
+	listAlbumOwnersStmt       *sql.Stmt
 	listAlbumTrackArtistsStmt *sql.Stmt
 	listAlbumTracksStmt       *sql.Stmt
 	listAlbumsByAddedStmt     *sql.Stmt
@@ -518,6 +527,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		knownRootsStmt:            q.knownRootsStmt,
 		listAlbumHitsStmt:         q.listAlbumHitsStmt,
 		listAlbumNamesStmt:        q.listAlbumNamesStmt,
+		listAlbumOwnersStmt:       q.listAlbumOwnersStmt,
 		listAlbumTrackArtistsStmt: q.listAlbumTrackArtistsStmt,
 		listAlbumTracksStmt:       q.listAlbumTracksStmt,
 		listAlbumsByAddedStmt:     q.listAlbumsByAddedStmt,

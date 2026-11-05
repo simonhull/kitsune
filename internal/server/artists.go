@@ -44,6 +44,14 @@ func toAPIArtistEntry(a *store.ArtistSummary) api.ArtistEntry {
 	return api.ArtistEntry{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount}
 }
 
+func toAPIArtistLinks(links []store.ArtistLink) []api.ArtistLink {
+	out := make([]api.ArtistLink, len(links))
+	for i := range links {
+		out[i] = api.ArtistLink{ID: links[i].ID, Name: links[i].Name}
+	}
+	return out
+}
+
 func toAPIAlbumEntries(albums []store.AlbumSummary) []api.AlbumEntry {
 	out := make([]api.AlbumEntry, len(albums))
 	for i := range albums {

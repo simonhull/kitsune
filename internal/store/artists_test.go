@@ -191,3 +191,70 @@ func TestArtistHidden(t *testing.T) {
 		t.Errorf("unknown = %v, want ErrNotFound", err)
 	}
 }
+
+func TestAlbumLinks(t *testing.T) {
+	t.Parallel()
+	link := func(names ...string) []store.ArtistLink {
+		out := make([]store.ArtistLink, len(names))
+		for i, n := range names {
+			out[i] = store.ArtistLink{ID: artistULID(strings.ToLower(n)), Name: n}
+		}
+		return out
+	}
+	tests := []struct {
+		name  string
+		album artistAlbum
+		want  []store.ArtistLink
+	}{
+		{"album artist", artistAlbum{albumArtists: []string{ann}, tracks: [][]string{{ann}}}, link(ann)},
+		{"album artists in tag order, one link each", artistAlbum{albumArtists: []string{bob, ann}, tracks: [][]string{{ann}, {ann, bob}}}, link(bob, ann)},
+		{"album artist not among the track artists", artistAlbum{albumArtists: []string{ann}, tracks: [][]string{{bob}}}, link(ann)},
+		{"no album artist", artistAlbum{tracks: [][]string{{ann, bob}, {ann}}}, link(ann)},
+		{"compilation with no album artist", artistAlbum{compilation: true, tracks: [][]string{{ann}, {bob}}}, link()},
+		{"compilation with an album artist", artistAlbum{compilation: true, albumArtists: []string{ann}, tracks: [][]string{{bob}}}, link(ann)},
+		{"Various Artists, flagged", artistAlbum{compilation: true, albumArtists: []string{various}, tracks: [][]string{{ann}}}, link()},
+		{"Various Artists, not flagged", artistAlbum{albumArtists: []string{various}, tracks: [][]string{{ann}}}, link()},
+		{"no artists at all", artistAlbum{tracks: [][]string{{}}}, link()},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tc.album.n = 1
+			s := seedArtistAlbums(t, tc.album)
+			d, err := s.Album(t.Context(), albumID(1))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(d.Artists, tc.want) {
+				t.Errorf("artists = %+v, want %+v", d.Artists, tc.want)
+			}
+		})
+	}
+}
+
+func TestAlbumLinkSurvivesAMissingTrack(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	tagged, plain := newWrite(1), newWrite(2)
+	plain.Album = tagged.Album
+	tagged.Artists, tagged.AlbumArtists = artistWrites(bob), artistWrites(ann)
+	plain.Artists = artistWrites(bob)
+	if err := s.WriteBatch(t.Context(), &store.Batch{Tracks: []store.TrackWrite{tagged, plain}}); err != nil {
+		t.Fatal(err)
+	}
+	states, err := s.FileStates(t.Context(), testRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.MarkMissing(t.Context(), []int64{states[tagged.RelPath].TrackID}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Album(t.Context(), tagged.Album.ULID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The missing track's album artist no longer counts, so the fallback takes over.
+	if len(d.Artists) != 1 || d.Artists[0].Name != bob {
+		t.Errorf("artists = %+v, want only the live track's artist", d.Artists)
+	}
+}

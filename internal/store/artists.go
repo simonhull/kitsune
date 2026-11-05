@@ -9,6 +9,12 @@ import (
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
 
+// ArtistLink is just enough of an artist to link to it.
+type ArtistLink struct {
+	ID   string // The artist's ULID.
+	Name string
+}
+
 // ArtistSummary is an artist as a list shows it.
 type ArtistSummary struct {
 	ID         string // The artist's ULID.
@@ -74,4 +80,20 @@ func (s *Store) Artist(ctx context.Context, id string) (ArtistDetail, error) {
 	}
 	d.AlbumCount = len(d.Albums)
 	return d, nil
+}
+
+// albumOwners returns the artists an album links to, one link each. Various
+// Artists gets none: its name stays plain text.
+func (s *Store) albumOwners(ctx context.Context, albumID int64) ([]ArtistLink, error) {
+	rows, err := s.rq.ListAlbumOwners(ctx, albumID)
+	if err != nil {
+		return nil, fmt.Errorf("owners: %w", err)
+	}
+	out := make([]ArtistLink, 0, len(rows))
+	for i := range rows {
+		if r := &rows[i]; !isVarious(r.MatchKey, r.Mbid) {
+			out = append(out, ArtistLink{ID: r.Ulid, Name: r.Name})
+		}
+	}
+	return out, nil
 }

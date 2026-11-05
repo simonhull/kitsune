@@ -41,6 +41,57 @@ func (q *Queries) GetArtist(ctx context.Context, ulid string) (GetArtistRow, err
 	return i, err
 }
 
+const listAlbumOwners = `-- name: ListAlbumOwners :many
+SELECT ar.ulid, ar.name, ar.match_key, ar.mbid
+FROM tracks t
+JOIN track_artists ta ON ta.track_id = t.id
+JOIN albums a ON a.id = t.album_id
+JOIN artists ar ON ar.id = ta.artist_id
+WHERE t.album_id = ? AND t.missing_since IS NULL
+  AND (ta.role = 'album_artist'
+   OR (ta.ord = 0 AND a.compilation = 0 AND NOT EXISTS (
+        SELECT 1 FROM tracks o
+        JOIN track_artists oa ON oa.track_id = o.id AND oa.role = 'album_artist'
+        WHERE o.album_id = a.id AND o.missing_since IS NULL)))
+GROUP BY ar.id
+ORDER BY min(ta.ord), min(t.id)
+`
+
+type ListAlbumOwnersRow struct {
+	Ulid     string
+	Name     string
+	MatchKey string
+	Mbid     *string
+}
+
+func (q *Queries) ListAlbumOwners(ctx context.Context, albumID int64) ([]ListAlbumOwnersRow, error) {
+	rows, err := q.query(ctx, q.listAlbumOwnersStmt, listAlbumOwners, albumID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumOwnersRow
+	for rows.Next() {
+		var i ListAlbumOwnersRow
+		if err := rows.Scan(
+			&i.Ulid,
+			&i.Name,
+			&i.MatchKey,
+			&i.Mbid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listArtistAlbums = `-- name: ListArtistAlbums :many
 SELECT
     a.id, a.ulid, a.name, a.sort_name, a.artist, a.year, a.compilation, a.added_at,

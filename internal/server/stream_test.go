@@ -66,7 +66,7 @@ func (ss *streamServer) record(t *testing.T, id, rel, format string) {
 		Digest: sha256.Sum256([]byte(id)),
 		Format: format, Codec: format,
 		Duration: time.Minute, Title: rel,
-		Artists: []store.ArtistWrite{{ULID: artistULID("ann"), MatchKey: "ann", Name: annName, SortName: annName}},
+		Artists: []store.ArtistWrite{{ULID: annID, MatchKey: "ann", Name: annName, SortName: annName}},
 		Album:   store.AlbumWrite{GroupKey: "g", ULID: albumULID(1), Name: "Album", SortName: "album", Artist: annName},
 	}
 	if err := ss.Store.WriteBatch(t.Context(), &store.Batch{Tracks: []store.TrackWrite{tw}}); err != nil {

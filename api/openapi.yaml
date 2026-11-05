@@ -536,11 +536,18 @@ components:
       description: An album entry's properties, repeated (allOf does not mix with additionalProperties false), plus its tracks.
       type: object
       additionalProperties: false
-      required: [id, title, artist, trackCount, compilation, tracks, durationMs, formats, addedAt]
+      required: [id, title, artist, artists, trackCount, compilation, tracks, durationMs, formats, addedAt]
       properties:
         id: { type: string }
         title: { type: string }
         artist: { type: string }
+        artists:
+          type: array
+          description: >-
+            Who `artist` links to: the album artists, else the first track
+            artist. Empty for a compilation or Various Artists, where `artist`
+            is plain text.
+          items: { $ref: "#/components/schemas/ArtistLink" }
         year: { type: integer }
         trackCount: { type: integer }
         compilation: { type: boolean }
@@ -586,7 +593,7 @@ components:
           type: array
           description: The other albums it has a track on, newest first.
           items: { $ref: "#/components/schemas/AlbumEntry" }
-    ArtistHit:
+    ArtistLink:
       type: object
       additionalProperties: false
       required: [id, name]
@@ -614,7 +621,7 @@ components:
       properties:
         artists:
           type: array
-          items: { $ref: "#/components/schemas/ArtistHit" }
+          items: { $ref: "#/components/schemas/ArtistLink" }
         albums:
           type: array
           items: { $ref: "#/components/schemas/AlbumEntry" }

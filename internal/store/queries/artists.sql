@@ -44,3 +44,18 @@ LEFT JOIN artwork w ON w.hash = a.artwork_hash
 WHERE ta.artist_id = ?
 GROUP BY a.id
 ORDER BY a.year DESC NULLS LAST, a.sort_name, a.id;
+
+-- name: ListAlbumOwners :many
+SELECT ar.ulid, ar.name, ar.match_key, ar.mbid
+FROM tracks t
+JOIN track_artists ta ON ta.track_id = t.id
+JOIN albums a ON a.id = t.album_id
+JOIN artists ar ON ar.id = ta.artist_id
+WHERE t.album_id = ? AND t.missing_since IS NULL
+  AND (ta.role = 'album_artist'
+   OR (ta.ord = 0 AND a.compilation = 0 AND NOT EXISTS (
+        SELECT 1 FROM tracks o
+        JOIN track_artists oa ON oa.track_id = o.id AND oa.role = 'album_artist'
+        WHERE o.album_id = a.id AND o.missing_since IS NULL)))
+GROUP BY ar.id
+ORDER BY min(ta.ord), min(t.id);

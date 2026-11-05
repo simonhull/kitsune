@@ -53,3 +53,16 @@ func TestArtistsNeedCredentials(t *testing.T) {
 		ts.send(t, call{method: http.MethodGet, path: path, invalid: true}).problem(t, http.StatusUnauthorized)
 	}
 }
+
+func TestAlbumLinksToItsArtist(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	token := ts.sessionFor(t).token
+	ts.seedAlbums(t, browseAlbum{n: 1, sortName: "a", tracks: 1})
+
+	var got api.AlbumDetail
+	ts.getJSON(t, token, albumsPath+"/"+albumULID(1), &got)
+	if len(got.Artists) != 1 || got.Artists[0].ID != annID || got.Artists[0].Name != annName {
+		t.Errorf("artists = %+v, want a link to Ann", got.Artists)
+	}
+}

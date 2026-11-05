@@ -223,7 +223,7 @@ func TestSearchFindsArtistsAndAlbums(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []store.ArtistHit{{ID: artistULID("artist-1"), Name: "Radiohead"}}; !reflect.DeepEqual(found.Artists, want) {
+	if want := []store.ArtistLink{{ID: artistULID("artist-1"), Name: "Radiohead"}}; !reflect.DeepEqual(found.Artists, want) {
 		t.Errorf("artists = %+v, want %+v", found.Artists, want)
 	}
 	if len(found.Albums) != 1 || found.Albums[0].Title != "Radiohead Album" || found.Albums[0].TrackCount != 1 {

@@ -89,6 +89,7 @@ type TrackFile struct {
 type AlbumDetail struct {
 	AlbumSummary
 
+	Artists  []ArtistLink // Who it links to; empty leaves Artist as plain text.
 	Tracks   []Track
 	Duration time.Duration
 	Formats  []string // Distinct and sorted.
@@ -316,8 +317,13 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 		artists[links[i].TrackID] = append(artists[links[i].TrackID], links[i].Name)
 	}
 
+	owners, err := s.albumOwners(ctx, row.ID)
+	if err != nil {
+		return AlbumDetail{}, fmt.Errorf("album %s: %w", id, err)
+	}
+
 	summary := sqlcdb.ListAlbumsByNameRow(row)
-	d := AlbumDetail{AlbumSummary: summarize(&summary), Tracks: make([]Track, 0, len(tracks))}
+	d := AlbumDetail{AlbumSummary: summarize(&summary), Artists: owners, Tracks: make([]Track, 0, len(tracks))}
 	for i := range tracks {
 		t := &tracks[i]
 		tr := Track{

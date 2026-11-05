@@ -93,15 +93,9 @@ type TrackHit struct {
 	Cover    *Cover // The album's; nil when it has none.
 }
 
-// ArtistHit is an artist as a search result shows it.
-type ArtistHit struct {
-	ID   string // The artist's ULID.
-	Name string
-}
-
 // SearchResults is what a search found, best first, each group capped.
 type SearchResults struct {
-	Artists []ArtistHit
+	Artists []ArtistLink
 	Albums  []AlbumSummary
 	Tracks  []TrackHit
 }
@@ -141,7 +135,7 @@ func inOrder[K comparable, V any](ids []K, byID map[K]V) []V {
 }
 
 // artistHits fetches the artists with the given IDs, in that order.
-func (s *Store) artistHits(ctx context.Context, ids []string) ([]ArtistHit, error) {
+func (s *Store) artistHits(ctx context.Context, ids []string) ([]ArtistLink, error) {
 	encoded, err := json.Marshal(ids)
 	if err != nil {
 		return nil, fmt.Errorf("encode IDs: %w", err)
@@ -150,9 +144,9 @@ func (s *Store) artistHits(ctx context.Context, ids []string) ([]ArtistHit, erro
 	if err != nil {
 		return nil, fmt.Errorf("hits: %w", err)
 	}
-	byID := make(map[string]ArtistHit, len(rows))
+	byID := make(map[string]ArtistLink, len(rows))
 	for i := range rows {
-		byID[rows[i].Ulid] = ArtistHit{ID: rows[i].Ulid, Name: rows[i].Name}
+		byID[rows[i].Ulid] = ArtistLink{ID: rows[i].Ulid, Name: rows[i].Name}
 	}
 	return inOrder(ids, byID), nil
 }

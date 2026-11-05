@@ -104,19 +104,21 @@ type Track struct {
 }
 
 // AlbumDetail is the response to GET /albums/{id}: an [AlbumEntry]'s fields,
-// repeated because the schema is flat, and the album's tracks.
+// repeated because the schema is flat, and the album's tracks. Artists are who
+// Artist links to; with none, Artist is plain text.
 type AlbumDetail struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Artist      string    `json:"artist"`
-	Year        int       `json:"year,omitzero"`
-	TrackCount  int       `json:"trackCount"`
-	Compilation bool      `json:"compilation"`
-	Artwork     *Artwork  `json:"artwork,omitzero"`
-	Tracks      []Track   `json:"tracks"`
-	DurationMs  int64     `json:"durationMs"`
-	Formats     []string  `json:"formats"`
-	AddedAt     time.Time `json:"addedAt"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Artist      string       `json:"artist"`
+	Artists     []ArtistLink `json:"artists"`
+	Year        int          `json:"year,omitzero"`
+	TrackCount  int          `json:"trackCount"`
+	Compilation bool         `json:"compilation"`
+	Artwork     *Artwork     `json:"artwork,omitzero"`
+	Tracks      []Track      `json:"tracks"`
+	DurationMs  int64        `json:"durationMs"`
+	Formats     []string     `json:"formats"`
+	AddedAt     time.Time    `json:"addedAt"`
 }
 
 // ArtistEntry is an artist as a list shows it. AlbumCount counts the albums it owns.
@@ -141,8 +143,8 @@ type ArtistDetail struct {
 	AppearsOn  []AlbumEntry `json:"appearsOn"`
 }
 
-// ArtistHit is an artist as a search result shows it.
-type ArtistHit struct {
+// ArtistLink is just enough of an artist to link to it.
+type ArtistLink struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
@@ -160,7 +162,7 @@ type TrackHit struct {
 
 // SearchResults is the response to GET /search.
 type SearchResults struct {
-	Artists []ArtistHit  `json:"artists"`
+	Artists []ArtistLink `json:"artists"`
 	Albums  []AlbumEntry `json:"albums"`
 	Tracks  []TrackHit   `json:"tracks"`
 }
