@@ -81,6 +81,11 @@ Every route is under `/api/v1` and, except login, needs a session. `api/openapi.
 - `GET /library` counts live albums and tracks, their duration, the configured roots and the files
   the scanner could not read.
 
+- `GET /tracks/{id}/stream` serves a track's original file, with no transcoding. It takes single and
+  multiple byte ranges, and its ETag comes from the file's size and modification time, so a retag
+  that keeps both keeps the ETag. `If-Range` matches an ETag only. A missing track, or one whose file
+  has left the disk, is a 404.
+
 An album with no live track is left out everywhere.
 
 ### Behind a reverse proxy
