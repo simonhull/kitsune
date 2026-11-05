@@ -176,6 +176,7 @@ func (s *Server) routes() []route {
 		{pattern: "GET /readyz", public: true, handle: s.getReady},
 		{pattern: "POST /auth/login", public: true, handle: s.login},
 		{pattern: "POST /auth/logout", handle: s.logout},
+		{pattern: "GET /admin/library/issues", admin: true, handle: s.getIssues},
 		{pattern: "POST /admin/library/scan", admin: true, handle: s.postScan},
 		{pattern: "GET /me", handle: s.getMe},
 		{pattern: "GET /artwork/{hash}", handle: s.getArtwork},

@@ -162,6 +162,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   once, when that one ends. `POST /admin/library/scan` answers 202 or 409 from the claim.
 - `Scanner.Progress` is an immutable snapshot swapped atomically, which only the claim's holder
   changes. `GET /library` carries it, and the reason a scan failed goes to administrators only.
+- No library root reaches a client. `GET /admin/library/issues` sends paths relative to the root and
+  passes messages through `StripRoot`; `GET /library` gives everyone counts by kind.
 - Scans remove audiometa's temp files (`isWriteTemp`), and only with `library.tag_writes` on: off,
   nothing under a root ever changes.
 

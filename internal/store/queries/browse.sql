@@ -100,5 +100,17 @@ SELECT count(*) AS tracks, CAST(coalesce(sum(duration_ms), 0) AS INTEGER) AS dur
 FROM tracks INDEXED BY tracks_live
 WHERE missing_since IS NULL;
 
--- name: CountScanIssues :one
-SELECT count(*) FROM scan_issues;
+-- name: CountScanIssuesByKind :many
+SELECT kind, count(*) AS issues FROM scan_issues GROUP BY kind;
+
+-- name: CountWarnedTracks :one
+SELECT count(*) FROM tracks WHERE missing_since IS NULL AND scan_warnings <> '[]';
+
+-- name: ListScanIssues :many
+SELECT root, rel_path, kind, message, size, mtime FROM scan_issues ORDER BY root, rel_path;
+
+-- name: ListWarnedTracks :many
+SELECT ulid, root, rel_path, scan_warnings
+FROM tracks
+WHERE missing_since IS NULL AND scan_warnings <> '[]'
+ORDER BY root, rel_path;

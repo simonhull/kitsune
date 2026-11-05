@@ -150,6 +150,9 @@ func (s *Server) getLibrary(w http.ResponseWriter, r *http.Request) {
 	body := api.LibraryFacts{
 		Albums: f.Albums, Tracks: f.Tracks, DurationMs: f.Duration.Milliseconds(),
 		Roots: s.roots, Issues: f.Issues, Scan: toAPIScan(s.scanner.Progress(), isAdmin(r.Context())),
+		IssueCounts: api.IssueCounts{
+			Unreadable: f.Unreadable, Corrupted: f.Corrupted, Unsupported: f.Unsupported, Warnings: f.WarnedTracks,
+		},
 	}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }

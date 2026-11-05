@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json/v2"
 	"errors"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -164,5 +166,83 @@ func TestPostScanRefusesABadBody(t *testing.T) {
 	token := ts.tokenFor(t, store.RoleAdmin)
 	for _, body := range []string{"", "{}", `{"mode":"slow"}`, `{"mode":"full","extra":1}`, "full"} {
 		ts.postScan(t, token, body, true).problem(t, http.StatusBadRequest)
+	}
+}
+
+const (
+	issuesPath  = "/admin/library/issues"
+	issuesRoot  = "/srv/music"
+	warnedTrack = "01J00000000000000000000001"
+)
+
+// seedIssues writes an unsupported file, a corrupted one and a track with a
+// warning, each mentioning the root.
+func (ts *testServer) seedIssues(t *testing.T) {
+	t.Helper()
+	batch := store.Batch{
+		Issues: []store.ScanIssue{
+			{Root: issuesRoot, RelPath: "a/1.wav", Kind: store.IssueUnsupported, Message: issuesRoot + "/a/1.wav: unsupported format: wav"},
+			{Root: issuesRoot, RelPath: "a/2.flac", Kind: store.IssueCorrupted, Message: "corrupted: " + issuesRoot + "/a/2.flac"},
+			{Root: issuesRoot, RelPath: "a/3.wav", Kind: store.IssueUnsupported, Message: issuesRoot + "/a/3.wav: unsupported format: wav"},
+		},
+		Tracks: []store.TrackWrite{{
+			ULID: warnedTrack, Root: issuesRoot, RelPath: "b/1.flac", Format: flacFormat, Codec: flacFormat, Title: "T",
+			Album:    store.AlbumWrite{GroupKey: "g", ULID: albumULID(1), Name: "A", SortName: "a", Artist: annName},
+			Warnings: []string{"odd tag in " + issuesRoot + "/b/1.flac"},
+		}},
+	}
+	if err := ts.Store.WriteBatch(t.Context(), &batch); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIssuesListsDetailWithoutTheRoot(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.seedIssues(t)
+	resp := ts.send(t, call{method: http.MethodGet, path: issuesPath, header: bearer(ts.tokenFor(t, store.RoleAdmin))})
+	if bytes.Contains(resp.Body, []byte(issuesRoot)) {
+		t.Errorf("the response holds the root: %s", resp.Body)
+	}
+	var got api.ScanIssues
+	if err := json.Unmarshal(resp.Body, &got); err != nil {
+		t.Fatalf("decode %q: %v", resp.Body, err)
+	}
+	want := api.ScanIssues{
+		Issues: []api.ScanIssue{
+			{Path: "a/1.wav", Kind: "unsupported", Message: "a/1.wav: unsupported format: wav"},
+			{Path: "a/2.flac", Kind: "corrupted", Message: "corrupted: a/2.flac"},
+			{Path: "a/3.wav", Kind: "unsupported", Message: "a/3.wav: unsupported format: wav"},
+		},
+		Warnings: []api.TrackWarned{{TrackID: warnedTrack, Path: "b/1.flac", Messages: []string{"odd tag in b/1.flac"}}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("issues = %+v, want %+v", got, want)
+	}
+}
+
+func TestIssuesListsEmptyArrays(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	var got api.ScanIssues
+	ts.getJSON(t, ts.tokenFor(t, store.RoleAdmin), issuesPath, &got)
+	if got.Issues == nil || got.Warnings == nil || len(got.Issues)+len(got.Warnings) != 0 {
+		t.Errorf("issues = %+v, want two empty lists", got)
+	}
+}
+
+func TestIssuesAreForAdminsAndCountsForEveryone(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.seedIssues(t)
+	token := ts.tokenFor(t, store.RoleUser)
+	ts.send(t, call{method: http.MethodGet, path: issuesPath, header: bearer(token)}).problem(t, http.StatusForbidden)
+	ts.send(t, call{method: http.MethodGet, path: issuesPath, invalid: true}).problem(t, http.StatusUnauthorized)
+	facts := ts.getLibrary(t, token)
+	if want := (api.IssueCounts{Corrupted: 1, Unsupported: 2, Warnings: 1}); facts.IssueCounts != want {
+		t.Errorf("counts = %+v, want %+v", facts.IssueCounts, want)
+	}
+	if facts.Issues != 3 {
+		t.Errorf("issues = %d, want 3: a warned track plays", facts.Issues)
 	}
 }

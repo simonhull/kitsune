@@ -545,6 +545,75 @@ func TestAlbumTagValues(t *testing.T) {
 	}
 }
 
+// seedTroubled writes three issues and three tracks: a clean one, one with
+// warnings and a missing one with warnings. It returns the second.
+func seedTroubled(t *testing.T, s *store.Store) store.TrackWrite {
+	t.Helper()
+	clean, warned, gone := albumTrack(1, 1, "a"), albumTrack(1, 2, "a"), albumTrack(1, 3, "a")
+	warned.Warnings = []string{"odd", "odder"}
+	gone.Warnings = []string{"oddest"}
+	issues := []store.ScanIssue{
+		{Root: testRoot, RelPath: "z.wav", Kind: store.IssueUnsupported, Message: "z"},
+		{Root: testRoot, RelPath: "m.flac", Kind: store.IssueUnreadable, Message: "a", Size: 1},
+		{Root: testRoot, RelPath: "n.wav", Kind: store.IssueUnsupported, Message: "b"},
+	}
+	if err := s.WriteBatch(t.Context(), &store.Batch{Tracks: []store.TrackWrite{clean, warned, gone}, Issues: issues}); err != nil {
+		t.Fatal(err)
+	}
+	states, err := s.FileStates(t.Context(), testRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.MarkMissing(t.Context(), []int64{states[gone.RelPath].TrackID}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	return warned
+}
+
+func TestFactsCountTrouble(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	seedTroubled(t, s)
+	f, err := s.Facts(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Issues != 3 || f.Unreadable != 1 || f.Corrupted != 0 || f.Unsupported != 2 || f.WarnedTracks != 1 {
+		t.Errorf("facts = %+v, want 3 issues, 1 unreadable, 2 unsupported, and 1 live track warned", f)
+	}
+}
+
+func TestScanIssues(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	seedTroubled(t, s)
+	listed, err := s.ScanIssues(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := make([]string, len(listed))
+	for i := range listed {
+		paths[i] = listed[i].RelPath
+	}
+	if want := []string{"m.flac", "n.wav", "z.wav"}; !slices.Equal(paths, want) {
+		t.Errorf("issues = %v, want %v", paths, want)
+	}
+}
+
+func TestWarnedTracks(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	warned := seedTroubled(t, s)
+	tracks, err := s.WarnedTracks(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []store.WarnedTrack{{ID: warned.ULID, Root: testRoot, RelPath: warned.RelPath, Warnings: warned.Warnings}}
+	if !reflect.DeepEqual(tracks, want) {
+		t.Errorf("WarnedTracks = %+v, want %+v", tracks, want)
+	}
+}
+
 func TestFacts(t *testing.T) {
 	t.Parallel()
 	s, _ := openBrowse(t)
@@ -557,7 +626,7 @@ func TestFacts(t *testing.T) {
 	if err := s.WriteBatch(t.Context(), &store.Batch{Tracks: []store.TrackWrite{a, b, c}, Issues: []store.ScanIssue{issue}}); err != nil {
 		t.Fatal(err)
 	}
-	want := store.LibraryFacts{Albums: 2, Tracks: 3, Duration: 7 * time.Second, Issues: 1}
+	want := store.LibraryFacts{Albums: 2, Tracks: 3, Duration: 7 * time.Second, Issues: 1, Corrupted: 1}
 	if f, err := s.Facts(t.Context()); err != nil || f != want {
 		t.Errorf("Facts = %+v, %v; want %+v", f, err, want)
 	}

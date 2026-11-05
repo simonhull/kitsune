@@ -227,8 +227,42 @@ type LibraryFacts struct {
 	Roots int `json:"roots"`
 	// Issues counts the files the scanner could not read.
 	Issues int64 `json:"issues"`
+	// IssueCounts breaks the issues down by kind, and counts track warnings.
+	IssueCounts IssueCounts `json:"issueCounts"`
 	// Scan says where scanning stands.
 	Scan ScanStatus `json:"scan"`
+}
+
+// IssueCounts counts what a scan had trouble with. It is all a non-administrator
+// sees of it.
+type IssueCounts struct {
+	Unreadable  int64 `json:"unreadable"`
+	Corrupted   int64 `json:"corrupted"`
+	Unsupported int64 `json:"unsupported"`
+	// Warnings counts the live tracks read with warnings. They play.
+	Warnings int64 `json:"warnings"`
+}
+
+// ScanIssues is the response to GET /admin/library/issues.
+type ScanIssues struct {
+	Issues   []ScanIssue   `json:"issues"`
+	Warnings []TrackWarned `json:"warnings"`
+}
+
+// ScanIssue is a file the scanner could not read. Path is relative to its
+// library root, and Message holds no root.
+type ScanIssue struct {
+	Path    string `json:"path"`
+	Kind    string `json:"kind"`
+	Message string `json:"message"`
+}
+
+// TrackWarned is a live track read with warnings. Path is relative to its library
+// root, and Messages hold no root.
+type TrackWarned struct {
+	TrackID  string   `json:"trackId"`
+	Path     string   `json:"path"`
+	Messages []string `json:"messages"`
 }
 
 // ScanRequest is the body of POST /admin/library/scan. Mode is quick or full.
