@@ -101,6 +101,7 @@ func (s *Scanner) Scan(ctx context.Context, mode Mode) (Stats, error) {
 	if err != nil {
 		return Stats{}, fmt.Errorf("scan: survey: %w", err)
 	}
+	defer s.refreshNames(ctx)
 	stats := Stats{Seen: sv.Seen, SkippedRoots: sv.SkippedRoots}
 	if err = s.applySurvey(ctx, sv, &stats); err != nil {
 		return stats, fmt.Errorf("scan: %w", err)
@@ -113,6 +114,15 @@ func (s *Scanner) Scan(ctx context.Context, mode Mode) (Stats, error) {
 		return stats, fmt.Errorf("scan: %w", err)
 	}
 	return stats, nil
+}
+
+// refreshNames brings search up to date after a scan, whatever its outcome,
+// since a failed scan may have stored names too. A failure leaves search stale
+// until the next scan, which costs less than failing this one.
+func (s *Scanner) refreshNames(ctx context.Context) {
+	if err := s.st.RefreshNames(ctx); err != nil && ctx.Err() == nil {
+		s.log.WarnContext(ctx, "refreshing search names failed", "err", err)
+	}
 }
 
 // finish runs after a complete read: it deletes the tracks that have been

@@ -56,6 +56,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   not built dynamically, which supersedes the dynamic-sorts rule in the Store section for these two.
   This also supersedes the spec's `next_cursor`, limit 500 and album ETag: the API says `nextCursor`,
   caps `limit` at 200 and sends no album ETag.
+- A canceled query fails with `sqlite3: interrupted`, not `context.Canceled`: check
+  `r.Context().Err()` before logging an error from a handler a client can abandon.
 - Responses carry `api` types built field by field (`toAPIUser`); never marshal a
   `store` type, so a new store column can't leak.
 - Nothing the server writes (bodies, headers, logs) contains a password or token, except
@@ -76,10 +78,23 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   the collation must be on the column, because one on a row value never seeks. `LiveTrackFacts` uses
   `INDEXED BY tracks_live`, since a partial index's WHERE column doesn't count as covered; a test
   fails if the index is renamed.
+- Artists and albums are found by an in-memory name index (`names.go`), not by FTS, which can't
+  take a typo or say which artist matched. A search reads the index without waiting; `RefreshNames`
+  builds a new one and swaps it in. `Open` and the end of every scan call it, and so must anything
+  else that adds, removes or renames an artist or album. Various Artists stays out of it.
+- Artists have a public ULID too, assigned by the scanner and kept across updates. Their row `id` is
+  internal: it is reused after a delete.
+- An album belongs to its album artists; with none, to the first artist of its tracks, which grouping
+  makes the same on all of them, unless it is a compilation. `queries/artists.sql` spells this out,
+  and every query about owners repeats it. Various Artists is a real row that no reader shows:
+  `isVarious` decides, by match key or MBID.
 - Library writes go through `WriteBatch`, one transaction per batch. The store never
   normalizes names or decides identity: callers pass match keys, group keys and ULIDs.
 - FTS rows are written in the same transaction as their track and through `foldSearch`;
   a search query must fold the same way.
+- Nothing reaches `MATCH` except a `SearchQuery`, and `ParseSearch` is the only way to make one. Its
+  caps are what stop a long query taking down a read connection; never hand-build an FTS expression.
+  The `tracks_fts` table is contentless: it can rank, but can't say which column matched.
 
 ## Auth
 - `internal/auth` owns credentials. Passwords are Argon2id in PHC format; the store only

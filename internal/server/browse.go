@@ -115,6 +115,7 @@ func toAPIAlbumDetail(d *store.AlbumDetail) api.AlbumDetail {
 	out := api.AlbumDetail{
 		ID: d.ID, Title: d.Title, Artist: d.Artist, Year: d.Year, TrackCount: d.TrackCount,
 		Compilation: d.Compilation, Artwork: toAPIArtwork(d.Cover),
+		Artists:    toAPIArtistLinks(d.Artists),
 		Tracks:     make([]api.Track, len(d.Tracks)),
 		DurationMs: d.Duration.Milliseconds(),
 		Formats:    append([]string{}, d.Formats...),

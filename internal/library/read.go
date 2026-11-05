@@ -237,12 +237,19 @@ func (w *writer) handle(ctx context.Context, r *result) error {
 // missing track with the same audio is taken over; otherwise it is new.
 func (w *writer) identify(ctx context.Context, tw *store.TrackWrite, j *job) error {
 	// First, because the update and move branches return early. The store keeps
-	// the ID of an album that already exists and ignores this one.
+	// the IDs of an album and artists that already exist and ignores these.
 	albumID, err := newULID(w.s.now(), rand.Reader)
 	if err != nil {
 		return fmt.Errorf("new album ID for %s: %w", tw.RelPath, err)
 	}
 	tw.Album.ULID = albumID
+	for _, list := range [][]store.ArtistWrite{tw.Artists, tw.AlbumArtists} {
+		for i := range list {
+			if list[i].ULID, err = newULID(w.s.now(), rand.Reader); err != nil {
+				return fmt.Errorf("new artist ID for %s: %w", tw.RelPath, err)
+			}
+		}
+	}
 	if j.TrackID != 0 {
 		tw.ID = j.TrackID
 		w.stats.Updated++

@@ -21,6 +21,7 @@ const (
 	libraryPath = "/library"
 	flacFormat  = "flac"
 	annName     = "Ann"
+	annID       = "03J00000000000000000000000"
 	missingID   = "nope"
 )
 
@@ -50,7 +51,7 @@ func (ts *testServer) seedAlbums(tb testing.TB, albums ...browseAlbum) {
 				Duration: time.Minute,
 				Title:    fmt.Sprintf("Track %d", t),
 				TrackNo:  t,
-				Artists:  []store.ArtistWrite{{MatchKey: "ann", Name: annName, SortName: annName}},
+				Artists:  []store.ArtistWrite{{ULID: annID, MatchKey: "ann", Name: annName, SortName: annName}},
 				Album: store.AlbumWrite{
 					GroupKey: fmt.Sprintf("g%d", a.n), ULID: albumULID(a.n), Name: fmt.Sprintf("Album %d", a.n),
 					SortName: a.sortName, Artist: annName, Year: 2001, Artwork: a.cover,

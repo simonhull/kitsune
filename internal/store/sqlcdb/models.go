@@ -20,6 +20,7 @@ type Album struct {
 
 type Artist struct {
 	ID       int64
+	Ulid     string
 	MatchKey string
 	Name     string
 	SortName string

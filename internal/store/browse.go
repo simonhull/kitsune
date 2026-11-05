@@ -89,6 +89,7 @@ type TrackFile struct {
 type AlbumDetail struct {
 	AlbumSummary
 
+	Artists  []ArtistLink // Who it links to; empty leaves Artist as plain text.
 	Tracks   []Track
 	Duration time.Duration
 	Formats  []string // Distinct and sorted.
@@ -259,14 +260,21 @@ func summarize(r *sqlcdb.ListAlbumsByNameRow) AlbumSummary {
 		Compilation: r.Compilation != 0,
 		AddedAt:     fromMS(r.AddedAt),
 	}
-	if r.ArtworkHash != nil && r.ArtworkWidth != nil && r.ArtworkHeight != nil && r.ArtworkAccent != nil && r.ArtworkGround != nil {
-		a.Cover = &Cover{
-			Hash:   [32]byte(r.ArtworkHash),
-			Accent: *r.ArtworkAccent, Ground: *r.ArtworkGround,
-			Width: int(*r.ArtworkWidth), Height: int(*r.ArtworkHeight),
-		}
-	}
+	a.Cover = cover(r.ArtworkHash, r.ArtworkWidth, r.ArtworkHeight, r.ArtworkAccent, r.ArtworkGround)
 	return a
+}
+
+// cover builds a Cover from a row's left-joined artwork columns, or nil when
+// the album has none.
+func cover(hash []byte, width, height *int64, accent, ground *string) *Cover {
+	if hash == nil || width == nil || height == nil || accent == nil || ground == nil {
+		return nil
+	}
+	return &Cover{
+		Hash:   [32]byte(hash),
+		Accent: *accent, Ground: *ground,
+		Width: int(*width), Height: int(*height),
+	}
 }
 
 // intOr0 returns *p, or 0 for NULL.
@@ -309,8 +317,13 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 		artists[links[i].TrackID] = append(artists[links[i].TrackID], links[i].Name)
 	}
 
+	owners, err := s.albumOwners(ctx, row.ID)
+	if err != nil {
+		return AlbumDetail{}, fmt.Errorf("album %s: %w", id, err)
+	}
+
 	summary := sqlcdb.ListAlbumsByNameRow(row)
-	d := AlbumDetail{AlbumSummary: summarize(&summary), Tracks: make([]Track, 0, len(tracks))}
+	d := AlbumDetail{AlbumSummary: summarize(&summary), Artists: owners, Tracks: make([]Track, 0, len(tracks))}
 	for i := range tracks {
 		t := &tracks[i]
 		tr := Track{

@@ -20,6 +20,7 @@ CREATE INDEX sessions_expires ON sessions (expires_at);
 
 CREATE TABLE artists (
 	id        INTEGER PRIMARY KEY,
+	ulid      TEXT    NOT NULL UNIQUE CHECK (length(ulid) = 26), -- public ID; kept across updates
 	match_key TEXT    NOT NULL UNIQUE,  -- caller-normalized name; the identity
 	name      TEXT    NOT NULL,
 	sort_name TEXT    NOT NULL,

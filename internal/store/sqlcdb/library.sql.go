@@ -518,8 +518,8 @@ func (q *Queries) UpsertAlbum(ctx context.Context, arg UpsertAlbumParams) (int64
 }
 
 const upsertArtist = `-- name: UpsertArtist :one
-INSERT INTO artists (match_key, name, sort_name, mbid)
-VALUES (?, ?, ?, ?)
+INSERT INTO artists (ulid, match_key, name, sort_name, mbid)
+VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (match_key) DO UPDATE SET
     name = excluded.name,
     sort_name = excluded.sort_name,
@@ -528,6 +528,7 @@ RETURNING id
 `
 
 type UpsertArtistParams struct {
+	Ulid     string
 	MatchKey string
 	Name     string
 	SortName string
@@ -536,6 +537,7 @@ type UpsertArtistParams struct {
 
 func (q *Queries) UpsertArtist(ctx context.Context, arg UpsertArtistParams) (int64, error) {
 	row := q.queryRow(ctx, q.upsertArtistStmt, upsertArtist,
+		arg.Ulid,
 		arg.MatchKey,
 		arg.Name,
 		arg.SortName,
