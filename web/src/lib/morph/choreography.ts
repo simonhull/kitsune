@@ -1,7 +1,7 @@
 import type { MorphSlot } from './registry.ts';
 
 /** The tokens in `tokens.css`, which stay the one place a morph's length is set. */
-export type MotionToken = '--morph-fast' | '--morph' | '--morph-slow';
+export type MotionToken = '--morph-fast' | '--morph' | '--morph-slow' | '--morph-drop';
 
 /** A curve as designers say it: how long it feels, and how much it overshoots (0 to 1). */
 export interface Motion {
@@ -101,6 +101,8 @@ export interface Pose {
 	opacity?: number;
 	y?: number;
 	scale?: number;
+	/** Degrees. Only a card landing on the deck turns: pages have no such term. */
+	rotate?: number;
 }
 
 /**
@@ -146,6 +148,8 @@ export interface Part {
 	/** Milliseconds after the morph starts. */
 	delay: number;
 	motion: MotionSpec;
+	/** A curve of its own for the opacity, for something that's solid long before it arrives. */
+	fade?: MotionSpec;
 	ripple?: Ripple;
 }
 
@@ -166,6 +170,7 @@ export type ChoreographyName =
 	| 'now-playing-to-album'
 	| 'login-to-home'
 	| 'login-to-album'
+	| 'deck-to-home'
 	| 'blend';
 
 interface SharedTravel {
@@ -192,6 +197,8 @@ export interface Choreography {
 	leaving: Part;
 	/** The incoming page's units, by role. */
 	arriving: Partial<Record<Role, Part>>;
+	/** The few units that arrive their own way whatever their role, by `data-morph-key`. */
+	arrivingByKey?: Readonly<Record<string, Part>>;
 	/** The two full-bleed stages behind the page. */
 	stages: Partial<Record<StageName, Part>>;
 	bloom: Bloom | null;
@@ -234,6 +241,25 @@ const comeForward: Part = {
 	motion: base,
 	ripple: { spread: 0, floor: 0.08 }
 };
+
+/**
+ * A cover thrown down on the deck, from well above and well off the table, still turning. It takes
+ * `spin` degrees off its way to the tilt it lies at, and nothing about it lingers: at one every
+ * 70 ms a placement would read as a queue.
+ */
+export function drop(spin: number): Part {
+	return {
+		from: { opacity: 0, y: -84, scale: 1.3, rotate: spin },
+		to: {},
+		delay: 0,
+		motion: { token: '--morph-drop', bounce: 0 },
+		// Solid almost at once: several land together, and a run of see-through cards is a dissolve.
+		fade: { token: '--morph-drop', bounce: 0, pace: 0.3 }
+	};
+}
+
+/** The same landing with nothing moving, for reduced motion. */
+export const crossfade: Part = { from: { opacity: 0 }, to: {}, delay: 0, motion: quick };
 
 function rise(y: number, delay: number, motion: MotionSpec = base): Part {
 	return { from: { opacity: 0, y }, to: {}, delay, motion };
@@ -280,7 +306,7 @@ const playing = {
 const homeToAlbum: Choreography = {
 	name: 'home-to-album',
 	motion: slow,
-	travel: { subject: 'to', sourceSlots: ['card'], targetSlots: ['hero'] },
+	travel: { subject: 'to', sourceSlots: ['card', 'deck'], targetSlots: ['hero'] },
 	leaving: fallBack,
 	arriving: { words: rise(20, 160), panel: rise(96, 160, slow) },
 	stages: { album: { from: { opacity: 0, scale: 1.08 }, to: {}, delay: 120, motion: slow } },
@@ -296,7 +322,7 @@ const homeToAlbum: Choreography = {
 const albumToHome: Choreography = {
 	name: 'album-to-home',
 	motion: base,
-	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['card', 'island'] },
+	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['card', 'deck', 'island'] },
 	leaving: sink,
 	arriving: { intro: comeForward, card: comeForward },
 	stages: { album: fadeOut(0, base) },
@@ -405,6 +431,32 @@ const loginToAlbum: Choreography = {
 	island: null,
 	islandForms
 };
+
+/** What fliers land on: already in place, and already there by the time the first one arrives. */
+const landingPad = fadeIn(40, base);
+
+/**
+ * The first scan ends and the deck deals out into Home: one journey with no navigation. The cards
+ * fly to the album tiles they are, on the short spring because a dozen must land in about 600 ms,
+ * and the rest of Home rises under them as it does through the door. The greeting never moves: it
+ * has been here all along. The fliers themselves aren't in here, because they're worked out from
+ * what's on screen.
+ */
+export const deckToHome: Choreography = {
+	name: 'deck-to-home',
+	motion: quick,
+	travel: null,
+	leaving: { from: {}, to: { opacity: 0, scale: 0.86 }, delay: 0, motion: exit },
+	arriving: { card: rise(48, 160, slow) },
+	arrivingByKey: { feature: landingPad, recent: landingPad },
+	stages: {},
+	bloom: null,
+	island: null,
+	islandForms
+};
+
+/** The deck's count line, once there's a Home to say it instead. */
+export const countFades = fadeOut(0, quick);
 
 /** All of reduced motion: never a hard cut. */
 export const blend: Choreography = {

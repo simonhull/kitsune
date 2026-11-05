@@ -4,6 +4,8 @@ import {
 	LoginError,
 	type Album,
 	type AlbumEntry,
+	type AlbumPage,
+	type AlbumSort,
 	type LibraryFacts,
 	type LibrarySource,
 	type Track,
@@ -167,4 +169,140 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				return album;
 			})
 	};
+}
+
+/** The real library: however fast a scan is set to run, this is what it finds. */
+const scanLibrary = 927;
+/** Seconds between flushes at the scanner's 50-track batch. */
+export const defaultScanGap = 2.7;
+const firstScanDelay = 1.2;
+const scanArtists = ['Mere Coast', 'Ilse Varga', 'The Halden Set', 'Vanta Park', 'Sorrel Vane'];
+
+function scanEntry(index: number): AlbumEntry {
+	const id = `scan-${String(index)}`;
+	const seed = fnv1a(id);
+	const first = firstWords.at(seed % firstWords.length) ?? 'Slow';
+	const last = lastWords.at((seed >>> 8) % lastWords.length) ?? 'Light';
+	const artist = scanArtists.at((seed >>> 16) % scanArtists.length) ?? 'Mere Coast';
+	return {
+		id,
+		title: `${first} ${last} ${String(index)}`,
+		artist,
+		trackCount: 8,
+		compilation: false
+	};
+}
+
+/** When each burst lands, in milliseconds from the start: a little uneven, and never after the end. */
+export function burstTimes(scanMs: number, gapMs: number): number[] {
+	const times: number[] = [];
+	let at = Math.min(gapMs * firstScanDelay, scanMs * 0.8);
+	while (at < scanMs) {
+		times.push(at);
+		at += gapMs * (0.7 + (fnv1a(String(times.length)) % 1000) * 0.0006);
+	}
+	return times;
+}
+
+/**
+ * How many albums this burst finds: a share of the library by how much of the scan one gap is, so
+ * 2.7 s in a 412 s scan is the real thing, about 6 at a time, and the same library in 30 s is dense.
+ */
+export function burstSize(index: number, scanMs: number, gapMs: number): number {
+	const even = (scanLibrary * gapMs) / scanMs;
+	const spread = 0.2 * ((fnv1a(`burst-${String(index)}`) % 2001) / 1000 - 1);
+	return Math.max(1, Math.round(even * (1 + spread)));
+}
+
+export interface ScanOptions extends FixtureOptions {
+	scanMs: number;
+	gapMs: number;
+	/** When the scan began, on the clock `now` reads. */
+	startedAt: number;
+	now?: () => number;
+}
+
+/**
+ * A first scan on a timer, through the same contract as a real one: small frequent bursts, growing
+ * counts, and not ready until the end. It's all a function of the clock, so a
+ * reload picks up where the scan had got to.
+ */
+export function createScanFixtureSource({
+	scanMs,
+	gapMs,
+	startedAt,
+	now = Date.now,
+	latencyMs = 0
+}: ScanOptions): LibrarySource {
+	const times = burstTimes(scanMs, gapMs);
+	const base = createFixtureSource({ latencyMs });
+
+	function found(): number {
+		const elapsed = now() - startedAt;
+		return times
+			.filter((at) => at <= elapsed)
+			.reduce((sum, _, index) => sum + burstSize(index, scanMs, gapMs), 0);
+	}
+
+	function entries(sort: AlbumSort): AlbumEntry[] {
+		const all = Array.from({ length: found() }, (_, index) => scanEntry(index));
+		return sort === 'added'
+			? all.toReversed()
+			: all.toSorted((a, b) => a.title.localeCompare(b.title));
+	}
+
+	function page(sort: AlbumSort, cursor: string | undefined, limit: number): AlbumPage {
+		const all = entries(sort);
+		const start = Number(cursor ?? 0);
+		const end = start + limit;
+		return {
+			albums: all.slice(start, end),
+			...(end < all.length ? { nextCursor: String(end) } : {})
+		};
+	}
+
+	async function respond<T>(answer: () => T): Promise<T> {
+		await base.ready();
+		return answer();
+	}
+
+	return {
+		...base,
+		facts: () =>
+			respond(() => {
+				const albums = found();
+				return {
+					albums,
+					tracks: albums * 8,
+					durationMs: albums * 8 * 240_000,
+					roots: 1,
+					issues: 0
+				};
+			}),
+		ready: () => respond(() => now() - startedAt >= scanMs),
+		albumsPage: (sort, cursor, limit = 60) => respond(() => page(sort, cursor, limit)),
+		album: (id) =>
+			respond(() => {
+				const index = Number(id.slice('scan-'.length));
+				if (!id.startsWith('scan-') || !Number.isInteger(index) || index >= found()) {
+					throw new AlbumNotFoundError(id);
+				}
+				const entry = scanEntry(index);
+				return albumFrom(entry, tracksFor(entry), 2019 + (fnv1a(id) % 7));
+			})
+	};
+}
+
+/** Finds when this scan began, or starts it, so that a reload resumes it. A new tab starts again. */
+export function scanStart(key: string, now: number): number {
+	try {
+		const held = Number(sessionStorage.getItem(key));
+		if (held > 0) {
+			return held;
+		}
+		sessionStorage.setItem(key, String(now));
+	} catch {
+		// Storage is off: a reload restarts the scan, which is all that's lost.
+	}
+	return now;
 }

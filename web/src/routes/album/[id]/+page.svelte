@@ -17,6 +17,8 @@
 	// Never awaited: the first frame is built from the list entry, and tracks stream in.
 	$effect(() => {
 		const wanted = id;
+		// A first scan ending forgets the album it was half way through, even with this page open.
+		void library.album(wanted);
 		// Untracked: a failure must wait for Try again, not re-run this and ask forever.
 		untrack(() => void library.loadAlbum(wanted));
 	});

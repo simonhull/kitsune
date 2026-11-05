@@ -105,4 +105,14 @@ describe('recordOrigins', () => {
 		expect(origins.get(cover)).toEqual({ slot: 'card', ordinal: 1 });
 		expect(origins.get(title)).toEqual({ slot: 'card', ordinal: null });
 	});
+
+	it('records a source in the slot it really left from, so the way back can find it', () => {
+		const deck: Named = { id: cover, slot: 'deck', name: 'deck' };
+		const origins: Origins = new Map();
+		recordOrigins([deck], [cover, title], 'card', new Map([[cover, deck]]), origins);
+		expect(origins.get(cover)).toEqual({ slot: 'deck', ordinal: 0 });
+		expect(
+			pick([deck, island], { ids: [cover], slots: ['card', 'deck'], origins }).get(cover)
+		).toBe(deck);
+	});
 });

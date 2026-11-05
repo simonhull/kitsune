@@ -13,6 +13,8 @@ html {
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
 	scrollbar-color: rgb(255 255 255 / 16%) transparent;
+	/* A short page growing a scrollbar would shift whatever is meant to stay still, like the greeting. */
+	scrollbar-gutter: stable;
 }
 
 body {

@@ -1,5 +1,5 @@
 /** Which place on a page a shared element occupies. */
-export type MorphSlot = 'card' | 'hero' | 'island' | 'poster' | 'door' | 'nav';
+export type MorphSlot = 'card' | 'deck' | 'hero' | 'island' | 'poster' | 'door' | 'nav';
 
 /** What a shared element is, which decides how it travels. */
 export type MorphKind = 'cover' | 'title' | 'control' | 'bar';

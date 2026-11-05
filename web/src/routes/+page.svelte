@@ -9,6 +9,7 @@
 	} from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import AlbumGrid from '#lib/pages/AlbumGrid.svelte';
+	import Deck from '#lib/pages/Deck.svelte';
 	import FeatureTile from '#lib/pages/FeatureTile.svelte';
 	import RecentCover from '#lib/pages/RecentCover.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
@@ -16,6 +17,8 @@
 	const facts = $derived(library.facts);
 	const feature = $derived(library.recent.at(0));
 	const name = $derived(library.user?.name ?? '');
+	/** Under a deck that's dealing, Home is already there. */
+	const showsHome = $derived(!library.deck || library.dealing !== 'no');
 </script>
 
 <svelte:head>
@@ -26,51 +29,58 @@
 	<div class="home">
 		<div class="intro" data-morph-part="intro" data-morph-key="intro">
 			<h1>{greeting(new Date().getHours(), name)}</h1>
-			{#if facts.albums > 0}<span class="summary">{summary(facts)}</span>{/if}
+			{#if facts.albums > 0 && (!library.deck || library.dealing === 'dealt')}
+				<span class="summary" class:arriving={library.deck}>{summary(facts)}</span>
+			{/if}
 		</div>
 
-		{#if facts.albums === 0}
-			<p class="empty" role="status">{emptyLine(facts, library.scanning)}</p>
-		{:else}
-			<section aria-label="Overview" class="overview" class:late={library.arrivedLate}>
-				{#if feature !== undefined}<FeatureTile album={feature} />{/if}
+		{#if library.deck}
+			<Deck {facts} />
+		{/if}
+		{#if showsHome}
+			{#if facts.albums === 0}
+				<p class="empty" role="status">{emptyLine(facts, false)}</p>
+			{:else}
+				<section aria-label="Overview" class="overview">
+					{#if feature !== undefined}<FeatureTile album={feature} />{/if}
 
-				<div class="health" data-morph-part="card" data-morph-key="health">
-					<span class="fox-mark"><Icon name="fox" size={220} /></span>
-					<span class="label">Library health</span>
-					<span class="figure">
-						<span class="number">{facts.issues.toLocaleString('en-US')}</span>
-						<span class="note">{healthNote(facts.issues)}</span>
-					</span>
-				</div>
-
-				<div class="week" data-morph-part="card" data-morph-key="stats">
-					<span class="label">Your library</span>
-					<span class="figure">
-						<span class="number">{listeningTime(facts.durationMs)}</span>
-						<span class="note">{trackCount(facts.tracks)} of listening</span>
-					</span>
-				</div>
-
-				<section
-					aria-label="Recently added"
-					class="recent"
-					data-morph-part="card"
-					data-morph-key="recent"
-				>
-					<h2>Recently added</h2>
-					<div class="recent-row">
-						{#each library.recent.slice(1) as album (album.id)}
-							<RecentCover {album} />
-						{/each}
+					<div class="health" data-morph-part="card" data-morph-key="health">
+						<span class="fox-mark"><Icon name="fox" size={220} /></span>
+						<span class="label">Library health</span>
+						<span class="figure">
+							<span class="number">{facts.issues.toLocaleString('en-US')}</span>
+							<span class="note">{healthNote(facts.issues)}</span>
+						</span>
 					</div>
-				</section>
-			</section>
 
-			<section aria-label="Your albums" class="repeat" class:late={library.arrivedLate}>
-				<h2 data-morph-part="card" data-morph-key="albums">Your albums</h2>
-				<AlbumGrid />
-			</section>
+					<div class="week" data-morph-part="card" data-morph-key="stats">
+						<span class="label">Your library</span>
+						<span class="figure">
+							<span class="number">{listeningTime(facts.durationMs)}</span>
+							<span class="note">{trackCount(facts.tracks)} of listening</span>
+						</span>
+					</div>
+
+					<section
+						aria-label="Recently added"
+						class="recent"
+						data-morph-part="card"
+						data-morph-key="recent"
+					>
+						<h2>Recently added</h2>
+						<div class="recent-row">
+							{#each library.recent.slice(1) as album (album.id)}
+								<RecentCover {album} />
+							{/each}
+						</div>
+					</section>
+				</section>
+
+				<section aria-label="Your albums" class="repeat">
+					<h2 data-morph-part="card" data-morph-key="albums">Your albums</h2>
+					<AlbumGrid />
+				</section>
+			{/if}
 		{/if}
 	</div>
 {/if}
@@ -106,23 +116,22 @@
 		color: var(--text-meta);
 	}
 
+	/* It takes over from the deck's count, which fades as this comes up. */
+	.arriving {
+		animation: summary-arrives var(--morph) var(--curve-morph) 160ms backwards;
+	}
+
+	@keyframes summary-arrives {
+		from {
+			opacity: 0;
+		}
+	}
+
 	.empty {
 		max-width: 44ch;
 		font-size: var(--type-title);
 		line-height: 1.4;
 		color: var(--text-secondary);
-	}
-
-	/* A scan's first albums reach a Home nobody navigated to: they rise in once, together. */
-	.late {
-		animation: arrive-late var(--morph) var(--curve-morph);
-	}
-
-	@keyframes arrive-late {
-		from {
-			opacity: 0;
-			transform: translateY(24px);
-		}
 	}
 
 	.overview {

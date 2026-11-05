@@ -3,6 +3,8 @@ import { Channel, landsWithin } from './channel';
 import {
 	blend,
 	bloomStrength,
+	deckToHome,
+	drop,
 	choreographyFor,
 	linearEasing,
 	parseTime,
@@ -303,5 +305,37 @@ describe('parseTime', () => {
 	it('reads both CSS time units', () => {
 		expect(parseTime(' 420ms')).toBe(420);
 		expect(parseTime('0.6s')).toBe(600);
+	});
+});
+
+describe('the deal', () => {
+	it('leaves the greeting still, and lands the fliers on what is already in place', () => {
+		expect(deckToHome.arriving.intro).toBeUndefined();
+		expect(deckToHome.arrivingByKey?.['feature']?.from.y).toBeUndefined();
+		expect(deckToHome.arrivingByKey?.['recent']?.from.y).toBeUndefined();
+	});
+
+	it('rises the rest of Home as cards rise through the door', () => {
+		expect(deckToHome.arriving.card).toEqual(choreographyFor('login', 'home').arriving.card);
+	});
+
+	it('is only scale and opacity on the way down, and never overshoots', () => {
+		expect(deckToHome.leaving.to.y).toBeUndefined();
+		expect(deckToHome.leaving.motion.bounce).toBe(0);
+		expect(drop(5).motion.bounce).toBe(0);
+	});
+
+	it('throws a card from off the pile, and settles it into its own tilt', () => {
+		const { from, to } = drop(5);
+		expect(from.y).toBeLessThan(-28);
+		expect(from.scale).toBeGreaterThan(1.08);
+		expect(from.rotate).toBe(5);
+		expect(to).toEqual({});
+	});
+
+	it('is solid well before it lands, so cards landing together never dissolve into each other', () => {
+		const { fade, motion } = drop(5);
+		const length = (spec: typeof motion): number => resolveMotion(spec, () => 180).duration;
+		expect(length(fade ?? motion)).toBeLessThan(length(motion) / 2);
 	});
 });

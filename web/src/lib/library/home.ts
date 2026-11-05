@@ -25,6 +25,11 @@ export function summary({ albums, roots, issues }: LibraryFacts): string {
 	].join(' · ');
 }
 
+/** The line under the deck: only counts, because a scan has no total to measure against. */
+export function scanLine({ albums, tracks }: LibraryFacts): string {
+	return `${plural(albums, 'album', 'albums')} · ${plural(tracks, 'track', 'tracks')}`;
+}
+
 /** Why Home has nothing to show. Each is a different problem with a different answer. */
 export function emptyLine({ roots }: LibraryFacts, scanning: boolean): string {
 	if (roots === 0) {

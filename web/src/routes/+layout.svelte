@@ -3,14 +3,14 @@
 	import '@fontsource-variable/geist-mono/wght.css';
 	import '#lib/styles/tokens.css';
 	import '#lib/styles/base.css';
-	import { onMount } from 'svelte';
+	import { onMount, setContext } from 'svelte';
 	import { page } from '$app/state';
 	import { goto, onNavigate, preloadCode } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { paletteFor } from '#lib/cover/palette.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { loginPath } from '#lib/library/session.ts';
-	import { startMorphs } from '#lib/morph/engine.ts';
+	import { morphsKey, startMorphs } from '#lib/morph/engine.ts';
 	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
 	import { gridWindow } from '#lib/pages/gridWindow.svelte.ts';
@@ -40,7 +40,9 @@
 	const stageEntry = $derived(stageAlbum === null ? undefined : library.entry(stageAlbum));
 	const palette = $derived(stageAlbum === null ? null : paletteFor(stageEntry));
 
-	onNavigate(startMorphs());
+	const morphs = startMorphs();
+	setContext(morphsKey, morphs);
+	onNavigate(morphs.navigate);
 
 	onMount(() => {
 		library.onExpired = async () => {
@@ -84,7 +86,7 @@
 	<div class="ghost-layer" aria-hidden="true"></div>
 	{#if palette !== null}<Bloom {palette} />{/if}
 	{#if library.playing !== null && !onLogin}
-		<PlayerIsland playing={library.playing} expanded={onNowPlaying} rises={library.arrivedLate} />
+		<PlayerIsland playing={library.playing} expanded={onNowPlaying} />
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
 	{#if import.meta.env.DEV}<Hud />{/if}

@@ -9,6 +9,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -19,6 +20,10 @@ import (
 	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/store"
 )
+
+// ErrStarting is what a [Config] Ready func returns while the server is still
+// coming up. Clients poll through it, so it is logged at Debug, not as a fault.
+var ErrStarting = errors.New("initial scan not finished")
 
 // Config holds the server's dependencies.
 type Config struct {
@@ -149,11 +154,15 @@ func (*Server) getHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 // getReady reports whether the server is ready to serve. A failure is logged
-// but never described to the client.
+// but never described to the client: as a warning, unless it is [ErrStarting].
 func (s *Server) getReady(w http.ResponseWriter, r *http.Request) {
 	if s.ready != nil {
 		if err := s.ready(r.Context()); err != nil {
-			s.log.WarnContext(r.Context(), "not ready", "requestId", requestID(r.Context()), "err", err)
+			level := slog.LevelWarn
+			if errors.Is(err, ErrStarting) {
+				level = slog.LevelDebug
+			}
+			s.log.Log(r.Context(), level, "not ready", "requestId", requestID(r.Context()), "err", err)
 			writeProblem(w, r, http.StatusServiceUnavailable, "not ready")
 			return
 		}
