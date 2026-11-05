@@ -3,8 +3,10 @@
 	import Cover from '#lib/cover/Cover.svelte';
 	import { clock } from '#lib/library/format.ts';
 	import type { NowPlaying } from '#lib/library/cue.ts';
-	import { morph } from '#lib/morph/registry.ts';
+	import { morph, type MorphSlot } from '#lib/morph/registry.ts';
+	import { player } from '#lib/player/player.svelte.ts';
 	import Icon from './Icon.svelte';
+	import Scrubber from './Scrubber.svelte';
 	import { islandSlot } from './slot.svelte.ts';
 
 	interface Props {
@@ -15,12 +17,46 @@
 
 	let { playing, expanded }: Props = $props();
 
-	// Cued, not playing: until streaming lands there's no sound, so the clock stands at the start.
-	const position = clock(0);
-	const duration = $derived(clock(playing.track.durationMs / 1000));
+	// The clock is the sound's, not the cue's: a held change must not put them out of step.
+	const seconds = $derived((player.current ?? playing.track).durationMs / 1000);
+	const position = $derived(player.current === null ? 0 : player.position);
+	const percent = $derived(`${String(seconds > 0 ? (position / seconds) * 100 : 0)}%`);
 	const slot = $derived(expanded ? islandSlot.rect : null);
-	const percent = '0%';
 </script>
+
+{#snippet transport(place: MorphSlot, skip: number | undefined, pause: number)}
+	<button
+		type="button"
+		class="skip"
+		aria-label="Previous"
+		onclick={() => {
+			player.previous();
+		}}
+		use:morph={{ id: 'control:previous', slot: place, kind: 'control' }}
+		><Icon name="previous" size={skip} /></button
+	>
+	<button
+		type="button"
+		class="pause"
+		class:large={expanded}
+		aria-label={player.sounding ? 'Pause' : 'Play'}
+		onclick={() => {
+			player.toggle();
+		}}
+		use:morph={{ id: 'control:pause', slot: place, kind: 'control' }}
+		><Icon name={player.sounding ? 'pause' : 'play'} size={pause} /></button
+	>
+	<button
+		type="button"
+		class="skip"
+		aria-label="Next"
+		onclick={() => {
+			player.next();
+		}}
+		use:morph={{ id: 'control:next', slot: place, kind: 'control' }}
+		><Icon name="next" size={skip} /></button
+	>
+{/snippet}
 
 <aside
 	aria-label="Player"
@@ -43,43 +79,15 @@
 	</div>
 	<div class="content" data-island-content>
 		{#if expanded}
-			<div class="transport">
-				<button
-					type="button"
-					class="skip"
-					aria-label="Previous"
-					disabled
-					use:morph={{ id: 'control:previous', slot: 'poster', kind: 'control' }}
-					><Icon name="previous" size={22} /></button
-				>
-				<button
-					type="button"
-					class="pause large"
-					aria-label="Play"
-					disabled
-					use:morph={{ id: 'control:pause', slot: 'poster', kind: 'control' }}
-					><Icon name="play" size={22} /></button
-				>
-				<button
-					type="button"
-					class="skip"
-					aria-label="Next"
-					disabled
-					use:morph={{ id: 'control:next', slot: 'poster', kind: 'control' }}
-					><Icon name="next" size={22} /></button
-				>
-			</div>
-			<div class="scrub">
-				<span class="time">{position}</span>
-				<div class="track">
-					<div
-						class="fill"
-						style:width={percent}
-						use:morph={{ id: 'progress', slot: 'poster', kind: 'bar' }}
-					></div>
-				</div>
-				<span class="time">{duration}</span>
-			</div>
+			<div class="transport">{@render transport('poster', 22, 22)}</div>
+			<Scrubber
+				{position}
+				duration={seconds}
+				live={player.started}
+				seek={(to) => {
+					player.seek(to);
+				}}
+			/>
 			<button
 				type="button"
 				class="skip favorite"
@@ -102,32 +110,9 @@
 						<span class="artist">{playing.album.artist}</span>
 					</span>
 				</a>
-				<span class="time compact">{position} / {duration}</span>
+				<span class="time compact">{clock(position)} / {clock(seconds)}</span>
 			{/key}
-			<button
-				type="button"
-				class="skip"
-				aria-label="Previous"
-				disabled
-				use:morph={{ id: 'control:previous', slot: 'island', kind: 'control' }}
-				><Icon name="previous" /></button
-			>
-			<button
-				type="button"
-				class="pause"
-				aria-label="Play"
-				disabled
-				use:morph={{ id: 'control:pause', slot: 'island', kind: 'control' }}
-				><Icon name="play" size={20} /></button
-			>
-			<button
-				type="button"
-				class="skip"
-				aria-label="Next"
-				disabled
-				use:morph={{ id: 'control:next', slot: 'island', kind: 'control' }}
-				><Icon name="next" /></button
-			>
+			{@render transport('island', undefined, 20)}
 		{/if}
 	</div>
 </aside>
@@ -258,10 +243,6 @@
 		white-space: nowrap;
 	}
 
-	.expanded .time {
-		color: var(--wash);
-	}
-
 	button {
 		flex: none;
 		border: 0;
@@ -271,19 +252,13 @@
 		justify-content: center;
 	}
 
-	/* Nothing can sound until streaming lands: the controls say so without leaving their places. */
+	/* Only Favorite, for now: it has nothing to remember favorites with. */
 	button:disabled {
 		cursor: default;
 	}
 
 	.skip:disabled {
 		color: var(--text-label);
-	}
-
-	.pause:disabled {
-		background: transparent;
-		box-shadow: inset 0 0 0 2px var(--fox);
-		color: var(--fox);
 	}
 
 	.skip {
@@ -317,31 +292,10 @@
 		background: var(--fox);
 	}
 
-	.transport,
-	.scrub {
+	.transport {
 		display: flex;
 		align-items: center;
 		gap: 14px;
-	}
-
-	.scrub {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.track {
-		position: relative;
-		flex: 1;
-		height: 8px;
-		border-radius: 4px;
-		background: rgb(255 255 255 / 16%);
-	}
-
-	.fill {
-		position: absolute;
-		inset: 0 auto 0 0;
-		border-radius: 4px;
-		background: var(--fox);
 	}
 
 	@media (max-width: 640px) {
@@ -363,11 +317,6 @@
 			justify-content: space-between;
 			gap: 6px 8px;
 			padding: 13px 17px;
-		}
-
-		.scrub {
-			order: 3;
-			flex-basis: 100%;
 		}
 	}
 </style>

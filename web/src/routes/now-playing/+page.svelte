@@ -7,6 +7,7 @@
 	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
+	import { player } from '#lib/player/player.svelte.ts';
 	import { reserveIslandSlot } from '#lib/shell/slot.svelte.ts';
 
 	const playing = $derived(library.playing);
@@ -16,6 +17,13 @@
 		playing === null ? undefined : credit(playing.track, playing.album.artist)
 	);
 	const rg = $derived(playing === null ? null : trackGain(playing.track));
+	const note = $derived(
+		player.failure
+			? "Dead air. That wouldn't play, so we stopped."
+			: player.finished
+				? "That's the record. Flip it?"
+				: null
+	);
 
 	function goUp(event: MouseEvent & { currentTarget: HTMLAnchorElement }): void {
 		goUpToAlbum(event, event.currentTarget.pathname);
@@ -34,7 +42,7 @@
 </svelte:head>
 
 {#if playing === null}
-	<!-- Plan 018 replaces this: with real playback there's always a last thing played. -->
+	<!-- An empty library, or a page opened before the shell could load anything to cue. -->
 	<div class="stage quiet">
 		<p>Nothing is cued yet.</p>
 		<a href={resolve('/')} data-sveltekit-reset="false">Back to Home</a>
@@ -92,6 +100,7 @@
 						<strong>{playing.album.artist}</strong>
 						{#if others !== undefined}{others}{/if}
 					</span>
+					{#if note !== null}<p class="note" role="status">{note}</p>{/if}
 				</div>
 				<div class="controls-slot" use:reserveIslandSlot></div>
 			</div>
@@ -302,6 +311,19 @@
 	.artist strong {
 		font-weight: 600;
 		color: var(--text);
+	}
+
+	/* In the gap under the names: a line this quiet must not push the cover anywhere. */
+	.note {
+		position: absolute;
+		top: 100%;
+		left: 50%;
+		translate: -50%;
+		margin-top: 4px;
+		font-family: var(--font-mono);
+		font-size: var(--type-mono);
+		color: var(--wash);
+		white-space: nowrap;
 	}
 
 	.controls-slot {

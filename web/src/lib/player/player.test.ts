@@ -126,12 +126,14 @@ describe('Player', () => {
 		expect(player.current?.id).toBe('t0');
 		expect(player.position).toBe(0);
 		expect(player.started).toBe(true);
+		expect(player.finished).toBe(true);
 		expect(output.playing).toBe(false);
 
 		player.resume();
 		await settle();
 		expect(output.url).toBe('t0');
 		expect(player.status).toBe('playing');
+		expect(player.finished).toBe(false);
 	});
 
 	it('sends the next track to preload with 15 seconds left, once', async () => {
@@ -252,6 +254,50 @@ describe('Player', () => {
 		player.play(album(1, 'b'));
 		await settle();
 		expect(output.gain).toBe(0);
+	});
+});
+
+describe('the transport before the first play', () => {
+	async function cued() {
+		const context = setup();
+		context.library.cueAlbum(album(4));
+		await settle();
+		return context;
+	}
+
+	it('plays what is cued', async () => {
+		const { player } = await cued();
+		player.toggle();
+		await settle();
+		expect(player.current?.id).toBe('t0');
+		expect(player.status).toBe('playing');
+	});
+
+	it('starts one track in on Next, and at the top on Previous', async () => {
+		const forward = await cued();
+		forward.player.next();
+		expect(forward.player.current?.id).toBe('t1');
+		const back = await cued();
+		back.player.previous();
+		expect(back.player.current?.id).toBe('t0');
+	});
+
+	it('does nothing with nothing cued', () => {
+		const { player } = setup();
+		player.toggle();
+		player.next();
+		player.previous();
+		player.seek(10);
+		expect(player.queue).toBeNull();
+		expect(player.status).toBe('idle');
+	});
+
+	it('leaves a single on its one track', async () => {
+		const { library, player } = setup();
+		library.cueAlbum(album(1));
+		player.next();
+		await settle();
+		expect(player.current?.id).toBe('t0');
 	});
 });
 

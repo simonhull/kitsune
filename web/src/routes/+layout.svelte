@@ -14,6 +14,9 @@
 	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
 	import { gridWindow } from '#lib/pages/gridWindow.svelte.ts';
+	import { togglesOnSpace } from '#lib/player/keys.ts';
+	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
+	import { player } from '#lib/player/player.svelte.ts';
 	import Backdrop from '#lib/shell/Backdrop.svelte';
 	import Bloom from '#lib/shell/Bloom.svelte';
 	import Nav from '#lib/shell/Nav.svelte';
@@ -44,6 +47,13 @@
 	setContext(morphsKey, morphs);
 	onNavigate(morphs.navigate);
 
+	function onKeyDown(event: KeyboardEvent): void {
+		if (togglesOnSpace(event) && library.playing !== null && !onLogin) {
+			event.preventDefault();
+			player.toggle();
+		}
+	}
+
 	onMount(() => {
 		library.onExpired = async () => {
 			if (location.pathname !== resolve('/login')) {
@@ -55,9 +65,16 @@
 		void Promise.all(['/', '/album/[id]', '/now-playing', '/login'] as const).then((routes) =>
 			Promise.all(routes.map((route) => preloadCode(route)))
 		);
-		return watchInput();
+		const leaveSession = followMediaSession(player);
+		const stopWatching = watchInput();
+		return () => {
+			leaveSession();
+			stopWatching();
+		};
 	});
 </script>
+
+<svelte:window onkeydown={onKeyDown} />
 
 <div
 	class="shell"

@@ -32,6 +32,8 @@ export class Player implements PlayerView {
 	position = $state(0);
 	/** Set when it stopped because tracks wouldn't play. */
 	failure = $state(false);
+	/** Set when it came to rest at the end of the queue. */
+	finished = $state(false);
 
 	readonly #library: Library;
 	readonly #create: () => AudioOutput;
@@ -111,7 +113,11 @@ export class Player implements PlayerView {
 		}
 	}
 
+	/** Plays or pauses. The first press plays what's cued. */
 	toggle(): void {
+		if (this.#startCue(0)) {
+			return;
+		}
 		if (this.sounding) {
 			this.pause();
 		} else {
@@ -144,13 +150,15 @@ export class Player implements PlayerView {
 	}
 
 	next(): void {
-		this.#fresh();
-		this.#advance();
+		if (!this.#startCue(1)) {
+			this.#fresh();
+			this.#advance();
+		}
 	}
 
 	/** Goes back to the start of the track, or past that to the one before. */
 	previous(): void {
-		if (this.queue === null) {
+		if (this.#startCue(0) || this.queue === null) {
 			return;
 		}
 		this.#fresh();
@@ -180,8 +188,7 @@ export class Player implements PlayerView {
 		this.queue = null;
 		this.status = 'idle';
 		this.position = 0;
-		this.failure = false;
-		this.#failures = 0;
+		this.#fresh();
 		this.#stale = false;
 		this.#ahead = null;
 	}
@@ -190,6 +197,17 @@ export class Player implements PlayerView {
 	#fresh(): void {
 		this.#failures = 0;
 		this.failure = false;
+		this.finished = false;
+	}
+
+	/** With nothing started, the transport means what's cued, `ahead` tracks in. */
+	#startCue(ahead: number): boolean {
+		const cue = this.#library.playing;
+		if (this.queue !== null || cue === null) {
+			return false;
+		}
+		this.play(cue.album, Math.min(cue.index + ahead, cue.trackCount - 1));
+		return true;
 	}
 
 	#begin(queue: Queue): void {
@@ -299,6 +317,7 @@ export class Player implements PlayerView {
 		this.#built?.pause();
 		this.queue = rewound(queue);
 		this.position = 0;
+		this.finished = true;
 		this.#hold(true);
 		this.#library.showQueue();
 	}
