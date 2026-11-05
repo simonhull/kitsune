@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/simonhull/audiometa"
@@ -75,6 +76,7 @@ type Scanner struct {
 	write     WriteFunc
 	claim     libraryLock // Held by the one scan, from its claim to its end.
 	lock      libraryLock // Held by a running scan or edit.
+	progress  atomic.Pointer[Progress]
 }
 
 // NewScanner returns a scanner that writes to st.
@@ -98,6 +100,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 			return audiometa.WriteContext(ctx, path, edit)
 		}
 	}
+	s.progress.Store(&Progress{})
 	return s
 }
 
@@ -105,12 +108,13 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 // refuse a request before starting anything. It returns [ErrScanRunning] while
 // another scan holds the scanner. Otherwise the caller must call the returned
 // func once, on any goroutine: it runs the scan as [Scanner.Scan] does, logs how
-// it went and gives the scanner back.
+// it went and gives the scanner back. [Scanner.Progress] shows the scan from the
+// moment Claim returns.
 func (s *Scanner) Claim(mode Mode) (func(context.Context) (Stats, error), error) {
 	if !s.claim.tryLock() {
 		return nil, ErrScanRunning
 	}
-	return func(ctx context.Context) (Stats, error) { return s.run(ctx, mode) }, nil
+	return s.claimed(mode), nil
 }
 
 // Scan walks the roots, reads the files mode asks for and updates the store.
@@ -134,6 +138,7 @@ func (s *Scanner) run(ctx context.Context, mode Mode) (Stats, error) {
 		err = fmt.Errorf("scan: %w", ctxErr) // A canceled query says only "interrupted".
 	}
 	s.logScan(ctx, mode, &stats, err, time.Since(start))
+	s.ended(&stats, err)
 	return stats, err
 }
 
@@ -164,6 +169,7 @@ func (s *Scanner) scan(ctx context.Context, mode Mode) (Stats, error) {
 		return Stats{}, fmt.Errorf("scan: survey: %w", err)
 	}
 	defer s.refreshNames(ctx)
+	s.publish(func(p *Progress) { p.Total = len(sv.Jobs) })
 	stats := Stats{Seen: sv.Seen, SkippedRoots: sv.SkippedRoots}
 	if err = s.applySurvey(ctx, sv, &stats); err != nil {
 		return stats, fmt.Errorf("scan: %w", err)

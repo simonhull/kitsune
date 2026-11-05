@@ -39,7 +39,7 @@ type Config struct {
 	Library       *store.Store                // Required; New panics if nil. Backs the browse routes.
 	Roots         int                         // The number of configured library roots, reported by GET /library.
 	TagWrites     bool                        // Administrators may edit tags. Off leaves every file alone.
-	Scanner       *library.Scanner            // Required with TagWrites; New panics if nil. Applies tag edits.
+	Scanner       *library.Scanner            // Required; New panics if nil. Applies tag edits and reports scans.
 	// Context bounds tag edits. Nil means context.Background. An edit runs on it and
 	// not on the request, so a client that goes away can't stop an album midway.
 	Context context.Context //nolint:containedctx // The server's lifetime, not a request's.
@@ -78,8 +78,8 @@ type route struct {
 
 // New returns a server for cfg.
 //
-// New panics if cfg.Auth or cfg.Library is nil, cfg.TagWrites comes without
-// cfg.Scanner or cfg.BasePath is malformed, which are programming errors.
+// New panics if cfg.Auth, cfg.Library or cfg.Scanner is nil or cfg.BasePath is
+// malformed, which are programming errors.
 func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built once at startup; a value keeps every caller a plain literal.
 	checkConfig(&cfg)
 	s := &Server{
@@ -126,8 +126,8 @@ func checkConfig(cfg *Config) {
 	if cfg.Library == nil {
 		panic("server: Config.Library is required")
 	}
-	if cfg.TagWrites && cfg.Scanner == nil {
-		panic("server: Config.Scanner is required with TagWrites")
+	if cfg.Scanner == nil {
+		panic("server: Config.Scanner is required")
 	}
 	if b := cfg.BasePath; b != "" && (!strings.HasPrefix(b, "/") || strings.HasSuffix(b, "/")) {
 		panic("server: Config.BasePath must be empty, or start with / and not end with /")

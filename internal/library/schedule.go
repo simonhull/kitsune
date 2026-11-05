@@ -26,7 +26,7 @@ func (s *Scanner) scheduled(ctx context.Context) {
 	if s.claim.lock(ctx) != nil {
 		return
 	}
-	_, _ = s.run(ctx, Quick) // As above.
+	_, _ = s.claimed(Quick)(ctx) // As above.
 }
 
 // logScan logs how a scan went.

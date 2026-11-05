@@ -91,20 +91,19 @@ type testServerOptions struct {
 	Artwork       *artwork.Cache
 	Roots         int
 	TagWrites     bool
-	LibraryRoot   string            // "" means no scanner.
+	LibraryRoot   string            // "" means a scanner with no roots.
 	Write         library.WriteFunc // Nil means real writes.
 }
 
 // testServer is a running API over a real store and auth service.
 type testServer struct {
-	Server *httptest.Server
-	URL    string // The API root: the origin, the base path and /api/v1.
-	Clock  *testClock
-	Log    *syncBuffer
-	Auth   *auth.Service
-	Handle *Server
-	Store  *store.Store
-	// Scanner is set when testServerOptions.LibraryRoot is.
+	Server  *httptest.Server
+	URL     string // The API root: the origin, the base path and /api/v1.
+	Clock   *testClock
+	Log     *syncBuffer
+	Auth    *auth.Service
+	Handle  *Server
+	Store   *store.Store
 	Scanner *library.Scanner
 }
 
@@ -132,12 +131,13 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	if err != nil {
 		tb.Fatalf("auth.New: %v", err)
 	}
-	var scanner *library.Scanner
+	var roots []string
 	if o.LibraryRoot != "" {
-		scanner = library.NewScanner(st, library.Options{
-			Roots: []string{o.LibraryRoot}, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
-		})
+		roots = []string{o.LibraryRoot}
 	}
+	scanner := library.NewScanner(st, library.Options{
+		Roots: roots, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
+	})
 	logs := &syncBuffer{}
 	h := New(Config{
 		Auth:          svc,

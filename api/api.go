@@ -227,4 +227,49 @@ type LibraryFacts struct {
 	Roots int `json:"roots"`
 	// Issues counts the files the scanner could not read.
 	Issues int64 `json:"issues"`
+	// Scan says where scanning stands.
+	Scan ScanStatus `json:"scan"`
+}
+
+// The values of ScanStatus.State.
+const (
+	ScanIdle    = "idle"
+	ScanRunning = "running"
+)
+
+// The values of ScanResult.Outcome.
+const (
+	ScanFinished = "finished"
+	ScanFailed   = "failed"
+)
+
+// ScanStatus says where scanning stands. Mode, Read, Total and StartedAt describe
+// the running scan.
+type ScanStatus struct {
+	State     string     `json:"state"`
+	Mode      string     `json:"mode,omitzero"`
+	Read      int        `json:"read"`
+	Total     int        `json:"total"` // 0 until the scan has counted its files.
+	StartedAt *time.Time `json:"startedAt,omitzero"`
+	// Last is the last scan to end since the server started.
+	Last *ScanResult `json:"last,omitzero"`
+}
+
+// ScanResult says how a scan ended.
+type ScanResult struct {
+	Mode         string    `json:"mode"`
+	Outcome      string    `json:"outcome"`
+	StartedAt    time.Time `json:"startedAt"`
+	EndedAt      time.Time `json:"endedAt"`
+	Seen         int       `json:"seen"`
+	Read         int       `json:"read"`
+	Added        int       `json:"added"`
+	Updated      int       `json:"updated"`
+	Moved        int       `json:"moved"`
+	Missing      int       `json:"missing"`
+	Deleted      int64     `json:"deleted"`
+	Issues       int       `json:"issues"`
+	SkippedRoots int       `json:"skippedRoots"`
+	// Error says why a failed scan failed, for administrators only.
+	Error string `json:"error,omitzero"`
 }

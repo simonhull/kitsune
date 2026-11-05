@@ -78,12 +78,18 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 // refused.
 func requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if u, ok := currentUser(r.Context()); !ok || u.Role != store.RoleAdmin {
+		if !isAdmin(r.Context()) {
 			writeProblem(w, r, http.StatusForbidden, "administrators only")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isAdmin reports whether the caller is an administrator.
+func isAdmin(ctx context.Context) bool {
+	u, ok := currentUser(ctx)
+	return ok && u.Role == store.RoleAdmin
 }
 
 // credentials is the session token a request carries and where it came from.

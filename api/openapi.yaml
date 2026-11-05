@@ -335,7 +335,10 @@ paths:
     get:
       operationId: getLibrary
       summary: Report what the library holds.
-      description: Counts live tracks and albums that have a live track.
+      description: >-
+        Counts live tracks and albums that have a live track. `scan` says where
+        scanning stands, so a client can poll this while a scan runs; the
+        counts themselves move little until it ends.
       responses:
         "200":
           description: The library's counts.
@@ -885,10 +888,51 @@ components:
     LibraryFacts:
       type: object
       additionalProperties: false
-      required: [albums, tracks, durationMs, roots, issues]
+      required: [albums, tracks, durationMs, roots, issues, scan]
       properties:
         albums: { type: integer, format: int64 }
         tracks: { type: integer, format: int64 }
         durationMs: { type: integer, format: int64 }
         roots: { type: integer, description: The number of configured library roots. }
         issues: { type: integer, format: int64, description: Files the scanner could not read. }
+        scan: { $ref: "#/components/schemas/ScanStatus" }
+    ScanStatus:
+      type: object
+      additionalProperties: false
+      description: >-
+        `mode`, `read`, `total` and `startedAt` describe the running scan: idle,
+        the first and last are absent and the numbers are 0.
+      required: [state, read, total]
+      properties:
+        state: { type: string, enum: [idle, running] }
+        mode: { type: string, enum: [quick, full] }
+        read: { type: integer, description: Files the scan has read. }
+        total:
+          type: integer
+          description: >-
+            Files the scan has to read: every file for a Full scan, new and
+            changed ones for a Quick one. 0 until it has walked the roots.
+        startedAt: { type: string, format: date-time }
+        last: { $ref: "#/components/schemas/ScanResult" }
+    ScanResult:
+      type: object
+      additionalProperties: false
+      description: >-
+        How the last scan to end went. It is held in memory: a restart starts
+        over from the Quick scan every start runs.
+      required: [mode, outcome, startedAt, endedAt, seen, read, added, updated, moved, missing, deleted, issues, skippedRoots]
+      properties:
+        mode: { type: string, enum: [quick, full] }
+        outcome: { type: string, enum: [finished, failed] }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        seen: { type: integer, description: Audio files found under the roots. }
+        read: { type: integer }
+        added: { type: integer }
+        updated: { type: integer }
+        moved: { type: integer }
+        missing: { type: integer, description: Tracks newly marked missing. }
+        deleted: { type: integer, format: int64, description: Tracks deleted after the grace period. }
+        issues: { type: integer, description: Files this scan read and could not use. }
+        skippedRoots: { type: integer, description: Roots left alone because they looked like an outage. }
+        error: { type: string, description: 'Why it failed, without library paths. Administrators only.' }

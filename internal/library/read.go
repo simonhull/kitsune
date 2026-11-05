@@ -244,6 +244,7 @@ func (w *writer) finish(ctx context.Context) error {
 // a full batch.
 func (w *writer) handle(ctx context.Context, r *result) error {
 	w.stats.Read++
+	w.s.publish(func(p *Progress) { p.Read = w.stats.Read })
 	if r.issue != nil {
 		w.stats.Issues++
 		w.hold = w.hold || (r.job.Missing && r.issue.Kind == store.IssueUnreadable)
