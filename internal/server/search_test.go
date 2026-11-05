@@ -52,7 +52,7 @@ func TestSearchArtistsAndAlbums(t *testing.T) {
 		t.Errorf("albums = %+v, want album 1", got.Albums)
 	}
 	ts.getJSON(t, token, searchFor("an"), &got)
-	if want := []api.ArtistEntry{{ID: artistULID("ann"), Name: annName}}; !reflect.DeepEqual(got.Artists, want) {
+	if want := []api.ArtistHit{{ID: artistULID("ann"), Name: annName}}; !reflect.DeepEqual(got.Artists, want) {
 		t.Errorf("artists = %+v, want %+v", got.Artists, want)
 	}
 }

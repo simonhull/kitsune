@@ -119,8 +119,30 @@ type AlbumDetail struct {
 	AddedAt     time.Time `json:"addedAt"`
 }
 
-// ArtistEntry is an artist as a list shows it.
+// ArtistEntry is an artist as a list shows it. AlbumCount counts the albums it owns.
 type ArtistEntry struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	AlbumCount int    `json:"albumCount"`
+}
+
+// ArtistList is the response to GET /artists.
+type ArtistList struct {
+	Artists []ArtistEntry `json:"artists"`
+}
+
+// ArtistDetail is the response to GET /artists/{id}. Albums are those it owns,
+// and AppearsOn the others it has a track on, both newest first.
+type ArtistDetail struct {
+	ID         string       `json:"id"`
+	Name       string       `json:"name"`
+	AlbumCount int          `json:"albumCount"`
+	Albums     []AlbumEntry `json:"albums"`
+	AppearsOn  []AlbumEntry `json:"appearsOn"`
+}
+
+// ArtistHit is an artist as a search result shows it.
+type ArtistHit struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
@@ -138,9 +160,9 @@ type TrackHit struct {
 
 // SearchResults is the response to GET /search.
 type SearchResults struct {
-	Artists []ArtistEntry `json:"artists"`
-	Albums  []AlbumEntry  `json:"albums"`
-	Tracks  []TrackHit    `json:"tracks"`
+	Artists []ArtistHit  `json:"artists"`
+	Albums  []AlbumEntry `json:"albums"`
+	Tracks  []TrackHit   `json:"tracks"`
 }
 
 // LibraryFacts is the response to GET /library.

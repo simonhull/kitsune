@@ -84,6 +84,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   else that adds, removes or renames an artist or album. Various Artists stays out of it.
 - Artists have a public ULID too, assigned by the scanner and kept across updates. Their row `id` is
   internal: it is reused after a delete.
+- An album belongs to its album artists; with none, to the first artist of its tracks, which grouping
+  makes the same on all of them, unless it is a compilation. `queries/artists.sql` spells this out,
+  and every query about owners repeats it. Various Artists is a real row that no reader shows:
+  `isVarious` decides, by match key or MBID.
 - Library writes go through `WriteBatch`, one transaction per batch. The store never
   normalizes names or decides identity: callers pass match keys, group keys and ULIDs.
 - FTS rows are written in the same transaction as their track and through `foldSearch`;
