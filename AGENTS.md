@@ -110,7 +110,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   through `MatchKey` (trim, collapse spaces, NFC, case fold); no punctuation stripping,
   no splitting of names.
 - Raw tag names live only in `keys.go`'s candidate tables, verified per format against
-  real files written by audiometa. Add a key there, never inline.
+  real files written by audiometa, and in `writekeys.go`'s write table, which maps each editable
+  field to every key it owns. Add a key there, never inline.
 - audiometa reports tags as stored; display fallbacks (title from file name, sort name
   from name, disc folders) are Kitsune's and live here.
 - The scanner is the only library writer: one goroutine resolves identity and writes.
