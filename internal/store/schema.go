@@ -2,79 +2,98 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/binary"
-	"errors"
 	"fmt"
+	"log/slog"
 )
 
 // kitsuneAppID marks a SQLite file as Kitsune's ("KTSN").
 const kitsuneAppID = 0x4B54534E
+
+// adoptHash is the user_version of a database made before migrations existed:
+// a hash of 0001_baseline.sql, which is that schema byte for byte. Keep it while
+// backups from before adoption may exist.
+const adoptHash = 852615662
+
+// hashFloor splits user_version: below it, a count of migrations; from it up,
+// a hash left by a build from before migrations. Every known hash is far above.
+const hashFloor = 1 << 20
 
 // probeSQL reads what settleSchema decides on: the number of schema rows, the
 // application_id and the user_version.
 const probeSQL = `SELECT (SELECT count(*) FROM sqlite_schema), application_id, user_version
 FROM pragma_application_id, pragma_user_version`
 
-// schemaVersion derives user_version from the schema text, so any edit to the
-// baseline is detected.
-func schemaVersion(schema string) int32 {
-	sum := sha256.Sum256([]byte(schema))
-	return int32(binary.BigEndian.Uint32(sum[:4]) >> 1)
+// schemaState is what the probe found.
+type schemaState struct {
+	objects, appID, version int64
 }
 
-// settleSchema creates the schema in an empty database, and checks that a
-// populated one is Kitsune's and was made from the embedded baseline.
-func settleSchema(ctx context.Context, w *sql.DB, path string) error {
-	steps, err := parseMigrations(migrationFiles)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", path, err)
-	}
-	return settleSchemaWith(ctx, w, path, steps[0].sql)
-}
-
-// settleSchemaWith is settleSchema with the schema text injected, so tests can
-// try a broken one.
-func settleSchemaWith(ctx context.Context, w *sql.DB, path, schema string) error {
-	var rows, appID, version int64
-	if err := w.QueryRowContext(ctx, probeSQL).Scan(&rows, &appID, &version); err != nil {
-		return fmt.Errorf("open %s: probe: %w", path, err)
-	}
-
+// refusal says why the file can't be Kitsune's at any version.
+func (st *schemaState) refusal() error {
 	switch {
-	case rows == 0:
-		return createSchema(ctx, w, path, schema)
-	case appID != kitsuneAppID:
-		return fmt.Errorf("open %s: %w", path, ErrNotKitsune)
-	case version != int64(schemaVersion(schema)):
-		return fmt.Errorf("open %s: %w", path, ErrStaleSchema)
+	case st.objects > 0 && st.appID != kitsuneAppID:
+		return ErrNotKitsune
+	case st.objects > 0 && st.version == 0:
+		return ErrUnversioned
+	case st.objects == 0 && st.version != 0:
+		return ErrStaleSchema
 	}
 	return nil
 }
 
-// createSchema runs schema and marks the file as Kitsune's, in one transaction.
-func createSchema(ctx context.Context, w *sql.DB, path, schema string) error {
-	tx, err := w.BeginTx(ctx, nil)
+// startVersion returns the migration count the database stands at, adopting a
+// hash as version 1, or the reason a binary at latest can't use it.
+func (st *schemaState) startVersion(latest int64) (int64, error) {
+	if err := st.refusal(); err != nil {
+		return 0, err
+	}
+	switch v := st.version; {
+	case v == adoptHash:
+		return 1, nil
+	case v >= 0 && v <= latest:
+		return v, nil
+	case v > latest && v < hashFloor:
+		return 0, fmt.Errorf("at version %d, this binary stops at %d: %w", v, latest, ErrNewerSchema)
+	default:
+		return 0, ErrStaleSchema
+	}
+}
+
+// settleSchema brings the database to the embedded schema, or says why it
+// can't. With migrate false it only creates an empty database, and refuses one
+// that has migrations pending.
+func settleSchema(ctx context.Context, w *sql.DB, path string, migrate bool, log *slog.Logger) error {
+	steps, err := parseMigrations(migrationFiles)
 	if err != nil {
-		return fmt.Errorf("open %s: begin: %w", path, err)
+		return fmt.Errorf("open %s: %w", path, err)
 	}
-	// Pragmas can't take bound parameters; both values are integers computed here.
-	for _, stmt := range []string{
-		schema,
-		fmt.Sprintf("PRAGMA application_id = %d", kitsuneAppID),
-		fmt.Sprintf("PRAGMA user_version = %d", schemaVersion(schema)),
-	} {
-		if _, err = tx.ExecContext(ctx, stmt); err != nil {
-			err = fmt.Errorf("open %s: create schema: %w", path, err)
-			if rbErr := tx.Rollback(); rbErr != nil {
-				err = errors.Join(err, fmt.Errorf("rollback: %w", rbErr))
-			}
-			return err
-		}
+	return settleSchemaWith(ctx, w, path, steps, migrate, log)
+}
+
+// settleSchemaWith is settleSchema with the migrations injected, so tests can
+// try broken ones and stop short of the latest.
+func settleSchemaWith(ctx context.Context, w *sql.DB, path string, steps []migration, migrate bool, log *slog.Logger) error {
+	var st schemaState
+	if err := w.QueryRowContext(ctx, probeSQL).Scan(&st.objects, &st.appID, &st.version); err != nil {
+		return fmt.Errorf("open %s: probe: %w", path, err)
 	}
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("open %s: commit: %w", path, err)
+	latest := int64(len(steps))
+	from, err := st.startVersion(latest)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	if st.version == latest {
+		return nil
+	}
+	if st.objects > 0 && !migrate {
+		return fmt.Errorf("open %s: at version %d, this binary needs %d: %w", path, from, latest, ErrMigrationsPending)
+	}
+	if err = runMigrations(ctx, w, steps[from:]); err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	if st.objects > 0 {
+		log.InfoContext(ctx, "database migrated", "from", from, "to", latest)
 	}
 	return nil
 }

@@ -1,10 +1,12 @@
 package store
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"errors"
+	"log/slog"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -27,40 +29,20 @@ func rawInt(t *testing.T, db *sql.DB, query string) int64 {
 	return v
 }
 
-func TestBaselineKeepsItsHash(t *testing.T) {
+// schemaVersion is the hash databases carried before migrations.
+func schemaVersion(schema string) int64 {
+	sum := sha256.Sum256([]byte(schema))
+	return int64(binary.BigEndian.Uint32(sum[:4]) >> 1)
+}
+
+func TestBaselineHashesToAdoptHash(t *testing.T) {
 	t.Parallel()
 	steps, err := parseMigrations(migrationFiles)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := schemaVersion(steps[0].sql); got != 852615662 {
-		t.Errorf("schemaVersion(%s) = %d, want 852615662: databases made before migrations carry that hash", steps[0].name, got)
-	}
-	if schemaVersion("x") == schemaVersion("y") {
-		t.Error(`schemaVersion("x") == schemaVersion("y")`)
-	}
-}
-
-func TestOpenRefusesStaleSchema(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "kitsune.db")
-	s, err := Open(t.Context(), path, Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = s.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = rawDB(t, path).ExecContext(t.Context(), "PRAGMA user_version = 1"); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = Open(t.Context(), path, Options{})
-	if !errors.Is(err, ErrStaleSchema) {
-		t.Fatalf("err = %v, want ErrStaleSchema", err)
-	}
-	if msg := err.Error(); !strings.Contains(msg, path) || !strings.Contains(msg, "delete it") {
-		t.Errorf("message %q lacks the path or %q", msg, "delete it")
+	if got := schemaVersion(steps[0].sql); got != adoptHash {
+		t.Errorf("schemaVersion(%s) = %d, want adoptHash %d: databases made before migrations carry it", steps[0].name, got, adoptHash)
 	}
 }
 
@@ -100,7 +82,8 @@ func TestFreshCreateIsAtomic(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = w.Close() })
 
-	err = settleSchemaWith(t.Context(), w, path, "CREATE TABLE a (x INTEGER) STRICT; SELECT x FROM nope;")
+	broken := []migration{{version: 1, name: "0001_broken.sql", sql: "CREATE TABLE a (x INTEGER) STRICT; SELECT x FROM nope;"}}
+	err = settleSchemaWith(t.Context(), w, path, broken, false, slog.New(slog.DiscardHandler))
 	if err == nil {
 		t.Fatal("settleSchemaWith accepted a broken schema")
 	}

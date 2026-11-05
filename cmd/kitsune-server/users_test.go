@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -131,6 +132,44 @@ func TestUsersAddCreatesDataDir(t *testing.T) { //nolint:paralleltest // overrid
 	}
 	if perm := fi.Mode().Perm(); perm != 0o700 {
 		t.Errorf("data_dir mode = %o, want 700", perm)
+	}
+}
+
+// markUnmigrated gives the database the hash from before migrations, so it has
+// one pending.
+func markUnmigrated(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err = db.ExecContext(t.Context(), "PRAGMA user_version = 852615662"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUsersAddRefusesPendingMigrations(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	e := newUserEnv(t)
+	if r := e.usersAdd(goodPassword, passwordStdin, "kim"); r.code != exitOK {
+		t.Fatalf("result = %+v", r)
+	}
+	path := filepath.Join(e.dataDir, store.FileName)
+	markUnmigrated(t, path)
+
+	r := e.usersAdd(goodPassword, passwordStdin, "lee")
+
+	if r.code != exitFailure || !strings.Contains(r.stderr, store.ErrMigrationsPending.Error()) {
+		t.Fatalf("result = %+v", r)
+	}
+	st, err := store.Open(t.Context(), path, store.Options{Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if n, countErr := st.CountUsers(t.Context()); countErr != nil || n != 1 {
+		t.Errorf("CountUsers = %d, %v, want 1", n, countErr)
 	}
 }
 

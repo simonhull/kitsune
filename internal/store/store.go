@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -26,8 +27,15 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrNameTaken means a user with that name exists, ignoring ASCII case.
 	ErrNameTaken = errors.New("name already taken")
-	// ErrStaleSchema means the database was created from a different schema.
-	ErrStaleSchema = errors.New("database was created from a different schema; delete it (Kitsune has no migrations before its first release)")
+	// ErrStaleSchema means the database came from a development build older than
+	// migrations, with a schema they don't start from.
+	ErrStaleSchema = errors.New("database predates migrations and doesn't match their baseline, so it can't be upgraded; run the build that made it, or move the file aside to start over")
+	// ErrNewerSchema means the database was migrated by a newer binary.
+	ErrNewerSchema = errors.New("database is newer than this binary; run a newer kitsune-server, or restore a backup taken before the upgrade")
+	// ErrUnversioned means the database has tables but no schema version.
+	ErrUnversioned = errors.New("database has tables but no schema version, so it can't be upgraded; restore a backup, or move the file aside to start over")
+	// ErrMigrationsPending means the database needs migrating and [Options.Migrate] is off.
+	ErrMigrationsPending = errors.New("database needs migrating; start the server once, which does that")
 	// ErrNotKitsune means the file is a SQLite database that Kitsune did not create.
 	ErrNotKitsune = errors.New("not a Kitsune database")
 
@@ -70,11 +78,29 @@ type Options struct {
 	Now func() time.Time
 	// Readers is the size of the read pool. Zero means max(2, min(GOMAXPROCS, 8)).
 	Readers int
+	// Migrate applies pending migrations. Only the server sets it: off, a
+	// command-line tool can't migrate a database under a running server.
+	Migrate bool
+	// Logger reports migrations. Nil discards.
+	Logger *slog.Logger
 }
 
-// Open opens or creates the database at path. It returns an error wrapping
-// [ErrStaleSchema] or [ErrNotKitsune] if the file can't be used, and an error
-// if opts.Readers is negative.
+// logger returns Logger, or one that discards.
+func (o *Options) logger() *slog.Logger {
+	if o.Logger != nil {
+		return o.Logger
+	}
+	return slog.New(slog.DiscardHandler)
+}
+
+// Open opens the database at path, creating it if it is empty. A database behind
+// this binary is migrated when opts.Migrate is set, and otherwise refused with
+// [ErrMigrationsPending]. A failed migration stops Open with an error naming the
+// file; that step is undone and the ones before it stay.
+//
+// It returns an error wrapping [ErrStaleSchema], [ErrNewerSchema],
+// [ErrUnversioned] or [ErrNotKitsune] if the file can't be used, and an error if
+// opts.Readers is negative.
 func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 	if opts.Readers < 0 {
 		return nil, fmt.Errorf("store: Options.Readers is %d; %w", opts.Readers, errNegativeReaders)
@@ -95,7 +121,7 @@ func Open(ctx context.Context, path string, opts Options) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = settleSchema(ctx, w, path); err != nil {
+	if err = settleSchema(ctx, w, path, opts.Migrate, opts.logger()); err != nil {
 		return nil, closeAfter(err, w)
 	}
 	if _, err = w.ExecContext(ctx, "PRAGMA journal_mode = WAL"); err != nil {

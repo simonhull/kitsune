@@ -138,7 +138,7 @@ func openApp(ctx context.Context, cfg *config.Config, configPath string, log *sl
 	if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
 		return nil, noUsers
 	}
-	st, err := store.Open(ctx, dbPath, store.Options{})
+	st, err := store.Open(ctx, dbPath, store.Options{Migrate: true, Logger: log})
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
