@@ -92,33 +92,32 @@ func settleSchemaWith(ctx context.Context, w *sql.DB, path string, steps []migra
 		return nil
 	}
 	if !u.migrate {
-		return fmt.Errorf("open %s: at version %d, this binary needs %d: %w", path, from, latest, ErrMigrationsPending)
+		return fmt.Errorf("open %s: at version %d, this binary needs %d: %w", path, st.version, latest, ErrMigrationsPending)
 	}
-	if err = u.apply(ctx, w, path, steps[from:], from); err != nil {
+	saved, err := u.apply(ctx, w, path, steps[from:], from)
+	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}
+	u.log.InfoContext(ctx, "database migrated", "from", st.version, "to", latest, "backup", saved)
 	return nil
 }
 
-// apply upgrades a database with data in it from version from. Adoption alone
-// changes nothing but the number, so only real steps get a backup.
-func (u *upgrade) apply(ctx context.Context, w *sql.DB, path string, steps []migration, from int64) error {
-	var saved string
-	if len(steps) > 0 {
-		var err error
-		if saved, err = u.backup(ctx, w, path, from); err != nil {
-			return fmt.Errorf("back up before migrating, which did not start: %w", err)
-		}
+// apply upgrades a database with data in it from version from, and returns the
+// backup's path. Adoption alone changes nothing but the number, so only real
+// steps get a backup.
+func (u *upgrade) apply(ctx context.Context, w *sql.DB, path string, steps []migration, from int64) (string, error) {
+	if len(steps) == 0 {
+		return "", runMigrations(ctx, w, steps)
 	}
-	if err := runMigrations(ctx, w, steps); err != nil {
-		return err
+	saved, err := u.backup(ctx, w, path, from)
+	if err != nil {
+		return "", fmt.Errorf("back up before migrating, which did not start: %w", err)
 	}
-	u.log.InfoContext(ctx, "database migrated", "from", from, "to", from+int64(len(steps)), "backup", saved)
-	if saved == "" {
-		return nil
+	if migrateErr := runMigrations(ctx, w, steps); migrateErr != nil {
+		return "", migrateErr
 	}
-	if err := pruneBackups(path); err != nil {
-		u.log.WarnContext(ctx, "pruning old database backups failed", "err", err)
+	if pruneErr := pruneBackups(path); pruneErr != nil {
+		u.log.WarnContext(ctx, "pruning old database backups failed", "err", pruneErr)
 	}
-	return nil
+	return saved, nil
 }

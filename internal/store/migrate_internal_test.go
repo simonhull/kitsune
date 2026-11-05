@@ -637,6 +637,9 @@ func TestPendingMigrationsAreRefusedWithoutMigrate(t *testing.T) {
 	if !errors.Is(err, ErrMigrationsPending) {
 		t.Fatalf("err = %v, want ErrMigrationsPending", err)
 	}
+	if !strings.Contains(err.Error(), strconv.Itoa(adoptHash)) {
+		t.Errorf("message %q doesn't report the version in the file", err)
+	}
 	if got := rawInt(t, rawDB(t, path), "PRAGMA user_version"); got != adoptHash {
 		t.Errorf("user_version = %d, want it untouched", got)
 	}
