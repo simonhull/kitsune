@@ -217,6 +217,7 @@ func buildApp(ctx context.Context, cfg *config.Config, st *store.Store, log *slo
 		Roots:         len(cfg.Library.Roots),
 		TagWrites:     cfg.Library.TagWrites,
 		Scanner:       a.scanner,
+		StartScan:     a.startScan,
 		Context:       ctx,
 	})
 	a.http = newHTTPServer(handler, log)

@@ -91,8 +91,9 @@ type testServerOptions struct {
 	Artwork       *artwork.Cache
 	Roots         int
 	TagWrites     bool
-	LibraryRoot   string            // "" means a scanner with no roots.
-	Write         library.WriteFunc // Nil means real writes.
+	LibraryRoot   string                   // "" means a scanner with no roots.
+	Write         library.WriteFunc        // Nil means real writes.
+	StartScan     func(library.Mode) error // Nil means claim and run on the scanner.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -138,6 +139,18 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	scanner := library.NewScanner(st, library.Options{
 		Roots: roots, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
 	})
+	if o.StartScan == nil {
+		var scans sync.WaitGroup
+		tb.Cleanup(scans.Wait) // Before the store closes.
+		o.StartScan = func(mode library.Mode) error {
+			run, claimErr := scanner.Claim(mode)
+			if claimErr != nil {
+				return claimErr //nolint:wrapcheck // Tests compare it.
+			}
+			scans.Go(func() { _, _ = run(context.WithoutCancel(tb.Context())) })
+			return nil
+		}
+	}
 	logs := &syncBuffer{}
 	h := New(Config{
 		Auth:          svc,
@@ -152,6 +165,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		Roots:         o.Roots,
 		TagWrites:     o.TagWrites,
 		Scanner:       scanner,
+		StartScan:     o.StartScan,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)

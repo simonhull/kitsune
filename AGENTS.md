@@ -159,7 +159,7 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - `Scanner.Claim` reserves the one scan without waiting, so a refusal is known before anything starts;
   `Scan` is a claim that runs at once. A scan a handler starts runs as the app's background work
   (`app.startScan`), so shutdown cancels it and waits. A scheduled scan that meets a running one retries
-  once, when that one ends.
+  once, when that one ends. `POST /admin/library/scan` answers 202 or 409 from the claim.
 - `Scanner.Progress` is an immutable snapshot swapped atomically, which only the claim's holder
   changes. `GET /library` carries it, and the reason a scan failed goes to administrators only.
 - Scans remove audiometa's temp files (`isWriteTemp`), and only with `library.tag_writes` on: off,

@@ -331,6 +331,44 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
+  /admin/library/scan:
+    post:
+      operationId: postScan
+      summary: Start a scan.
+      description: >-
+        For administrators. The scan is claimed before this answers, so a 202
+        means it is running, and a 409 means another one is. It runs on after the
+        response: `GET /library` follows it. A Quick scan reads new and changed
+        files, a Full one every file. Neither changes a file.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScanRequest" }
+      responses:
+        "202":
+          description: The scan has started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanStatus" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/Problem"
   /library:
     get:
       operationId: getLibrary
@@ -896,6 +934,12 @@ components:
         roots: { type: integer, description: The number of configured library roots. }
         issues: { type: integer, format: int64, description: Files the scanner could not read. }
         scan: { $ref: "#/components/schemas/ScanStatus" }
+    ScanRequest:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [quick, full] }
     ScanStatus:
       type: object
       additionalProperties: false

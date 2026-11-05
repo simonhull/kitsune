@@ -631,6 +631,19 @@ func TestServeWaitsForAStartedScan(t *testing.T) { //nolint:paralleltest // over
 	}
 }
 
+func TestServeStartsAScanOnRequest(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	ra := serveApp(t, libraryEnv(t, 1).env)
+	ra.waitReady(t)
+	login := ra.login(t, "", simonName, goodPassword, "", true)
+	cookie, _, _ := strings.Cut(strings.Join(login.cookies, ""), ";")
+	h := http.Header{contentTypeKey: {jsonMediaType}, "Cookie": {cookie}, "X-Kitsune-Request": {"1"}}
+	ra.expectStatus(t, ra.do(t, http.MethodPost, apiPrefix+"/admin/library/scan", `{"mode":"full"}`, h), http.StatusAccepted)
+	if err := ra.stop(t); err != nil {
+		t.Errorf("serve = %v, want nil", err)
+	}
+}
+
 func TestStartScanIsRefusedWhileAScanRuns(t *testing.T) { //nolint:paralleltest // overrides authParams.
 	useCheapParams(t)
 	ra := serveApp(t, libraryEnv(t, 1).env)

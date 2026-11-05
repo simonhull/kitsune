@@ -30,9 +30,8 @@
 //
 // Known limits:
 //
-//   - Art is read only when an audio file is read, until the admin Full scan
-//     exists. A replaced cover.jpg is not seen, and a lost cache needs a new
-//     database.
+//   - Art is read only when an audio file is read: a replaced cover.jpg or a
+//     lost cache waits for a Full scan.
 //   - Art removed from every file of an album stays: a track without art keeps
 //     the cover the album has.
 //   - A changed track with different art replaces the album's cover.

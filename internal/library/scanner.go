@@ -36,6 +36,17 @@ func (m Mode) String() string {
 	return "quick"
 }
 
+// ParseMode returns the mode with the name [Mode.String] gives it.
+func ParseMode(name string) (Mode, bool) {
+	switch name {
+	case Quick.String():
+		return Quick, true
+	case Full.String():
+		return Full, true
+	}
+	return Quick, false
+}
+
 // Options configures [NewScanner].
 type Options struct {
 	Roots        []string

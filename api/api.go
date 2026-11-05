@@ -231,6 +231,11 @@ type LibraryFacts struct {
 	Scan ScanStatus `json:"scan"`
 }
 
+// ScanRequest is the body of POST /admin/library/scan. Mode is quick or full.
+type ScanRequest struct {
+	Mode string `json:"mode"`
+}
+
 // The values of ScanStatus.State.
 const (
 	ScanIdle    = "idle"
