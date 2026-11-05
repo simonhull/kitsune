@@ -119,6 +119,8 @@ export function createApiSource({
 				}
 				throw error;
 			}
-		}
+		},
+
+		streamUrl: (trackId) => `${base}/tracks/${encodeURIComponent(trackId)}/stream`
 	};
 }

@@ -10,11 +10,16 @@
 		trackLabel
 	} from '#lib/library/format.ts';
 	import type { Album } from '#lib/library/source.ts';
+	import Icon from '#lib/shell/Icon.svelte';
 
 	interface Props {
 		album: Album | undefined;
 		/** The ID of the track cued from this album, if any. */
 		cuedId: string | undefined;
+		/** Whether that track is the one sounding now. */
+		sounding: boolean;
+		/** Plays the album from this track. */
+		play: (index: number) => void;
 		/** The server no longer has it, though a list still did. */
 		gone: boolean;
 		/** It couldn't be fetched this time. */
@@ -22,7 +27,7 @@
 		retry: () => void;
 	}
 
-	let { album, cuedId, gone, unavailable, retry }: Props = $props();
+	let { album, cuedId, sounding, play, gone, unavailable, retry }: Props = $props();
 
 	const multiDisc = $derived(isMultiDisc(album?.tracks ?? []));
 </script>
@@ -37,11 +42,27 @@
 		</p>
 	{:else if album !== undefined}
 		<div class="rows">
-			{#each album.tracks as track (track.id)}
+			{#each album.tracks as track, index (track.id)}
 				{@const others = credit(track, album.artist)}
 				{@const rg = trackGain(track)}
-				<div class="row" class:cued={track.id === cuedId} class:discs={multiDisc}>
-					<span class="mono number">{trackLabel(track, multiDisc)}</span>
+				{@const cued = track.id === cuedId}
+				<button
+					type="button"
+					class="row"
+					class:cued
+					class:discs={multiDisc}
+					aria-current={cued ? 'true' : undefined}
+					onclick={() => {
+						play(index);
+					}}
+				>
+					<span class="mono number">
+						{#if cued && sounding}
+							<Icon name="play" size={16} />
+						{:else}
+							{trackLabel(track, multiDisc)}
+						{/if}
+					</span>
 					<span class="name">
 						<span class="title">{track.title}</span>
 						{#if others !== undefined}
@@ -54,7 +75,7 @@
 						<span class="mono gain">RG {gain(rg)}</span>
 					{/if}
 					<span class="mono length">{clock(track.durationMs / 1000)}</span>
-				</div>
+				</button>
 			{/each}
 			<div class="facts">
 				<span>{formatLine(album.tracks)}</span>
@@ -113,9 +134,13 @@
 		grid-template-columns: 56px minmax(0, 1fr) 160px 80px;
 		gap: 16px;
 		align-items: center;
+		width: 100%;
 		min-height: 60px;
 		padding: 0 16px;
+		border: 0;
 		border-radius: 18px;
+		background: none;
+		text-align: left;
 	}
 
 	.row.cued {
@@ -128,7 +153,12 @@
 	}
 
 	.number {
+		display: flex;
 		color: var(--text-label);
+	}
+
+	.cued .number {
+		color: var(--accent);
 	}
 
 	.name {

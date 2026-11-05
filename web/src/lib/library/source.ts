@@ -86,6 +86,8 @@ export interface LibrarySource {
 	albumsPage(sort: AlbumSort, cursor?: string, limit?: number): Promise<AlbumPage>;
 	/** Rejects with {@link AlbumNotFoundError} for an unknown ID. */
 	album(id: string): Promise<Album>;
+	/** The URL a track's audio streams from. */
+	streamUrl(trackId: string): string;
 }
 
 export class AlbumNotFoundError extends Error {

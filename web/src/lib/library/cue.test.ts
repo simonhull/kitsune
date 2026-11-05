@@ -46,6 +46,23 @@ describe('cueOf', () => {
 		expect(cueOf(album(4))?.moreCount).toBe(0);
 	});
 
+	it('follows the order and position it is given', () => {
+		const source = album(6);
+		const order = source.tracks.toReversed();
+		const cue = cueOf(source, order, 1);
+		expect(cue?.track.id).toBe('t4');
+		expect(cue?.index).toBe(1);
+		expect(cue?.trackCount).toBe(6);
+		expect(cue?.upNext.map((track) => track.id)).toEqual(['t3', 't2', 't1']);
+		expect(cue?.moreCount).toBe(1);
+	});
+
+	it('has nothing next at the end of the queue', () => {
+		const cue = cueOf(album(3), album(3).tracks, 2);
+		expect(cue?.upNext).toEqual([]);
+		expect(cue?.moreCount).toBe(0);
+	});
+
 	it('cannot cue an empty album', () => {
 		expect(cueOf(album(0))).toBeNull();
 	});

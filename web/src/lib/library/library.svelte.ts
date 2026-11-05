@@ -74,6 +74,16 @@ export interface LibraryOptions {
 	/** Holds the cue on this album, for the lab: a hero condensing into the island needs another. */
 	pinnedAlbumId?: string;
 	readyMemory?: ReadyMemory;
+	/** This library has no audio behind it: the player runs on a clock instead. */
+	simulated?: boolean;
+}
+
+/** What the library sees of the player, which is built on it and so can't be imported here. */
+export interface PlayerView {
+	/** From the first play until a reset, whatever has happened since. */
+	readonly started: boolean;
+	readonly cue: NowPlaying | null;
+	reset(): void;
 }
 
 /**
@@ -119,6 +129,7 @@ export class Library {
 	playing = $state.raw<NowPlaying | null>(null);
 	/** Sends the app to the door. Set by the shell once it can navigate. */
 	onExpired: (() => Promise<void>) | null = null;
+	readonly simulated: boolean;
 
 	readonly #source: LibrarySource;
 	readonly #pinnedAlbumId: string | undefined;
@@ -127,6 +138,7 @@ export class Library {
 	readonly #missing = new SvelteSet<string>();
 	readonly #unavailable = new SvelteSet<string>();
 	readonly #loading = new SvelteSet<string>();
+	#player: PlayerView | null = null;
 	#session: Promise<Session> | null = null;
 	#shell: Promise<void> | null = null;
 	#cursor: string | undefined;
@@ -159,8 +171,14 @@ export class Library {
 	) {
 		this.#source = typeof source === 'function' ? source(() => void this.expire()) : source;
 		this.#pinnedAlbumId = options.pinnedAlbumId;
+		this.simulated = options.simulated ?? false;
 		this.#readyMemory =
 			options.readyMemory ?? readyMemoryIn(() => localStorage, 'kitsune:ready-seen');
+	}
+
+	/** Takes the player on: everything the library forgets, it forgets too. */
+	follow(player: PlayerView): void {
+		this.#player = player;
 	}
 
 	/** Returns what's known about an album right now, without waiting. */
@@ -195,6 +213,16 @@ export class Library {
 		} catch (error) {
 			return error instanceof UnauthorizedError ? 'signed-out' : 'down';
 		}
+	}
+
+	/** Asks again, now. A 401 goes to the door like any other, and anything else counts as down. */
+	askSession(): Promise<Session> {
+		return this.#askSession();
+	}
+
+	/** The URL a track's audio streams from. */
+	streamUrl(trackId: string): string {
+		return this.#source.streamUrl(trackId);
 	}
 
 	/** Asks whether the session survives: a 401 here goes to the door like any other. */
@@ -468,9 +496,14 @@ export class Library {
 	 * Finds what to cue for the island's first frame, without holding up the page if it can't, or null
 	 * to leave the cue as it is. It only reads: the cue is what makes the island appear, and that's
 	 * for whoever opens Home. Leaving the deck it asks again for what's already cued, because that
-	 * was read part way through the scan.
+	 * was read part way through the scan. A queue that has started is left alone: it keeps the track
+	 * list it was built from, even one read part way through a scan, because swapping that under
+	 * the sound would lose its place. That list stays short until the album is next played.
 	 */
 	async #openingCue(again: boolean): Promise<Album | undefined | null> {
+		if (this.#player?.started === true) {
+			return null;
+		}
 		const cued = again ? this.playing?.album.id : undefined;
 		const id = this.#pinnedAlbumId ?? cued ?? this.recent.at(0)?.id;
 		if ((this.playing !== null && !again) || id === undefined) {
@@ -480,8 +513,16 @@ export class Library {
 		return this.#albums.get(id);
 	}
 
+	/** Cues an album's first track, unless a queue has started: then the player speaks for the cue. */
 	#cue(album: Album | undefined): void {
-		this.playing = album === undefined ? null : cueOf(album);
+		if (this.#player?.started !== true) {
+			this.playing = album === undefined ? null : cueOf(album);
+		}
+	}
+
+	/** Shows what the player is on. It outranks the lab's pin: that only holds a cue, not a queue. */
+	showQueue(): void {
+		this.playing = this.#player?.cue ?? this.playing;
 	}
 
 	/**
@@ -566,6 +607,7 @@ export class Library {
 		this.hasMoreAlbums = false;
 		this.down = false;
 		this.leaveDeck();
+		this.#player?.reset();
 		this.playing = null;
 		this.#cursor = undefined;
 		this.#session = Promise.resolve('signed-out');
@@ -588,7 +630,11 @@ function fromQuery(): Library {
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
 		const readyMemory = { seen: () => false, mark: () => undefined };
-		return new Library(createFixtureSource({ latencyMs }), { pinnedAlbumId, readyMemory });
+		return new Library(createFixtureSource({ latencyMs }), {
+			pinnedAlbumId,
+			readyMemory,
+			simulated: true
+		});
 	}
 	const gap = Number(query.get('gap') ?? defaultScanGap);
 	const key = `kitsune:scan:${String(scan)}:${String(gap)}`;
@@ -600,7 +646,8 @@ function fromQuery(): Library {
 	});
 	return new Library(source, {
 		pinnedAlbumId,
-		readyMemory: readyMemoryIn(() => sessionStorage, `${key}:ready`)
+		readyMemory: readyMemoryIn(() => sessionStorage, `${key}:ready`),
+		simulated: true
 	});
 }
 

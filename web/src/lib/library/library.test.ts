@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SilentOutput } from '#lib/player/output.ts';
+import { Player } from '#lib/player/player.svelte.ts';
 import { createFixtureSource } from './fixtures';
 import { Library, pileSize, type ReadyMemory } from './library.svelte';
 import {
@@ -8,11 +10,16 @@ import {
 	type AlbumEntry,
 	type AlbumPage,
 	type LibraryFacts,
-	type LibrarySource
+	type LibrarySource,
+	type Track
 } from './source';
 
 function source(overrides: Partial<LibrarySource> = {}): LibrarySource {
 	return { ...createFixtureSource(), ...overrides };
+}
+
+function track(id: string): Track {
+	return { id, title: id, artists: [], durationMs: 100_000, format: 'FLAC' };
 }
 
 function forgetful(seen = false): ReadyMemory {
@@ -538,6 +545,30 @@ describe('the deck', () => {
 			await vi.advanceTimersByTimeAsync(3001);
 			return { scan, library };
 		}
+
+		it('leaves a queue at a later track where it is', async () => {
+			const scan = new Scripted();
+			const library = new Library(scan.source(), { readyMemory: forgetful() });
+			const player = new Player(library, () => new SilentOutput({ ticking: false }));
+			await library.loadShell();
+			scan.found = 4;
+			await vi.advanceTimersByTimeAsync(3001);
+			await library.loadAlbum('album-3');
+			const partial = library.album('album-3');
+			if (partial === undefined) {
+				throw new Error('the album should have loaded');
+			}
+			const tracks = [track('first'), track('second'), track('third')];
+			player.play({ ...partial, tracks }, 1);
+			scan.done = true;
+			await vi.advanceTimersByTimeAsync(3001);
+			expect(library.deck).toBe(false);
+			expect(library.playing?.track.id).toBe('second');
+			expect(library.playing?.index).toBe(1);
+			expect(library.playing?.trackCount).toBe(3);
+			expect(player.current?.id).toBe('second');
+			library.reset();
+		});
 
 		it('leaves mounting Home to the deck, which stays until the deal is over', async () => {
 			let finish = (): void => undefined;
