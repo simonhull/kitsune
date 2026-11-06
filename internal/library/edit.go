@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -50,81 +51,127 @@ func (e *EditError) Error() string {
 // Unwrap returns the cause.
 func (e *EditError) Unwrap() error { return e.Err }
 
-// EditTrack saves e to the file of the live track id, and to the store. See
-// [Scanner.EditAlbum] for how it fails.
-func (s *Scanner) EditTrack(ctx context.Context, id, ifMatch string, e *Edit) error {
-	return s.exclusive(func() error {
-		file, etag, err := s.st.TrackEditFile(ctx, id)
-		if err != nil {
-			return err //nolint:wrapcheck // The store's error already says what failed.
-		}
-		return s.edit(ctx, []store.EditFile{file}, etag, ifMatch, e)
-	})
+// AlbumEdit is a change to the tracks of one album. All goes to every track, and
+// Tracks, by ULID, to the ones it names, on top of All: a field in both takes the
+// track's value.
+type AlbumEdit struct {
+	All    Edit
+	Tracks map[string]Edit
 }
 
-// EditAlbum saves e to every live track of the album id, and to the store. Each
-// file is written and reindexed before the next, so the library follows the
-// files even if the edit stops midway. A canceled ctx stops the edit between or
-// inside files, never leaving one half written.
+// fileEdit is what one file of an album will take.
+type fileEdit struct {
+	file *store.EditFile
+	edit Edit
+}
+
+// forFiles returns the edit of each of files that gets one. A track that isn't
+// among files is refused: edits never cross albums.
+func (e *AlbumEdit) forFiles(files []store.EditFile) ([]fileEdit, error) {
+	for id := range e.Tracks {
+		if !slices.ContainsFunc(files, func(f store.EditFile) bool { return f.ULID == id }) {
+			return nil, fmt.Errorf("track %s is not on this album: %w", id, ErrUnsupportedEdit)
+		}
+	}
+	var out []fileEdit
+	for i := range files {
+		own, named := e.Tracks[files[i].ULID]
+		if !named && len(e.All.Fields) == 0 {
+			continue
+		}
+		fields := maps.Clone(e.All.Fields)
+		if fields == nil {
+			fields = make(map[Field][]string, len(own.Fields))
+		}
+		maps.Copy(fields, own.Fields)
+		out = append(out, fileEdit{file: &files[i], edit: Edit{Fields: fields}})
+	}
+	return out, nil
+}
+
+// EditAlbum saves e to the files of the album id, and to the store. Each file is
+// written and reindexed before the next, so the library follows the files even
+// if the edit stops midway. A canceled ctx stops the edit between or inside
+// files, never leaving one half written.
 //
 // It returns [ErrBusy] while a scan or another edit holds the library, an error
 // wrapping [store.ErrNotFound] for an unknown ID, [ErrStale] when ifMatch is not
 // the current ETag or a file drifted from the store, and an [*EditError] when
 // the edit was refused or stopped.
-func (s *Scanner) EditAlbum(ctx context.Context, id, ifMatch string, e *Edit) error {
+func (s *Scanner) EditAlbum(ctx context.Context, id, ifMatch string, e *AlbumEdit) error {
 	return s.exclusive(func() error {
 		files, etag, err := s.st.AlbumEditFiles(ctx, id)
 		if err != nil {
 			return err //nolint:wrapcheck // The store's error already says what failed.
 		}
-		return s.edit(ctx, files, etag, ifMatch, e)
+		if ifMatch != etag {
+			return ErrStale
+		}
+		edits, err := e.forFiles(files)
+		if err != nil {
+			return &EditError{Remaining: ulids(fileEdits(files)), Err: err}
+		}
+		return s.edit(ctx, edits)
 	})
 }
 
-// edit compares the validators, checks every file, and only then writes them in
-// order.
-// The caller holds the library lock.
-func (s *Scanner) edit(ctx context.Context, files []store.EditFile, etag, ifMatch string, e *Edit) error {
-	if ifMatch != etag {
-		return ErrStale
-	}
+// fileEdits lists files with no edit, for reporting.
+func fileEdits(files []store.EditFile) []fileEdit {
+	out := make([]fileEdit, len(files))
 	for i := range files {
-		err := checkDrift(&files[i])
+		out[i].file = &files[i]
+	}
+	return out
+}
+
+// edit checks every file, and only then writes them in order. The caller holds
+// the library lock.
+func (s *Scanner) edit(ctx context.Context, edits []fileEdit) error {
+	for i := range edits {
+		err := checkDrift(edits[i].file)
 		if errors.Is(err, ErrStale) {
 			return ErrStale
 		}
 		if err == nil {
-			err = s.preflight(ctx, &files[i], e)
+			err = s.preflight(ctx, edits[i].file, &edits[i].edit)
 		}
 		if err != nil {
-			return stopped(files, 0, err)
+			return stopped(edits, 0, err)
 		}
 	}
 	// Tracks written before a failure hold the edit, and a canceled edit still counts.
-	defer s.refreshGenres(context.WithoutCancel(ctx))
-	for i := range files {
-		file := &files[i]
+	defer s.settle(ctx)
+	for i := range edits {
+		file := edits[i].file
 		path := filepath.Join(file.Root, file.RelPath)
-		if err := s.write(ctx, path, e.apply); err != nil {
-			return stopped(files, i, err)
+		if err := s.write(ctx, path, edits[i].edit.apply); err != nil {
+			return stopped(edits, i, err)
 		}
 		// The file has changed, so a canceled edit still indexes it.
 		if err := s.reindex(context.WithoutCancel(ctx), file.ID, file.Root, file.RelPath); err != nil {
-			return stopped(files, i+1, err)
+			return stopped(edits, i+1, err)
 		}
 	}
 	return nil
 }
 
-// stopped reports an edit that ended with files[:changed] written.
-func stopped(files []store.EditFile, changed int, err error) *EditError {
-	return &EditError{Changed: ulids(files[:changed]), Remaining: ulids(files[changed:]), Err: classify(err)}
+// settle brings what the store derives from its tracks up to date, once per edit
+// and with the lock held, however the edit ended: some files may have changed.
+func (s *Scanner) settle(ctx context.Context) {
+	ctx = context.WithoutCancel(ctx)
+	s.refreshNames(ctx)
+	s.refreshGenres(ctx)
 }
 
-func ulids(files []store.EditFile) []string {
-	out := make([]string, len(files))
-	for i := range files {
-		out[i] = files[i].ULID
+// stopped reports an edit that ended with edits[:changed] written.
+func stopped(edits []fileEdit, changed int, err error) *EditError {
+	return &EditError{Changed: ulids(edits[:changed]), Remaining: ulids(edits[changed:]), Err: classify(err)}
+}
+
+func ulids(edits []fileEdit) []string {
+	out := make([]string, len(edits))
+	for i := range edits {
+		out[i] = edits[i].file.ULID
 	}
 	return out
 }

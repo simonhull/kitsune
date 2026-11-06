@@ -67,11 +67,6 @@ JOIN albums a ON a.id = t.album_id
 WHERE a.ulid = ? AND t.missing_since IS NULL
 ORDER BY coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id;
 
--- name: GetEditFile :one
-SELECT id, ulid, root, rel_path, size, mtime
-FROM tracks
-WHERE ulid = ? AND missing_since IS NULL;
-
 -- name: ListAlbumTagValues :many
 SELECT t.ulid, tt.value
 FROM tracks t

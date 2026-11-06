@@ -219,70 +219,6 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
-    patch:
-      operationId: patchAlbum
-      summary: Edit an album's year and genres, in every track's file.
-      description: >-
-        For administrators, on a server with `library.tag_writes` on: anything
-        else is a 403. Files are checked first, then written in track order.
-        Each is atomic and the album is not, so a failure partway is reported
-        with `changed` and `remaining`. A client that goes away doesn't stop
-        the edit. A new year replaces a full date whole.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: If-Match
-          in: header
-          required: false
-          description: >-
-            The `etag` from the last read or edit, verbatim. A missing one, or
-            `*`, is a 428.
-          schema: { type: string }
-        - $ref: "#/components/parameters/KitsuneRequest"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/AlbumEdit" }
-      responses:
-        "200":
-          description: The album with its new values and ETags.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/AlbumDetail" }
-        "400":
-          $ref: "#/components/responses/Problem"
-        "401":
-          description: Credentials are missing, invalid or expired.
-          headers:
-            WWW-Authenticate:
-              schema: { type: string }
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "403":
-          $ref: "#/components/responses/EditFailure"
-        "404":
-          $ref: "#/components/responses/Problem"
-        "409":
-          description: A scan or another edit holds the library.
-          headers:
-            Retry-After:
-              description: Seconds to wait before trying again.
-              schema: { type: integer }
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "412":
-          $ref: "#/components/responses/Problem"
-        "422":
-          $ref: "#/components/responses/EditFailure"
-        "428":
-          $ref: "#/components/responses/Problem"
-        "500":
-          $ref: "#/components/responses/EditFailure"
   /albums/{id}/tags:
     get:
       operationId: getAlbumTags
@@ -318,6 +254,72 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /albums/{id}/edits:
+    post:
+      operationId: postAlbumEdit
+      summary: Edit the tags of an album's tracks, in their files.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on: anything
+        else is a 403. Files are checked first, then written in track order.
+        Each is atomic and the album is not, so a failure partway is reported
+        with `changed` and `remaining`: read the tags again and send the same
+        edit to finish it. A client that goes away doesn't stop the edit. An
+        edit during a scan is a 409 for as long as the scan runs.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: If-Match
+          in: header
+          required: false
+          description: >-
+            The `etag` from the last read or edit, verbatim. A missing one, or
+            `*`, is a 428.
+          schema: { type: string }
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AlbumEdit" }
+      responses:
+        "200":
+          description: The album with its new values and ETag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlbumDetail" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/EditFailure"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: A scan or another edit holds the library.
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "412":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/EditFailure"
+        "428":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/EditFailure"
   /artists:
     get:
       operationId: getArtists
@@ -504,69 +506,6 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
-    patch:
-      operationId: patchTrack
-      summary: Edit a track's title and numbers, in its file.
-      description: >-
-        For administrators, on a server with `library.tag_writes` on: anything
-        else is a 403. A client that goes away doesn't stop the edit. The
-        response carries the album's new ETag, so a save of several rows can
-        chain.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: If-Match
-          in: header
-          required: false
-          description: >-
-            The `etag` from the last read or edit, verbatim. A missing one, or
-            `*`, is a 428.
-          schema: { type: string }
-        - $ref: "#/components/parameters/KitsuneRequest"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/TrackEdit" }
-      responses:
-        "200":
-          description: The track with its new values and ETags.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/TrackDetail" }
-        "400":
-          $ref: "#/components/responses/Problem"
-        "401":
-          description: Credentials are missing, invalid or expired.
-          headers:
-            WWW-Authenticate:
-              schema: { type: string }
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "403":
-          $ref: "#/components/responses/EditFailure"
-        "404":
-          $ref: "#/components/responses/Problem"
-        "409":
-          description: A scan or another edit holds the library.
-          headers:
-            Retry-After:
-              description: Seconds to wait before trying again.
-              schema: { type: integer }
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "412":
-          $ref: "#/components/responses/Problem"
-        "422":
-          $ref: "#/components/responses/EditFailure"
-        "428":
-          $ref: "#/components/responses/Problem"
-        "500":
-          $ref: "#/components/responses/EditFailure"
   /tracks/{id}/stream:
     get:
       operationId: getTrackStream
@@ -845,7 +784,7 @@ components:
           items: { type: string }
         etag:
           type: string
-          description: The `If-Match` value for `PATCH /tracks/{id}`. Not the stream's ETag.
+          description: Changes when the file does. Not the stream's ETag.
     TrackDetail:
       description: A track's properties, repeated (allOf does not mix with additionalProperties false), plus its album.
       type: object
@@ -872,29 +811,37 @@ components:
           items: { type: string }
         etag:
           type: string
-          description: The `If-Match` value for `PATCH /tracks/{id}`. Not the stream's ETag.
+          description: Changes when the file does. Not the stream's ETag.
         albumId: { type: string }
         albumEtag:
           type: string
-          description: The `If-Match` value for `PATCH /albums/{id}`.
-    TrackEdit:
-      description: An absent field stays as it is. At least one is required.
+          description: The `If-Match` value for `POST /albums/{id}/edits`.
+    TagEdit:
+      description: A change to a file's tags. At least one is required, here or in `tracks`.
       type: object
       additionalProperties: false
       properties:
-        title: { type: string, description: A blank title is a 422. }
-        trackNo: { type: integer, minimum: 1, maximum: 65535 }
-        discNo: { type: integer, minimum: 1, maximum: 65535 }
+        set: { $ref: "#/components/schemas/FieldValues" }
+    TrackTagEdit:
+      description: A `TagEdit` of one track, repeated (allOf does not mix with additionalProperties false).
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id: { type: string }
+        set: { $ref: "#/components/schemas/FieldValues" }
     AlbumEdit:
-      description: An absent field stays as it is. At least one is required.
+      description: >-
+        `all` goes to every track, and `tracks` to the ones they name, on top of
+        `all`: a field in both takes the track's value. A track not on this
+        album is a 422, and naming one twice a 400.
       type: object
       additionalProperties: false
       properties:
-        year: { type: integer, minimum: 1000, maximum: 9999, description: MP3 files take 1900 to 2100; outside that is a 422. }
-        genres:
+        all: { $ref: "#/components/schemas/TagEdit" }
+        tracks:
           type: array
-          description: Replaces the genres of every track. Empty removes them.
-          items: { type: string, minLength: 1 }
+          items: { $ref: "#/components/schemas/TrackTagEdit" }
     AlbumTags:
       type: object
       additionalProperties: false
@@ -919,7 +866,10 @@ components:
           description: Everything no field covers, by key.
           items: { $ref: "#/components/schemas/RawTag" }
     FieldValues:
-      description: The values of the fields named, the same in every format. A field left out has none.
+      description: >-
+        Values by field, the same in every format. Numbers are decimal text; a
+        date is `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, and a new one replaces the
+        old one whole. A value a file can't hold is a 422.
       type: object
       additionalProperties: false
       properties:
@@ -981,7 +931,7 @@ components:
           items: { type: string }
         etag:
           type: string
-          description: The `If-Match` value for `PATCH /albums/{id}`.
+          description: The `If-Match` value for `POST /albums/{id}/edits`.
     ArtistEntry:
       type: object
       additionalProperties: false

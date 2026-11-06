@@ -116,35 +116,6 @@ func (q *Queries) GetAlbum(ctx context.Context, ulid string) (GetAlbumRow, error
 	return i, err
 }
 
-const getEditFile = `-- name: GetEditFile :one
-SELECT id, ulid, root, rel_path, size, mtime
-FROM tracks
-WHERE ulid = ? AND missing_since IS NULL
-`
-
-type GetEditFileRow struct {
-	ID      int64
-	Ulid    string
-	Root    string
-	RelPath string
-	Size    int64
-	Mtime   int64
-}
-
-func (q *Queries) GetEditFile(ctx context.Context, ulid string) (GetEditFileRow, error) {
-	row := q.queryRow(ctx, q.getEditFileStmt, getEditFile, ulid)
-	var i GetEditFileRow
-	err := row.Scan(
-		&i.ID,
-		&i.Ulid,
-		&i.Root,
-		&i.RelPath,
-		&i.Size,
-		&i.Mtime,
-	)
-	return i, err
-}
-
 const getTrackAlbum = `-- name: GetTrackAlbum :one
 SELECT a.ulid
 FROM tracks t

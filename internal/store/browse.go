@@ -472,20 +472,6 @@ func (s *Store) AlbumEditFiles(ctx context.Context, id string) ([]EditFile, stri
 	return files, etag(stamps...), nil
 }
 
-// TrackEditFile returns the file of the live track id and the track's ETag. It
-// returns an error wrapping [ErrNotFound] for an unknown ID or a missing track.
-func (s *Store) TrackEditFile(ctx context.Context, id string) (EditFile, string, error) {
-	r, err := s.rq.GetEditFile(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return EditFile{}, "", fmt.Errorf("track %s: %w", id, ErrNotFound)
-	}
-	if err != nil {
-		return EditFile{}, "", fmt.Errorf("track %s: %w", id, err)
-	}
-	file := EditFile{ID: r.ID, ULID: r.Ulid, Root: r.Root, RelPath: r.RelPath, Size: r.Size, MTime: fromMS(r.Mtime)}
-	return file, etag(stamp(r.Ulid, r.Size, r.Mtime)), nil
-}
-
 // TrackFile returns the file of the live track with the public ID id. It
 // returns an error wrapping [ErrNotFound] for an unknown ID or a missing track.
 func (s *Store) TrackFile(ctx context.Context, id string) (TrackFile, error) {

@@ -132,11 +132,11 @@ type Track struct {
 	DiscTotal  int         `json:"discTotal,omitzero"`
 	Year       int         `json:"year,omitzero"`
 	Genres     []string    `json:"genres"`
-	// Etag is the If-Match value for PATCH /tracks/{id}. It is not the stream's ETag.
+	// Etag changes when the file does. It is not the stream's ETag.
 	Etag string `json:"etag"`
 }
 
-// TrackDetail is the response to GET and PATCH /tracks/{id}: a [Track], and its
+// TrackDetail is the response to GET /tracks/{id}: a [Track], and its
 // album with the album's new If-Match value.
 type TrackDetail struct {
 	Track `json:",inline"`
@@ -145,18 +145,24 @@ type TrackDetail struct {
 	AlbumEtag string `json:"albumEtag"`
 }
 
-// TrackEdit is the body of PATCH /tracks/{id}. An absent field stays as it is.
-type TrackEdit struct {
-	Title   *string `json:"title,omitzero"`
-	TrackNo *int    `json:"trackNo,omitzero"`
-	DiscNo  *int    `json:"discNo,omitzero"`
+// TagEdit is a change to a file's tags. Set holds new values by field name; a
+// field it doesn't name stays as it is.
+type TagEdit struct {
+	Set map[string][]string `json:"set,omitzero"`
 }
 
-// AlbumEdit is the body of PATCH /albums/{id}, applied to every track. An
-// absent field stays as it is; empty Genres removes them.
+// TrackTagEdit is a [TagEdit] of one track.
+type TrackTagEdit struct {
+	TagEdit `json:",inline"`
+
+	ID string `json:"id"`
+}
+
+// AlbumEdit is the body of POST /albums/{id}/edits. All goes to every track, and
+// Tracks to the ones they name, on top of All.
 type AlbumEdit struct {
-	Year   *int     `json:"year,omitzero"`
-	Genres []string `json:"genres,omitzero"`
+	All    TagEdit        `json:"all,omitzero"`
+	Tracks []TrackTagEdit `json:"tracks,omitzero"`
 }
 
 // AlbumTags is the response to GET /albums/{id}/tags: what a tag editor shows.
@@ -202,7 +208,7 @@ type AlbumDetail struct {
 	Genres []string `json:"genres"`
 	// DisplayGenres is as on [AlbumEntry]; Genres stays raw for the tag editor.
 	DisplayGenres []string `json:"displayGenres"`
-	// Etag is the If-Match value for PATCH /albums/{id}.
+	// Etag is the If-Match value for POST /albums/{id}/edits.
 	Etag string `json:"etag"`
 }
 

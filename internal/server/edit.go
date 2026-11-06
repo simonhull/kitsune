@@ -6,9 +6,6 @@ import (
 	"errors"
 	"mime"
 	"net/http"
-	"slices"
-	"strconv"
-	"strings"
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/library"
@@ -16,14 +13,11 @@ import (
 )
 
 const (
-	// maxEditBody caps the request body of an edit or a scan.
-	maxEditBody = 64 << 10
+	// maxEditBody caps the request body of an edit or a scan. An edit of a large
+	// album can repeat lyrics on every track.
+	maxEditBody = 1 << 20
 	// retryAfterSeconds is the Retry-After of an edit the library can't take now.
 	retryAfterSeconds = "30"
-	// The numbers a track or disc tag can hold in every format: M4A's are 16 bits.
-	minNumber, maxNumber = 1, 65535
-	// The years the API takes.
-	minYear, maxYear = 1000, 9999
 )
 
 // getAlbumTags answers with what a tag editor shows of an album.
@@ -60,29 +54,8 @@ func toAPITrackTags(t *library.TrackTags) api.TrackTags {
 	return out
 }
 
-// patchTrack edits a track's title and numbers.
-func (s *Server) patchTrack(w http.ResponseWriter, r *http.Request) {
-	var req api.TrackEdit
-	ifMatch, ok := s.readEdit(w, r, &req)
-	if !ok {
-		return
-	}
-	if !validTrackEdit(&req) {
-		writeProblem(w, r, http.StatusBadRequest, "name at least one field; numbers run from 1 to 65535")
-		return
-	}
-	id := r.PathValue("id")
-	edit := trackEdit(&req)
-	//nolint:contextcheck // An edit outlives its request on purpose; see Config.Context.
-	if err := s.scanner.EditTrack(s.editContext, id, ifMatch, &edit); err != nil {
-		s.editFailed(w, r, err)
-		return
-	}
-	s.writeTrack(w, afterEdit(r), id)
-}
-
-// patchAlbum edits the year and genres of every track of an album.
-func (s *Server) patchAlbum(w http.ResponseWriter, r *http.Request) {
+// postAlbumEdit edits the tags of an album's tracks.
+func (s *Server) postAlbumEdit(w http.ResponseWriter, r *http.Request) {
 	var req api.AlbumEdit
 	ifMatch, ok := s.readEdit(w, r, &req)
 	if !ok {
@@ -90,7 +63,7 @@ func (s *Server) patchAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 	edit, ok := albumEdit(&req)
 	if !ok {
-		writeProblem(w, r, http.StatusBadRequest, "name at least one field; a year runs from 1000 to 9999 and a genre is not blank")
+		writeProblem(w, r, http.StatusBadRequest, "name at least one field, and each track once")
 		return
 	}
 	id := r.PathValue("id")
@@ -138,48 +111,30 @@ func readJSON(w http.ResponseWriter, r *http.Request, req any) error {
 	return json.UnmarshalRead(http.MaxBytesReader(w, r.Body, maxEditBody), req, json.RejectUnknownMembers(true)) //nolint:wrapcheck // The caller only tells the client the body is bad.
 }
 
-func validNumber(n *int) bool { return n == nil || (*n >= minNumber && *n <= maxNumber) }
-
-func validTrackEdit(req *api.TrackEdit) bool {
-	named := req.Title != nil || req.TrackNo != nil || req.DiscNo != nil
-	return named && validNumber(req.TrackNo) && validNumber(req.DiscNo)
+// albumEdit returns the edit req asks for. What a value may hold is the library's
+// to judge, file by file. It reports false for a request that names nothing, or
+// names a track twice or not at all.
+func albumEdit(req *api.AlbumEdit) (library.AlbumEdit, bool) {
+	edit := library.AlbumEdit{All: tagEdit(&req.All), Tracks: make(map[string]library.Edit, len(req.Tracks))}
+	named := len(edit.All.Fields) > 0
+	for i := range req.Tracks {
+		tr := &req.Tracks[i]
+		if _, twice := edit.Tracks[tr.ID]; twice || tr.ID == "" {
+			return library.AlbumEdit{}, false
+		}
+		own := tagEdit(&tr.TagEdit)
+		edit.Tracks[tr.ID] = own
+		named = named || len(own.Fields) > 0
+	}
+	return edit, named
 }
 
-// trackEdit returns the edit req asks for.
-func trackEdit(req *api.TrackEdit) library.Edit {
-	fields := map[library.Field][]string{}
-	if req.Title != nil {
-		fields[library.FieldTitle] = []string{*req.Title}
-	}
-	if req.TrackNo != nil {
-		fields[library.FieldTrack] = []string{strconv.Itoa(*req.TrackNo)}
-	}
-	if req.DiscNo != nil {
-		fields[library.FieldDisc] = []string{strconv.Itoa(*req.DiscNo)}
+func tagEdit(req *api.TagEdit) library.Edit {
+	fields := make(map[library.Field][]string, len(req.Set))
+	for name, values := range req.Set {
+		fields[library.Field(name)] = values
 	}
 	return library.Edit{Fields: fields}
-}
-
-// albumEdit returns the edit req asks for. It reports false for a request that
-// names nothing or holds an invalid value.
-func albumEdit(req *api.AlbumEdit) (library.Edit, bool) {
-	if req.Year == nil && req.Genres == nil {
-		return library.Edit{}, false
-	}
-	fields := map[library.Field][]string{}
-	if req.Year != nil {
-		if *req.Year < minYear || *req.Year > maxYear {
-			return library.Edit{}, false
-		}
-		fields[library.FieldDate] = []string{strconv.Itoa(*req.Year)}
-	}
-	if req.Genres != nil {
-		if slices.ContainsFunc(req.Genres, func(g string) bool { return strings.TrimSpace(g) == "" }) {
-			return library.Edit{}, false
-		}
-		fields[library.FieldGenres] = req.Genres
-	}
-	return library.Edit{Fields: fields}, true
 }
 
 // editFailed answers an edit that did not finish.
