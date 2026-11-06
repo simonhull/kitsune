@@ -26,6 +26,10 @@ cookie is same-origin. Run a server beside it, with a `server.toml` naming your 
 Add `?source=fixtures` to the first URL you open to run on the boards' fake library, with no
 server and no login, for tests and clips. It holds until the next full page load.
 
+On `/health`, `&health=<state>` opens on `idle`, `starting`, `running`, `clean`, `mixed` or `failed`,
+and `&role=user` shows any of them as a non-admin. Scans from the buttons run at the real library's
+pace.
+
 ## The morph lab
 
 Page transitions are morphs: a persistent overlay of flying elements, run on springs from the

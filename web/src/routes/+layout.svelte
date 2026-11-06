@@ -110,7 +110,11 @@
 		known={stageEntry !== undefined}
 		mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : 'clear'}
 	/>
-	<Nav look={nav.look} current={nav.current} healthIssues={library.facts?.issues} />
+	<Nav
+		look={nav.look}
+		current={nav.current}
+		healthIssues={library.admin ? library.facts?.issues : undefined}
+	/>
 	<main>
 		{#if library.down && library.facts === null && !onLogin}
 			<p class="down" role="status">The server isn't answering. Trying again…</p>

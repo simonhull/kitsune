@@ -40,14 +40,14 @@
 			href={resolve('/artists')}
 			aria-current={current === 'artists' ? 'page' : undefined}>Artists</a
 		>
-		<span class="fold wide home-only">
+		<span class="fold wide home-only" inert={look === 'album'}>
 			<span class="fold-in">
-				<span class="item health" aria-disabled="true">
+				<a class="item health" href={resolve('/health')}>
 					Health
 					{#if healthIssues !== undefined && healthIssues > 0}<span class="badge"
 							>{healthIssues.toLocaleString('en-US')}</span
 						>{/if}
-				</span>
+				</a>
 			</span>
 		</span>
 		<a class="search" href={resolve('/search')} aria-label="Search">
