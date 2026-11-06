@@ -47,7 +47,7 @@
 	const stageEntry = $derived(stageAlbum === null ? undefined : library.entry(stageAlbum));
 	const palette = $derived(stageAlbum === null ? null : paletteFor(stageEntry));
 
-	const editing = $derived(onAlbum && stageAlbum !== null && tagEdits.of(stageAlbum) !== undefined);
+	const edit = $derived(onAlbum && stageAlbum !== null ? tagEdits.of(stageAlbum) : undefined);
 
 	const morphs = startMorphs();
 	setContext(morphsKey, morphs);
@@ -103,7 +103,8 @@
 
 <div
 	class="shell"
-	class:editing
+	class:editing={edit !== undefined}
+	class:one={edit?.open != null}
 	style:--accent={palette?.accent}
 	style:--on-accent={palette?.onAccent}
 	style:--wash={palette?.wash}
@@ -150,6 +151,10 @@
 
 	.shell.editing {
 		--hero-height: 430px;
+	}
+
+	.shell.one {
+		--hero-height: 260px;
 	}
 
 	main {

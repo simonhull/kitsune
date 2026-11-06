@@ -123,6 +123,14 @@ describe('edits on the fixtures', () => {
 		await expect(createFixtureSource().me()).resolves.toMatchObject({ canEditTags: true });
 	});
 
+	it('keeps tags from anyone but an administrator', async () => {
+		const source = createFixtureSource({ role: 'user' });
+		await expect(source.me()).resolves.toMatchObject({ canEditTags: false });
+		await expect(source.albumTags('glasshouse-66')).rejects.toMatchObject({
+			failure: { kind: 'forbidden' }
+		});
+	});
+
 	it('moves ETags on, as a rewrite would, and refuses an old one', async () => {
 		const source = createFixtureSource();
 		const before = await source.album('glasshouse-66');

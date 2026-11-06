@@ -37,6 +37,8 @@
 
 	const files = $derived(session?.tags?.tracks.length ?? album?.tracks.length ?? 0);
 	const fileCount = $derived(`${String(files)} ${files === 1 ? 'FILE' : 'FILES'}`);
+	const open = $derived(session?.open ?? null);
+	const place = $derived((session?.tags?.tracks.findIndex(({ id }) => id === open) ?? -1) + 1);
 
 	/** Until the album streams in, and on a compilation, the name is plain text. */
 	const owners = $derived(album?.artists ?? []);
@@ -57,7 +59,12 @@
 	}
 </script>
 
-<section aria-label="Album" class="hero" class:editing={session !== undefined}>
+<section
+	aria-label="Album"
+	class="hero"
+	class:editing={session !== undefined}
+	class:one={open !== null}
+>
 	<div
 		class="art"
 		data-morph-part="art"
@@ -70,7 +77,11 @@
 			<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>
 		{:else}
 			<span class="meta ready eyebrow" tabindex="-1" bind:this={eyebrow}>
-				EDITING TAGS · <span class="writes">WRITES TO&nbsp;</span>{fileCount}
+				{#if open === null}
+					EDITING TAGS · <span class="writes">WRITES TO&nbsp;</span>{fileCount}
+				{:else}
+					EDITING TAGS · TRACK {place} OF {files}
+				{/if}
 			</span>
 		{/if}
 		<!-- The fit divides by the words' width, known before layout: the first frame is final. -->
@@ -125,7 +136,7 @@
 				{/if}
 			{/if}
 		</div>
-		{#if session?.wide != null}
+		{#if session?.wide != null && open === null}
 			<TagFields {session} wide={session.wide} />
 		{/if}
 	</div>
@@ -172,6 +183,19 @@
 		transition-timing-function: var(--curve-morph);
 	}
 
+	/* One track has the stage: its cover has flown down to the panel, so the words have the room. */
+	.one {
+		--hero-cover: 0px;
+	}
+
+	.one .art {
+		visibility: hidden;
+	}
+
+	.one .actions {
+		display: none;
+	}
+
 	.words {
 		position: absolute;
 		left: var(--hero-pad);
@@ -188,6 +212,10 @@
 		gap: 0;
 		transition-duration: var(--morph);
 		transition-timing-function: var(--curve-morph);
+	}
+
+	.one .words {
+		bottom: 119px;
 	}
 
 	.meta {
@@ -240,6 +268,12 @@
 		line-height: 0.9;
 		transition-duration: var(--morph);
 		transition-timing-function: var(--curve-morph);
+	}
+
+	.one h1 {
+		--hero-type: 88px;
+
+		letter-spacing: -0.06em;
 	}
 
 	.editing .actions {

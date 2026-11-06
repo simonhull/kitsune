@@ -71,6 +71,74 @@ const pageOrder: readonly TagField[] = [
 	'lyrics'
 ];
 
+/** One field of a track's whole tag list. */
+export interface FieldSpec {
+	field: TagField;
+	label: string;
+	/** What it's read out as, where the label alone says too little. */
+	name?: string;
+	/** How many of the group's four columns it takes. */
+	span: 1 | 2;
+	kind?: 'number';
+	/** The server keeps it read-only until albums can be re-keyed. */
+	locked?: boolean;
+}
+
+/** Every field a track shows, by group. Label, group and kind are the client's to say. */
+export const tagGroups: readonly { name: string; fields: readonly FieldSpec[] }[] = [
+	{
+		name: 'THE BASICS',
+		fields: [
+			{ field: 'title', label: 'Title', span: 2 },
+			{ field: 'artists', label: 'Artists', span: 2, locked: true },
+			{ field: 'album', label: 'Album', span: 2, locked: true },
+			{ field: 'albumArtists', label: 'Album artist', span: 2, locked: true },
+			{ field: 'track', label: 'Track', span: 1, kind: 'number' },
+			{ field: 'trackTotal', label: 'of', name: 'Track total', span: 1, kind: 'number' },
+			{ field: 'disc', label: 'Disc', span: 1, kind: 'number' },
+			{ field: 'discTotal', label: 'of', name: 'Disc total', span: 1, kind: 'number' },
+			{ field: 'date', label: 'Date', span: 1 },
+			{ field: 'genres', label: 'Genres', span: 2 },
+			{ field: 'compilation', label: 'Compilation', span: 1, locked: true }
+		]
+	},
+	{
+		name: 'CREDITS',
+		fields: [
+			{ field: 'composers', label: 'Composers', span: 2 },
+			{ field: 'conductor', label: 'Conductor', span: 1 },
+			{ field: 'lyricist', label: 'Lyricist', span: 1 },
+			{ field: 'performers', label: 'Performers', span: 2 },
+			{ field: 'remixer', label: 'Remixer', span: 1 },
+			{ field: 'grouping', label: 'Grouping', span: 1 }
+		]
+	},
+	{
+		name: 'RELEASE',
+		fields: [
+			{ field: 'label', label: 'Label', span: 1 },
+			{ field: 'catalogNumber', label: 'Catalog number', span: 1 },
+			{ field: 'barcode', label: 'Barcode', span: 1 },
+			{ field: 'isrc', label: 'ISRC', span: 1 },
+			{ field: 'originalDate', label: 'Original date', span: 1 },
+			{ field: 'language', label: 'Language', span: 1 },
+			{ field: 'bpm', label: 'BPM', span: 1 },
+			{ field: 'key', label: 'Key', span: 1 },
+			{ field: 'copyright', label: 'Copyright', span: 2 },
+			{ field: 'comment', label: 'Comment', span: 2 }
+		]
+	},
+	{
+		name: 'SORTING',
+		fields: [
+			{ field: 'sortTitle', label: 'Sort title', span: 1 },
+			{ field: 'sortArtist', label: 'Sort artist', span: 1 },
+			{ field: 'sortAlbum', label: 'Sort album', span: 1 },
+			{ field: 'sortAlbumArtist', label: 'Sort album artist', span: 1 }
+		]
+	}
+];
+
 /** What someone has touched on one track, as typed. */
 export interface TrackDraft {
 	fields: FieldValues;
@@ -156,6 +224,11 @@ export function emptyDraft(): Draft {
 	return { year: null, genres: null, tracks: {} };
 }
 
+/** Reports whether a field holds a list, shown as chips and never as joined text. */
+export function isMulti(field: TagField): boolean {
+	return multiFields.includes(field);
+}
+
 function cleaned(values: readonly string[]): string[] {
 	return values.map((value) => value.trim()).filter((value) => value !== '');
 }
@@ -184,17 +257,27 @@ function yearOf(values: readonly string[] | undefined): string {
 	return /^\d{4}/.exec(values?.at(0)?.trim() ?? '')?.[0] ?? '';
 }
 
-/** Reads what the tracks agree on, for the album page's year and genres. */
-export function albumWide({ tracks }: AlbumTags): AlbumWide {
+const wides = new WeakMap<AlbumTags, AlbumWide>();
+const byId = new WeakMap<AlbumTags, Map<string, TrackTags>>();
+
+/** Reads what the tracks agree on, for the album page's year and genres. Tags never change. */
+export function albumWide(tags: AlbumTags): AlbumWide {
+	const held = wides.get(tags);
+	if (held !== undefined) {
+		return held;
+	}
+	const { tracks } = tags;
 	const years = new Set(tracks.map(({ fields }) => yearOf(fields.date)));
 	const [year = ''] = years;
 	const genres = [...new Set(tracks.flatMap(({ fields }) => fields.genres ?? []))];
-	return {
+	const wide = {
 		year: years.size === 1 ? year : '',
 		yearsDiffer: years.size > 1,
 		genres,
 		genresDiffer: tracks.some((track) => (track.fields.genres ?? []).length !== genres.length)
 	};
+	wides.set(tags, wide);
+	return wide;
 }
 
 function yearChanged(draft: Draft, wide: AlbumWide): boolean {
@@ -217,7 +300,9 @@ function acrossAlbum(draft: Draft, wide: AlbumWide, field: TagField): string[] |
 }
 
 function trackIn(tags: AlbumTags, id: string): TrackTags | undefined {
-	return tags.tracks.find((track) => track.id === id);
+	const tracks = byId.get(tags) ?? new Map(tags.tracks.map((track) => [track.id, track]));
+	byId.set(tags, tracks);
+	return tracks.get(id);
 }
 
 /** What a field holds in the file. */
@@ -327,6 +412,11 @@ function ownTags(tags: AlbumTags, draft: Draft, id: string): [string, string[]][
 	return Object.entries(draft.tracks[id]?.tags ?? {}).flatMap(([key, values]) =>
 		sameList(cleaned(values), cleaned(tagWas(tags, id, key))) ? [] : [[key, cleaned(values)]]
 	) as [string, string[]][];
+}
+
+/** Reports whether a track's own edit changes anything, shown on its row or not. */
+export function isTrackEdited(tags: AlbumTags, draft: Draft, id: string): boolean {
+	return ownFields(tags, draft, id).length > 0 || ownTags(tags, draft, id).length > 0;
 }
 
 function isDate(value: string): boolean {

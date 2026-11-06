@@ -14,13 +14,16 @@ import {
 	emptyDraft,
 	fieldId,
 	isChanged,
+	isMulti,
 	isTagChanged,
+	isTrackEdited,
 	problemsIn,
 	rebased,
 	reportOf,
 	rowNote,
 	save,
 	summaryOf,
+	tagGroups,
 	tagValueOf,
 	valueOf,
 	withField,
@@ -57,6 +60,50 @@ const tags: AlbumTags = {
 
 const titled = (id: string, title: string, on: Draft = emptyDraft()): Draft =>
 	withField(tags, on, id, 'title', [title]);
+
+describe('tagGroups', () => {
+	const specs = tagGroups.flatMap(({ fields }) => fields);
+
+	it('lists the board’s groups, in its order', () => {
+		expect(tagGroups.map(({ name }) => name)).toEqual([
+			'THE BASICS',
+			'CREDITS',
+			'RELEASE',
+			'SORTING'
+		]);
+	});
+
+	it('has one date field: a year is a date', () => {
+		expect(specs.filter(({ label }) => label === 'Year')).toEqual([]);
+		expect(specs.filter(({ field }) => field === 'date')).toHaveLength(1);
+	});
+
+	it('keeps what decides an album read-only, and nothing else', () => {
+		expect(specs.filter(({ locked = false }) => locked).map(({ field }) => field)).toEqual([
+			'artists',
+			'album',
+			'albumArtists',
+			'compilation'
+		]);
+	});
+
+	it('names each field once, and leaves lyrics to their own box', () => {
+		const fields = specs.map(({ field }) => field);
+		expect(new Set(fields).size).toBe(fields.length);
+		expect(fields).not.toContain('lyrics');
+	});
+
+	it('fills each row of four', () => {
+		for (const { fields } of tagGroups) {
+			expect(fields.reduce((sum, { span }) => sum + span, 0) % 4).toBe(0);
+		}
+	});
+
+	it('knows which fields are lists, as the server does', () => {
+		expect(isMulti('composers')).toBe(true);
+		expect(isMulti('grouping')).toBe(false);
+	});
+});
 
 describe('albumWide', () => {
 	it('reads the year the tracks agree on, from whole dates', () => {
@@ -247,6 +294,20 @@ describe('rowNote', () => {
 			['1']
 		);
 		expect(rowNote(tags, draft, 't2').text).toBe('was disc 1 · was track 2');
+	});
+});
+
+describe('isTrackEdited', () => {
+	it('sees what a row does not show', () => {
+		const draft = withTag(tags, withField(tags, emptyDraft(), 't1', 'bpm', ['92']), 't2', 'X', [
+			''
+		]);
+		expect(isTrackEdited(tags, draft, 't1')).toBe(true);
+		expect(isTrackEdited(tags, draft, 't2')).toBe(false);
+	});
+
+	it('leaves the album edit to the album', () => {
+		expect(isTrackEdited(tags, { ...emptyDraft(), year: '1999' }, 't1')).toBe(false);
 	});
 });
 

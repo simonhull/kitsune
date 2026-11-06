@@ -46,6 +46,8 @@ export class TagSession {
 	draft = $state.raw<Draft>(emptyDraft());
 	saving = $state(false);
 	report = $state.raw<Report | null>(null);
+	/** The track opened to every tag. */
+	#expanded = $state<string | null>(null);
 	/** Problems wait for a field to be left: a year half typed isn't wrong yet. */
 	readonly #left = new SvelteSet<string>();
 	#attempted = $state(false);
@@ -66,6 +68,15 @@ export class TagSession {
 		this.albumId = albumId;
 		this.#tagger = tagger;
 		this.#close = close;
+	}
+
+	/** The track open to every tag. A phone has only the album page: that board isn't approved. */
+	get open(): string | null {
+		return phoneWidth.current ? null : this.#expanded;
+	}
+
+	expand(id: string | null): void {
+		this.#expanded = id;
 	}
 
 	/** The problem to show on a field, once it's been left. */
@@ -203,8 +214,3 @@ export class TagEdits {
 }
 
 export const tagEdits = new TagEdits(library);
-
-/** Reports whether the album page has a phone's room: board A only. */
-export function onPhone(): boolean {
-	return phoneWidth.current;
-}

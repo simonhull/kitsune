@@ -63,6 +63,18 @@ describe('TagEdits', () => {
 		});
 	});
 
+	it('opens one track at a time, and keeps the draft across them', async () => {
+		const { session } = await opened();
+		session.setField(first, 'bpm', ['92']);
+		session.expand(first);
+		expect(session.open).toBe(first);
+		session.expand(second);
+		expect(session.open).toBe(second);
+		session.expand(null);
+		expect(session.open).toBeNull();
+		expect(session.summary.changes).toBe(1);
+	});
+
 	it('forgets everything for the next user', async () => {
 		const { edits, session } = await opened();
 		session.setField(first, 'title', ['Mine']);

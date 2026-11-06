@@ -28,17 +28,19 @@
 		retry: () => void;
 		/** Whether the album is being edited: the panel takes the editor's shape. */
 		editing: boolean;
+		/** One track is open to every tag: the stage has drawn up further. */
+		one: boolean;
 		/** Takes the rows' place in the panel, once the files have been read. */
 		editor: Snippet<[Album]> | undefined;
 	}
 
-	let { album, cuedId, sounding, play, gone, unavailable, retry, editing, editor }: Props =
+	let { album, cuedId, sounding, play, gone, unavailable, retry, editing, one, editor }: Props =
 		$props();
 
 	const multiDisc = $derived(isMultiDisc(album?.tracks ?? []));
 </script>
 
-<section aria-label="Tracks" class="panel" class:editing data-morph-part="panel">
+<section aria-label="Tracks" class="panel" class:editing class:one data-morph-part="panel">
 	{#if album !== undefined && editor !== undefined}
 		{@render editor(album)}
 	{:else if gone}
@@ -118,8 +120,14 @@
 		padding: 12px 24px;
 		border-radius: var(--radius-28);
 		background: var(--card);
+		backdrop-filter: none;
 		transition-duration: var(--morph);
 		transition-timing-function: var(--curve-morph);
+	}
+
+	.one {
+		margin-top: -84px;
+		padding: 8px 24px;
 	}
 
 	.note {

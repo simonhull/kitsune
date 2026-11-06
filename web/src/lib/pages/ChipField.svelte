@@ -38,20 +38,21 @@
 		}
 	}
 
-	function remove(gone: string): void {
-		values = values.filter((value) => value !== gone);
+	function remove(gone: number): void {
+		values = values.filter((_, index) => index !== gone);
 		input?.focus();
 	}
 </script>
 
 <div class="chips">
-	{#each values as value (value)}
+	<!-- By place: a file can hold the same value twice. -->
+	{#each values as value, index (index)}
 		<button
 			type="button"
 			class="chip"
 			aria-label={`Remove ${value}`}
 			onclick={() => {
-				remove(value);
+				remove(index);
 			}}
 		>
 			<span>{value}</span>

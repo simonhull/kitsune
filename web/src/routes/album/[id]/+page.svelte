@@ -99,7 +99,7 @@
 		<a href={resolve('/')} data-sveltekit-reset="false">Back to Home</a>
 	</div>
 {:else}
-	<div class="album">
+	<div class="album" class:editing={session !== undefined}>
 		<AlbumHero
 			albumId={id}
 			{entry}
@@ -122,10 +122,11 @@
 			unavailable={library.unavailable(id)}
 			retry={() => void library.loadAlbum(id)}
 			editing={session !== undefined}
+			one={session?.open != null}
 			editor={session?.tags == null ? undefined : editor}
 		/>
 		{#if session !== undefined}
-			<TagBar {session} {leave} write={() => void write()} />
+			<TagBar {session} open={session.open} {leave} write={() => void write()} />
 		{/if}
 		<p class="visually-hidden" role="status">{announcement}</p>
 	</div>
@@ -134,6 +135,11 @@
 <style>
 	.album {
 		padding-bottom: 140px;
+	}
+
+	/* The last row must clear the bar as well as the island. */
+	.album.editing {
+		padding-bottom: 220px;
 	}
 
 	.missing {
