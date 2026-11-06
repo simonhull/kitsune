@@ -36,6 +36,8 @@ const wide: Frame = {
 		// The cover, its title and its facts.
 		albumMin: 264,
 		artistHead: 0,
+		// Where the name pins, 38 down, then its three lines and its facts.
+		artistMin: 304,
 		albumGap: 40,
 		artistGap: 72
 	},
@@ -50,6 +52,7 @@ const stacked: Frame = {
 		albumHead: 72,
 		albumMin: 0,
 		artistHead: 80,
+		artistMin: 0,
 		albumGap: 20,
 		artistGap: 28
 	},
