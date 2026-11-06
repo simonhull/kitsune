@@ -267,6 +267,8 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 
 	return {
 		me: () => respond(() => user),
+		sessionUser: () => respond(() => user),
+		reportPlay: () => respond(() => undefined),
 		login: (name) =>
 			respond(() => {
 				if (name === '') {

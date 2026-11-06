@@ -30,7 +30,7 @@ var ErrStarting = errors.New("initial scan not finished")
 type Config struct {
 	Auth          *auth.Service               // Required; New panics if nil.
 	Logger        *slog.Logger                // Nil discards.
-	Now           func() time.Time            // Nil means time.Now. Used by the login limiter.
+	Now           func() time.Time            // Nil means time.Now. Used by the login limiter and to bound a play's time.
 	ClientIP      func(*http.Request) string  // Nil means the host part of RemoteAddr.
 	SecureCookies bool                        // Mark cookies Secure even without TLS (HTTPS proxy in front).
 	BasePath      string                      // "" or a path such as "/music": serve under it. New panics on a malformed one.
@@ -185,6 +185,7 @@ func (s *Server) routes() []route {
 		{pattern: "GET /admin/library/issues", admin: true, handle: s.getIssues},
 		{pattern: "POST /admin/library/scan", admin: true, handle: s.postScan},
 		{pattern: "GET /me", handle: s.getMe},
+		{pattern: "POST /me/plays", handle: s.postPlay},
 		{pattern: "GET /artwork/{hash}", handle: s.getArtwork},
 		{pattern: "GET /albums", handle: s.getAlbums},
 		{pattern: "GET /albums/{id}", handle: s.getAlbum},

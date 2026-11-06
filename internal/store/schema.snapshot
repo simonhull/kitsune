@@ -74,6 +74,35 @@ CREATE TABLE artwork (
 --   column cid=4 name=ground type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=5 name=source type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 
+-- table plays
+CREATE TABLE plays (
+	user_id   INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	track_id  INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+	played_at INTEGER NOT NULL, -- when the listen started, by the client's clock, never ahead of the server's
+	source    TEXT    NOT NULL, -- the client's name
+	client_id TEXT    NOT NULL, -- chosen by the client, so a retry counts once
+	UNIQUE (user_id, client_id)
+) STRICT;
+--   column cid=0 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=1 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=played_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=source type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=client_id type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+--   foreign key id=1 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index plays_recent
+CREATE INDEX plays_recent ON plays (user_id, played_at DESC, track_id);
+--   key seqno=0 cid=0 name=user_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=2 name=played_at desc=1 coll=BINARY key=1
+--   key seqno=2 cid=1 name=track_id desc=0 coll=BINARY key=1
+--   key seqno=3 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index plays_track
+CREATE INDEX plays_track ON plays (track_id);
+--   key seqno=0 cid=1 name=track_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
 -- table scan_issues
 CREATE TABLE scan_issues (
 	root     TEXT    NOT NULL,

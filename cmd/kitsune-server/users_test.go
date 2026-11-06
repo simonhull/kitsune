@@ -135,8 +135,8 @@ func TestUsersAddCreatesDataDir(t *testing.T) { //nolint:paralleltest // overrid
 	}
 }
 
-// markUnmigrated gives the database the hash from before migrations, so it has
-// one pending.
+// markUnmigrated takes the database back to the baseline, with the hash from
+// before migrations, so it has migrations pending.
 func markUnmigrated(t *testing.T, path string) {
 	t.Helper()
 	db, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(path))
@@ -144,7 +144,7 @@ func markUnmigrated(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	if _, err = db.ExecContext(t.Context(), "PRAGMA user_version = 852615662"); err != nil {
+	if _, err = db.ExecContext(t.Context(), "DROP TABLE plays; PRAGMA user_version = 852615662"); err != nil {
 		t.Fatal(err)
 	}
 }

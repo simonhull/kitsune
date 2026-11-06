@@ -75,6 +75,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTrackFileStmt, err = db.PrepareContext(ctx, getTrackFile); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTrackFile: %w", err)
 	}
+	if q.insertPlayStmt, err = db.PrepareContext(ctx, insertPlay); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertPlay: %w", err)
+	}
 	if q.insertTrackStmt, err = db.PrepareContext(ctx, insertTrack); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTrack: %w", err)
 	}
@@ -165,6 +168,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.pruneArtworkStmt, err = db.PrepareContext(ctx, pruneArtwork); err != nil {
 		return nil, fmt.Errorf("error preparing query PruneArtwork: %w", err)
 	}
+	if q.recentPlaysStmt, err = db.PrepareContext(ctx, recentPlays); err != nil {
+		return nil, fmt.Errorf("error preparing query RecentPlays: %w", err)
+	}
 	if q.sessionByTokenHashStmt, err = db.PrepareContext(ctx, sessionByTokenHash); err != nil {
 		return nil, fmt.Errorf("error preparing query SessionByTokenHash: %w", err)
 	}
@@ -173,6 +179,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.touchSessionStmt, err = db.PrepareContext(ctx, touchSession); err != nil {
 		return nil, fmt.Errorf("error preparing query TouchSession: %w", err)
+	}
+	if q.trackRowIDStmt, err = db.PrepareContext(ctx, trackRowID); err != nil {
+		return nil, fmt.Errorf("error preparing query TrackRowID: %w", err)
 	}
 	if q.trackStatesStmt, err = db.PrepareContext(ctx, trackStates); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackStates: %w", err)
@@ -283,6 +292,11 @@ func (q *Queries) Close() error {
 	if q.getTrackFileStmt != nil {
 		if cerr := q.getTrackFileStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTrackFileStmt: %w", cerr)
+		}
+	}
+	if q.insertPlayStmt != nil {
+		if cerr := q.insertPlayStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertPlayStmt: %w", cerr)
 		}
 	}
 	if q.insertTrackStmt != nil {
@@ -435,6 +449,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing pruneArtworkStmt: %w", cerr)
 		}
 	}
+	if q.recentPlaysStmt != nil {
+		if cerr := q.recentPlaysStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing recentPlaysStmt: %w", cerr)
+		}
+	}
 	if q.sessionByTokenHashStmt != nil {
 		if cerr := q.sessionByTokenHashStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing sessionByTokenHashStmt: %w", cerr)
@@ -448,6 +467,11 @@ func (q *Queries) Close() error {
 	if q.touchSessionStmt != nil {
 		if cerr := q.touchSessionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing touchSessionStmt: %w", cerr)
+		}
+	}
+	if q.trackRowIDStmt != nil {
+		if cerr := q.trackRowIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing trackRowIDStmt: %w", cerr)
 		}
 	}
 	if q.trackStatesStmt != nil {
@@ -541,6 +565,7 @@ type Queries struct {
 	getEditFileStmt           *sql.Stmt
 	getTrackAlbumStmt         *sql.Stmt
 	getTrackFileStmt          *sql.Stmt
+	insertPlayStmt            *sql.Stmt
 	insertTrackStmt           *sql.Stmt
 	insertTrackArtistStmt     *sql.Stmt
 	insertTrackTagStmt        *sql.Stmt
@@ -571,9 +596,11 @@ type Queries struct {
 	pruneAlbumsStmt           *sql.Stmt
 	pruneArtistsStmt          *sql.Stmt
 	pruneArtworkStmt          *sql.Stmt
+	recentPlaysStmt           *sql.Stmt
 	sessionByTokenHashStmt    *sql.Stmt
 	setPasswordHashStmt       *sql.Stmt
 	touchSessionStmt          *sql.Stmt
+	trackRowIDStmt            *sql.Stmt
 	trackStatesStmt           *sql.Stmt
 	updateTrackStmt           *sql.Stmt
 	upsertAlbumStmt           *sql.Stmt
@@ -604,6 +631,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEditFileStmt:           q.getEditFileStmt,
 		getTrackAlbumStmt:         q.getTrackAlbumStmt,
 		getTrackFileStmt:          q.getTrackFileStmt,
+		insertPlayStmt:            q.insertPlayStmt,
 		insertTrackStmt:           q.insertTrackStmt,
 		insertTrackArtistStmt:     q.insertTrackArtistStmt,
 		insertTrackTagStmt:        q.insertTrackTagStmt,
@@ -634,9 +662,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		pruneAlbumsStmt:           q.pruneAlbumsStmt,
 		pruneArtistsStmt:          q.pruneArtistsStmt,
 		pruneArtworkStmt:          q.pruneArtworkStmt,
+		recentPlaysStmt:           q.recentPlaysStmt,
 		sessionByTokenHashStmt:    q.sessionByTokenHashStmt,
 		setPasswordHashStmt:       q.setPasswordHashStmt,
 		touchSessionStmt:          q.touchSessionStmt,
+		trackRowIDStmt:            q.trackRowIDStmt,
 		trackStatesStmt:           q.trackStatesStmt,
 		updateTrackStmt:           q.updateTrackStmt,
 		upsertAlbumStmt:           q.upsertAlbumStmt,
