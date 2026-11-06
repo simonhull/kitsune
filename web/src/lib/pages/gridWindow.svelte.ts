@@ -1,4 +1,5 @@
 import { albumPageSize, library } from '#lib/library/library.svelte.ts';
+import type { AlbumEntry } from '#lib/library/source.ts';
 
 /** How far past the viewport a page still counts as in view, in viewports. */
 const viewportMargin = 0.5;
@@ -14,20 +15,33 @@ interface Measure {
 }
 
 /**
- * Which pages of the album grid are real. Entries stay in the library, but hundreds of mounted
+ * Which pages of an album grid are real. Entries stay where they are, but hundreds of mounted
  * cards make every morph clone, measure and tear down a page nobody can see. Everything else is a
  * box of the height it would be, so the scrollbar and a restored scroll are always right. This
- * outlives Home, because coming back must mount the page it left, and nothing else, first.
+ * outlives its page, because coming back must mount the page it left, and nothing else, first.
  */
-class GridWindow {
+export class GridWindow {
 	first = $state(0);
 	last = $state(0);
 	/** Whether the neighbors are mounted too. Off until a landing has finished. */
 	wide = $state(false);
 	measure = $state.raw<Measure | null>(null);
 
+	readonly #entries: () => readonly AlbumEntry[];
+	readonly #nearEnd: () => void;
+
+	/** Asks `nearEnd`, if anything, when the end of the grid comes near. */
+	constructor(entries: () => readonly AlbumEntry[], nearEnd: () => void = () => undefined) {
+		this.#entries = entries;
+		this.#nearEnd = nearEnd;
+	}
+
+	get entries(): readonly AlbumEntry[] {
+		return this.#entries();
+	}
+
 	get pageCount(): number {
-		return Math.ceil(library.albums.length / albumPageSize);
+		return Math.ceil(this.entries.length / albumPageSize);
 	}
 
 	mounted(page: number): boolean {
@@ -41,7 +55,7 @@ class GridWindow {
 			return undefined;
 		}
 		const { columns, rowHeight, rowGap } = this.measure;
-		const cards = Math.min(albumPageSize, library.albums.length - page * albumPageSize);
+		const cards = Math.min(albumPageSize, this.entries.length - page * albumPageSize);
 		const rows = Math.ceil(cards / columns);
 		return rows * rowHeight + (rows - 1) * rowGap;
 	}
@@ -56,14 +70,14 @@ class GridWindow {
 			this.first = Math.min(end, Math.max(0, Math.floor((-top - margin) / stride)));
 			this.last = Math.min(end, Math.max(0, Math.floor((innerHeight - top + margin) / stride)));
 		}
-		if (library.hasMoreAlbums && bottom < innerHeight * (1 + fetchAhead)) {
-			void library.loadMoreAlbums();
+		if (bottom < innerHeight * (1 + fetchAhead)) {
+			this.#nearEnd();
 		}
 	}
 
 	/** Mounts the page holding an album: for landing on a card nobody left from. */
 	aim(albumId: string): void {
-		const index = library.albums.findIndex((album) => album.id === albumId);
+		const index = this.entries.findIndex((album) => album.id === albumId);
 		if (index >= 0) {
 			this.first = this.last = Math.floor(index / albumPageSize);
 		}
@@ -77,4 +91,20 @@ class GridWindow {
 	}
 }
 
-export const gridWindow = new GridWindow();
+/** Makes the window of one grid over `entries`, which may change. */
+export function createGridWindow(
+	entries: () => readonly AlbumEntry[],
+	nearEnd?: () => void
+): GridWindow {
+	return new GridWindow(entries, nearEnd);
+}
+
+/** Home's grid, which fetches its albums a page at a time as they come near. */
+export const homeGrid = createGridWindow(
+	() => library.albums,
+	() => {
+		if (library.hasMoreAlbums) {
+			void library.loadMoreAlbums();
+		}
+	}
+);

@@ -1,9 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { albumPageSize, library } from '#lib/library/library.svelte.ts';
+	import { albumPageSize } from '#lib/library/library.svelte.ts';
 	import { whenSettled } from '#lib/morph/settled.ts';
 	import AlbumCard from './AlbumCard.svelte';
-	import { gridWindow } from './gridWindow.svelte.ts';
+	import type { GridWindow } from './gridWindow.svelte.ts';
+
+	interface Props {
+		grid: GridWindow;
+	}
+
+	let { grid }: Props = $props();
 
 	let root: HTMLElement | undefined = $state();
 	/**
@@ -12,28 +18,28 @@
 	 */
 	let landed = $state(false);
 
-	const pages = $derived(Array.from({ length: gridWindow.pageCount }, (_, index) => index));
+	const pages = $derived(Array.from({ length: grid.pageCount }, (_, index) => index));
 
 	function sliceOf(page: number) {
-		return library.albums.slice(page * albumPageSize, (page + 1) * albumPageSize);
+		return grid.entries.slice(page * albumPageSize, (page + 1) * albumPageSize);
 	}
 
 	/** Reads the layout from a mounted page. Every card has one height, so one page tells all. */
-	function measure(grid: HTMLElement): { destroy: () => void } {
+	function measure(page: HTMLElement): { destroy: () => void } {
 		function read(): void {
-			const card = grid.firstElementChild;
+			const card = page.firstElementChild;
 			if (card === null) {
 				return;
 			}
-			const style = getComputedStyle(grid);
-			gridWindow.measure = {
+			const style = getComputedStyle(page);
+			grid.measure = {
 				columns: style.gridTemplateColumns.split(' ').length,
 				rowHeight: card.getBoundingClientRect().height,
 				rowGap: Number.parseFloat(style.rowGap)
 			};
 		}
 		const observer = new ResizeObserver(read);
-		observer.observe(grid);
+		observer.observe(page);
 		return {
 			destroy() {
 				observer.disconnect();
@@ -44,14 +50,14 @@
 	function track(): void {
 		if (root !== undefined) {
 			const { top, bottom } = root.getBoundingClientRect();
-			gridWindow.track(top, bottom);
+			grid.track(top, bottom);
 		}
 	}
 
 	$effect(() => {
 		// A page arriving moves the end of the grid: it may need the next one at once.
-		void library.albums.length;
-		void gridWindow.measure;
+		void grid.entries.length;
+		void grid.measure;
 		if (landed) {
 			track();
 		}
@@ -69,11 +75,11 @@
 		addEventListener('resize', onScroll, { passive: true });
 
 		// The page the user came back to comes first; its neighbors wait for the landing.
-		gridWindow.wide = false;
+		grid.wide = false;
 		const cancel = whenSettled(() => {
 			frame ||= requestAnimationFrame(() => {
 				frame = 0;
-				gridWindow.wide = true;
+				grid.wide = true;
 				landed = true;
 			});
 		});
@@ -89,14 +95,14 @@
 
 <div class="pages" bind:this={root}>
 	{#each pages as page (page)}
-		{#if gridWindow.mounted(page)}
+		{#if grid.mounted(page)}
 			<div class="grid" use:measure>
 				{#each sliceOf(page) as album (album.id)}
 					<AlbumCard {album} />
 				{/each}
 			</div>
 		{:else}
-			<div class="box" style:height={`${String(gridWindow.height(page) ?? 0)}px`}></div>
+			<div class="box" style:height={`${String(grid.height(page) ?? 0)}px`}></div>
 		{/if}
 	{/each}
 </div>
