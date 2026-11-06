@@ -388,10 +388,12 @@ func TestMissingRungRerendersAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sizes := []int{artwork.Size128, artwork.Size512, artwork.Size1024}
-	before := make(map[int]fs.FileInfo)
-	for _, size := range sizes {
-		before[size] = mustStat(t, mustPath(t, c, first.Hash, size))
+	// A marker, not os.SameFile: a removed file's inode can come straight back.
+	marker := []byte("not a rendition")
+	for _, size := range []int{artwork.Size128, artwork.Size1024} {
+		if err = os.WriteFile(mustPath(t, c, first.Hash, size), marker, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err = os.Remove(mustPath(t, c, first.Hash, artwork.Size512)); err != nil {
 		t.Fatal(err)
@@ -403,8 +405,12 @@ func TestMissingRungRerendersAll(t *testing.T) {
 	if *healed != *first {
 		t.Errorf("Put after a loss = %+v, want %+v", *healed, *first)
 	}
-	for _, size := range sizes {
-		if os.SameFile(before[size], mustStat(t, mustPath(t, c, first.Hash, size))) {
+	for _, size := range []int{artwork.Size128, artwork.Size512, artwork.Size1024} {
+		got, readErr := os.ReadFile(mustPath(t, c, first.Hash, size))
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if bytes.Equal(got, marker) {
 			t.Errorf("rung %d was not re-rendered", size)
 		}
 	}
