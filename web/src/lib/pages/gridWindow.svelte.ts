@@ -6,6 +6,12 @@ const viewportMargin = 0.5;
 /** How close to the end the next page is asked for, in viewports. */
 const fetchAhead = 1.5;
 
+/** How far down the screen a row is clear of the nav. */
+export const clearLine = 96;
+
+/** A row put on the clear line can land a fraction above it: that's still the row at the top. */
+const lineSlack = 2;
+
 /** How the grid lays out, measured from a page that's mounted. */
 interface Measure {
 	columns: number;
@@ -26,6 +32,8 @@ export class GridWindow {
 	/** Whether the neighbors are mounted too. Off until a landing has finished. */
 	wide = $state(false);
 	measure = $state.raw<Measure | null>(null);
+	/** The last entry of the row at the top of the screen, or the very last at the end. */
+	reached = $state(0);
 
 	readonly #entries: () => readonly AlbumEntry[];
 	readonly #nearEnd: () => void;
@@ -60,6 +68,39 @@ export class GridWindow {
 		return rows * rowHeight + (rows - 1) * rowGap;
 	}
 
+	/** How far apart two pages start, and two rows of one page. Null until something is measured. */
+	get #strides(): { page: number; row: number } | null {
+		const full = this.height(0);
+		if (full === undefined || this.measure === null) {
+			return null;
+		}
+		const { rowHeight, rowGap } = this.measure;
+		return { page: full + rowGap, row: rowHeight + rowGap };
+	}
+
+	/** Finds how far down the grid an entry's row starts. Undefined until something is measured. */
+	offsetOf(index: number): number | undefined {
+		const strides = this.#strides;
+		if (strides === null || this.measure === null) {
+			return undefined;
+		}
+		const page = Math.floor(index / albumPageSize);
+		const row = Math.floor((index - page * albumPageSize) / this.measure.columns);
+		return page * strides.page + row * strides.row;
+	}
+
+	/** Finds the last entry of the row at an offset down the grid. */
+	#lastOfRowAt(offset: number): number {
+		const strides = this.#strides;
+		if (strides === null || this.measure === null || offset <= 0) {
+			return 0;
+		}
+		const page = Math.floor(offset / strides.page);
+		const row = Math.floor((offset - page * strides.page) / strides.row);
+		const last = page * albumPageSize + (row + 1) * this.measure.columns - 1;
+		return Math.min(last, this.entries.length - 1);
+	}
+
 	/** Works out from the grid's place on screen which pages the viewport can reach. */
 	track(top: number, bottom: number): void {
 		const full = this.height(0);
@@ -70,6 +111,10 @@ export class GridWindow {
 			this.first = Math.min(end, Math.max(0, Math.floor((-top - margin) / stride)));
 			this.last = Math.min(end, Math.max(0, Math.floor((innerHeight - top + margin) / stride)));
 		}
+		this.reached =
+			bottom <= innerHeight
+				? this.entries.length - 1
+				: this.#lastOfRowAt(clearLine + lineSlack - top);
 		if (bottom < innerHeight * (1 + fetchAhead)) {
 			this.#nearEnd();
 		}
@@ -83,9 +128,15 @@ export class GridWindow {
 		}
 	}
 
-	reset(): void {
+	/** Goes back to the top, for a list that has changed under the grid. */
+	rewind(): void {
 		this.first = 0;
 		this.last = 0;
+		this.reached = 0;
+	}
+
+	reset(): void {
+		this.rewind();
 		this.wide = false;
 		this.measure = null;
 	}

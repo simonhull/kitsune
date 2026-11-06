@@ -3,7 +3,7 @@
 	import { albumPageSize } from '#lib/library/library.svelte.ts';
 	import { whenSettled } from '#lib/morph/settled.ts';
 	import AlbumCard from './AlbumCard.svelte';
-	import type { GridWindow } from './gridWindow.svelte.ts';
+	import { clearLine, type GridWindow } from './gridWindow.svelte.ts';
 
 	interface Props {
 		grid: GridWindow;
@@ -51,6 +51,16 @@
 		if (root !== undefined) {
 			const { top, bottom } = root.getBoundingClientRect();
 			grid.track(top, bottom);
+		}
+	}
+
+	/** Puts an entry's row at the top of the screen, at once: a jump never animates a scroll. */
+	export function jump(index: number): void {
+		const offset = grid.offsetOf(index);
+		if (root !== undefined && offset !== undefined) {
+			const top = root.getBoundingClientRect().top + scrollY + offset - clearLine;
+			scrollTo({ top, behavior: 'instant' });
+			track();
 		}
 	}
 

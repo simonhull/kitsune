@@ -26,6 +26,8 @@ import {
 
 /** The grid's page: 60 divides evenly into every column count, so pages stack with no seam. */
 export const albumPageSize = 60;
+/** How much of the library one request brings, when all of it is wanted. */
+const wholeListPageSize = 200;
 /** The feature tile and the five beside it. */
 const recentCount = 6;
 /** How long to leave a server that isn't answering, or a library still empty. */
@@ -561,19 +563,28 @@ export class Library {
 	}
 
 	/** Loads the next page of {@link Library.albums}. Only one page is ever in flight. */
-	loadMoreAlbums(): Promise<void> {
-		this.#more ??= this.#loadMoreAlbums().finally(() => {
+	loadMoreAlbums(limit = albumPageSize): Promise<void> {
+		this.#more ??= this.#loadMoreAlbums(limit).finally(() => {
 			this.#more = null;
 		});
 		return this.#more;
 	}
 
-	async #loadMoreAlbums(): Promise<void> {
+	/** Loads every album still to come. A page that fails stops it: asking again carries on. */
+	async loadAllAlbums(): Promise<void> {
+		let cursor: string | undefined;
+		while (this.hasMoreAlbums && this.#cursor !== cursor) {
+			cursor = this.#cursor;
+			await this.loadMoreAlbums(wholeListPageSize);
+		}
+	}
+
+	async #loadMoreAlbums(limit: number): Promise<void> {
 		if (this.#cursor === undefined) {
 			return;
 		}
 		try {
-			const page = await this.#source.albumsPage('name', this.#cursor, albumPageSize);
+			const page = await this.#source.albumsPage('name', this.#cursor, limit);
 			this.#remember(page.albums);
 			this.albums = [...this.albums, ...page.albums];
 			this.#cursor = page.nextCursor;

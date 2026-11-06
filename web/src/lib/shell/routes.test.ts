@@ -16,6 +16,15 @@ describe('the route table', () => {
 		expect(journeyOf('/artists')).not.toBe(journeyOf('/artists/[id]'));
 	});
 
+	it('keeps Albums current on the list and on an album, dressed for each', () => {
+		expect(navOf('/albums')).toMatchObject({ look: 'home', current: 'albums' });
+		expect(navOf('/album/[id]')).toMatchObject({ look: 'album', current: 'albums' });
+	});
+
+	it('gives Albums no journey of Home’s: its list can change in the same navigation', () => {
+		expect(journeyOf('/albums')).toBe('albums');
+	});
+
 	it('has no current item on Now playing', () => {
 		expect(navOf('/now-playing')).toMatchObject({ look: 'gone', current: null });
 	});

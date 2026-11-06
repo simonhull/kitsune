@@ -21,6 +21,7 @@ export interface RouteFacts {
 const table = {
 	'/': { look: 'home', current: 'home', journey: 'home' },
 	'/album/[id]': { look: 'album', current: 'albums', journey: 'album' },
+	'/albums': { look: 'home', current: 'albums', journey: 'albums' },
 	'/artists': { look: 'home', current: 'artists', journey: 'artists' },
 	'/artists/[id]': { look: 'home', current: 'artists', journey: 'artist' },
 	'/login': { look: 'door', current: 'home', journey: 'login' },

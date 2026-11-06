@@ -160,7 +160,7 @@ export type Role =
 export type StageName = 'album' | 'poster';
 
 export type RouteName =
-	'login' | 'home' | 'album' | 'now-playing' | 'search' | 'artists' | 'artist';
+	'login' | 'home' | 'albums' | 'album' | 'now-playing' | 'search' | 'artists' | 'artist';
 
 export type ChoreographyName =
 	| 'home-to-album'

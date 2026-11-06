@@ -30,8 +30,10 @@
 			aria-current={current === 'home' ? 'page' : undefined}
 			data-sveltekit-reset="false">Home</a
 		>
-		<span class="item" aria-disabled="true" aria-current={current === 'albums' ? 'page' : undefined}
-			>Albums</span
+		<a
+			class="item"
+			href={resolve('/albums')}
+			aria-current={current === 'albums' ? 'page' : undefined}>Albums</a
 		>
 		<a
 			class="item"
