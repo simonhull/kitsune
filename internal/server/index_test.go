@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/json/v2"
 	"fmt"
@@ -239,6 +241,65 @@ func TestLibraryIndexFilesArtistsByLetter(t *testing.T) {
 	}
 }
 
+// sendEncoding reads the index asking for an encoding, past the contract client:
+// it would have to read the body, and only that client's own gzip is undone for it.
+func (ts *testServer) sendEncoding(t *testing.T, token, encoding string) response {
+	t.Helper()
+	header := bearer(token)
+	header.Set("Accept-Encoding", encoding)
+	return ts.send(t, call{method: http.MethodGet, path: indexPath, header: header, client: ts.Server.Client()})
+}
+
+// checkZipped checks that a response is want, gzipped.
+func checkZipped(t *testing.T, encoding string, zipped response, want []byte) {
+	t.Helper()
+	for name, value := range map[string]string{
+		"Content-Encoding": "gzip", "Vary": "Accept-Encoding", contentType: api.JSONMediaType,
+	} {
+		if got := zipped.Header.Get(name); got != value {
+			t.Errorf("%s: %s = %q, want %q", encoding, name, got, value)
+		}
+	}
+	r, err := gzip.NewReader(bytes.NewReader(zipped.Body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(body, want) {
+		t.Errorf("%s: decompressed body differs from the plain one", encoding)
+	}
+}
+
+func TestLibraryIndexCompresses(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ann := person(1, annName)
+	ts.seedIndex(t, indexAlbum{n: 1, title: "Album", artist: annName, tracks: []indexTrack{
+		{title: firstTitle, trackNo: 1, artists: []store.ArtistWrite{ann}},
+	}})
+	token := ts.tokenFor(t, store.RoleUser)
+	plain := ts.sendEncoding(t, token, "identity")
+	if got := plain.Header.Get("Content-Encoding"); got != "" {
+		t.Errorf("Content-Encoding = %q, want none", got)
+	}
+	if got := plain.Header.Get("Vary"); got != "Accept-Encoding" {
+		t.Errorf("plain Vary = %q", got)
+	}
+
+	for _, encoding := range []string{"gzip", "br, gzip;q=0.5", "GZIP", "*"} {
+		checkZipped(t, encoding, ts.sendEncoding(t, token, encoding), plain.Body)
+	}
+
+	for _, encoding := range []string{"br", "gzip;q=0", "gzip; q=0.000, br", "*;q=0"} {
+		if got := ts.sendEncoding(t, token, encoding).Header.Get("Content-Encoding"); got != "" {
+			t.Errorf("%s: Content-Encoding = %q, want none", encoding, got)
+		}
+	}
+}
+
 func TestLibraryIndexRequiresAuth(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
@@ -277,6 +338,7 @@ func BenchmarkLibraryIndex(b *testing.B) {
 			b.Fatal(err)
 		}
 		req.Header.Set(authorizationHeader, "Bearer "+token)
+		req.Header.Set("Accept-Encoding", "gzip")
 		resp, err := ts.Server.Client().Do(req)
 		if err != nil {
 			b.Fatal(err)

@@ -497,10 +497,17 @@ paths:
         those not under a letter from A to Z first, and each artist's albums
         newest first. An album appears once, under its first owner. An album with
         no owner a reader shows, such as a compilation, groups under the artist
-        it displays, in a group with no `id`.
+        it displays, in a group with no `id`. The response is gzipped when
+        `Accept-Encoding` allows it.
       responses:
         "200":
           description: Every artist with an album, its albums and their tracks.
+          headers:
+            Vary:
+              schema: { type: string }
+            Content-Encoding:
+              description: "`gzip`, when the response is compressed."
+              schema: { type: string }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LibraryIndex" }

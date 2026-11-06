@@ -171,7 +171,7 @@ func (s *Server) getLibraryIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := toAPILibraryIndex(&index)
-	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+	writeCompressed(w, r, &body)
 }
 
 // toAPILibraryIndex returns the wire form of the library index.
