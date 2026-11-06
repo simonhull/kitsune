@@ -89,7 +89,12 @@
 	});
 </script>
 
-<svelte:window onkeydown={onKeyDown} />
+<svelte:window
+	onkeydown={onKeyDown}
+	ononline={() => {
+		library.flushPlays();
+	}}
+/>
 <svelte:document onvisibilitychange={onVisibilityChange} />
 
 <div

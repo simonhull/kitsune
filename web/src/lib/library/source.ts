@@ -120,10 +120,24 @@ export interface LibraryFacts {
 
 export type AlbumSort = 'added' | 'name';
 
+/** One listen that counted, as `POST /me/plays` takes it. */
+export interface PlayReport {
+	trackId: string;
+	/** When the listen started. */
+	playedAt: string;
+	source: string;
+	/** Ours for this listen, so a retry counts once. */
+	clientId: string;
+}
+
 /** Where every page gets its data: the real API, or the fixtures for tests and clips. */
 export interface LibrarySource {
 	/** Rejects with {@link UnauthorizedError} without a session. */
 	me(): Promise<User>;
+	/** {@link LibrarySource.me} for work in the background: losing the session here goes nowhere. */
+	sessionUser(): Promise<User>;
+	/** Rejects with {@link ServerError} or {@link UnauthorizedError}, and goes nowhere either. */
+	reportPlay(play: PlayReport): Promise<void>;
 	/** Rejects with {@link LoginError} when the session wasn't granted. */
 	login(name: string, password: string): Promise<User>;
 	facts(): Promise<LibraryFacts>;

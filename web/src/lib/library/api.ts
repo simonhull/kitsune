@@ -12,6 +12,7 @@ import {
 	type LibraryFacts,
 	type LibrarySource,
 	type LoginFailure,
+	type PlayReport,
 	type SearchResults,
 	type User
 } from './source.ts';
@@ -50,17 +51,24 @@ export function createApiSource({
 		});
 	}
 
-	async function read<T>(path: string, init?: RequestInit): Promise<T> {
+	async function read<T>(
+		path: string,
+		init?: RequestInit,
+		unauthorized = onUnauthorized
+	): Promise<T> {
 		const response = await call(path, init);
 		if (response.status === 401) {
-			onUnauthorized();
+			unauthorized();
 			throw new UnauthorizedError();
 		}
 		if (!response.ok) {
 			throw new ServerError(response.status);
 		}
-		return (await response.json()) as T;
+		return (response.status === 204 ? undefined : await response.json()) as T;
 	}
+
+	/** Work in the background mustn't take the music away: the next thing asked for finds out. */
+	const quietly = (): void => undefined;
 
 	async function failureOf(response: Response): Promise<LoginFailure> {
 		if (response.status === 401) {
@@ -78,6 +86,19 @@ export function createApiSource({
 
 	return {
 		me: () => read<User>('/me'),
+
+		sessionUser: () => read<User>('/me', undefined, quietly),
+
+		reportPlay: (play: PlayReport) =>
+			read<undefined>(
+				'/me/plays',
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(play)
+				},
+				quietly
+			),
 
 		async login(name, password) {
 			let response: Response;

@@ -9,6 +9,7 @@ import {
 	defaultScanGap,
 	scanStart
 } from './fixtures.ts';
+import { Outbox } from './outbox.ts';
 import { Search } from './search.svelte.ts';
 import {
 	AlbumNotFoundError,
@@ -90,6 +91,8 @@ export interface LibraryOptions {
 	/** Holds the cue on this album, for the lab: a hero condensing into the island needs another. */
 	pinnedAlbumId?: string;
 	readyMemory?: ReadyMemory;
+	/** Where plays wait for the server. */
+	outbox?: () => Storage;
 	/** This library has no audio behind it: the player runs on a clock instead. */
 	simulated?: boolean;
 }
@@ -176,6 +179,7 @@ export class Library {
 	/** Moves on at every reset: anything older that resolves late has no business here. */
 	#epoch = 0;
 	readonly #readyMemory: ReadyMemory;
+	readonly #outbox: Outbox;
 	#waited = false;
 	#scanPoll: ReturnType<typeof setTimeout> | undefined;
 	/** Running while the spacing after the last card lasts, or a hidden tab waits. */
@@ -201,6 +205,7 @@ export class Library {
 		this.simulated = options.simulated ?? false;
 		this.#readyMemory =
 			options.readyMemory ?? readyMemoryIn(() => localStorage, 'kitsune:ready-seen');
+		this.#outbox = new Outbox(options.outbox ?? (() => localStorage), this.#source);
 	}
 
 	/** Takes the player on: everything the library forgets, it forgets too. */
@@ -261,6 +266,21 @@ export class Library {
 		}
 	}
 
+	/** Reports a listen that counted, in Unix ms from when it started. Fixtures have nobody to tell. */
+	reportPlay(trackId: string, startedAt: number): void {
+		if (this.user !== null && !this.simulated) {
+			this.#outbox.add(this.user.id, trackId, startedAt);
+			this.flushPlays();
+		}
+	}
+
+	/** Sends what's waiting for whoever is signed in, and only for them. */
+	flushPlays(): void {
+		if (this.user !== null && !this.simulated) {
+			void this.#outbox.flush(this.user.id);
+		}
+	}
+
 	/** Exchanges a name and password for a session. Rejects with `LoginError`. */
 	async login(name: string, password: string): Promise<void> {
 		this.user = await this.#source.login(name, password);
@@ -280,6 +300,7 @@ export class Library {
 		const epoch = this.#epoch;
 		try {
 			this.user ??= await this.#source.me();
+			this.flushPlays();
 			const [facts, recent, first, ready] = await Promise.all([
 				this.#source.facts(),
 				this.#source.albumsPage('added', undefined, recentCount),

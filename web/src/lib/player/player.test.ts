@@ -73,7 +73,8 @@ function setup(overrides: Partial<LibrarySource> = {}) {
 	const library = new Library(source);
 	const output = new ScriptedOutput();
 	const create = vi.fn(() => output);
-	return { library, output, create, player: new Player(library, create) };
+	const reported = vi.spyOn(library, 'reportPlay').mockImplementation(() => undefined);
+	return { library, output, create, reported, player: new Player(library, create) };
 }
 
 /** Lets everything waiting on a resolved promise run. */
@@ -765,5 +766,146 @@ describe('Player reset', () => {
 		await settle();
 		expect(player.queue).toBeNull();
 		expect(output.url).toBe('');
+	});
+
+	describe('plays', () => {
+		it('reports a track heard for half its length, once, with when it started', async () => {
+			vi.useFakeTimers({ now: 5000, toFake: ['Date'] });
+			const { player, output, reported } = setup();
+			player.play(album(2));
+			vi.useRealTimers();
+			await settle();
+			output.elapse(49);
+			expect(reported).not.toHaveBeenCalled();
+			output.elapse(1);
+			output.elapse(10);
+			expect(reported.mock.calls).toEqual([['t0', 5000]]);
+		});
+
+		it('reports each track of a queue for itself', async () => {
+			const { player, output, reported } = setup();
+			player.play(album(2));
+			await settle();
+			output.elapse(100);
+			await settle();
+			output.elapse(100);
+			expect(reported.mock.calls.map(([id]) => id)).toEqual(['t0', 't1']);
+		});
+
+		it('earns nothing by seeking to the end', async () => {
+			const { player, output, reported } = setup();
+			player.play(album(1));
+			await settle();
+			output.elapse(5);
+			player.seek(100);
+			output.elapse(1);
+			await settle();
+			expect(player.finished).toBe(true);
+			expect(reported).not.toHaveBeenCalled();
+		});
+
+		it('earns nothing from a run of small seeks', async () => {
+			const { player, output, reported } = setup();
+			player.play(album(1));
+			await settle();
+			for (let seconds = 0; seconds < 95; seconds += 5) {
+				player.seek(seconds);
+			}
+			output.elapse(1);
+			expect(reported).not.toHaveBeenCalled();
+		});
+
+		it('counts a one-track album replayed from the end twice', async () => {
+			const { player, output, reported } = setup();
+			player.play(album(1));
+			await settle();
+			output.elapse(100);
+			await settle();
+			expect(player.finished).toBe(true);
+			player.toggle();
+			await settle();
+			output.elapse(49);
+			expect(reported).toHaveBeenCalledOnce();
+			output.elapse(1);
+			expect(reported).toHaveBeenCalledTimes(2);
+		});
+
+		it('starts a new listen on a restart from Previous', async () => {
+			const { player, output, reported } = setup();
+			player.play(album(1));
+			await settle();
+			output.elapse(60);
+			player.previous();
+			output.elapse(49);
+			expect(reported).toHaveBeenCalledOnce();
+			output.elapse(1);
+			expect(reported).toHaveBeenCalledTimes(2);
+		});
+
+		it('carries on the same listen through a pause', async () => {
+			const { player, output, reported } = setup();
+			player.play(album(1));
+			await settle();
+			output.elapse(30);
+			player.toggle();
+			await settle();
+			player.toggle();
+			await settle();
+			output.elapse(19);
+			expect(reported).not.toHaveBeenCalled();
+			output.elapse(1);
+			expect(reported).toHaveBeenCalledOnce();
+		});
+
+		it('credits nothing for the way back from a reload after a retag', async () => {
+			const { player, output, reported } = setup();
+			player.play(album(1));
+			await settle();
+			output.elapse(40);
+			output.fail();
+			await settle();
+			expect(output.position).toBe(40);
+			output.seek(0); // The element starting over, before its seek lands.
+			output.seek(40);
+			output.elapse(9);
+			expect(reported).not.toHaveBeenCalled();
+			output.elapse(1);
+			expect(reported).toHaveBeenCalledOnce();
+		});
+
+		it('carries on the same listen when a stale track is played again', async () => {
+			const { player, output, reported } = setup();
+			player.play(album(1));
+			await settle();
+			output.elapse(40);
+			output.stopFromOutside();
+			output.fail();
+			await settle();
+			player.toggle();
+			await settle();
+			output.elapse(9);
+			expect(reported).not.toHaveBeenCalled();
+			output.elapse(1);
+			expect(reported).toHaveBeenCalledOnce();
+		});
+
+		it('never counts a track under 30 seconds', async () => {
+			const { player, output, reported } = setup();
+			player.play(album(1, 'a', { durationMs: 29_000 }));
+			await settle();
+			output.elapse(29);
+			await settle();
+			expect(reported).not.toHaveBeenCalled();
+		});
+
+		it('forgets the listen at a reset', async () => {
+			const { player, output, reported } = setup();
+			player.play(album(1));
+			await settle();
+			output.elapse(40);
+			player.reset();
+			output.seek(90);
+			expect(reported).not.toHaveBeenCalled();
+		});
 	});
 });

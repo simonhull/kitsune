@@ -39,6 +39,27 @@ describe('ApiSource', () => {
 		expect(init(send).headers).not.toHaveProperty('X-Kitsune-Request');
 	});
 
+	it('reports a play, with the CSRF header, and takes a 204 for an answer', async () => {
+		const { send, source } = fake(new Response(null, { status: 204 }));
+		const play = { trackId: 't', playedAt: 'p', source: 'web', clientId: 'c' };
+		await expect(source.reportPlay(play)).resolves.toBeUndefined();
+		expect(send.mock.calls.at(0)?.at(0)).toBe('/api/v1/me/plays');
+		expect(init(send).method).toBe('POST');
+		expect(init(send).headers).toMatchObject({
+			'Content-Type': 'application/json',
+			'X-Kitsune-Request': '1'
+		});
+		expect(JSON.parse(String(init(send).body))).toEqual(play);
+	});
+
+	it('keeps the door out of a background report and a background look at the session', async () => {
+		const { onUnauthorized, source } = fake(json(401), json(401));
+		const play = { trackId: 't', playedAt: 'p', source: 'web', clientId: 'c' };
+		await expect(source.reportPlay(play)).rejects.toBeInstanceOf(UnauthorizedError);
+		await expect(source.sessionUser()).rejects.toBeInstanceOf(UnauthorizedError);
+		expect(onUnauthorized).not.toHaveBeenCalled();
+	});
+
 	it('pages by cursor and sort', async () => {
 		const { send, source } = fake(json(200, { albums: [] }));
 		await source.albumsPage('name', 'abc', 6);

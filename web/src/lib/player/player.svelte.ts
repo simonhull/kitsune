@@ -2,6 +2,7 @@ import { cueOf, type NowPlaying } from '#lib/library/cue.ts';
 import { library, type Library, type PlayerView } from '#lib/library/library.svelte.ts';
 import type { Album, Track } from '#lib/library/source.ts';
 import { appliedGain } from './gain.ts';
+import { Listen } from './listen.ts';
 import { HtmlOutput, mediaTypeOf, SilentOutput, type AudioOutput } from './output.ts';
 import {
 	currentOf,
@@ -58,6 +59,8 @@ export class Player implements PlayerView {
 	#ahead: string | null = null;
 	/** Where the track was reloaded to, until it has played on from there. */
 	#reloadedAt: number | null = null;
+	/** The listen under way. Nothing is, from the end of the queue until it goes round again. */
+	#listen: Listen | null = null;
 
 	/** Nothing audio-related exists until the first play: this module loads with no window. */
 	constructor(host: Library, create: () => AudioOutput) {
@@ -150,6 +153,7 @@ export class Player implements PlayerView {
 		this.#fresh();
 		this.#run += 1;
 		this.status = 'loading';
+		this.#listen ??= this.#listenFromHere();
 		if (this.#stale) {
 			this.#stale = false;
 			this.#load(current);
@@ -176,6 +180,7 @@ export class Player implements PlayerView {
 		const back = previous(this.queue);
 		if (back === null || this.position > restartSeconds) {
 			this.seek(0);
+			this.#listen = this.#listenFromHere();
 		} else {
 			this.#begin(back);
 		}
@@ -188,6 +193,7 @@ export class Player implements PlayerView {
 		}
 		this.position = Math.min(Math.max(seconds, 0), current.durationMs / 1000);
 		this.#reloadedAt = null;
+		this.#listen?.jumped(this.position);
 		if (!this.#stale) {
 			this.#output.seek(this.position);
 		}
@@ -204,6 +210,7 @@ export class Player implements PlayerView {
 		this.#stale = false;
 		this.#ahead = null;
 		this.#reloadedAt = null;
+		this.#listen = null;
 	}
 
 	/** Someone asked for this, so whatever went wrong before is behind us. */
@@ -232,6 +239,7 @@ export class Player implements PlayerView {
 		this.#stale = false;
 		this.#ahead = null;
 		this.#reloadedAt = null;
+		this.#listen = this.#listenFromHere();
 		this.#show();
 		const track = currentOf(queue);
 		if (track === undefined) {
@@ -243,6 +251,11 @@ export class Player implements PlayerView {
 		} else {
 			this.#trackFailed();
 		}
+	}
+
+	#listenFromHere(): Listen | null {
+		const { current, position } = this;
+		return current === null ? null : new Listen(current, Date.now(), position);
 	}
 
 	/** Moves the names on. A queue that starts on the track already cued has nothing to carry. */
@@ -322,6 +335,9 @@ export class Player implements PlayerView {
 			}
 		}
 		this.position = seconds;
+		if (this.#listen?.heard(seconds) === true) {
+			this.#library.reportPlay(this.#listen.trackId, this.#listen.startedAt);
+		}
 		const { queue, current } = this;
 		const following = queue === null ? undefined : upcoming(queue);
 		if (
@@ -354,6 +370,7 @@ export class Player implements PlayerView {
 		this.queue = rewound(queue);
 		this.position = 0;
 		this.finished = true;
+		this.#listen = null;
 		this.#hold(true);
 		this.#show();
 	}
@@ -395,6 +412,7 @@ export class Player implements PlayerView {
 		this.#run += 1;
 		this.status = 'loading';
 		this.#reloadedAt = position;
+		this.#listen?.jumped(position);
 		this.#load(current);
 		this.#output.seek(position);
 		void this.#sound(this.#run);
