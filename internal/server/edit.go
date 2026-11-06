@@ -26,6 +26,40 @@ const (
 	minYear, maxYear = 1000, 9999
 )
 
+// getAlbumTags answers with what a tag editor shows of an album.
+func (s *Server) getAlbumTags(w http.ResponseWriter, r *http.Request) {
+	tracks, etag, err := s.scanner.AlbumTags(r.Context(), r.PathValue("id"))
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeProblem(w, r, http.StatusNotFound, "no such album")
+	case errors.Is(err, library.ErrStale):
+		writeProblem(w, r, http.StatusConflict, "a file of this album is gone; scan the library")
+	case err != nil:
+		s.internalError(w, r, "read tags", err)
+	default:
+		body := api.AlbumTags{Etag: etag, Tracks: make([]api.TrackTags, len(tracks))}
+		for i := range tracks {
+			body.Tracks[i] = toAPITrackTags(&tracks[i])
+		}
+		writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+	}
+}
+
+func toAPITrackTags(t *library.TrackTags) api.TrackTags {
+	out := api.TrackTags{
+		ID: t.ID, File: t.File,
+		Fields: make(map[string][]string, len(t.Fields)),
+		Tags:   make([]api.RawTag, len(t.Tags)),
+	}
+	for name, values := range t.Fields {
+		out.Fields[string(name)] = values
+	}
+	for i := range t.Tags {
+		out.Tags[i] = api.RawTag{Key: t.Tags[i].Key, Values: t.Tags[i].Values}
+	}
+	return out
+}
+
 // patchTrack edits a track's title and numbers.
 func (s *Server) patchTrack(w http.ResponseWriter, r *http.Request) {
 	var req api.TrackEdit

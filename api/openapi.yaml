@@ -283,6 +283,41 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/EditFailure"
+  /albums/{id}/tags:
+    get:
+      operationId: getAlbumTags
+      summary: Return every tag of an album, for a tag editor.
+      description: >-
+        For administrators. Read from the files, not the library, so it shows
+        what an edit will change. Field values never name a format's keys.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The tags of each live track, in album order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlbumTags" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: A file is gone, and a scan has yet to notice.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /artists:
     get:
       operationId: getArtists
@@ -860,6 +895,52 @@ components:
           type: array
           description: Replaces the genres of every track. Empty removes them.
           items: { type: string, minLength: 1 }
+    AlbumTags:
+      type: object
+      additionalProperties: false
+      required: [etag, tracks]
+      properties:
+        etag:
+          type: string
+          description: The album's `If-Match` value.
+        tracks:
+          type: array
+          items: { $ref: "#/components/schemas/TrackTags" }
+    TrackTags:
+      type: object
+      additionalProperties: false
+      required: [id, file, fields, tags]
+      properties:
+        id: { type: string }
+        file: { type: string, description: "The file's base name." }
+        fields: { $ref: "#/components/schemas/FieldValues" }
+        tags:
+          type: array
+          description: Everything no field covers, by key.
+          items: { $ref: "#/components/schemas/RawTag" }
+    FieldValues:
+      description: The values of the fields named, the same in every format. A field left out has none.
+      type: object
+      additionalProperties: false
+      properties:
+        title: { $ref: "#/components/schemas/Values" }
+        track: { $ref: "#/components/schemas/Values" }
+        disc: { $ref: "#/components/schemas/Values" }
+        date: { $ref: "#/components/schemas/Values" }
+        genres: { $ref: "#/components/schemas/Values" }
+    Values:
+      type: array
+      items: { type: string }
+    RawTag:
+      type: object
+      additionalProperties: false
+      required: [key, values]
+      properties:
+        key: { type: string, description: "The format's own name for the tag." }
+        values:
+          type: array
+          minItems: 1
+          items: { type: string }
     AlbumDetail:
       description: An album entry's properties, repeated (allOf does not mix with additionalProperties false), plus its tracks.
       type: object

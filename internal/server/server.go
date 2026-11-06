@@ -189,6 +189,7 @@ func (s *Server) routes() []route {
 		{pattern: "GET /albums", handle: s.getAlbums},
 		{pattern: "GET /albums/{id}", handle: s.getAlbum},
 		{pattern: "PATCH /albums/{id}", admin: true, handle: s.patchAlbum},
+		{pattern: "GET /albums/{id}/tags", admin: true, handle: s.getAlbumTags},
 		{pattern: "GET /artists", handle: s.getArtists},
 		{pattern: "GET /artists/{id}", handle: s.getArtist},
 		{pattern: "GET /library", handle: s.getLibrary},

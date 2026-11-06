@@ -159,6 +159,28 @@ type AlbumEdit struct {
 	Genres []string `json:"genres,omitzero"`
 }
 
+// AlbumTags is the response to GET /albums/{id}/tags: what a tag editor shows.
+// Etag is the album's If-Match value.
+type AlbumTags struct {
+	Etag   string      `json:"etag"`
+	Tracks []TrackTags `json:"tracks"`
+}
+
+// TrackTags is one track of an [AlbumTags]. Fields holds the values of each field
+// the file has, and Tags everything else. File is the file's base name.
+type TrackTags struct {
+	ID     string              `json:"id"`
+	File   string              `json:"file"`
+	Fields map[string][]string `json:"fields"`
+	Tags   []RawTag            `json:"tags"`
+}
+
+// RawTag is a tag no field covers, under its format's own key.
+type RawTag struct {
+	Key    string   `json:"key"`
+	Values []string `json:"values"`
+}
+
 // AlbumDetail is the response to GET /albums/{id}: an [AlbumEntry]'s fields,
 // repeated because the schema is flat, and the album's tracks. Artists are who
 // Artist links to; with none, Artist is plain text.

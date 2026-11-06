@@ -277,11 +277,11 @@ func (f *field) change(t *audiometa.Tags, fam family, values []string) error {
 	return nil
 }
 
-// clean returns values trimmed, without the empty ones.
+// clean returns values trimmed, without the empty ones, as valid UTF-8.
 func clean(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, v := range values {
-		if v = strings.TrimSpace(v); v != "" {
+		if v = strings.TrimSpace(strings.ToValidUTF8(v, "\uFFFD")); v != "" {
 			out = append(out, v)
 		}
 	}

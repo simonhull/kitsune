@@ -564,6 +564,82 @@ func TestClientDisconnectDoesNotStopAnEdit(t *testing.T) {
 	}
 }
 
+// retag sets raw tags in every file of the fixture, outside the server, and
+// scans them in.
+func (fx *editFixture) retag(t *testing.T, tags map[string][]string) {
+	t.Helper()
+	for _, rel := range []string{fileOne, fileTwo} {
+		err := audiometa.Write(filepath.Join(fx.root, rel), func(f *audiometa.File) error {
+			for key, values := range tags {
+				f.Tags.Set(key, values...)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := fx.Scanner.Scan(t.Context(), library.Quick); err != nil {
+		t.Fatal(err)
+	}
+	fx.reload(t)
+}
+
+// albumTags reads what an editor shows of the album.
+func (fx *editFixture) albumTags(t *testing.T) api.AlbumTags {
+	t.Helper()
+	var got api.AlbumTags
+	fx.getJSON(t, fx.token, fx.albumPath()+"/tags", &got)
+	return got
+}
+
+// wantRawTag checks tr's other tags hold key with values.
+func wantRawTag(t *testing.T, tr *api.TrackTags, key string, values ...string) {
+	t.Helper()
+	i := slices.IndexFunc(tr.Tags, func(tag api.RawTag) bool { return tag.Key == key })
+	if i < 0 || !slices.Equal(tr.Tags[i].Values, values) {
+		t.Errorf("tags = %+v, want %s = %q", tr.Tags, key, values)
+	}
+}
+
+func TestAlbumTagsShowTheFiles(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{}, twoFLACs())
+	genres := []string{"Jazz", "Blues"}
+	fx.retag(t, map[string][]string{"GENRE": genres, "MOOD": {"Calm"}})
+	got := fx.albumTags(t)
+	if got.Etag != fx.album.Etag || len(got.Tracks) != 2 {
+		t.Fatalf("etag %s, %d tracks: want %s and 2", got.Etag, len(got.Tracks), fx.album.Etag)
+	}
+	tr := &got.Tracks[0]
+	if tr.ID != fx.album.Tracks[0].ID || filepath.Ext(tr.File) != ".flac" || strings.Contains(tr.File, "/") {
+		t.Errorf("track %s from %q, want %s and its base name", tr.ID, tr.File, fx.album.Tracks[0].ID)
+	}
+	if v := tr.Fields["genres"]; !slices.Equal(v, genres) {
+		t.Errorf("genres = %q", v)
+	}
+	wantRawTag(t, tr, "MOOD", "Calm")
+	if slices.ContainsFunc(tr.Tags, func(tag api.RawTag) bool { return tag.Key == "GENRE" || tag.Key == "TITLE" }) {
+		t.Errorf("tags = %+v: a field's keys don't belong here", tr.Tags)
+	}
+}
+
+func TestAlbumTagsRefusals(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{}, twoFLACs())
+	path := fx.albumPath() + "/tags"
+	get := func(token, path string) response {
+		return fx.send(t, call{method: http.MethodGet, path: path, header: bearer(token)})
+	}
+	get("not a token", path).problem(t, http.StatusUnauthorized)
+	get(fx.tokenFor(t, store.RoleUser), path).problem(t, http.StatusForbidden)
+	get(fx.token, albumsPath+"/"+missingID+"/tags").problem(t, http.StatusNotFound)
+	if err := os.Remove(filepath.Join(fx.root, fileTwo)); err != nil {
+		t.Fatal(err)
+	}
+	get(fx.token, path).problem(t, http.StatusConflict)
+}
+
 func TestGetTrack(t *testing.T) {
 	t.Parallel()
 	fx := newEditFixture(t, &testServerOptions{}, twoFLACs())
