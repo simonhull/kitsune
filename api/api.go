@@ -145,10 +145,11 @@ type TrackDetail struct {
 	AlbumEtag string `json:"albumEtag"`
 }
 
-// TagEdit is a change to a file's tags. Set holds new values by field name; a
-// field it doesn't name stays as it is.
+// TagEdit is a change to a file's tags. Set holds new values by field name, and
+// Clear names fields to remove. A field in neither stays as it is.
 type TagEdit struct {
-	Set map[string][]string `json:"set,omitzero"`
+	Set   map[string][]string `json:"set,omitzero"`
+	Clear []string            `json:"clear,omitzero"`
 }
 
 // TrackTagEdit is a [TagEdit] of one track.

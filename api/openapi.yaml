@@ -822,6 +822,7 @@ components:
       additionalProperties: false
       properties:
         set: { $ref: "#/components/schemas/FieldValues" }
+        clear: { $ref: "#/components/schemas/ClearedFields" }
     TrackTagEdit:
       description: A `TagEdit` of one track, repeated (allOf does not mix with additionalProperties false).
       type: object
@@ -830,10 +831,15 @@ components:
       properties:
         id: { type: string }
         set: { $ref: "#/components/schemas/FieldValues" }
+        clear: { $ref: "#/components/schemas/ClearedFields" }
+    ClearedFields:
+      description: Fields to remove. Any but `title`. A field also in `set` is a 400.
+      type: array
+      items: { type: string }
     AlbumEdit:
       description: >-
         `all` goes to every track, and `tracks` to the ones they name, on top of
-        `all`: a field in both takes the track's value. A track not on this
+        `all`: a field in both takes the track's value or removal. A track not on this
         album is a 422, and naming one twice a 400.
       type: object
       additionalProperties: false

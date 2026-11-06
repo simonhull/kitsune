@@ -33,6 +33,10 @@ const (
 	albumValue  = "Album"
 	artistValue = "Artist"
 
+	keyTrackTotal   = "TRACKTOTAL"
+	keyTrackC       = "TRACKC"
+	keyComposer     = "COMPOSER"
+	keyComposerSort = "COMPOSERSORT"
 	keyTotalTracks  = "TOTALTRACKS"
 	keyTotalDiscs   = "TOTALDISCS"
 	keyVorbisLyrics = "LYRICS"
@@ -307,6 +311,96 @@ func TestEveryFieldRoundTrips(t *testing.T) {
 	}
 }
 
+// clearEdit removes every field [everyField] sets, but the title.
+func clearEdit() Edit {
+	edit := Edit{Fields: everyField()}
+	delete(edit.Fields, FieldTitle)
+	for name := range edit.Fields {
+		edit.Fields[name] = nil
+	}
+	return edit
+}
+
+func TestEveryFieldClears(t *testing.T) {
+	t.Parallel()
+	for _, sample := range []string{sampleFLAC, sampleMP3, sampleMP3v23, sampleM4A} {
+		t.Run(sample, func(t *testing.T) {
+			t.Parallel()
+			path := copySample(t, sample)
+			set, remove := Edit{Fields: everyField()}, clearEdit()
+			if err := audiometa.Write(path, set.apply); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			if err := audiometa.Write(path, remove.apply); err != nil {
+				t.Fatalf("clear: %v", err)
+			}
+			got := fieldsOf(t, path)
+			for name := range remove.Fields {
+				if v, held := got.Fields[name]; held {
+					t.Errorf("%s = %q, want it gone", name, v)
+				}
+			}
+			tw := reread(t, path)
+			if nums := []int{tw.Year, tw.TrackNo, tw.TrackTotal, tw.DiscNo, tw.DiscTotal}; slices.Max(nums) != 0 {
+				t.Errorf("year, track, total, disc, total = %v, want none", nums)
+			}
+		})
+	}
+}
+
+func TestClearingOneOfAPairKeepsTheOther(t *testing.T) {
+	t.Parallel()
+	for _, sample := range []string{sampleFLAC, sampleMP3, sampleMP3v23, sampleM4A} {
+		t.Run(sample, func(t *testing.T) {
+			t.Parallel()
+			path := copySample(t, sample)
+			set := Edit{Fields: map[Field][]string{FieldTrack: {"7"}, FieldTrackTotal: {"12"}, FieldDisc: {"2"}, FieldDiscTotal: {"3"}}}
+			if err := audiometa.Write(path, set.apply); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			remove := Edit{Fields: map[Field][]string{FieldTrackTotal: nil, FieldDisc: nil}}
+			if err := audiometa.Write(path, remove.apply); err != nil {
+				t.Fatalf("clear: %v", err)
+			}
+			if tw := reread(t, path); tw.TrackNo != 7 || tw.TrackTotal != 0 || tw.DiscNo != 0 || tw.DiscTotal != 3 {
+				t.Errorf("track %d/%d, disc %d/%d, want 7/0 and 0/3", tw.TrackNo, tw.TrackTotal, tw.DiscNo, tw.DiscTotal)
+			}
+		})
+	}
+}
+
+func TestClearingTakesMirrorsAndDependents(t *testing.T) {
+	t.Parallel()
+	path := copySample(t, sampleFLAC)
+	seed(t, path, map[string][]string{
+		keyDate: {oldDate}, keyYear: {"2001"}, keyTrackTotal: {"9"}, keyTotalTracks: {"9"}, keyTrackC: {"9"}, keyComposer: {oldValue}, keyComposerSort: {oldValue},
+		keyVorbisLyrics: {oldValue}, keyUnsynced: {oldValue},
+	})
+	edit := Edit{Fields: map[Field][]string{FieldDate: nil, FieldTrackTotal: nil, FieldComposers: nil, FieldLyrics: nil}}
+	if err := audiometa.Write(path, edit.apply); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	got := reread(t, path)
+	for _, key := range []string{keyDate, keyYear, keyTrackTotal, keyTotalTracks, keyTrackC, keyComposer, keyComposerSort, keyVorbisLyrics, keyUnsynced} {
+		if v := rawValues(&got, key); v != nil {
+			t.Errorf("%s = %q, want it gone", key, v)
+		}
+	}
+}
+
+func TestEmptyValuesReadAsAbsent(t *testing.T) {
+	t.Parallel()
+	path := copySample(t, sampleFLAC)
+	seed(t, path, map[string][]string{"CONDUCTOR": {"", " "}, "BPM": {""}})
+	got := fieldsOf(t, path).Fields
+	if v, held := got[FieldConductor]; held {
+		t.Errorf("conductor = %q, want it absent", v)
+	}
+	if v, held := got[FieldBPM]; held {
+		t.Errorf("bpm = %q, want it absent", v)
+	}
+}
+
 func TestMirrorsStayInStepAndDependentsGo(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -317,10 +411,10 @@ func TestMirrorsStayInStepAndDependentsGo(t *testing.T) {
 	}{
 		{
 			name: "totals", sample: sampleFLAC,
-			seed: map[string][]string{keyTotalTracks: {"9"}, "TRACKC": {"9"}, keyTotalDiscs: {"1"}, "DISCC": {"1"}, "TRACKTOTAL": {"9"}},
+			seed: map[string][]string{keyTotalTracks: {"9"}, keyTrackC: {"9"}, keyTotalDiscs: {"1"}, "DISCC": {"1"}, keyTrackTotal: {"9"}},
 			edit: map[Field][]string{FieldTrackTotal: {"12"}, FieldDiscTotal: {"2"}},
 			want: map[string][]string{
-				"TRACKTOTAL": {"12"}, keyTotalTracks: {"12"}, "TRACKC": {"12"}, "DISCTOTAL": {"2"}, keyTotalDiscs: {"2"}, "DISCC": {"2"},
+				keyTrackTotal: {"12"}, keyTotalTracks: {"12"}, keyTrackC: {"12"}, "DISCTOTAL": {"2"}, keyTotalDiscs: {"2"}, "DISCC": {"2"},
 			},
 		},
 		{
@@ -373,9 +467,9 @@ func TestMirrorsStayInStepAndDependentsGo(t *testing.T) {
 		},
 		{
 			name: "composer's sort key", sample: sampleFLAC,
-			seed: map[string][]string{"COMPOSER": {oldValue}, "COMPOSERSORT": {oldValue}},
+			seed: map[string][]string{keyComposer: {oldValue}, keyComposerSort: {oldValue}},
 			edit: map[Field][]string{FieldComposers: {newValue}},
-			want: map[string][]string{"COMPOSER": {newValue}, "COMPOSERSORT": nil},
+			want: map[string][]string{keyComposer: {newValue}, keyComposerSort: nil},
 		},
 		{
 			name: "a new title with a new sort title", sample: sampleFLAC,

@@ -29,6 +29,7 @@ const (
 	mp3File    = "album/one.mp3"
 	yearBody   = `{"all":{"set":{"date":["1987"]}}}`
 	newTitle   = "New Title"
+	keyGenre   = "GENRE"
 	ifMatch    = "If-Match"
 	staleETag  = `"0123456789abcdef0123456789abcdef"`
 )
@@ -251,6 +252,37 @@ func TestEditOfAllAndOneTrackInOneRequest(t *testing.T) {
 	}
 }
 
+func TestEditClearsFields(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+	fx.retag(t, map[string][]string{"DATE": {"2001-05-12"}, "YEAR": {"2001"}, keyGenre: {"Rock"}, "COMPOSER": {"Someone"}})
+	kept := fx.album.Tracks[1].ID
+	body := `{"all":{"clear":["date","composers"]},"tracks":[{"id":"` + kept + `","set":{"composers":["Someone Else"]}}]}`
+	var got api.AlbumDetail
+	fx.post(t, fx.album.Etag, body).decode(t, &got)
+	if got.Year != 0 {
+		t.Errorf("album year = %d, want none", got.Year)
+	}
+	fx.reload(t)
+	tags := fx.albumTags(t)
+	for i := range tags.Tracks {
+		tr := &tags.Tracks[i]
+		want := []string(nil)
+		if tr.ID == kept {
+			want = []string{"Someone Else"}
+		}
+		if v := tr.Fields["composers"]; !slices.Equal(v, want) {
+			t.Errorf("composers = %q, want %q", v, want)
+		}
+		if v := tr.Fields["date"]; v != nil {
+			t.Errorf("date = %q, want none", v)
+		}
+		if v := tr.Fields["genres"]; !slices.Equal(v, []string{"Rock"}) {
+			t.Errorf("genres = %q, want them left alone", v)
+		}
+	}
+}
+
 func TestEditPreconditions(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -314,6 +346,10 @@ func TestEditBadBodies(t *testing.T) {
 		{name: "nothing set", body: func(*editFixture) string { return `{"all":{"set":{}}}` }},
 		{name: "a track with no change", body: func(fx *editFixture) string { return fx.trackBody(0, `{}`) }},
 		{name: "a track named twice", body: twice},
+		{name: "a field set and cleared", body: func(*editFixture) string { return `{"all":{"set":{"date":["1987"]},"clear":["date"]}}` }},
+		{name: "a track's field set and cleared", body: func(fx *editFixture) string {
+			return `{"tracks":[{"id":"` + fx.album.Tracks[0].ID + `","set":{"date":["1987"]},"clear":["date"]}]}`
+		}},
 		{name: "not JSON", body: func(*editFixture) string { return `title` }, invalid: true},
 		{name: "an old edit", body: func(*editFixture) string { return `{"year":1987}` }, invalid: true},
 		{name: "no track ID", body: func(*editFixture) string { return `{"tracks":[{"set":{"title":["x"]}}]}` }, invalid: true},
@@ -396,6 +432,8 @@ func TestEditRefusedByTheFile(t *testing.T) {
 		{name: "a year too small", samples: twoFLACs(), body: `{"all":{"set":{"date":["0999"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "two titles", samples: twoFLACs(), body: `{"all":{"set":{"title":["a","b"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a track of another album", samples: twoFLACs(), body: `{"tracks":[{"id":"` + missingID + `","set":{"title":["a"]}}]}`, want: http.StatusUnprocessableEntity},
+		{name: "clearing the title", samples: twoFLACs(), body: `{"all":{"clear":["title"]}}`, want: http.StatusUnprocessableEntity},
+		{name: "clearing an identity field", samples: twoFLACs(), body: `{"all":{"clear":["album"]}}`, want: http.StatusUnprocessableEntity},
 		{name: "an identity field", samples: twoFLACs(), body: `{"all":{"set":{"album":["x"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a year MP3 can't hold", samples: mp3Album, body: `{"all":{"set":{"date":["1850"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a read-only file", samples: twoFLACs(), body: yearBody, want: http.StatusForbidden, prepare: readOnly(fileTwo)},
@@ -581,7 +619,7 @@ func TestAlbumTagsShowTheFiles(t *testing.T) {
 	t.Parallel()
 	fx := newEditFixture(t, &testServerOptions{}, twoFLACs())
 	genres := []string{"Jazz", "Blues"}
-	fx.retag(t, map[string][]string{"GENRE": genres, "MOOD": {"Calm"}})
+	fx.retag(t, map[string][]string{keyGenre: genres, "MOOD": {"Calm"}})
 	got := fx.albumTags(t)
 	if got.Etag != fx.album.Etag || len(got.Tracks) != 2 {
 		t.Fatalf("etag %s, %d tracks: want %s and 2", got.Etag, len(got.Tracks), fx.album.Etag)
@@ -594,7 +632,7 @@ func TestAlbumTagsShowTheFiles(t *testing.T) {
 		t.Errorf("genres = %q", v)
 	}
 	wantRawTag(t, tr, "MOOD", "Calm")
-	if slices.ContainsFunc(tr.Tags, func(tag api.RawTag) bool { return tag.Key == "GENRE" || tag.Key == "TITLE" }) {
+	if slices.ContainsFunc(tr.Tags, func(tag api.RawTag) bool { return tag.Key == keyGenre || tag.Key == "TITLE" }) {
 		t.Errorf("tags = %+v: a field's keys don't belong here", tr.Tags)
 	}
 }

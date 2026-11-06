@@ -99,7 +99,7 @@ type field struct {
 	valid func(family, string) error
 	// read returns the file's values. Nil means the first of the keys with any.
 	read func(t *audiometa.Tags, keys []string) []string
-	// write saves values, never empty. Nil means [writeKeys].
+	// write saves values, or with none removes the field. Nil means [writeKeys].
 	write func(t *audiometa.Tags, fam family, keys, values []string)
 }
 
@@ -240,7 +240,10 @@ func number(name Field, pick func(*audiometa.Tags) *int, flac, mp3, m4a []string
 				writeKeys(t, keys, values)
 				return
 			}
-			*pick(t), _ = strconv.Atoi(values[0]) // validNumber read it.
+			*pick(t) = 0
+			if len(values) > 0 {
+				*pick(t), _ = strconv.Atoi(values[0]) // validNumber read it.
+			}
 		},
 	}
 }
@@ -298,6 +301,10 @@ func readDate(t *audiometa.Tags, _ []string) []string {
 // writeDate replaces the whole date, in the keys the format holds one in. A year
 // key takes the year alone.
 func writeDate(t *audiometa.Tags, _ family, keys, values []string) {
+	if len(values) == 0 {
+		writeKeys(t, keys, nil)
+		return
+	}
 	date := values[0]
 	year := date[:yearDigits]
 	switch {
@@ -316,6 +323,10 @@ func writeDate(t *audiometa.Tags, _ family, keys, values []string) {
 
 // writeOriginalDate saves the date, or its year where the frame holds no more.
 func writeOriginalDate(t *audiometa.Tags, _ family, keys, values []string) {
+	if len(values) == 0 {
+		writeKeys(t, keys, nil)
+		return
+	}
 	date := values[0]
 	if keys[0] == keyTORY {
 		date = date[:yearDigits]
@@ -323,7 +334,8 @@ func writeOriginalDate(t *audiometa.Tags, _ family, keys, values []string) {
 	t.Set(keys[0], date)
 }
 
-// writeKeys saves values to the first of keys, and to each of the others that exists.
+// writeKeys saves values to the first of keys, and to each of the others that
+// exists. With no values, that removes them all.
 func writeKeys(t *audiometa.Tags, keys, values []string) {
 	set(t, keys[0], values)
 	for _, key := range keys[1:] {
@@ -433,17 +445,11 @@ func (f *field) save(t *audiometa.Tags, fam family, old, values []string) {
 			t.Set(key, values...)
 		}
 	}
-	keys := f.keys(fam)
-	switch {
-	case len(values) == 0:
-		for _, key := range keys {
-			set(t, key, nil)
-		}
-	case f.write != nil:
-		f.write(t, fam, keys, values)
-	default:
-		writeKeys(t, keys, values)
+	if f.write != nil {
+		f.write(t, fam, f.keys(fam), values)
+		return
 	}
+	writeKeys(t, f.keys(fam), values)
 }
 
 // clean returns values trimmed, without the empty ones, as valid UTF-8.

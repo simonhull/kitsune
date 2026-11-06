@@ -116,28 +116,40 @@ func readJSON(w http.ResponseWriter, r *http.Request, req any) error {
 
 // albumEdit returns the edit req asks for. What a value may hold is the library's
 // to judge, file by file. It reports false for a request that names nothing, or
-// names a track twice or not at all.
+// names a track twice or not at all, or both sets and clears a field.
 func albumEdit(req *api.AlbumEdit) (library.AlbumEdit, bool) {
-	edit := library.AlbumEdit{All: tagEdit(&req.All), Tracks: make(map[string]library.Edit, len(req.Tracks))}
-	named := len(edit.All.Fields) > 0
+	all, ok := tagEdit(&req.All)
+	if !ok {
+		return library.AlbumEdit{}, false
+	}
+	edit := library.AlbumEdit{All: all, Tracks: make(map[string]library.Edit, len(req.Tracks))}
+	named := len(all.Fields) > 0
 	for i := range req.Tracks {
 		tr := &req.Tracks[i]
-		if _, twice := edit.Tracks[tr.ID]; twice || tr.ID == "" {
+		own, valid := tagEdit(&tr.TagEdit)
+		if _, twice := edit.Tracks[tr.ID]; !valid || twice || tr.ID == "" {
 			return library.AlbumEdit{}, false
 		}
-		own := tagEdit(&tr.TagEdit)
 		edit.Tracks[tr.ID] = own
 		named = named || len(own.Fields) > 0
 	}
 	return edit, named
 }
 
-func tagEdit(req *api.TagEdit) library.Edit {
-	fields := make(map[library.Field][]string, len(req.Set))
+// tagEdit returns the edit req asks for, reporting false for a field both set and
+// cleared.
+func tagEdit(req *api.TagEdit) (library.Edit, bool) {
+	fields := make(map[library.Field][]string, len(req.Set)+len(req.Clear))
 	for name, values := range req.Set {
 		fields[library.Field(name)] = values
 	}
-	return library.Edit{Fields: fields}
+	for _, name := range req.Clear {
+		if _, set := req.Set[name]; set {
+			return library.Edit{}, false
+		}
+		fields[library.Field(name)] = nil
+	}
+	return library.Edit{Fields: fields}, true
 }
 
 // editFailed answers an edit that did not finish.
