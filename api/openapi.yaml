@@ -861,6 +861,10 @@ components:
         id: { type: string }
         file: { type: string, description: "The file's base name." }
         fields: { $ref: "#/components/schemas/FieldValues" }
+        readOnly:
+          type: array
+          description: Fields to show but not edit, such as timestamped lyrics.
+          items: { type: string }
         tags:
           type: array
           description: Everything no field covers, by key.
@@ -869,15 +873,44 @@ components:
       description: >-
         Values by field, the same in every format. Numbers are decimal text; a
         date is `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, and a new one replaces the
-        old one whole. A value a file can't hold is a 422.
+        old one whole. A value a file can't hold is a 422. `album`, `artists`,
+        `albumArtists` and `compilation` can be read but not edited yet: they
+        decide which album a track groups into, and an edit of one is a 422.
       type: object
       additionalProperties: false
       properties:
         title: { $ref: "#/components/schemas/Values" }
+        album: { $ref: "#/components/schemas/Values" }
+        artists: { $ref: "#/components/schemas/Values" }
+        albumArtists: { $ref: "#/components/schemas/Values" }
+        compilation: { $ref: "#/components/schemas/Values" }
         track: { $ref: "#/components/schemas/Values" }
+        trackTotal: { $ref: "#/components/schemas/Values" }
         disc: { $ref: "#/components/schemas/Values" }
+        discTotal: { $ref: "#/components/schemas/Values" }
         date: { $ref: "#/components/schemas/Values" }
         genres: { $ref: "#/components/schemas/Values" }
+        composers: { $ref: "#/components/schemas/Values" }
+        conductor: { $ref: "#/components/schemas/Values" }
+        lyricist: { $ref: "#/components/schemas/Values" }
+        performers: { $ref: "#/components/schemas/Values" }
+        remixer: { $ref: "#/components/schemas/Values" }
+        grouping: { $ref: "#/components/schemas/Values" }
+        label: { $ref: "#/components/schemas/Values" }
+        catalogNumber: { $ref: "#/components/schemas/Values" }
+        barcode: { $ref: "#/components/schemas/Values" }
+        isrc: { $ref: "#/components/schemas/Values" }
+        originalDate: { $ref: "#/components/schemas/Values" }
+        language: { $ref: "#/components/schemas/Values" }
+        bpm: { $ref: "#/components/schemas/Values" }
+        key: { $ref: "#/components/schemas/Values" }
+        copyright: { $ref: "#/components/schemas/Values" }
+        comment: { $ref: "#/components/schemas/Values" }
+        lyrics: { $ref: "#/components/schemas/Values" }
+        sortTitle: { $ref: "#/components/schemas/Values" }
+        sortArtist: { $ref: "#/components/schemas/Values" }
+        sortAlbum: { $ref: "#/components/schemas/Values" }
+        sortAlbumArtist: { $ref: "#/components/schemas/Values" }
     Values:
       type: array
       items: { type: string }

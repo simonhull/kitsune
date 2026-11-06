@@ -396,6 +396,7 @@ func TestEditRefusedByTheFile(t *testing.T) {
 		{name: "a year too small", samples: twoFLACs(), body: `{"all":{"set":{"date":["0999"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "two titles", samples: twoFLACs(), body: `{"all":{"set":{"title":["a","b"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a track of another album", samples: twoFLACs(), body: `{"tracks":[{"id":"` + missingID + `","set":{"title":["a"]}}]}`, want: http.StatusUnprocessableEntity},
+		{name: "an identity field", samples: twoFLACs(), body: `{"all":{"set":{"album":["x"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a year MP3 can't hold", samples: mp3Album, body: `{"all":{"set":{"date":["1850"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a read-only file", samples: twoFLACs(), body: yearBody, want: http.StatusForbidden, prepare: readOnly(fileTwo)},
 	}
@@ -595,6 +596,15 @@ func TestAlbumTagsShowTheFiles(t *testing.T) {
 	wantRawTag(t, tr, "MOOD", "Calm")
 	if slices.ContainsFunc(tr.Tags, func(tag api.RawTag) bool { return tag.Key == "GENRE" || tag.Key == "TITLE" }) {
 		t.Errorf("tags = %+v: a field's keys don't belong here", tr.Tags)
+	}
+}
+
+func TestAlbumTagsCallOutReadOnlyFields(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{}, twoFLACs())
+	fx.retag(t, map[string][]string{"LYRICS": {"[00:12.34]One"}})
+	if got := fx.albumTags(t).Tracks[0].ReadOnly; !slices.Equal(got, []string{"lyrics"}) {
+		t.Errorf("read-only = %q", got)
 	}
 }
 

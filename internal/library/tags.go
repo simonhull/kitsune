@@ -19,7 +19,9 @@ type TrackTags struct {
 	ID     string // Track ULID.
 	File   string // Base name.
 	Fields map[Field][]string
-	Tags   []RawTag // Everything no field covers, by key.
+	// ReadOnly lists the fields whose values can be shown but not replaced.
+	ReadOnly []Field
+	Tags     []RawTag // Everything no field covers, by key.
 }
 
 // RawTag is a tag no field covers, under its format's own key.
@@ -73,6 +75,9 @@ func readTags(ctx context.Context, file *store.EditFile) (TrackTags, error) {
 		row := &fields[i]
 		if values := row.values(&f.Tags, fam); len(values) > 0 {
 			tags.Fields[row.name] = values
+			if row.frozen != nil && row.frozen(values) {
+				tags.ReadOnly = append(tags.ReadOnly, row.name)
+			}
 		}
 		for _, key := range row.keys(fam) {
 			covered[key] = true

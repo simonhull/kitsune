@@ -48,6 +48,9 @@ func toAPITrackTags(t *library.TrackTags) api.TrackTags {
 	for name, values := range t.Fields {
 		out.Fields[string(name)] = values
 	}
+	for _, name := range t.ReadOnly {
+		out.ReadOnly = append(out.ReadOnly, string(name))
+	}
 	for i := range t.Tags {
 		out.Tags[i] = api.RawTag{Key: t.Tags[i].Key, Values: t.Tags[i].Values}
 	}

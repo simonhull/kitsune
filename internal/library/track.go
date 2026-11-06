@@ -75,7 +75,7 @@ func setNumbers(tw *store.TrackWrite, t *audiometa.Tags) {
 	tw.TrackNo, tw.TrackTotal = t.TrackNumber, t.TrackTotal
 	tw.DiscNo, tw.DiscTotal = t.DiscNumber, t.DiscTotal
 	tw.Year = t.Year
-	tw.OriginalYear = leadingYear(t.OriginalDate)
+	tw.OriginalYear = leadingYear(cmp.Or(t.OriginalDate, single(t, keysOriginalDate)))
 }
 
 // leadingYear returns the four-digit year a date starts with, or 0.

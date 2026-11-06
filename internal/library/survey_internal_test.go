@@ -25,6 +25,7 @@ const (
 	dirMode      = 0o750
 	sampleFLAC   = "sample.flac"
 	sampleMP3    = "sample_v24.mp3"
+	sampleMP3v23 = "sample_v23.mp3"
 	sampleM4A    = "sample.m4a"
 	bystander    = "bystander.flac"
 	sizeFLAC     = "size.flac"

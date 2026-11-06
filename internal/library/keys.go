@@ -41,6 +41,7 @@ var (
 	keysAlbumMBID       = []string{"MUSICBRAINZ_ALBUMID", "MUSICBRAINZ ALBUM ID"}
 	keysGenre           = []string{"GENRE", "TCON", "\xA9gen"}
 	keysDate            = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day"}
+	keysOriginalDate    = []string{"TDOR", "TORY", "ORIGINALDATE"}
 	// keysID3v2Names hold the two fields whose absence makes the MP3 reader fall
 	// back to an ID3v1 trailer.
 	keysID3v2Names = []string{"TIT2", "TPE1"}

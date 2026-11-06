@@ -173,12 +173,14 @@ type AlbumTags struct {
 }
 
 // TrackTags is one track of an [AlbumTags]. Fields holds the values of each field
-// the file has, and Tags everything else. File is the file's base name.
+// the file has, and Tags everything else. File is the file's base name. ReadOnly
+// names the fields a client may show but not edit, such as timestamped lyrics.
 type TrackTags struct {
-	ID     string              `json:"id"`
-	File   string              `json:"file"`
-	Fields map[string][]string `json:"fields"`
-	Tags   []RawTag            `json:"tags"`
+	ID       string              `json:"id"`
+	File     string              `json:"file"`
+	Fields   map[string][]string `json:"fields"`
+	ReadOnly []string            `json:"readOnly,omitzero"`
+	Tags     []RawTag            `json:"tags"`
 }
 
 // RawTag is a tag no field covers, under its format's own key.

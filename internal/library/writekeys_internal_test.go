@@ -22,6 +22,21 @@ const (
 	keyGenre = "GENRE"
 	rock     = "Rock"
 	pop      = "Pop"
+	jazz     = "Jazz"
+
+	oldValue    = "Old"
+	newValue    = "New"
+	newDate     = "1987-03-04"
+	aComment    = "A comment"
+	someLyrics  = "Some lyrics"
+	sortedTitle = "Sorted"
+	albumValue  = "Album"
+	artistValue = "Artist"
+
+	keyTotalTracks  = "TOTALTRACKS"
+	keyTotalDiscs   = "TOTALDISCS"
+	keyVorbisLyrics = "LYRICS"
+	keyUnsynced     = "UNSYNCEDLYRICS"
 )
 
 // reread maps the file at path as a scan would.
@@ -104,11 +119,11 @@ func TestEditLandsInEveryOwnedKey(t *testing.T) {
 			name: formatFLAC, sample: sampleFLAC,
 			seed: map[string][]string{
 				keyDate: {oldDate}, "YEAR": {"2001"}, keysTitleSort[0]: {oldSort}, keyGenre: {rock, pop},
-				"ALBUM ARTIST": {otherName}, "TOTALTRACKS": {"12"}, "TOTALDISCS": {"2"}, "ARTISTS": {otherName},
+				"ALBUM ARTIST": {otherName}, keyTotalTracks: {"12"}, keyTotalDiscs: {"2"}, "ARTISTS": {otherName},
 			},
 			want: ownedKeys{
 				year: []string{keyDate, "YEAR"}, genre: keyGenre, gone: keysTitleSort[0],
-				kept: []string{"ALBUM ARTIST", "TOTALTRACKS", "TOTALDISCS", "ARTISTS"},
+				kept: []string{"ALBUM ARTIST", keyTotalTracks, keyTotalDiscs, "ARTISTS"},
 			},
 		},
 		{
@@ -132,7 +147,7 @@ func TestEditLandsInEveryOwnedKey(t *testing.T) {
 			path := copySample(t, tt.sample)
 			seed(t, path, tt.seed)
 			before := reread(t, path)
-			genres := []string{"Jazz", "Blues"}
+			genres := []string{jazz, "Blues"}
 			edit := Edit{Fields: map[Field][]string{
 				FieldTitle: {newTitle}, FieldTrack: {"7"}, FieldDisc: {"2"}, FieldDate: {"1987"}, FieldGenres: genres,
 			}}
@@ -226,6 +241,239 @@ func TestEmptyGenresRemoveTheKey(t *testing.T) {
 	}
 }
 
+// everyField holds a value for each field that can be edited.
+func everyField() map[Field][]string {
+	return map[Field][]string{
+		FieldTitle: {newTitle}, FieldTrack: {"7"}, FieldTrackTotal: {"12"}, FieldDisc: {"2"}, FieldDiscTotal: {"3"},
+		FieldDate: {newDate}, FieldGenres: {jazz, "Blues"}, FieldComposers: {"Com One", "Com Two"},
+		FieldConductor: {"Con One", "Con Two"}, FieldLyricist: {"Lyr One", "Lyr Two"},
+		FieldPerformers: {"Per One", "Per Two"}, FieldRemixer: {"Rem One", "Rem Two"}, FieldGrouping: {"Group"},
+		FieldLabel: {"Label One", "Label Two"}, FieldCatalogNumber: {"CAT-1", "CAT-2"}, FieldBarcode: {"123", "456"},
+		FieldISRC: {"USABC1234567"}, FieldOriginalDate: {"1977-05-06"}, FieldLanguage: {"eng", "fra"},
+		FieldBPM: {"120"}, FieldKey: {"Am"}, FieldCopyright: {"2001 Someone"}, FieldComment: {aComment},
+		FieldLyrics: {"Line one\nLine two"}, FieldSortTitle: {"Title, New"}, FieldSortArtist: {"Artist, Sort"},
+		FieldSortAlbum: {"Album, Sort"}, FieldSortAlbumArtist: {"Album Artist, Sort"},
+	}
+}
+
+// fieldsOf reads the file at path as an editor would.
+func fieldsOf(t *testing.T, path string) *TrackTags {
+	t.Helper()
+	got, err := readTags(t.Context(), &store.EditFile{Root: filepath.Dir(path), RelPath: filepath.Base(path)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &got
+}
+
+// wantEveryField checks a scan of the file at path sees what [everyField] set.
+func wantEveryField(t *testing.T, path string, before *store.TrackWrite) {
+	t.Helper()
+	got := reread(t, path)
+	if got.Title != newTitle || got.TrackNo != 7 || got.TrackTotal != 12 || got.DiscNo != 2 || got.DiscTotal != 3 {
+		t.Errorf("track = %q %d/%d, disc %d/%d", got.Title, got.TrackNo, got.TrackTotal, got.DiscNo, got.DiscTotal)
+	}
+	if got.Year != newYear || got.OriginalYear != 1977 || got.SortTitle != "Title, New" {
+		t.Errorf("year %d, original %d, sort %q", got.Year, got.OriginalYear, got.SortTitle)
+	}
+	if got.Digest != before.Digest {
+		t.Error("the edit changed the audio digest")
+	}
+}
+
+func TestEveryFieldRoundTrips(t *testing.T) {
+	t.Parallel()
+	for _, sample := range []string{sampleFLAC, sampleMP3, sampleMP3v23, sampleM4A} {
+		t.Run(sample, func(t *testing.T) {
+			t.Parallel()
+			path := copySample(t, sample)
+			want := everyField()
+			before := reread(t, path)
+			edit := Edit{Fields: want}
+			if err := audiometa.Write(path, edit.apply); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			if sample == sampleMP3v23 {
+				want[FieldOriginalDate] = []string{"1977"} // TORY holds a year.
+			}
+			got := fieldsOf(t, path)
+			for name, values := range want {
+				if !slices.Equal(got.Fields[name], values) {
+					t.Errorf("%s = %q, want %q", name, got.Fields[name], values)
+				}
+			}
+			wantEveryField(t, path, &before)
+		})
+	}
+}
+
+func TestMirrorsStayInStepAndDependentsGo(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, sample string
+		seed         map[string][]string
+		edit         map[Field][]string
+		want         map[string][]string // By raw key. Nil means gone.
+	}{
+		{
+			name: "totals", sample: sampleFLAC,
+			seed: map[string][]string{keyTotalTracks: {"9"}, "TRACKC": {"9"}, keyTotalDiscs: {"1"}, "DISCC": {"1"}, "TRACKTOTAL": {"9"}},
+			edit: map[Field][]string{FieldTrackTotal: {"12"}, FieldDiscTotal: {"2"}},
+			want: map[string][]string{
+				"TRACKTOTAL": {"12"}, keyTotalTracks: {"12"}, "TRACKC": {"12"}, "DISCTOTAL": {"2"}, keyTotalDiscs: {"2"}, "DISCC": {"2"},
+			},
+		},
+		{
+			name: "a date", sample: sampleFLAC,
+			seed: map[string][]string{keyDate: {oldDate}, keyYear: {"2001"}},
+			edit: map[Field][]string{FieldDate: {newDate}},
+			want: map[string][]string{keyDate: {newDate}, keyYear: {"1987"}},
+		},
+		{
+			name: "a year replaces a date", sample: sampleFLAC,
+			seed: map[string][]string{keyDate: {oldDate}, keyYear: {"2001"}},
+			edit: map[Field][]string{FieldDate: {"1987"}},
+			want: map[string][]string{keyDate: {"1987"}, keyYear: {"1987"}},
+		},
+		{
+			name: "a year replaces an ID3v2.3 date", sample: sampleMP3v23,
+			seed: map[string][]string{keyTYER: {"2001"}, keyTDAT: {"1205"}, "TIME": {"1200"}},
+			edit: map[Field][]string{FieldDate: {"1987"}},
+			want: map[string][]string{keyTYER: {"1987"}, keyTDAT: nil, "TIME": nil},
+		},
+		{
+			name: "a whole ID3v2.3 date", sample: sampleMP3v23,
+			seed: map[string][]string{keyTYER: {"2001"}},
+			edit: map[Field][]string{FieldDate: {newDate}},
+			want: map[string][]string{keyTYER: {"1987"}, keyTDAT: {"0403"}},
+		},
+		{
+			name: "an original date", sample: sampleMP3,
+			seed: map[string][]string{"TDOR": {oldDate}},
+			edit: map[Field][]string{FieldOriginalDate: {"1977"}},
+			want: map[string][]string{"TDOR": {"1977"}},
+		},
+		{
+			name: "grouping", sample: sampleMP3,
+			seed: map[string][]string{"TIT1": {oldValue}},
+			edit: map[Field][]string{FieldGrouping: {newValue}},
+			want: map[string][]string{"GRP1": {newValue}, "TIT1": {newValue}},
+		},
+		{
+			name: "sort album artist in both homes", sample: sampleMP3,
+			seed: map[string][]string{keysAlbumArtistSort[1]: {oldValue}, keysAlbumArtistSort[0]: {oldValue}},
+			edit: map[Field][]string{FieldSortAlbumArtist: {newValue}},
+			want: map[string][]string{keysAlbumArtistSort[1]: {newValue}, keysAlbumArtistSort[0]: {newValue}},
+		},
+		{
+			name: "label and comment", sample: sampleFLAC,
+			seed: map[string][]string{"PUBLISHER": {oldValue}, "DESCRIPTION": {oldValue}},
+			edit: map[Field][]string{FieldLabel: {newValue}, FieldComment: {newValue}},
+			want: map[string][]string{"LABEL": {newValue}, "PUBLISHER": {newValue}, "COMMENT": {newValue}, "DESCRIPTION": {newValue}},
+		},
+		{
+			name: "composer's sort key", sample: sampleFLAC,
+			seed: map[string][]string{"COMPOSER": {oldValue}, "COMPOSERSORT": {oldValue}},
+			edit: map[Field][]string{FieldComposers: {newValue}},
+			want: map[string][]string{"COMPOSER": {newValue}, "COMPOSERSORT": nil},
+		},
+		{
+			name: "a new title with a new sort title", sample: sampleFLAC,
+			seed: map[string][]string{keysTitleSort[0]: {oldValue}, "TITLESORTEN": {oldValue}},
+			edit: map[Field][]string{FieldTitle: {newTitle}, FieldSortTitle: {sortedTitle}},
+			want: map[string][]string{keysTitleSort[0]: {sortedTitle}, "TITLESORTEN": nil},
+		},
+		{
+			name: "lyrics copy that matches", sample: sampleFLAC,
+			seed: map[string][]string{keyVorbisLyrics: {oldValue}, keyUnsynced: {oldValue}},
+			edit: map[Field][]string{FieldLyrics: {newValue}},
+			want: map[string][]string{keyVorbisLyrics: {newValue}, keyUnsynced: {newValue}},
+		},
+		{
+			name: "lyrics copy that differs", sample: sampleFLAC,
+			seed: map[string][]string{keyVorbisLyrics: {oldValue}, keyUnsynced: {otherName}},
+			edit: map[Field][]string{FieldLyrics: {newValue}},
+			want: map[string][]string{keyVorbisLyrics: {newValue}, keyUnsynced: {otherName}},
+		},
+		{
+			name: "M4A's numeric genre", sample: sampleM4A,
+			seed: map[string][]string{"gnre": {"16"}},
+			edit: map[Field][]string{FieldGenres: {jazz}},
+			want: map[string][]string{"©gen": {jazz}, "gnre": nil},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			path := copySample(t, tt.sample)
+			seed(t, path, tt.seed)
+			edit := Edit{Fields: tt.edit}
+			if err := audiometa.Write(path, edit.apply); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			got := reread(t, path)
+			for key, want := range tt.want {
+				if v := rawValues(&got, key); !slices.Equal(v, want) {
+					t.Errorf("%s = %q, want %q", key, v, want)
+				}
+			}
+		})
+	}
+}
+
+func TestCommentAndLyricsOfAnMP3AreItsFrames(t *testing.T) {
+	t.Parallel()
+	for _, sample := range []string{sampleMP3, sampleMP3v23} {
+		t.Run(sample, func(t *testing.T) {
+			t.Parallel()
+			path := copySample(t, sample)
+			edit := Edit{Fields: map[Field][]string{FieldComment: {aComment}, FieldLyrics: {someLyrics}}}
+			if err := audiometa.Write(path, edit.apply); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			f, err := audiometa.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close() //nolint:errcheck // Read-only use is done; nothing to report.
+			if f.Tags.Comment != aComment || f.Tags.Lyrics != someLyrics || !slices.Equal(f.Tags.Get(keyLyrics), []string{someLyrics}) {
+				t.Errorf("comment %q, lyrics %q", f.Tags.Comment, f.Tags.Lyrics)
+			}
+		})
+	}
+}
+
+func TestIdentityFieldsReadButRefuseEdits(t *testing.T) {
+	t.Parallel()
+	for _, name := range []Field{FieldAlbum, FieldArtists, FieldAlbumArtists, FieldCompilation} {
+		t.Run(string(name), func(t *testing.T) {
+			t.Parallel()
+			path := copySample(t, sampleFLAC)
+			seed(t, path, map[string][]string{"ALBUM": {albumValue}, "ARTIST": {artistValue}, "ALBUMARTIST": {artistValue}, keysCompilation[0]: {"1"}})
+			if v := fieldsOf(t, path).Fields[name]; len(v) == 0 {
+				t.Errorf("%s reads empty", name)
+			}
+			edit := Edit{Fields: map[Field][]string{name: {"x"}}}
+			if err := audiometa.Write(path, edit.apply); !errors.Is(err, ErrUnsupportedEdit) {
+				t.Errorf("Write = %v, want ErrUnsupportedEdit", err)
+			}
+		})
+	}
+}
+
+func TestTimestampedLyricsAreReadOnly(t *testing.T) {
+	t.Parallel()
+	path := copySample(t, sampleFLAC)
+	seed(t, path, map[string][]string{keyVorbisLyrics: {"[00:12.34]One\n[00:15.00]Two"}})
+	if got := fieldsOf(t, path).ReadOnly; !slices.Equal(got, []Field{FieldLyrics}) {
+		t.Errorf("read-only fields = %q", got)
+	}
+	edit := Edit{Fields: map[Field][]string{FieldLyrics: {"Plain"}}}
+	if err := audiometa.Write(path, edit.apply); !errors.Is(err, ErrUnsupportedEdit) {
+		t.Errorf("Write = %v, want ErrUnsupportedEdit", err)
+	}
+}
+
 // id3v1Only rewrites the MP3 at path so its only tag is an ID3v1 trailer.
 func id3v1Only(t *testing.T, path string) {
 	t.Helper()
@@ -259,6 +507,9 @@ func TestEditRefuses(t *testing.T) {
 		{name: "blank title", sample: sampleMP3, edit: Edit{Fields: map[Field][]string{FieldTitle: {" \t "}}}},
 		{name: "ID3v1 only", sample: sampleMP3, prepare: id3v1Only, edit: Edit{Fields: map[Field][]string{FieldTitle: {newTitle}}}},
 		{name: "a year MP3 can't read back", sample: sampleMP3, edit: Edit{Fields: map[Field][]string{FieldDate: {"1850"}}}},
+		{name: "a BPM M4A can't hold", sample: sampleM4A, edit: Edit{Fields: map[Field][]string{FieldBPM: {"120.5"}}}},
+		{name: "a NUL", sample: sampleFLAC, edit: Edit{Fields: map[Field][]string{FieldComment: {"a\x00b"}}}},
+		{name: "two comments", sample: sampleFLAC, edit: Edit{Fields: map[Field][]string{FieldComment: {"a", "b"}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
