@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -62,6 +63,23 @@ type Edit struct {
 	// Fields holds new values. A field it doesn't name stays as it is, and one
 	// named with no values is removed.
 	Fields map[Field][]string
+	// Tags does the same for raw tags, by the keys [TrackTags] shows.
+	Tags map[string][]string
+}
+
+// Empty reports whether the edit names nothing.
+func (e *Edit) Empty() bool { return len(e.Fields) == 0 && len(e.Tags) == 0 }
+
+// over returns e with own on top: what both name takes own's value.
+func (e *Edit) over(own *Edit) Edit {
+	return Edit{Fields: merged(e.Fields, own.Fields), Tags: merged(e.Tags, own.Tags)}
+}
+
+func merged[K comparable](base, top map[K][]string) map[K][]string {
+	out := make(map[K][]string, len(base)+len(top))
+	maps.Copy(out, base)
+	maps.Copy(out, top)
+	return out
 }
 
 // lyricTimestamp matches the time code that starts a line of synced lyrics.
@@ -72,7 +90,10 @@ type family int
 
 const (
 	vorbis family = iota
-	id3v23        // Also ID3v2.2, whose frames audiometa reports by their ID3v2.3 names.
+	// id3v23 also covers ID3v2.2, whose frames audiometa reports by their ID3v2.3
+	// names. It rewrites such a tag as ID3v2.4, so a month, a day or an original
+	// date is refused there.
+	id3v23
 	id3v24
 	mp4
 )
@@ -144,7 +165,7 @@ var fields = []field{
 	{
 		name: FieldArtists, flac: keys("ARTIST", "ARTISTS"), mp3: keys("TPE1", "ARTISTS"), m4a: keys("\xA9ART", "ARTISTS"),
 		identity: true, multi: true,
-		dependents: slices.Concat(keysArtistSort, keysArtistMBID, keys("ARTISTS_SORT", "ARTIST_CREDIT", "ARTISTS_CREDIT")),
+		dependents: slices.Concat(keysArtistSort, keysArtistMBID, keys("ARTISTS_SORT", "ARTIST_CREDIT", "ARTISTS_CREDIT", "ARTIST CREDIT")),
 	},
 	{
 		name:     FieldAlbumArtists,
@@ -152,7 +173,7 @@ var fields = []field{
 		mp3:      keys("TPE2", "ALBUMARTIST", "ALBUM ARTIST", "ALBUM_ARTIST", "ALBUMARTISTS", "ALBUM_ARTISTS"),
 		m4a:      keys("aART"),
 		identity: true, multi: true, read: candidates(keysAlbumArtist),
-		dependents: slices.Concat(keysAlbumArtistSort, keysAlbumArtistMBID, keys("ALBUMARTISTS_SORT", "ALBUMARTIST_CREDIT", "ALBUMARTISTS_CREDIT")),
+		dependents: slices.Concat(keysAlbumArtistSort, keysAlbumArtistMBID, keys("ALBUMARTISTS_SORT", "ALBUMARTIST_CREDIT", "ALBUMARTISTS_CREDIT", "ALBUM ARTIST CREDIT")),
 	},
 	{name: FieldCompilation, flac: keys("COMPILATION"), mp3: keys("TCMP"), m4a: keys("cpil"), identity: true},
 	number(FieldTrack, trackNumber, keys("TRACKNUMBER", "TRACK"), keys("TRCK"), keys("trkn")),
@@ -160,7 +181,7 @@ var fields = []field{
 	number(FieldDisc, discNumber, keys("DISCNUMBER", "DISC"), keys("TPOS"), keys("disk")),
 	number(FieldDiscTotal, discTotal, keys("DISCTOTAL", "TOTALDISCS", "DISCC"), keys("TPOS"), keys("disk")),
 	{
-		name: FieldDate, flac: keys("DATE", keyYear), mp3: keys("TDRC"), mp3v23: keys(keyTYER), m4a: keys("\xA9day"),
+		name: FieldDate, flac: keys("DATE", keyYear), mp3: keys("TDRC"), mp3v23: keys(keyTYER, keyTDAT), m4a: keys("\xA9day"),
 		dependents: []string{"TDRC", keyTYER, keyTDAT, "TIME"},
 		valid:      validReleaseDate, read: readDate, write: writeDate,
 	},
@@ -529,7 +550,7 @@ func (e *Edit) apply(f *audiometa.File) error {
 			}
 		}
 	}
-	return nil
+	return e.applyTags(&f.Tags, fam)
 }
 
 // readsFromID3v1 reports whether f's names came from an ID3v1 trailer. Any

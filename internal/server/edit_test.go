@@ -283,6 +283,39 @@ func TestEditClearsFields(t *testing.T) {
 	}
 }
 
+// rawBody sets the raw tag key on every track.
+func rawBody(key string) string {
+	return `{"all":{"tags":[{"key":"` + key + `","values":["x"]}]}}`
+}
+
+func TestEditRawTags(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+	fx.retag(t, map[string][]string{"MOOD": {"Calm"}, "OLD": {"Gone"}, "REPLAYGAIN_TRACK_GAIN": {"-6.5 dB"}})
+	id := fx.album.Tracks[0].ID
+	body := `{"all":{"tags":[{"key":"MOOD","values":["Warm","Dark"]},{"key":"OLD","values":[]}]},` +
+		`"tracks":[{"id":"` + id + `","tags":[{"key":"MOOD","values":["Own"]}]}]}`
+	var got api.AlbumDetail
+	fx.post(t, fx.album.Etag, body).decode(t, &got)
+	fx.album = got
+	tags := fx.albumTags(t)
+	for i := range tags.Tracks {
+		tr := &tags.Tracks[i]
+		if tr.ID == id {
+			wantRawTag(t, tr, "MOOD", "Own")
+		} else {
+			wantRawTag(t, tr, "MOOD", "Warm", "Dark")
+		}
+		if slices.ContainsFunc(tr.Tags, func(tag api.RawTag) bool { return tag.Key == "OLD" }) {
+			t.Errorf("tags = %+v, want OLD gone", tr.Tags)
+		}
+		j := slices.IndexFunc(tr.Tags, func(tag api.RawTag) bool { return tag.Key == "REPLAYGAIN_TRACK_GAIN" })
+		if j < 0 || !tr.Tags[j].ReadOnly {
+			t.Errorf("tags = %+v, want gain read-only", tr.Tags)
+		}
+	}
+}
+
 func TestEditPreconditions(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -347,6 +380,9 @@ func TestEditBadBodies(t *testing.T) {
 		{name: "a track with no change", body: func(fx *editFixture) string { return fx.trackBody(0, `{}`) }},
 		{name: "a track named twice", body: twice},
 		{name: "a field set and cleared", body: func(*editFixture) string { return `{"all":{"set":{"date":["1987"]},"clear":["date"]}}` }},
+		{name: "a tag named twice", body: func(*editFixture) string {
+			return `{"all":{"tags":[{"key":"MOOD","values":["a"]},{"key":"MOOD","values":["b"]}]}}`
+		}},
 		{name: "a track's field set and cleared", body: func(fx *editFixture) string {
 			return `{"tracks":[{"id":"` + fx.album.Tracks[0].ID + `","set":{"date":["1987"]},"clear":["date"]}]}`
 		}},
@@ -434,6 +470,11 @@ func TestEditRefusedByTheFile(t *testing.T) {
 		{name: "a track of another album", samples: twoFLACs(), body: `{"tracks":[{"id":"` + missingID + `","set":{"title":["a"]}}]}`, want: http.StatusUnprocessableEntity},
 		{name: "clearing the title", samples: twoFLACs(), body: `{"all":{"clear":["title"]}}`, want: http.StatusUnprocessableEntity},
 		{name: "clearing an identity field", samples: twoFLACs(), body: `{"all":{"clear":["album"]}}`, want: http.StatusUnprocessableEntity},
+		{name: "a lower-case tag", samples: twoFLACs(), body: rawBody("mood"), want: http.StatusUnprocessableEntity},
+		{name: "a tag a field owns", samples: twoFLACs(), body: rawBody("ALBUMARTIST"), want: http.StatusUnprocessableEntity},
+		{name: "a gain tag", samples: twoFLACs(), body: rawBody("REPLAYGAIN_TRACK_GAIN"), want: http.StatusUnprocessableEntity},
+		{name: "a false frame", samples: mp3Album, body: rawBody("APIC"), want: http.StatusUnprocessableEntity},
+		{name: "a new frame", samples: mp3Album, body: rawBody("TMED"), want: http.StatusUnprocessableEntity},
 		{name: "an identity field", samples: twoFLACs(), body: `{"all":{"set":{"album":["x"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a year MP3 can't hold", samples: mp3Album, body: `{"all":{"set":{"date":["1850"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a read-only file", samples: twoFLACs(), body: yearBody, want: http.StatusForbidden, prepare: readOnly(fileTwo)},
@@ -512,6 +553,22 @@ func TestAlbumEditStoppedPartwayReportsHowFarItGot(t *testing.T) {
 		if changed := slices.Contains(p.Changed, tr.ID); changed != (tr.Year == 1987) {
 			t.Errorf("track year %d, reported changed = %t: the store must follow the files", tr.Year, changed)
 		}
+	}
+}
+
+func TestFileChangedDuringAWriteSaysHowFarTheEditGot(t *testing.T) {
+	t.Parallel()
+	var writes atomic.Int32
+	write := func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+		if writes.Add(1) == 2 {
+			return audiometa.ErrConcurrentModification
+		}
+		return audiometa.WriteContext(ctx, path, edit)
+	}
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true, Write: write}, twoFLACs())
+	p := decodeEditProblem(t, fx.post(t, fx.album.Etag, yearBody), http.StatusPreconditionFailed)
+	if len(p.Changed) != 1 || len(p.Remaining) != 1 {
+		t.Errorf("changed %q, remaining %q: want 1 and 1", p.Changed, p.Remaining)
 	}
 }
 

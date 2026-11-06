@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -36,8 +35,8 @@ const probePattern = ".kitsune-probe.audiometa-*.tmp"
 
 // EditError says how far a failed edit got. Each track is atomic and an album is
 // not: the tracks in Changed hold the edit and the ones in Remaining don't,
-// whatever Err says. Err wraps [ErrUnsupportedEdit], [ErrNotWritable] or
-// something unexpected. A preflight failure leaves Changed empty.
+// whatever Err says. Err wraps [ErrUnsupportedEdit], [ErrNotWritable], [ErrStale]
+// or something unexpected. A preflight failure leaves Changed empty.
 type EditError struct {
 	Changed, Remaining []string // Track ULIDs.
 	Err                error
@@ -52,7 +51,7 @@ func (e *EditError) Error() string {
 func (e *EditError) Unwrap() error { return e.Err }
 
 // AlbumEdit is a change to the tracks of one album. All goes to every track, and
-// Tracks, by ULID, to the ones it names, on top of All: a field in both takes the
+// Tracks, by ULID, to the ones it names, on top of All: what both name takes the
 // track's value.
 type AlbumEdit struct {
 	All    Edit
@@ -76,15 +75,9 @@ func (e *AlbumEdit) forFiles(files []store.EditFile) ([]fileEdit, error) {
 	var out []fileEdit
 	for i := range files {
 		own, named := e.Tracks[files[i].ULID]
-		if !named && len(e.All.Fields) == 0 {
-			continue
+		if named || !e.All.Empty() {
+			out = append(out, fileEdit{file: &files[i], edit: e.All.over(&own)})
 		}
-		fields := maps.Clone(e.All.Fields)
-		if fields == nil {
-			fields = make(map[Field][]string, len(own.Fields))
-		}
-		maps.Copy(fields, own.Fields)
-		out = append(out, fileEdit{file: &files[i], edit: Edit{Fields: fields}})
 	}
 	return out, nil
 }
@@ -181,7 +174,10 @@ func classify(err error) error {
 	switch {
 	case errors.Is(err, ErrUnsupportedEdit), errors.Is(err, ErrNotWritable):
 		return err
-	case errors.Is(err, audiometa.ErrUnsupportedWrite), errors.Is(err, audiometa.ErrDRMProtected), errors.Is(err, audiometa.ErrTagTooLarge):
+	case errors.Is(err, audiometa.ErrConcurrentModification):
+		return fmt.Errorf("%w: %w", ErrStale, err)
+	case errors.Is(err, audiometa.ErrUnsupportedWrite), errors.Is(err, audiometa.ErrDRMProtected), errors.Is(err, audiometa.ErrTagTooLarge),
+		errors.Is(err, audiometa.ErrInvalidArtwork), errors.Is(err, audiometa.ErrConflictingEdits), errors.Is(err, audiometa.ErrVerifyFailed):
 		return fmt.Errorf("%w: %w", ErrUnsupportedEdit, err)
 	case errors.Is(err, fs.ErrPermission), errors.Is(err, syscall.EROFS):
 		return fmt.Errorf("%w: %w", ErrNotWritable, err)

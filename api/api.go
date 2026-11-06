@@ -146,10 +146,18 @@ type TrackDetail struct {
 }
 
 // TagEdit is a change to a file's tags. Set holds new values by field name, and
-// Clear names fields to remove. A field in neither stays as it is.
+// Clear names fields to remove. A field in neither stays as it is. Tags changes
+// the tags no field covers.
 type TagEdit struct {
 	Set   map[string][]string `json:"set,omitzero"`
 	Clear []string            `json:"clear,omitzero"`
+	Tags  []RawTagEdit        `json:"tags,omitzero"`
+}
+
+// RawTagEdit replaces every value of the tag Key, or with none removes it.
+type RawTagEdit struct {
+	Key    string   `json:"key"`
+	Values []string `json:"values"`
 }
 
 // TrackTagEdit is a [TagEdit] of one track.
@@ -184,10 +192,12 @@ type TrackTags struct {
 	Tags     []RawTag            `json:"tags"`
 }
 
-// RawTag is a tag no field covers, under its format's own key.
+// RawTag is a tag no field covers, under its format's own key. ReadOnly means an
+// edit may not touch it; a value too long to show whole is cut, and read-only.
 type RawTag struct {
-	Key    string   `json:"key"`
-	Values []string `json:"values"`
+	Key      string   `json:"key"`
+	Values   []string `json:"values"`
+	ReadOnly bool     `json:"readOnly,omitzero"`
 }
 
 // AlbumDetail is the response to GET /albums/{id}: an [AlbumEntry]'s fields,

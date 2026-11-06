@@ -313,7 +313,7 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "412":
-          $ref: "#/components/responses/Problem"
+          $ref: "#/components/responses/EditFailure"
         "422":
           $ref: "#/components/responses/EditFailure"
         "428":
@@ -823,6 +823,7 @@ components:
       properties:
         set: { $ref: "#/components/schemas/FieldValues" }
         clear: { $ref: "#/components/schemas/ClearedFields" }
+        tags: { $ref: "#/components/schemas/RawTagEdits" }
     TrackTagEdit:
       description: A `TagEdit` of one track, repeated (allOf does not mix with additionalProperties false).
       type: object
@@ -832,10 +833,30 @@ components:
         id: { type: string }
         set: { $ref: "#/components/schemas/FieldValues" }
         clear: { $ref: "#/components/schemas/ClearedFields" }
+        tags: { $ref: "#/components/schemas/RawTagEdits" }
     ClearedFields:
       description: Fields to remove. Any but `title`. A field also in `set` is a 400.
       type: array
       items: { type: string }
+    RawTagEdits:
+      description: >-
+        Changes to the tags no field covers, by `key` as `GET
+        /albums/{id}/tags` shows them. A key a file can't take is a 422: on any
+        format, one a field owns or one that holds pictures, chapters, gain or
+        a fingerprint; a new Vorbis key that isn't upper-case ASCII without `=`;
+        a new ID3 key that isn't upper-case or looks like a frame ID; a new M4A
+        key that isn't upper-case, and any M4A item that isn't text.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [key, values]
+        properties:
+          key: { type: string }
+          values:
+            description: The new values. Empty removes the tag.
+            type: array
+            items: { type: string }
     AlbumEdit:
       description: >-
         `all` goes to every track, and `tracks` to the ones they name, on top of
@@ -930,6 +951,12 @@ components:
           type: array
           minItems: 1
           items: { type: string }
+        readOnly:
+          type: boolean
+          description: >-
+            An edit may not touch it. Gain, fingerprints, pictures, chapters and
+            binary items are read-only, and so is a value too long to show whole,
+            which is cut.
     AlbumDetail:
       description: An album entry's properties, repeated (allOf does not mix with additionalProperties false), plus its tracks.
       type: object

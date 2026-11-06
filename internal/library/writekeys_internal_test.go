@@ -443,9 +443,9 @@ func TestMirrorsStayInStepAndDependentsGo(t *testing.T) {
 		},
 		{
 			name: "an original date", sample: sampleMP3,
-			seed: map[string][]string{"TDOR": {oldDate}},
+			seed: map[string][]string{keysOriginalDate[0]: {oldDate}},
 			edit: map[Field][]string{FieldOriginalDate: {"1977"}},
-			want: map[string][]string{"TDOR": {"1977"}},
+			want: map[string][]string{keysOriginalDate[0]: {"1977"}},
 		},
 		{
 			name: "grouping", sample: sampleMP3,
@@ -473,9 +473,9 @@ func TestMirrorsStayInStepAndDependentsGo(t *testing.T) {
 		},
 		{
 			name: "a new title with a new sort title", sample: sampleFLAC,
-			seed: map[string][]string{keysTitleSort[0]: {oldValue}, "TITLESORTEN": {oldValue}},
+			seed: map[string][]string{keysTitleSort[0]: {oldValue}, keyTitleSortEN: {oldValue}},
 			edit: map[Field][]string{FieldTitle: {newTitle}, FieldSortTitle: {sortedTitle}},
-			want: map[string][]string{keysTitleSort[0]: {sortedTitle}, "TITLESORTEN": nil},
+			want: map[string][]string{keysTitleSort[0]: {sortedTitle}, keyTitleSortEN: nil},
 		},
 		{
 			name: "lyrics copy that matches", sample: sampleFLAC,
@@ -543,7 +543,7 @@ func TestIdentityFieldsReadButRefuseEdits(t *testing.T) {
 		t.Run(string(name), func(t *testing.T) {
 			t.Parallel()
 			path := copySample(t, sampleFLAC)
-			seed(t, path, map[string][]string{"ALBUM": {albumValue}, "ARTIST": {artistValue}, "ALBUMARTIST": {artistValue}, keysCompilation[0]: {"1"}})
+			seed(t, path, map[string][]string{fields[1].flac[0]: {albumValue}, "ARTIST": {artistValue}, keysAlbumArtist[0]: {artistValue}, keysCompilation[0]: {"1"}})
 			if v := fieldsOf(t, path).Fields[name]; len(v) == 0 {
 				t.Errorf("%s reads empty", name)
 			}

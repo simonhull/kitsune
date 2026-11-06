@@ -335,6 +335,10 @@ func TestClassify(t *testing.T) {
 		{"unsupported write", audiometa.ErrUnsupportedWrite, ErrUnsupportedEdit},
 		{"DRM", audiometa.ErrDRMProtected, ErrUnsupportedEdit},
 		{"too large", audiometa.ErrTagTooLarge, ErrUnsupportedEdit},
+		{"invalid artwork", audiometa.ErrInvalidArtwork, ErrUnsupportedEdit},
+		{"conflicting edits", audiometa.ErrConflictingEdits, ErrUnsupportedEdit},
+		{"failed verification", audiometa.ErrVerifyFailed, ErrUnsupportedEdit},
+		{"concurrent change", audiometa.ErrConcurrentModification, ErrStale},
 		{"permission", fs.ErrPermission, ErrNotWritable},
 	}
 	for _, tt := range tests {

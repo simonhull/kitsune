@@ -18,6 +18,8 @@ const (
 	maxEditBody = 1 << 20
 	// retryAfterSeconds is the Retry-After of an edit the library can't take now.
 	retryAfterSeconds = "30"
+	// staleDetail is what a client whose ETag or files fell behind is told.
+	staleDetail = "the files changed since you read them; read them again"
 )
 
 // getAlbumTags answers with what a tag editor shows of an album.
@@ -52,7 +54,7 @@ func toAPITrackTags(t *library.TrackTags) api.TrackTags {
 		out.ReadOnly = append(out.ReadOnly, string(name))
 	}
 	for i := range t.Tags {
-		out.Tags[i] = api.RawTag{Key: t.Tags[i].Key, Values: t.Tags[i].Values}
+		out.Tags[i] = api.RawTag{Key: t.Tags[i].Key, Values: t.Tags[i].Values, ReadOnly: t.Tags[i].ReadOnly}
 	}
 	return out
 }
@@ -123,7 +125,7 @@ func albumEdit(req *api.AlbumEdit) (library.AlbumEdit, bool) {
 		return library.AlbumEdit{}, false
 	}
 	edit := library.AlbumEdit{All: all, Tracks: make(map[string]library.Edit, len(req.Tracks))}
-	named := len(all.Fields) > 0
+	named := !all.Empty()
 	for i := range req.Tracks {
 		tr := &req.Tracks[i]
 		own, valid := tagEdit(&tr.TagEdit)
@@ -131,13 +133,13 @@ func albumEdit(req *api.AlbumEdit) (library.AlbumEdit, bool) {
 			return library.AlbumEdit{}, false
 		}
 		edit.Tracks[tr.ID] = own
-		named = named || len(own.Fields) > 0
+		named = named || !own.Empty()
 	}
 	return edit, named
 }
 
 // tagEdit returns the edit req asks for, reporting false for a field both set and
-// cleared.
+// cleared or a tag named twice.
 func tagEdit(req *api.TagEdit) (library.Edit, bool) {
 	fields := make(map[library.Field][]string, len(req.Set)+len(req.Clear))
 	for name, values := range req.Set {
@@ -149,33 +151,43 @@ func tagEdit(req *api.TagEdit) (library.Edit, bool) {
 		}
 		fields[library.Field(name)] = nil
 	}
-	return library.Edit{Fields: fields}, true
+	tags := make(map[string][]string, len(req.Tags))
+	for i := range req.Tags {
+		tag := &req.Tags[i]
+		if _, twice := tags[tag.Key]; twice {
+			return library.Edit{}, false
+		}
+		tags[tag.Key] = tag.Values
+	}
+	return library.Edit{Fields: fields, Tags: tags}, true
 }
 
 // editFailed answers an edit that did not finish.
 func (s *Server) editFailed(w http.ResponseWriter, r *http.Request, err error) {
+	if stopped, ok := errors.AsType[*library.EditError](err); ok {
+		s.editStopped(w, r, stopped)
+		return
+	}
 	switch {
 	case errors.Is(err, library.ErrBusy):
 		w.Header().Set("Retry-After", retryAfterSeconds)
 		writeProblem(w, r, http.StatusConflict, "a scan or another edit is running")
-		return
 	case errors.Is(err, store.ErrNotFound):
-		writeProblem(w, r, http.StatusNotFound, "no such track or album")
-		return
+		writeProblem(w, r, http.StatusNotFound, "no such album")
 	case errors.Is(err, library.ErrStale):
-		writeProblem(w, r, http.StatusPreconditionFailed, "the files changed since you read them; read them again")
-		return
-	}
-	stopped, ok := errors.AsType[*library.EditError](err)
-	if !ok {
+		writeProblem(w, r, http.StatusPreconditionFailed, staleDetail)
+	default:
 		s.internalError(w, r, "edit tags", err)
-		return
 	}
+}
+
+// editStopped answers an edit that was refused or stopped, saying how far it got.
+func (s *Server) editStopped(w http.ResponseWriter, r *http.Request, stopped *library.EditError) {
 	status, detail := editStatus(stopped.Err), "internal error" // An unexpected cause stays in the log.
 	if status != http.StatusInternalServerError {
 		detail = stopped.Err.Error()
 	}
-	s.log.ErrorContext(r.Context(), "edit tags", "requestId", requestID(r.Context()), "err", err)
+	s.log.ErrorContext(r.Context(), "edit tags", "requestId", requestID(r.Context()), "err", stopped)
 	body := api.EditProblem{Problem: newProblem(r, status, detail), Changed: stopped.Changed, Remaining: stopped.Remaining}
 	writeBody(w, status, api.ProblemMediaType, &body)
 }
@@ -187,6 +199,8 @@ func editStatus(err error) int {
 		return http.StatusUnprocessableEntity
 	case errors.Is(err, library.ErrNotWritable):
 		return http.StatusForbidden
+	case errors.Is(err, library.ErrStale):
+		return http.StatusPreconditionFailed
 	}
 	return http.StatusInternalServerError
 }
