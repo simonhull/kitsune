@@ -132,6 +132,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listArtistNamesStmt, err = db.PrepareContext(ctx, listArtistNames); err != nil {
 		return nil, fmt.Errorf("error preparing query ListArtistNames: %w", err)
 	}
+	if q.listIndexAlbumsStmt, err = db.PrepareContext(ctx, listIndexAlbums); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexAlbums: %w", err)
+	}
+	if q.listIndexTrackArtistsStmt, err = db.PrepareContext(ctx, listIndexTrackArtists); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexTrackArtists: %w", err)
+	}
+	if q.listIndexTracksStmt, err = db.PrepareContext(ctx, listIndexTracks); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexTracks: %w", err)
+	}
 	if q.listOwningArtistsStmt, err = db.PrepareContext(ctx, listOwningArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListOwningArtists: %w", err)
 	}
@@ -386,6 +395,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listArtistNamesStmt: %w", cerr)
 		}
 	}
+	if q.listIndexAlbumsStmt != nil {
+		if cerr := q.listIndexAlbumsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexAlbumsStmt: %w", cerr)
+		}
+	}
+	if q.listIndexTrackArtistsStmt != nil {
+		if cerr := q.listIndexTrackArtistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexTrackArtistsStmt: %w", cerr)
+		}
+	}
+	if q.listIndexTracksStmt != nil {
+		if cerr := q.listIndexTracksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexTracksStmt: %w", cerr)
+		}
+	}
 	if q.listOwningArtistsStmt != nil {
 		if cerr := q.listOwningArtistsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listOwningArtistsStmt: %w", cerr)
@@ -576,6 +600,9 @@ type Queries struct {
 	listArtistAlbumsStmt      *sql.Stmt
 	listArtistHitsStmt        *sql.Stmt
 	listArtistNamesStmt       *sql.Stmt
+	listIndexAlbumsStmt       *sql.Stmt
+	listIndexTrackArtistsStmt *sql.Stmt
+	listIndexTracksStmt       *sql.Stmt
 	listOwningArtistsStmt     *sql.Stmt
 	listScanIssuesStmt        *sql.Stmt
 	listTrackHitArtistsStmt   *sql.Stmt
@@ -641,6 +668,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listArtistAlbumsStmt:      q.listArtistAlbumsStmt,
 		listArtistHitsStmt:        q.listArtistHitsStmt,
 		listArtistNamesStmt:       q.listArtistNamesStmt,
+		listIndexAlbumsStmt:       q.listIndexAlbumsStmt,
+		listIndexTrackArtistsStmt: q.listIndexTrackArtistsStmt,
+		listIndexTracksStmt:       q.listIndexTracksStmt,
 		listOwningArtistsStmt:     q.listOwningArtistsStmt,
 		listScanIssuesStmt:        q.listScanIssuesStmt,
 		listTrackHitArtistsStmt:   q.listTrackHitArtistsStmt,

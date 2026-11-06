@@ -57,6 +57,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   not built dynamically, which supersedes the dynamic-sorts rule in the Store section for these two.
   This also supersedes the spec's `next_cursor` and limit 500: the API says `nextCursor` and caps
   `limit` at 200.
+- `GET /library/index` is the one browse list that doesn't page: the client needs every row's height
+  to place the scrollbar and the rail. Its order lives in `orderIndex`, and nowhere else.
 - Tag edits are one route, `POST /albums/{id}/edits`, and `GET /albums/{id}/tags` reads what an editor
   shows, from the files. The validator is the album's `etag` field in the body, a hash of
   `ulid:size:mtime_ms` per track, and not a response header. Clients send it back verbatim as

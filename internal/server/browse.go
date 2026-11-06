@@ -159,6 +159,51 @@ func (s *Server) getLibrary(w http.ResponseWriter, r *http.Request) {
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
 
+// getLibraryIndex lists every song, by artist and album. A client that goes away
+// is no fault: a canceled query reads as an interrupted one.
+func (s *Server) getLibraryIndex(w http.ResponseWriter, r *http.Request) {
+	index, err := s.library.LibraryIndex(r.Context())
+	if r.Context().Err() != nil {
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, "library index", err)
+		return
+	}
+	body := toAPILibraryIndex(&index)
+	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+}
+
+// toAPILibraryIndex returns the wire form of the library index.
+func toAPILibraryIndex(index *store.LibraryIndex) api.LibraryIndex {
+	out := api.LibraryIndex{Artists: make([]api.LibraryArtist, len(index.Artists))}
+	for i := range index.Artists {
+		a := &index.Artists[i]
+		out.Artists[i] = api.LibraryArtist{
+			ID: a.ID, Name: a.Name, SortName: a.SortName, Albums: make([]api.LibraryAlbum, len(a.Albums)),
+		}
+		for j := range a.Albums {
+			out.Artists[i].Albums[j] = toAPILibraryAlbum(&a.Albums[j])
+		}
+	}
+	return out
+}
+
+func toAPILibraryAlbum(a *store.IndexAlbum) api.LibraryAlbum {
+	out := api.LibraryAlbum{
+		ID: a.ID, Title: a.Title, Artist: a.Artist, Compilation: a.Compilation, Year: a.Year,
+		Artwork: toAPIArtwork(a.Cover), Tracks: make([]api.LibraryTrack, len(a.Tracks)),
+	}
+	for i := range a.Tracks {
+		t := &a.Tracks[i]
+		out.Tracks[i] = api.LibraryTrack{
+			ID: t.ID, Title: t.Title, DurationMs: t.Duration.Milliseconds(),
+			Artists: append([]string{}, t.Artists...), DiscNo: t.DiscNo, TrackNo: t.TrackNo,
+		}
+	}
+	return out
+}
+
 // toAPIScan returns the wire form of p. Only an administrator sees why a scan
 // failed.
 func toAPIScan(p library.Progress, admin bool) api.ScanStatus {
