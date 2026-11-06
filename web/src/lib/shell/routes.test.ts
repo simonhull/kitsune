@@ -34,6 +34,11 @@ describe('the route table', () => {
 		expect(journeyOf('/search')).toBe('search');
 	});
 
+	it('has no current item on Health, which blends and dresses as Home', () => {
+		expect(navOf('/health')).toMatchObject({ look: 'home', current: null });
+		expect(journeyOf('/health')).toBe('health');
+	});
+
 	it('gives every route a journey name', () => {
 		for (const id of routeIds) {
 			expect(journeyOf(id)).toBeDefined();

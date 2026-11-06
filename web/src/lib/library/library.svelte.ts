@@ -9,11 +9,13 @@ import {
 	defaultScanGap,
 	scanStart
 } from './fixtures.ts';
+import { healthFixture } from './healthFixtures.ts';
 import { Outbox } from './outbox.ts';
 import { Search } from './search.svelte.ts';
 import {
 	AlbumNotFoundError,
 	ArtistNotFoundError,
+	ServerError,
 	UnauthorizedError,
 	type Album,
 	type AlbumEntry,
@@ -22,6 +24,9 @@ import {
 	type ArtistLink,
 	type LibraryFacts,
 	type LibrarySource,
+	type ScanIssues,
+	type ScanMode,
+	type ScanRefusal,
 	type User
 } from './source.ts';
 
@@ -39,6 +44,8 @@ const probeMs = 30_000;
 const restartGraceMs = 1500;
 /** How often the deck asks what the scan has found. */
 const scanPollMs = 1000;
+/** How often anyone else asks how a running scan is doing. */
+const progressPollMs = 1000;
 /** How much of the newest end of the library each of those asks for. */
 const feedSize = 100;
 /** The most cards on the pile at once: older ones have left the DOM, under it. */
@@ -148,6 +155,8 @@ export class Library {
 	playing = $state.raw<NowPlaying | null>(null);
 	/** The artists who own an album, by name. */
 	artists = $state.raw<Load<ArtistEntry[]>>({ kind: 'loading' });
+	/** What scans had trouble with, for administrators. */
+	issues = $state.raw<Load<ScanIssues>>({ kind: 'loading' });
 	/** Sends the app to the door. Set by the shell once it can navigate. */
 	onExpired: (() => Promise<void>) | null = null;
 	/** The search page's question and answer, kept while the page is away. */
@@ -182,6 +191,8 @@ export class Library {
 	readonly #outbox: Outbox;
 	#waited = false;
 	#scanPoll: ReturnType<typeof setTimeout> | undefined;
+	/** Set while a running scan is being followed, so there's only ever one of these. */
+	#progressPoll: ReturnType<typeof setTimeout> | undefined;
 	/** Running while the spacing after the last card lasts, or a hidden tab waits. */
 	#throwing: ReturnType<typeof setTimeout> | undefined;
 	/** Everything the feed has already handed over, so no album lands twice. */
@@ -206,6 +217,11 @@ export class Library {
 		this.#readyMemory =
 			options.readyMemory ?? readyMemoryIn(() => localStorage, 'kitsune:ready-seen');
 		this.#outbox = new Outbox(options.outbox ?? (() => localStorage), this.#source);
+	}
+
+	/** Whether the signed-in user may run scans and see paths. */
+	get admin(): boolean {
+		return this.user?.role === 'admin';
 	}
 
 	/** Takes the player on: everything the library forgets, it forgets too. */
@@ -357,6 +373,7 @@ export class Library {
 				open();
 			}
 			this.leaveDeck();
+			this.#watchScan();
 			if (facts.albums === 0) {
 				this.#retryLater(() => this.#pollForAlbums());
 			}
@@ -386,6 +403,103 @@ export class Library {
 		}
 		if (epoch === this.#epoch) {
 			this.#retryLater(() => this.#pollForAlbums());
+		}
+	}
+
+	/** Reads the counts now. A scan this finds running is followed to its end. */
+	async refreshFacts(): Promise<void> {
+		const epoch = this.#epoch;
+		try {
+			const facts = await this.#source.facts();
+			if (epoch === this.#epoch && !this.deck) {
+				this.facts = facts;
+				this.#watchScan();
+			}
+		} catch {
+			// The counts on screen stand, and a lost session has gone to the door.
+		}
+	}
+
+	/** Polls only while a scan runs. The deck follows a first scan its own way. */
+	#watchScan(delayMs = progressPollMs): void {
+		if (this.#progressPoll === undefined && !this.deck && this.facts?.scan.state === 'running') {
+			this.#progressPoll = setTimeout(() => void this.#pollProgress(), delayMs);
+		}
+	}
+
+	async #pollProgress(): Promise<void> {
+		const epoch = this.#epoch;
+		let retryIn = progressPollMs;
+		try {
+			let facts = await this.#source.facts();
+			if (facts.scan.state === 'idle') {
+				// The server reads the counts before the status, so these can be from just before the end.
+				facts = await this.#source.facts();
+			}
+			if (epoch !== this.#epoch) {
+				return;
+			}
+			this.facts = facts;
+			this.down = false;
+		} catch (error) {
+			if (epoch !== this.#epoch || error instanceof UnauthorizedError) {
+				return;
+			}
+			this.down = true;
+			retryIn = retryMs;
+		}
+		this.#progressPoll = undefined;
+		this.#watchScan(retryIn);
+	}
+
+	/** Starts a scan and follows it. Reports why it didn't start, or null if there's one to watch. */
+	async startScan(mode: ScanMode): Promise<ScanRefusal | null> {
+		const epoch = this.#epoch;
+		try {
+			const scan = await this.#source.startScan(mode);
+			if (epoch === this.#epoch && this.facts !== null) {
+				this.facts = { ...this.facts, scan };
+				this.#watchScan();
+			}
+			if (scan.state === 'idle') {
+				// It was over before the answer left: there's nothing to follow, only counts to read.
+				await this.refreshFacts();
+			}
+			return null;
+		} catch (error) {
+			if (error instanceof UnauthorizedError) {
+				return null;
+			}
+			if (!(error instanceof ServerError)) {
+				return 'unavailable';
+			}
+			if (error.status === 409) {
+				await this.refreshFacts();
+				return null;
+			}
+			if (error.status === 403) {
+				return 'forbidden';
+			}
+			return error.status === 503 ? 'stopping' : 'unavailable';
+		}
+	}
+
+	/** Asks what scans had trouble with. A list already here stays through a refresh. */
+	async loadIssues(): Promise<void> {
+		const epoch = this.#epoch;
+		if (this.issues.kind !== 'ready') {
+			this.issues = { kind: 'loading' };
+		}
+		try {
+			const issues = await this.#source.issues();
+			if (epoch === this.#epoch) {
+				this.issues = { kind: 'ready', value: issues };
+			}
+		} catch (error) {
+			const lost = this.issues.kind !== 'ready' && !(error instanceof UnauthorizedError);
+			if (epoch === this.#epoch && lost) {
+				this.issues = { kind: 'unavailable' };
+			}
 		}
 	}
 
@@ -716,6 +830,8 @@ export class Library {
 	/** Forgets everything the last session saw. */
 	reset(): void {
 		clearTimeout(this.#retry);
+		clearTimeout(this.#progressPoll);
+		this.#progressPoll = undefined;
 		this.#stopFollowing();
 		this.#epoch += 1;
 		this.#waited = false;
@@ -735,6 +851,7 @@ export class Library {
 		this.#missing.clear();
 		this.#unavailable.clear();
 		this.artists = { kind: 'loading' };
+		this.issues = { kind: 'loading' };
 		this.#artists.clear();
 		this.#artistNames.clear();
 		this.search.reset();
@@ -748,12 +865,14 @@ function fromQuery(): Library {
 		return new Library((expired) => createApiSource({ onUnauthorized: expired }));
 	}
 	const latencyMs = Number(query.get('latency') ?? 0);
+	const health = healthFixture(query.get('health'));
+	const role = query.get('role') === 'user' ? 'user' : 'admin';
 	const pinnedAlbumId = query.get('playing') ?? undefined;
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
 		const readyMemory = { seen: () => false, mark: () => undefined };
-		return new Library(createFixtureSource({ latencyMs }), {
+		return new Library(createFixtureSource({ latencyMs, health, role }), {
 			pinnedAlbumId,
 			readyMemory,
 			simulated: true

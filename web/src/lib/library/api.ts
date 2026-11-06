@@ -13,6 +13,8 @@ import {
 	type LibrarySource,
 	type LoginFailure,
 	type PlayReport,
+	type ScanIssues,
+	type ScanStatus,
 	type SearchResults,
 	type User
 } from './source.ts';
@@ -167,6 +169,15 @@ export function createApiSource({
 			return read<SearchResults>(`/search?${search.toString()}`, signal && { signal });
 		},
 
-		streamUrl: (trackId) => `${base}/tracks/${encodeURIComponent(trackId)}/stream`
+		streamUrl: (trackId) => `${base}/tracks/${encodeURIComponent(trackId)}/stream`,
+
+		startScan: (mode) =>
+			read<ScanStatus>('/admin/library/scan', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ mode })
+			}),
+
+		issues: () => read<ScanIssues>('/admin/library/issues')
 	};
 }

@@ -1,4 +1,5 @@
 import { fnv1a } from '#lib/cover/cover.ts';
+import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
 	AlbumNotFoundError,
 	ArtistNotFoundError,
@@ -10,8 +11,8 @@ import {
 	type ArtistDetail,
 	type ArtistEntry,
 	type ArtistLink,
-	type LibraryFacts,
 	type LibrarySource,
+	type ScanStatus,
 	type SearchResults,
 	type Track,
 	type TrackHit,
@@ -167,13 +168,8 @@ const user: User = {
 	createdAt: '2026-01-01T00:00:00Z'
 };
 
-const facts: LibraryFacts = {
-	albums: albums.size,
-	tracks: 82,
-	durationMs: 21_480_000,
-	roots: 2,
-	issues: 3
-};
+/** The boards' counts, the real library's: the fake one is only a window onto it. */
+const counts = { albums: 927, tracks: 7586, durationMs: 1_677_087_013, roots: 2 };
 
 const artistNames = [...albums.values()].flatMap((album) =>
 	album.tracks.flatMap((entry) => entry.artists)
@@ -252,11 +248,16 @@ function find(query: string): SearchResults {
 export interface FixtureOptions {
 	/** Delay every response by this many milliseconds, as a real server would. */
 	latencyMs?: number;
+	/** The state the Health page opens on. */
+	health?: HealthFixture;
+	role?: User['role'];
 }
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
 export function createFixtureSource(options: FixtureOptions = {}): LibrarySource {
-	const { latencyMs = 0 } = options;
+	const { latencyMs = 0, health = 'idle', role = 'admin' } = options;
+	const signedIn: User = { ...user, role };
+	const scans = createHealthFixture(health, role);
 
 	async function respond<T>(answer: () => T): Promise<T> {
 		if (latencyMs > 0) {
@@ -266,17 +267,17 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	}
 
 	return {
-		me: () => respond(() => user),
-		sessionUser: () => respond(() => user),
+		me: () => respond(() => signedIn),
+		sessionUser: () => respond(() => signedIn),
 		reportPlay: () => respond(() => undefined),
 		login: (name) =>
 			respond(() => {
 				if (name === '') {
 					throw new LoginError({ kind: 'credentials' });
 				}
-				return user;
+				return signedIn;
 			}),
-		facts: () => respond(() => facts),
+		facts: () => respond(() => ({ ...counts, ...scans.facts() })),
 		ready: () => respond(() => true),
 		albumsPage: (sort, _cursor, limit) =>
 			respond(() => ({ albums: (sort === 'added' ? newestFirst : byName).slice(0, limit) })),
@@ -303,7 +304,9 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				return find(query);
 			}),
 		// Never fetched: the fixtures play on a silent clock.
-		streamUrl: (trackId) => `fixture:${trackId}`
+		streamUrl: (trackId) => `fixture:${trackId}`,
+		startScan: (mode) => respond(() => scans.start(mode)),
+		issues: () => respond(() => scans.issues())
 	};
 }
 
@@ -397,6 +400,18 @@ export function createScanFixtureSource({
 		};
 	}
 
+	function statusAt(read: number): ScanStatus {
+		return now() - startedAt >= scanMs
+			? { state: 'idle', read: 0, total: 0 }
+			: {
+					state: 'running',
+					mode: 'quick',
+					read,
+					total: scanLibrary * 8,
+					startedAt: new Date(startedAt).toISOString()
+				};
+	}
+
 	async function respond<T>(answer: () => T): Promise<T> {
 		await base.ready();
 		return answer();
@@ -412,7 +427,9 @@ export function createScanFixtureSource({
 					tracks: albums * 8,
 					durationMs: albums * 8 * 240_000,
 					roots: 1,
-					issues: 0
+					issues: 0,
+					issueCounts: { unreadable: 0, corrupted: 0, unsupported: 0, warnings: 0 },
+					scan: statusAt(albums * 8)
 				};
 			}),
 		ready: () => respond(() => now() - startedAt >= scanMs),

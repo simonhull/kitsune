@@ -1,10 +1,10 @@
 import type { LibraryFacts } from './source.ts';
 
-function count(value: number): string {
+export function count(value: number): string {
 	return value.toLocaleString('en-US');
 }
 
-function plural(value: number, one: string, many: string): string {
+export function plural(value: number, one: string, many: string): string {
 	return `${count(value)} ${value === 1 ? one : many}`;
 }
 

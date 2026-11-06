@@ -66,6 +66,26 @@ describe('ApiSource', () => {
 		expect(send.mock.calls.at(0)?.at(0)).toBe('/api/v1/albums?sort=name&cursor=abc&limit=6');
 	});
 
+	it('starts a scan with the CSRF header, and hands back where it stands', async () => {
+		const { send, source } = fake(json(202, { state: 'running', read: 0, total: 0 }));
+		await expect(source.startScan('full')).resolves.toMatchObject({ state: 'running' });
+		expect(send.mock.calls.at(0)?.at(0)).toBe('/api/v1/admin/library/scan');
+		expect(init(send).method).toBe('POST');
+		expect(init(send).body).toBe('{"mode":"full"}');
+		expect(init(send).headers).toHaveProperty('X-Kitsune-Request', '1');
+	});
+
+	it('refuses a second scan with its status', async () => {
+		const { source } = fake(json(409));
+		await expect(source.startScan('quick')).rejects.toMatchObject({ status: 409 });
+	});
+
+	it('lists the issues', async () => {
+		const { send, source } = fake(json(200, { issues: [], warnings: [] }));
+		await expect(source.issues()).resolves.toEqual({ issues: [], warnings: [] });
+		expect(send.mock.calls.at(0)?.at(0)).toBe('/api/v1/admin/library/issues');
+	});
+
 	it('sends the app to the door on a 401, from any call', async () => {
 		const { onUnauthorized, source } = fake(json(401));
 		await expect(source.facts()).rejects.toBeInstanceOf(UnauthorizedError);

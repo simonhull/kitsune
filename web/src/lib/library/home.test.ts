@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { emptyLine, greeting, healthNote, listeningTime, summary, trackCount } from './home';
 import type { LibraryFacts } from './source';
 
-const facts: LibraryFacts = { albums: 927, tracks: 7586, durationMs: 0, roots: 1, issues: 0 };
+const facts: LibraryFacts = {
+	albums: 927,
+	tracks: 7586,
+	durationMs: 0,
+	roots: 1,
+	issues: 0,
+	issueCounts: { unreadable: 0, corrupted: 0, unsupported: 0, warnings: 0 },
+	scan: { state: 'idle', read: 0, total: 0 }
+};
 
 describe('greeting', () => {
 	it.each([

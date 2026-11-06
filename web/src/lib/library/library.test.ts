@@ -23,9 +23,200 @@ function track(id: string): Track {
 	return { id, title: id, artists: [], durationMs: 100_000, format: 'FLAC' };
 }
 
+/** Nothing to report: what a library says with no scan running. */
+const noTrouble: Pick<LibraryFacts, 'issues' | 'issueCounts' | 'scan'> = {
+	issues: 0,
+	issueCounts: { unreadable: 0, corrupted: 0, unsupported: 0, warnings: 0 },
+	scan: { state: 'idle', read: 0, total: 0 }
+};
+
 function forgetful(seen = false): ReadyMemory {
 	return { seen: () => seen, mark: () => undefined };
 }
+
+describe('following a scan', () => {
+	const running = {
+		...noTrouble,
+		scan: { state: 'running', mode: 'full', read: 10, total: 100 }
+	} as const;
+
+	function facts(extra: Partial<LibraryFacts>): LibraryFacts {
+		return { albums: 1, tracks: 8, durationMs: 0, roots: 1, ...noTrouble, ...extra };
+	}
+
+	/** A library whose counts the test sets, opened and ready. */
+	async function opened(first: LibraryFacts, overrides: Partial<LibrarySource> = {}) {
+		const read = vi.fn<LibrarySource['facts']>(() => Promise.resolve(first));
+		const library = new Library(source({ facts: read, ...overrides }), {
+			readyMemory: forgetful(true)
+		});
+		await library.loadShell();
+		read.mockClear();
+		return { library, read };
+	}
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('asks nothing while no scan runs', async () => {
+		vi.useFakeTimers();
+		const { library, read } = await opened(facts({}));
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(read).not.toHaveBeenCalled();
+		library.reset();
+	});
+
+	it('polls a scan it finds running, on any page, and stops when it ends', async () => {
+		vi.useFakeTimers();
+		const { library, read } = await opened(facts(running));
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(read).toHaveBeenCalledTimes(3);
+
+		read.mockResolvedValue(facts({ tracks: 9 }));
+		read.mockClear();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(library.facts?.scan.state).toBe('idle');
+		expect(library.facts?.tracks).toBe(9);
+		// One to see the end, one for counts read after it. Then nothing.
+		expect(read).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(read).toHaveBeenCalledTimes(2);
+		library.reset();
+	});
+
+	it('takes its counts from a read after the end, not the one that saw it', async () => {
+		vi.useFakeTimers();
+		const { library, read } = await opened(facts(running));
+		read.mockResolvedValueOnce(facts({ tracks: 8 }));
+		read.mockResolvedValue(facts({ tracks: 12 }));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(library.facts?.tracks).toBe(12);
+		library.reset();
+	});
+
+	it('finds a scan that began unseen when asked, and follows it', async () => {
+		vi.useFakeTimers();
+		const { library, read } = await opened(facts({}));
+		read.mockResolvedValue(facts(running));
+		await library.refreshFacts();
+		read.mockClear();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(read).toHaveBeenCalledOnce();
+		library.reset();
+	});
+
+	it('leaves a first scan to the deck, and picks it up if the deck ends with one running', async () => {
+		vi.useFakeTimers();
+		const scanning = facts({ albums: 0, tracks: 0, ...running });
+		const read = vi.fn<LibrarySource['facts']>(() => Promise.resolve(scanning));
+		const library = new Library(source({ facts: read, ready: () => Promise.resolve(false) }), {
+			readyMemory: forgetful()
+		});
+		await library.loadShell();
+		expect(library.deck).toBe(true);
+		read.mockClear();
+		await vi.advanceTimersByTimeAsync(3000);
+		// The deck's own poll, and no second one beside it.
+		expect(read).toHaveBeenCalledTimes(3);
+		library.reset();
+	});
+
+	it('says the server has gone quiet mid-scan, and slows down until it answers', async () => {
+		vi.useFakeTimers();
+		const { library, read } = await opened(facts(running));
+		read.mockRejectedValue(new TypeError('offline'));
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(library.down).toBe(true);
+		read.mockClear();
+		await vi.advanceTimersByTimeAsync(4999);
+		expect(read).not.toHaveBeenCalled();
+		read.mockResolvedValue(facts({}));
+		await vi.advanceTimersByTimeAsync(1);
+		expect(library.down).toBe(false);
+		expect(library.facts?.scan.state).toBe('idle');
+		library.reset();
+	});
+
+	it('stops polling on sign-out', async () => {
+		vi.useFakeTimers();
+		const { library, read } = await opened(facts(running));
+		library.reset();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(read).not.toHaveBeenCalled();
+	});
+
+	it('shows a scan it started at once, then follows it', async () => {
+		vi.useFakeTimers();
+		const startScan = vi.fn<LibrarySource['startScan']>(() => Promise.resolve(running.scan));
+		const { library, read } = await opened(facts({}), { startScan });
+		read.mockResolvedValue(facts(running));
+		await expect(library.startScan('full')).resolves.toBeNull();
+		expect(startScan).toHaveBeenCalledWith('full');
+		expect(library.facts?.scan.state).toBe('running');
+		expect(read).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(read).toHaveBeenCalledOnce();
+		library.reset();
+	});
+
+	it('reads the counts of a scan that was over before the answer left', async () => {
+		const startScan = vi.fn<LibrarySource['startScan']>(() => Promise.resolve(noTrouble.scan));
+		const { library, read } = await opened(facts({}), { startScan });
+		read.mockResolvedValue(facts({ tracks: 9 }));
+		await library.startScan('quick');
+		expect(library.facts?.tracks).toBe(9);
+	});
+
+	it('treats a 409 as a scan to watch, not as a failure', async () => {
+		vi.useFakeTimers();
+		const startScan = () => Promise.reject(new ServerError(409));
+		const { library, read } = await opened(facts({}), { startScan });
+		read.mockResolvedValue(facts(running));
+		await expect(library.startScan('full')).resolves.toBeNull();
+		expect(library.facts?.scan.state).toBe('running');
+		library.reset();
+	});
+
+	it('says why a scan did not start', async () => {
+		const refused = async (error: Error) => {
+			const { library } = await opened(facts({}), { startScan: () => Promise.reject(error) });
+			return library.startScan('quick');
+		};
+		await expect(refused(new ServerError(403))).resolves.toBe('forbidden');
+		await expect(refused(new ServerError(503))).resolves.toBe('stopping');
+		await expect(refused(new ServerError(500))).resolves.toBe('unavailable');
+		await expect(refused(new TypeError('off'))).resolves.toBe('unavailable');
+		await expect(refused(new UnauthorizedError())).resolves.toBeNull();
+	});
+
+	it('knows an admin from anyone else', async () => {
+		const admin = new Library(source());
+		await admin.checkSession();
+		expect(admin.admin).toBe(true);
+		const user = new Library(createFixtureSource({ role: 'user' }));
+		await user.checkSession();
+		expect(user.admin).toBe(false);
+	});
+
+	it('loads the issues, and keeps a list through a failed refresh', async () => {
+		const issues = vi.fn(createFixtureSource().issues);
+		const library = new Library(source({ issues }));
+		await library.loadIssues();
+		expect(library.issues.kind).toBe('ready');
+		issues.mockRejectedValueOnce(new ServerError(500));
+		await library.loadIssues();
+		expect(library.issues.kind).toBe('ready');
+	});
+
+	it('says when the issues could not be loaded, and forgets them on sign-out', async () => {
+		const library = new Library(source({ issues: () => Promise.reject(new ServerError(500)) }));
+		await library.loadIssues();
+		expect(library.issues.kind).toBe('unavailable');
+		library.reset();
+		expect(library.issues.kind).toBe('loading');
+	});
+});
 
 describe('Library', () => {
 	it('remembers the albums a search found, for the next first frame', async () => {
@@ -223,7 +414,7 @@ describe('Library', () => {
 
 	it('asks only for counts on a ready library with nothing in it, until it has something', async () => {
 		vi.useFakeTimers();
-		const empty = { albums: 0, tracks: 0, durationMs: 0, roots: 1, issues: 0 };
+		const empty = { albums: 0, tracks: 0, durationMs: 0, roots: 1, ...noTrouble };
 		const facts = vi.fn<LibrarySource['facts']>(() => Promise.resolve(empty));
 		const albumsPage = vi.fn<LibrarySource['albumsPage']>(() => Promise.resolve({ albums: [] }));
 		const library = new Library(source({ facts, albumsPage }), { readyMemory: forgetful() });
@@ -244,7 +435,7 @@ describe('Library', () => {
 
 	it('does not open the deck with no roots to scan', async () => {
 		vi.useFakeTimers();
-		const none = { albums: 0, tracks: 0, durationMs: 0, roots: 0, issues: 0 };
+		const none = { albums: 0, tracks: 0, durationMs: 0, roots: 0, ...noTrouble };
 		const library = new Library(
 			source({ facts: () => Promise.resolve(none), ready: () => Promise.resolve(false) }),
 			{ readyMemory: forgetful() }
@@ -287,7 +478,7 @@ class Scripted {
 
 	get facts(): LibraryFacts {
 		const { found: albums } = this;
-		return { albums, tracks: albums * 8, durationMs: 0, roots: 1, issues: 0 };
+		return { albums, tracks: albums * 8, durationMs: 0, roots: 1, ...noTrouble };
 	}
 
 	source(): LibrarySource {

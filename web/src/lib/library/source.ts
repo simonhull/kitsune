@@ -116,6 +116,81 @@ export interface LibraryFacts {
 	roots: number;
 	/** Files the scanner could not read. */
 	issues: number;
+	issueCounts: IssueCounts;
+	scan: ScanStatus;
+}
+
+export interface IssueCounts {
+	/** An I/O or permission error stopped them. They are tried again every scan. */
+	unreadable: number;
+	/** Structurally broken. */
+	corrupted: number;
+	/** Of a format Kitsune can't read. */
+	unsupported: number;
+	/** Live tracks read with warnings. They play, and `issues` leaves them out. */
+	warnings: number;
+}
+
+export type IssueKind = 'unreadable' | 'corrupted' | 'unsupported';
+
+/** A file a scan had trouble with. */
+export interface ScanIssue {
+	/** Relative to its library root. */
+	path: string;
+	kind: IssueKind;
+	message: string;
+}
+
+/** A track that plays, and that a scan had something to say about. */
+export interface TrackWarned {
+	trackId: string;
+	/** Relative to its library root. */
+	path: string;
+	messages: string[];
+}
+
+export interface ScanIssues {
+	issues: ScanIssue[];
+	warnings: TrackWarned[];
+}
+
+export type ScanMode = 'quick' | 'full';
+
+/** Why a scan didn't start. A scan already running is no refusal: there's a scan to watch. */
+export type ScanRefusal = 'forbidden' | 'stopping' | 'unavailable';
+
+/** Where scanning stands. Idle, only `last` says anything. */
+export interface ScanStatus {
+	state: 'idle' | 'running';
+	mode?: ScanMode;
+	read: number;
+	/** Files the scan has to read. 0 until it has walked the roots. */
+	total: number;
+	startedAt?: string;
+	/** Held in the server's memory: a restart starts over. */
+	last?: ScanResult;
+}
+
+/** How the last scan to end went. */
+export interface ScanResult {
+	mode: ScanMode;
+	outcome: 'finished' | 'failed';
+	startedAt: string;
+	endedAt: string;
+	/** Audio files found under the roots. */
+	seen: number;
+	read: number;
+	added: number;
+	updated: number;
+	moved: number;
+	missing: number;
+	deleted: number;
+	/** Files this scan read and could not use. */
+	issues: number;
+	/** Roots left alone because they looked like an outage. */
+	skippedRoots: number;
+	/** Why it failed. Administrators only. */
+	error?: string;
 }
 
 export type AlbumSort = 'added' | 'name';
@@ -154,6 +229,10 @@ export interface LibrarySource {
 	search(query: string, signal?: AbortSignal): Promise<SearchResults>;
 	/** The URL a track's audio streams from. */
 	streamUrl(trackId: string): string;
+	/** Starts a scan. Rejects with a {@link ServerError}: 409 when one is running, 503 at shutdown. */
+	startScan(mode: ScanMode): Promise<ScanStatus>;
+	/** What scans had trouble with, for administrators. */
+	issues(): Promise<ScanIssues>;
 }
 
 export class AlbumNotFoundError extends Error {

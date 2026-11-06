@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import {
 		emptyLine,
 		greeting,
@@ -45,14 +46,19 @@
 				<section aria-label="Overview" class="overview">
 					{#if feature !== undefined}<FeatureTile album={feature} />{/if}
 
-					<div class="health" data-morph-part="card" data-morph-key="health">
+					<a
+						class="health"
+						href={resolve('/health')}
+						data-morph-part="card"
+						data-morph-key="health"
+					>
 						<span class="fox-mark"><Icon name="fox" size={220} /></span>
 						<span class="label">Library health</span>
 						<span class="figure">
 							<span class="number">{facts.issues.toLocaleString('en-US')}</span>
 							<span class="note">{healthNote(facts.issues)}</span>
 						</span>
-					</div>
+					</a>
 
 					<div class="week" data-morph-part="card" data-morph-key="stats">
 						<span class="label">Your library</span>
@@ -156,6 +162,10 @@
 	.health {
 		background: var(--fox);
 		color: var(--fox-ink);
+	}
+
+	.health:hover {
+		background: color-mix(in srgb, var(--fox) 90%, var(--text));
 	}
 
 	.fox-mark {
