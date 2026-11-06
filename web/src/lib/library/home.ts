@@ -1,4 +1,4 @@
-import type { LibraryFacts } from './source.ts';
+import type { IssueCounts, LibraryFacts } from './source.ts';
 
 export function count(value: number): string {
 	return value.toLocaleString('en-US');
@@ -40,12 +40,16 @@ export function emptyLine({ roots }: LibraryFacts, scanning: boolean): string {
 		: 'The scan found no music in your folders.';
 }
 
+/** The noun phrase the Health number means. "Yet" is a promise about a format, never a fault. */
+export function issuesNoun({ unreadable, corrupted, unsupported }: IssueCounts): string {
+	const issues = unreadable + corrupted + unsupported;
+	const noun = issues === 1 ? 'file' : 'files';
+	return unsupported === issues ? `${noun} Kitsune can't read yet` : `${noun} Kitsune can't read`;
+}
+
 /** What the Health tile's number means. It must agree with the number, at 0, 1 and N. */
-export function healthNote(issues: number): string {
-	if (issues === 0) {
-		return 'Every file was read';
-	}
-	return issues === 1 ? '1 file could not be read' : `${count(issues)} files could not be read`;
+export function healthNote(issues: number, counts: IssueCounts): string {
+	return issues === 0 ? 'Every file was read' : `${count(issues)} ${issuesNoun(counts)}`;
 }
 
 export function trackCount(tracks: number): string {

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
 	allClear,
 	issueGroups,
-	issuesNoun,
 	lastScan,
 	minutesLeft,
 	refusalLine,
@@ -253,16 +252,6 @@ describe('standing', () => {
 	});
 });
 
-describe('issuesNoun', () => {
-	it('promises nothing about a file that is damaged', () => {
-		expect(issuesNoun({ ...noCounts, unsupported: 2 })).toBe("files Kitsune can't read yet");
-		expect(issuesNoun({ ...noCounts, unsupported: 2, corrupted: 1 })).toBe(
-			"files Kitsune can't read"
-		);
-		expect(issuesNoun({ ...noCounts, unreadable: 1 })).toBe("file Kitsune can't read");
-	});
-});
-
 describe('scanHelp', () => {
 	it('says the Full scan will not touch what is listed, when something is', () => {
 		const help = scanHelp({ ...facts, issues: 2 });
@@ -326,7 +315,7 @@ describe('issueGroups', () => {
 
 describe('warningLine', () => {
 	it('agrees at 1 and N', () => {
-		expect(warningLine(1)).toBe('1 track played but left a note');
-		expect(warningLine(1200)).toBe('1,200 tracks played but left a note');
+		expect(warningLine(1)).toBe('1 track read fine but left a note');
+		expect(warningLine(1200)).toBe('1,200 tracks read fine but left a note');
 	});
 });

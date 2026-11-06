@@ -49,10 +49,21 @@ describe('emptyLine', () => {
 });
 
 describe('healthNote', () => {
+	const none = facts.issueCounts;
+
 	it('agrees with the number at 0, 1 and N', () => {
-		expect(healthNote(0)).toBe('Every file was read');
-		expect(healthNote(1)).toBe('1 file could not be read');
-		expect(healthNote(1600)).toBe('1,600 files could not be read');
+		expect(healthNote(0, none)).toBe('Every file was read');
+		expect(healthNote(1, { ...none, unsupported: 1 })).toBe("1 file Kitsune can't read yet");
+		expect(healthNote(1600, { ...none, unsupported: 1600 })).toBe(
+			"1,600 files Kitsune can't read yet"
+		);
+	});
+
+	it('promises nothing about a file that is damaged', () => {
+		expect(healthNote(3, { ...none, unsupported: 2, corrupted: 1 })).toBe(
+			"3 files Kitsune can't read"
+		);
+		expect(healthNote(1, { ...none, unreadable: 1 })).toBe("1 file Kitsune can't read");
 	});
 });
 

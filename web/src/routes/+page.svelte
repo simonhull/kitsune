@@ -56,7 +56,7 @@
 						<span class="label">Library health</span>
 						<span class="figure">
 							<span class="number">{facts.issues.toLocaleString('en-US')}</span>
-							<span class="note">{healthNote(facts.issues)}</span>
+							<span class="note">{healthNote(facts.issues, facts.issueCounts)}</span>
 						</span>
 					</a>
 

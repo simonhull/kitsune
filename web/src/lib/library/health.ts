@@ -1,4 +1,4 @@
-import { count, emptyLine, plural } from './home.ts';
+import { count, emptyLine, issuesNoun, plural } from './home.ts';
 import type {
 	IssueCounts,
 	IssueKind,
@@ -195,13 +195,6 @@ export function refusalLine(refusal: ScanRefusal): string {
 	return refusals[refusal];
 }
 
-/** The noun phrase the number on Health means. "Yet" is only a promise for a format, not a fault. */
-export function issuesNoun({ unreadable, corrupted, unsupported }: IssueCounts): string {
-	const issues = unreadable + corrupted + unsupported;
-	const noun = issues === 1 ? 'file' : 'files';
-	return unsupported === issues ? `${noun} Kitsune can't read yet` : `${noun} Kitsune can't read`;
-}
-
 /** One kind of issue, as the panel shows it. */
 export interface IssueGroup {
 	kind: IssueKind;
@@ -259,5 +252,5 @@ export function issueGroups(counts: IssueCounts, files: readonly ScanIssue[]): I
 
 /** The note about tracks that read with warnings. They play, so this is never an alarm. */
 export function warningLine(warnings: number): string {
-	return `${plural(warnings, 'track', 'tracks')} played but left a note`;
+	return `${plural(warnings, 'track', 'tracks')} read fine but left a note`;
 }
