@@ -7,6 +7,10 @@ golangci-lint = "2.15.0"
 description = "Build everything without cgo, plus a race build (mirrors CI)"
 run = ["CGO_ENABLED=0 go build ./...", "go build -race ./..."]
 
+[tasks.release]
+description = "Build dist/kitsune-server with the web client inside it"
+run = "sh scripts/build.sh"
+
 [tasks.nocgo]
 description = "Fail if any non-standard package, dependencies and test deps included, uses C interop"
 run = "sh scripts/nocgo.sh"

@@ -10,6 +10,7 @@ package server
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -48,12 +49,16 @@ type Config struct {
 	// Context bounds tag edits. Nil means context.Background. An edit runs on it and
 	// not on the request, so a client that goes away can't stop an album midway.
 	Context context.Context //nolint:containedctx // The server's lifetime, not a request's.
+	// Web is the built client, served for what isn't the API. Nil means none. A
+	// BasePath leaves it out: the client's paths are fixed to the root of a host.
+	Web fs.FS
 }
 
 // Server serves the API. It is safe for concurrent use.
 type Server struct {
 	mux     *http.ServeMux
 	handler http.Handler
+	outside http.Handler // Answers what is outside the API.
 
 	auth          *auth.Service
 	log           *slog.Logger
@@ -122,6 +127,10 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 	}
 	if s.genres == nil {
 		s.genres = library.NewGenres(cfg.Library)
+	}
+	s.outside = http.NotFoundHandler()
+	if cfg.Web != nil && cfg.BasePath == "" {
+		s.outside = webHandler(cfg.Web)
 	}
 	for _, rt := range s.routes() {
 		s.mux.Handle(rt.pattern, s.guarded(&rt))

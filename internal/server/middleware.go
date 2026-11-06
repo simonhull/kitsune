@@ -35,7 +35,7 @@ func requestID(ctx context.Context) string {
 const apiPrefix = "/api/v1"
 
 // withBasePath serves next under the server's base path and [apiPrefix]: it
-// strips both and answers every request outside them with a 404, which
+// strips both and hands every request outside them to s.outside, whose 404
 // [withProblems] turns into a problem.
 //
 // A known limit: ServeMux's path-cleaning redirects, such as
@@ -48,7 +48,7 @@ func (s *Server) withBasePath(next http.Handler) http.Handler {
 		// The escaped path: /api%2Fv1/healthz decodes to /api/v1/healthz, but
 		// StripPrefix would leave a RawPath with no leading slash.
 		if !strings.HasPrefix(r.URL.EscapedPath(), prefix+"/") {
-			http.NotFound(w, r)
+			s.outside.ServeHTTP(w, r)
 			return
 		}
 		strip.ServeHTTP(w, r)
