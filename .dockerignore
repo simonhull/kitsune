@@ -1,0 +1,6 @@
+.git
+.github
+dist
+web/build
+web/node_modules
+web/.svelte-kit

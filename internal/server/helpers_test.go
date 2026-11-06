@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -94,6 +95,7 @@ type testServerOptions struct {
 	LibraryRoot   string                   // "" means a scanner with no roots.
 	Write         library.WriteFunc        // Nil means real writes.
 	StartScan     func(library.Mode) error // Nil means claim and run on the scanner.
+	Web           fs.FS                    // Nil means no web client.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -166,6 +168,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		TagWrites:     o.TagWrites,
 		Scanner:       scanner,
 		StartScan:     o.StartScan,
+		Web:           o.Web,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)

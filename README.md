@@ -34,6 +34,13 @@ level = "info"           # debug, info, warn or error
 Unknown keys are errors, so a typo cannot be silently ignored. Paths must be
 absolute. `kitsune-server config` prints the configuration in effect.
 
+## Building
+
+    mise run release
+
+gives `dist/kitsune-server`: one static file with the web client inside it. A plain `go build`
+gives a server with the API alone, for working on the client under `mise run web:dev`.
+
 ## Running
 
 Create an administrator first, then start the server:
@@ -43,12 +50,31 @@ Create an administrator first, then start the server:
 
 `serve` refuses to start while the database has no users, and prints the command above.
 
+The web client is at the root of `server.listen`. It only runs at the root of a host, so with a
+path in `server.base_url` the server gives the API alone and says so at startup.
+
 `serve` keeps the database in step with `library.roots`: a quick scan at startup and another
 daily at `library.quick_scan`. The first scan reads all the audio to fingerprint it, which on
 a large library takes a while. Tracks appear as it goes, and `GET /api/v1/readyz` answers 503 until
 it finishes, so point health checks that restart containers at `GET /api/v1/healthz`. A moved file
 keeps its track; a vanished one is deleted after `library.missing_grace`. A root that is
 unreadable or suddenly empty is skipped, so an unmounted disk never deletes anything.
+
+### In a container
+
+`compose.yaml` builds the image and runs it. Beside it, write a `server.toml` with the library at
+`/music`, and create the data folder:
+
+    printf '[library]\nroots = ["/music"]\n' > server.toml
+    mkdir data
+    export KITSUNE_MUSIC=/path/to/music
+    docker compose run --rm kitsune users add -admin NAME
+    docker compose up -d
+
+`KITSUNE_UID` and `KITSUNE_GID` name the user it runs as, 1000 by default, which must own `data`.
+`KITSUNE_PORT` is the host port, 4533 by default, which is also Navidrome's: choose another to run
+both. `TZ` sets the zone `library.quick_scan` is read in. The music is mounted read-only; to edit
+tags, set `library.tag_writes` and drop the `:ro`.
 
 ### Album covers
 

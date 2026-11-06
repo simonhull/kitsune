@@ -27,6 +27,7 @@ import (
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/server"
 	"github.com/simonhull/kitsune/internal/store"
+	"github.com/simonhull/kitsune/internal/webui"
 )
 
 // serveName is the name of the serve command.
@@ -225,12 +226,26 @@ func buildApp(ctx context.Context, cfg *config.Config, st *store.Store, log *slo
 		StartScan:     a.startScan,
 		Genres:        genres,
 		Context:       ctx,
+		Web:           webClient(cfg, log),
 	})
 	a.http = newHTTPServer(handler, log)
 	if cfg.Server.BaseURL != "" && len(trusted) == 0 {
 		log.Warn("base_url is set but trusted_proxies is empty; every client will share the proxy's address for login rate limits")
 	}
 	return a, nil
+}
+
+// webClient returns the client built into this binary, and says so when the
+// server will give the API alone.
+func webClient(cfg *config.Config, log *slog.Logger) fs.FS {
+	web := webui.Files()
+	switch {
+	case web == nil:
+		log.Info("this build has no web client: serving the API alone")
+	case cfg.Server.BasePath() != "":
+		log.Warn("the web client only runs at the root of a host: serving the API alone", "basePath", cfg.Server.BasePath())
+	}
+	return web
 }
 
 // artworkDir is the cover cache's folder inside data_dir.

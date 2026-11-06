@@ -1,0 +1,13 @@
+services:
+  kitsune:
+    build: .
+    restart: unless-stopped
+    user: ${KITSUNE_UID:-1000}:${KITSUNE_GID:-1000}
+    environment:
+      TZ: ${TZ:-UTC}
+    ports:
+      - ${KITSUNE_PORT:-4533}:4533
+    volumes:
+      - ./server.toml:/config/kitsune/server.toml:ro
+      - ./data:/data
+      - ${KITSUNE_MUSIC:?set KITSUNE_MUSIC to your music folder}:/music:ro

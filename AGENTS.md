@@ -193,6 +193,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   an idempotent `Put` agree.
 
 ## Operations
+- `mise run release` builds `dist/kitsune-server` with the web client inside it. `internal/webui` embeds
+  `dist`, which holds only `.gitkeep` in git: a plain `go build` gives the API alone, so CI and tests need
+  no client built. `scripts/build.sh` fills it for the compile and empties it after.
+- `internal/server/web.go` serves the client for what is outside the API. It is not a route, so it stays
+  out of the contract. Anything under `/api`, any write and any missing file stay 404 problems: only a
+  path that could be a client route gets `index.html`. A client route must have no dot in its last
+  segment. A base path serves no client, because the build's paths are fixed to the root of a host.
+- The image is `FROM scratch`: no shell, no zone files (`time/tzdata` is in the binary), no `/tmp`. Temp
+  files go beside their targets, and must keep doing so. CI runs `scripts/smoke-image.sh` against it.
 - `cmd/kitsune-server` is the only place that reads the environment, signals or flags;
   `internal/server` takes everything through `server.Config`.
 - Logs are `log/slog` JSON. Log `r.URL.Path`, never the full URL or query: OpenSubsonic
