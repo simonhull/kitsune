@@ -40,6 +40,10 @@ var (
 	keysCompilation     = []string{"COMPILATION", "TCMP", "cpil"}
 	keysAlbumMBID       = []string{"MUSICBRAINZ_ALBUMID", "MUSICBRAINZ ALBUM ID"}
 	keysGenre           = []string{"GENRE", "TCON", "\xA9gen"}
+	keysDate            = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day"}
+	// keysID3v2Names hold the two fields whose absence makes the MP3 reader fall
+	// back to an ID3v1 trailer.
+	keysID3v2Names = []string{"TIT2", "TPE1"}
 )
 
 // GenreKeys returns the raw tag keys that hold genres, as the store keeps them.

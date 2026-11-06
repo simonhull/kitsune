@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/simonhull/audiometa"
@@ -35,10 +36,15 @@ func newEditLib(t *testing.T) *editLib {
 	return l
 }
 
+// yearEdit is the edit most of these tests make.
+func yearEdit() *Edit {
+	return &Edit{Fields: map[Field][]string{FieldDate: {strconv.Itoa(newYear)}}}
+}
+
 // editAlbum sends a year edit with the album's current ETag.
 func (l *editLib) editAlbum() error {
 	l.t.Helper()
-	return l.scanner.EditAlbum(l.t.Context(), l.album.ID, l.album.ETag, &Edit{Year: new(newYear)})
+	return l.scanner.EditAlbum(l.t.Context(), l.album.ID, l.album.ETag, yearEdit())
 }
 
 // wantRefused checks err is an [*EditError] from before the first write.
@@ -99,7 +105,7 @@ func TestEditTrackLeavesItsNeighborAlone(t *testing.T) {
 	t.Parallel()
 	l := newEditLib(t)
 	tr := &l.album.Tracks[0]
-	if err := l.scanner.EditTrack(t.Context(), tr.ID, tr.ETag, &Edit{Title: new(newTitle)}); err != nil {
+	if err := l.scanner.EditTrack(t.Context(), tr.ID, tr.ETag, &Edit{Fields: map[Field][]string{FieldTitle: {newTitle}}}); err != nil {
 		t.Fatal(err)
 	}
 	after := l.albumDetail()
@@ -120,10 +126,10 @@ func (l *editLib) etagOf(id string) string {
 func TestEditComparesTheETagUnderTheLock(t *testing.T) {
 	t.Parallel()
 	l := newEditLib(t)
-	if err := l.scanner.EditAlbum(t.Context(), l.album.ID, `"stale"`, &Edit{Year: new(newYear)}); !errors.Is(err, ErrStale) {
+	if err := l.scanner.EditAlbum(t.Context(), l.album.ID, `"stale"`, yearEdit()); !errors.Is(err, ErrStale) {
 		t.Errorf("EditAlbum = %v, want ErrStale", err)
 	}
-	if err := l.scanner.EditTrack(t.Context(), l.album.Tracks[0].ID, l.album.ETag, &Edit{Year: new(newYear)}); !errors.Is(err, ErrStale) {
+	if err := l.scanner.EditTrack(t.Context(), l.album.Tracks[0].ID, l.album.ETag, yearEdit()); !errors.Is(err, ErrStale) {
 		t.Errorf("EditTrack with the album's ETag = %v, want ErrStale", err)
 	}
 	l.wantUnedited()
@@ -242,7 +248,7 @@ func TestSymlinkInsideTheRootIsEdited(t *testing.T) {
 func TestPreflightRefusesWhatTheFileCantTake(t *testing.T) {
 	t.Parallel()
 	l := newEditLib(t)
-	err := l.scanner.EditAlbum(t.Context(), l.album.ID, l.album.ETag, &Edit{Title: new("  ")})
+	err := l.scanner.EditAlbum(t.Context(), l.album.ID, l.album.ETag, &Edit{Fields: map[Field][]string{FieldTitle: {"  "}}})
 	wantRefused(t, err, ErrUnsupportedEdit)
 }
 
@@ -307,7 +313,7 @@ func TestCanceledEditIndexesTheFileItWrote(t *testing.T) {
 		defer cancel() // The file is written, and the signal arrives.
 		return audiometa.Write(path, edit)
 	}
-	if err := l.scanner.EditAlbum(ctx, l.album.ID, l.album.ETag, &Edit{Year: new(newYear)}); err != nil {
+	if err := l.scanner.EditAlbum(ctx, l.album.ID, l.album.ETag, yearEdit()); err != nil {
 		t.Logf("EditAlbum = %v", err) // Either way, the store must match the disk.
 	}
 	wantStats(t, l.scan(Quick), &Stats{Seen: 2})

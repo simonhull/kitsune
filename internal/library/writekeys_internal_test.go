@@ -132,10 +132,10 @@ func TestEditLandsInEveryOwnedKey(t *testing.T) {
 			path := copySample(t, tt.sample)
 			seed(t, path, tt.seed)
 			before := reread(t, path)
-			edit := Edit{
-				Title: new(newTitle), TrackNo: new(7), DiscNo: new(2), Year: new(newYear),
-				Genres: []string{"Jazz", "Blues"},
-			}
+			genres := []string{"Jazz", "Blues"}
+			edit := Edit{Fields: map[Field][]string{
+				FieldTitle: {newTitle}, FieldTrack: {"7"}, FieldDisc: {"2"}, FieldDate: {"1987"}, FieldGenres: genres,
+			}}
 			if err := audiometa.Write(path, edit.apply); err != nil {
 				t.Fatalf("Write: %v", err)
 			}
@@ -146,7 +146,7 @@ func TestEditLandsInEveryOwnedKey(t *testing.T) {
 			if got.Digest != before.Digest {
 				t.Error("the edit changed the audio digest")
 			}
-			tt.want.check(t, &before, &got, edit.Genres)
+			tt.want.check(t, &before, &got, genres)
 		})
 	}
 }
@@ -155,7 +155,7 @@ func TestEditUpdatesNumbersRepeatedUnderOtherKeys(t *testing.T) {
 	t.Parallel()
 	path := copySample(t, sampleFLAC)
 	seed(t, path, map[string][]string{"TRACK": {"3"}, "DISC": {"1"}})
-	edit := Edit{TrackNo: new(7), DiscNo: new(2)}
+	edit := Edit{Fields: map[Field][]string{FieldTrack: {"7"}, FieldDisc: {"2"}}}
 	if err := audiometa.Write(path, edit.apply); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
@@ -181,8 +181,7 @@ func TestEditWritesAYearAFileLacks(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			edit := Edit{Year: new(newYear)}
-			if err = audiometa.Write(path, edit.apply); err != nil {
+			if err = audiometa.Write(path, yearEdit().apply); err != nil {
 				t.Fatalf("Write: %v", err)
 			}
 			if got := reread(t, path); got.Year != newYear {
@@ -200,7 +199,7 @@ func TestSameValuesKeepWhatTheFileHas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	edit := Edit{Title: new("Same"), Year: new(2001), Genres: []string{rock}}
+	edit := Edit{Fields: map[Field][]string{FieldTitle: {"Same"}, FieldDate: {oldDate}, FieldGenres: {rock}}}
 	if err = audiometa.Write(path, edit.apply); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
@@ -217,7 +216,7 @@ func TestEmptyGenresRemoveTheKey(t *testing.T) {
 	t.Parallel()
 	path := copySample(t, sampleFLAC)
 	seed(t, path, map[string][]string{keyGenre: {rock}})
-	edit := Edit{Genres: []string{}}
+	edit := Edit{Fields: map[Field][]string{FieldGenres: {}}}
 	if err := audiometa.Write(path, edit.apply); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
@@ -256,10 +255,10 @@ func TestEditRefuses(t *testing.T) {
 		prepare      func(*testing.T, string)
 		edit         Edit
 	}{
-		{name: "empty title", sample: sampleFLAC, edit: Edit{Title: new("")}},
-		{name: "blank title", sample: sampleMP3, edit: Edit{Title: new(" \t ")}},
-		{name: "ID3v1 only", sample: sampleMP3, prepare: id3v1Only, edit: Edit{Title: new(newTitle)}},
-		{name: "a year MP3 can't read back", sample: sampleMP3, edit: Edit{Year: new(1850)}},
+		{name: "empty title", sample: sampleFLAC, edit: Edit{Fields: map[Field][]string{FieldTitle: {""}}}},
+		{name: "blank title", sample: sampleMP3, edit: Edit{Fields: map[Field][]string{FieldTitle: {" \t "}}}},
+		{name: "ID3v1 only", sample: sampleMP3, prepare: id3v1Only, edit: Edit{Fields: map[Field][]string{FieldTitle: {newTitle}}}},
+		{name: "a year MP3 can't read back", sample: sampleMP3, edit: Edit{Fields: map[Field][]string{FieldDate: {"1850"}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -288,7 +287,7 @@ func TestEditRefuses(t *testing.T) {
 
 func TestFormatWithoutWriteKeysIsRefused(t *testing.T) {
 	t.Parallel()
-	edit := Edit{Title: new(newTitle)}
+	edit := Edit{Fields: map[Field][]string{FieldTitle: {newTitle}}}
 	err := edit.apply(&audiometa.File{Format: audiometa.FormatOgg})
 	if !errors.Is(err, ErrUnsupportedEdit) || !strings.Contains(err.Error(), "Ogg") {
 		t.Errorf("apply = %v, want ErrUnsupportedEdit naming the format", err)

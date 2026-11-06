@@ -6,6 +6,8 @@ import (
 	"errors"
 	"mime"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/simonhull/kitsune/api"
@@ -36,7 +38,7 @@ func (s *Server) patchTrack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	edit := library.Edit{Title: req.Title, TrackNo: req.TrackNo, DiscNo: req.DiscNo}
+	edit := trackEdit(&req)
 	//nolint:contextcheck // An edit outlives its request on purpose; see Config.Context.
 	if err := s.scanner.EditTrack(s.editContext, id, ifMatch, &edit); err != nil {
 		s.editFailed(w, r, err)
@@ -109,25 +111,41 @@ func validTrackEdit(req *api.TrackEdit) bool {
 	return named && validNumber(req.TrackNo) && validNumber(req.DiscNo)
 }
 
-// albumEdit returns the edit req asks for, with its genres trimmed. It reports
-// false for a request that names nothing or holds an invalid value.
+// trackEdit returns the edit req asks for.
+func trackEdit(req *api.TrackEdit) library.Edit {
+	fields := map[library.Field][]string{}
+	if req.Title != nil {
+		fields[library.FieldTitle] = []string{*req.Title}
+	}
+	if req.TrackNo != nil {
+		fields[library.FieldTrack] = []string{strconv.Itoa(*req.TrackNo)}
+	}
+	if req.DiscNo != nil {
+		fields[library.FieldDisc] = []string{strconv.Itoa(*req.DiscNo)}
+	}
+	return library.Edit{Fields: fields}
+}
+
+// albumEdit returns the edit req asks for. It reports false for a request that
+// names nothing or holds an invalid value.
 func albumEdit(req *api.AlbumEdit) (library.Edit, bool) {
 	if req.Year == nil && req.Genres == nil {
 		return library.Edit{}, false
 	}
-	if req.Year != nil && (*req.Year < minYear || *req.Year > maxYear) {
-		return library.Edit{}, false
-	}
-	edit := library.Edit{Year: req.Year}
-	if req.Genres != nil {
-		edit.Genres = make([]string, len(req.Genres))
-	}
-	for i, g := range req.Genres {
-		if edit.Genres[i] = strings.TrimSpace(g); edit.Genres[i] == "" {
+	fields := map[library.Field][]string{}
+	if req.Year != nil {
+		if *req.Year < minYear || *req.Year > maxYear {
 			return library.Edit{}, false
 		}
+		fields[library.FieldDate] = []string{strconv.Itoa(*req.Year)}
 	}
-	return edit, true
+	if req.Genres != nil {
+		if slices.ContainsFunc(req.Genres, func(g string) bool { return strings.TrimSpace(g) == "" }) {
+			return library.Edit{}, false
+		}
+		fields[library.FieldGenres] = req.Genres
+	}
+	return library.Edit{Fields: fields}, true
 }
 
 // editFailed answers an edit that did not finish.
