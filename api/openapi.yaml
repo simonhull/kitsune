@@ -742,7 +742,7 @@ components:
     AlbumEntry:
       type: object
       additionalProperties: false
-      required: [id, title, artist, trackCount, compilation]
+      required: [id, title, artist, trackCount, compilation, displayGenres]
       properties:
         id: { type: string }
         title: { type: string }
@@ -751,6 +751,12 @@ components:
         trackCount: { type: integer }
         compilation: { type: boolean }
         artwork: { $ref: "#/components/schemas/Artwork" }
+        displayGenres:
+          type: array
+          description: >-
+            What genres the album shows and filters by: split, cleaned and
+            spelled one way across the library. The most used on it come first.
+          items: { type: string }
     AlbumPage:
       type: object
       additionalProperties: false
@@ -849,7 +855,7 @@ components:
       description: An album entry's properties, repeated (allOf does not mix with additionalProperties false), plus its tracks.
       type: object
       additionalProperties: false
-      required: [id, title, artist, artists, trackCount, compilation, tracks, durationMs, formats, addedAt, genres, etag]
+      required: [id, title, artist, artists, trackCount, compilation, tracks, durationMs, formats, addedAt, genres, displayGenres, etag]
       properties:
         id: { type: string }
         title: { type: string }
@@ -876,7 +882,11 @@ components:
         addedAt: { type: string, format: date-time }
         genres:
           type: array
-          description: Every genre of the tracks, each once, in track order.
+          description: Every raw genre value of the tracks, each once, in track order, for the tag editor.
+          items: { type: string }
+        displayGenres:
+          type: array
+          description: As on AlbumEntry.
           items: { type: string }
         etag:
           type: string

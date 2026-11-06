@@ -189,6 +189,10 @@ func buildApp(ctx context.Context, cfg *config.Config, st *store.Store, log *slo
 	for _, n := range cfg.Server.TrustedProxies {
 		trusted = append(trusted, n.Prefix)
 	}
+	genres := library.NewGenres(st)
+	if err = genres.Refresh(ctx); err != nil {
+		return nil, fmt.Errorf("read genres: %w", err)
+	}
 	a := &app{
 		log:   log,
 		store: st,
@@ -199,6 +203,7 @@ func buildApp(ctx context.Context, cfg *config.Config, st *store.Store, log *slo
 			Logger:       log,
 			Artwork:      covers,
 			TagWrites:    cfg.Library.TagWrites,
+			Genres:       genres,
 		}),
 		quickScan: cfg.Library.QuickScan,
 		drain:     shutdownTimeout,
@@ -218,6 +223,7 @@ func buildApp(ctx context.Context, cfg *config.Config, st *store.Store, log *slo
 		TagWrites:     cfg.Library.TagWrites,
 		Scanner:       a.scanner,
 		StartScan:     a.startScan,
+		Genres:        genres,
 		Context:       ctx,
 	})
 	a.http = newHTTPServer(handler, log)

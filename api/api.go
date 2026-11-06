@@ -90,6 +90,9 @@ type AlbumEntry struct {
 	TrackCount  int      `json:"trackCount"`
 	Compilation bool     `json:"compilation"`
 	Artwork     *Artwork `json:"artwork,omitzero"`
+	// DisplayGenres is what genres the album shows and filters by: split, cleaned
+	// and spelled one way across the library. The most used on it come first.
+	DisplayGenres []string `json:"displayGenres"`
 }
 
 // AlbumPage is the response to GET /albums.
@@ -168,6 +171,8 @@ type AlbumDetail struct {
 	AddedAt     time.Time    `json:"addedAt"`
 	// Genres is every genre of the tracks, each once, in track order.
 	Genres []string `json:"genres"`
+	// DisplayGenres is as on [AlbumEntry]; Genres stays raw for the tag editor.
+	DisplayGenres []string `json:"displayGenres"`
 	// Etag is the If-Match value for PATCH /albums/{id}.
 	Etag string `json:"etag"`
 }

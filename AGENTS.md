@@ -152,6 +152,11 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   unreadable directory and an empty `roots` all leave tracks alone. Removed roots count
   only when every configured root was walked and had audio. Deletes hold while a missing
   track may be behind an outage.
+- Genres are derived, not stored: `genres.go` splits and groups the raw tags into `library.Genres`, in
+  memory, refreshed at start and after every scan and edit. `genreSeparators` alone decides what
+  divides a value, so a rule change needs a restart and no migration. Synonyms stay apart: the tag
+  editor fixes those. Lists and album pages carry the result as `displayGenres`; an album's raw
+  `genres` stay as tagged, for the editor.
 - Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
   wait for the file to change.
 - One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it

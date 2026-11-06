@@ -44,6 +44,7 @@ type Config struct {
 	// nil. It returns [library.ErrScanRunning] while one runs, and another error when
 	// the server is stopping.
 	StartScan func(library.Mode) error
+	Genres    *library.Genres // Nil means no album shows a genre.
 	// Context bounds tag edits. Nil means context.Background. An edit runs on it and
 	// not on the request, so a client that goes away can't stop an album midway.
 	Context context.Context //nolint:containedctx // The server's lifetime, not a request's.
@@ -67,6 +68,7 @@ type Server struct {
 	tagWrites     bool
 	scanner       *library.Scanner
 	startScan     func(library.Mode) error
+	genres        *library.Genres
 	editContext   context.Context //nolint:containedctx // Config.Context: the server's lifetime, not a request's.
 	limiter       *loginLimiter
 }
@@ -102,6 +104,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		tagWrites:     cfg.TagWrites,
 		scanner:       cfg.Scanner,
 		startScan:     cfg.StartScan,
+		genres:        cfg.Genres,
 		editContext:   cfg.Context,
 		limiter:       newLoginLimiter(maxLimiterKeys),
 	}
@@ -116,6 +119,9 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 	}
 	if s.editContext == nil {
 		s.editContext = context.Background()
+	}
+	if s.genres == nil {
+		s.genres = library.NewGenres(cfg.Library)
 	}
 	for _, rt := range s.routes() {
 		s.mux.Handle(rt.pattern, s.guarded(&rt))

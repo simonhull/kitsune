@@ -33,7 +33,7 @@ func (s *Server) getAlbums(w http.ResponseWriter, r *http.Request) {
 	}
 	body := api.AlbumPage{Albums: make([]api.AlbumEntry, len(page.Albums)), NextCursor: page.Next}
 	for i := range page.Albums {
-		body.Albums[i] = toAPIAlbumEntry(&page.Albums[i])
+		body.Albums[i] = s.toAPIAlbumEntry(&page.Albums[i])
 	}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
@@ -101,7 +101,9 @@ func (s *Server) albumDetail(ctx context.Context, id string) (api.AlbumDetail, e
 	if err != nil {
 		return api.AlbumDetail{}, fmt.Errorf("album detail: %w", err)
 	}
-	return toAPIAlbumDetail(&d, genres), nil
+	out := toAPIAlbumDetail(&d, genres)
+	out.DisplayGenres = append(out.DisplayGenres, s.genres.Of(id)...)
+	return out, nil
 }
 
 // getTrack returns one track and what it takes to edit it.
@@ -189,10 +191,11 @@ func toAPIArtwork(c *store.Cover) *api.Artwork {
 	return &api.Artwork{Hash: hex.EncodeToString(c.Hash[:]), Accent: c.Accent, Ground: c.Ground, Width: c.Width, Height: c.Height}
 }
 
-func toAPIAlbumEntry(a *store.AlbumSummary) api.AlbumEntry {
+func (s *Server) toAPIAlbumEntry(a *store.AlbumSummary) api.AlbumEntry {
 	return api.AlbumEntry{
 		ID: a.ID, Title: a.Title, Artist: a.Artist, Year: a.Year, TrackCount: a.TrackCount,
 		Compilation: a.Compilation, Artwork: toAPIArtwork(a.Cover),
+		DisplayGenres: append([]string{}, s.genres.Of(a.ID)...),
 	}
 }
 
@@ -201,13 +204,14 @@ func toAPIAlbumDetail(d *store.AlbumDetail, genres map[string][]string) api.Albu
 	out := api.AlbumDetail{
 		ID: d.ID, Title: d.Title, Artist: d.Artist, Year: d.Year, TrackCount: d.TrackCount,
 		Compilation: d.Compilation, Artwork: toAPIArtwork(d.Cover),
-		Artists:    toAPIArtistLinks(d.Artists),
-		Tracks:     make([]api.Track, len(d.Tracks)),
-		DurationMs: d.Duration.Milliseconds(),
-		Formats:    append([]string{}, d.Formats...),
-		AddedAt:    d.AddedAt,
-		Genres:     []string{},
-		Etag:       d.ETag,
+		Artists:       toAPIArtistLinks(d.Artists),
+		Tracks:        make([]api.Track, len(d.Tracks)),
+		DurationMs:    d.Duration.Milliseconds(),
+		Formats:       append([]string{}, d.Formats...),
+		AddedAt:       d.AddedAt,
+		Genres:        []string{},
+		DisplayGenres: []string{},
+		Etag:          d.ETag,
 	}
 	for i := range d.Tracks {
 		out.Tracks[i] = toAPITrack(&d.Tracks[i], genres[d.Tracks[i].ID])
