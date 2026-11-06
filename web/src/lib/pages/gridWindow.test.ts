@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { library } from '#lib/library/library.svelte.ts';
 import type { AlbumEntry } from '#lib/library/source.ts';
-import { gridWindow } from './gridWindow.svelte';
+import { clearLine, createGridWindow, type GridWindow } from './gridWindow.svelte';
 
 function albums(count: number): AlbumEntry[] {
 	return Array.from({ length: count }, (_, index) => ({
@@ -13,18 +12,21 @@ function albums(count: number): AlbumEntry[] {
 	}));
 }
 
+let entries: AlbumEntry[];
+let nearEnd: () => void;
+let gridWindow: GridWindow;
+
 beforeEach(() => {
 	vi.stubGlobal('innerHeight', 900);
-	library.albums = albums(927);
-	gridWindow.reset();
+	entries = albums(927);
+	nearEnd = vi.fn<() => void>();
+	gridWindow = createGridWindow(() => entries, nearEnd);
 	// Five columns of 12 rows, 300 + 20 each: a full page and its gap are 3840 tall.
 	gridWindow.measure = { columns: 5, rowHeight: 300, rowGap: 20 };
 });
 
 afterEach(() => {
 	vi.unstubAllGlobals();
-	library.albums = [];
-	gridWindow.reset();
 });
 
 describe('gridWindow', () => {
@@ -56,6 +58,64 @@ describe('gridWindow', () => {
 		expect([gridWindow.first, gridWindow.last]).toEqual([0, 0]);
 		gridWindow.track(-1e7, 0);
 		expect([gridWindow.first, gridWindow.last]).toEqual([15, 15]);
+	});
+
+	it('counts whatever its entries are now', () => {
+		entries = albums(61);
+		expect(gridWindow.pageCount).toBe(2);
+		expect(gridWindow.height(1)).toBe(300);
+	});
+
+	it('says when the end comes near, and only then', () => {
+		gridWindow.track(0, 5000);
+		expect(nearEnd).not.toHaveBeenCalled();
+		gridWindow.track(0, 2000);
+		expect(nearEnd).toHaveBeenCalledOnce();
+	});
+
+	it('keeps each grid to itself', () => {
+		const other = createGridWindow(() => albums(1));
+		other.first = 3;
+		expect(gridWindow.first).toBe(0);
+		expect(other.pageCount).toBe(1);
+	});
+
+	it('finds the row an entry is on, across pages', () => {
+		expect(gridWindow.offsetOf(0)).toBe(0);
+		expect(gridWindow.offsetOf(4)).toBe(0);
+		expect(gridWindow.offsetOf(5)).toBe(320);
+		expect(gridWindow.offsetOf(60)).toBe(3840);
+		expect(gridWindow.offsetOf(66)).toBe(3840 + 320);
+	});
+
+	it('can’t place an entry until something is measured', () => {
+		gridWindow.reset();
+		expect(gridWindow.offsetOf(10)).toBeUndefined();
+	});
+
+	it('follows the row at the top of the screen', () => {
+		gridWindow.track(500, 9999);
+		expect(gridWindow.reached).toBe(0);
+		// The clear line falls in the second row of the second page.
+		gridWindow.track(clearLine - 3840 - 330, 9999);
+		expect(gridWindow.reached).toBe(69);
+	});
+
+	it('takes a row a fraction above the clear line as the row at the top', () => {
+		gridWindow.track(clearLine - 3840 - 320 - 0.5, 9999);
+		expect(gridWindow.reached).toBe(69);
+	});
+
+	it('counts the end of the grid as reached, though its row can’t rise that far', () => {
+		gridWindow.track(-1e5, 800);
+		expect(gridWindow.reached).toBe(926);
+	});
+
+	it('rewinds without forgetting its measure', () => {
+		gridWindow.track(-3840 * 5, 9999);
+		gridWindow.rewind();
+		expect([gridWindow.first, gridWindow.last, gridWindow.reached]).toEqual([0, 0, 0]);
+		expect(gridWindow.measure).not.toBeNull();
 	});
 
 	it('aims at the page holding an album', () => {

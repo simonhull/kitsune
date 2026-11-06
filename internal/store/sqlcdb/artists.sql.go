@@ -92,6 +92,55 @@ func (q *Queries) ListAlbumOwners(ctx context.Context, albumID int64) ([]ListAlb
 	return items, nil
 }
 
+const listAlbumSortArtists = `-- name: ListAlbumSortArtists :many
+
+SELECT a.ulid, CAST(coalesce((
+    SELECT ar.sort_name
+    FROM tracks t
+    JOIN track_artists ta ON ta.track_id = t.id
+    JOIN artists ar ON ar.id = ta.artist_id
+    WHERE t.album_id = a.id AND t.missing_since IS NULL
+      AND (ta.role = 'album_artist'
+       OR (ta.ord = 0 AND a.compilation = 0 AND NOT EXISTS (
+            SELECT 1 FROM tracks o
+            JOIN track_artists oa ON oa.track_id = o.id AND oa.role = 'album_artist'
+            WHERE o.album_id = a.id AND o.missing_since IS NULL)))
+    ORDER BY ta.ord, t.id
+    LIMIT 1), a.artist) AS TEXT) AS sort_artist
+FROM albums a
+WHERE a.ulid IN (SELECT value FROM json_each(CAST(?1 AS TEXT)))
+`
+
+type ListAlbumSortArtistsRow struct {
+	Ulid       string
+	SortArtist string
+}
+
+// ids is a JSON array of album ULIDs. An album's sort artist is its first owner's
+// sort name; an album nobody owns sorts by the artist it displays.
+func (q *Queries) ListAlbumSortArtists(ctx context.Context, ids string) ([]ListAlbumSortArtistsRow, error) {
+	rows, err := q.query(ctx, q.listAlbumSortArtistsStmt, listAlbumSortArtists, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumSortArtistsRow
+	for rows.Next() {
+		var i ListAlbumSortArtistsRow
+		if err := rows.Scan(&i.Ulid, &i.SortArtist); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listArtistAlbums = `-- name: ListArtistAlbums :many
 SELECT
     a.id, a.ulid, a.name, a.sort_name, a.artist, a.year, a.compilation, a.added_at,

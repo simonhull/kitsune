@@ -12,7 +12,7 @@ import {
 import { preload } from '#lib/cover/rungs.ts';
 import { library } from '#lib/library/library.svelte.ts';
 import { markClick } from './hud.svelte.ts';
-import { gridWindow } from '#lib/pages/gridWindow.svelte.ts';
+import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
 import { pick, recordOrigins, type Origins } from './pairs.ts';
 import { albumExit } from './path.ts';
 import { registry, type MorphEntry } from './registry.ts';
@@ -116,7 +116,7 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 	}
 	const leaving = albumOn(from);
 	if (toRoute === 'home' && leaving !== undefined && !origins.has(`cover:${leaving}`)) {
-		gridWindow.aim(leaving);
+		homeGrid.aim(leaving);
 	}
 
 	const choreography = reducedMotion() ? blend : choreographyFor(fromRoute, toRoute);

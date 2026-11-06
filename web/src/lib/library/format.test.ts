@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	albumsLine,
 	albumFacts,
 	artistCount,
 	artistFacts,
@@ -136,6 +137,21 @@ describe('albumFacts', () => {
 	it('is singular for one track, and never says zero minutes', () => {
 		const single = { ...album, tracks: [track()], durationMs: 12_000 };
 		expect(albumFacts(single, single)).toBe('ALBUM · 1 TRACK · 1 MIN');
+	});
+});
+
+describe('albumsLine', () => {
+	it('counts albums and genres', () => {
+		expect(albumsLine(927, 927, 105, null)).toBe('927 ALBUMS · 105 GENRES');
+		expect(albumsLine(1, 1, 1, null)).toBe('1 ALBUM · 1 GENRE');
+	});
+
+	it('leaves out genres it has yet to count', () => {
+		expect(albumsLine(60, 927, 0, null)).toBe('927 ALBUMS');
+	});
+
+	it('says what a genre leaves', () => {
+		expect(albumsLine(83, 927, 105, 'Drum & Bass')).toBe('83 OF 927 ALBUMS · DRUM & BASS');
 	});
 });
 

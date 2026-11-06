@@ -102,6 +102,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAlbumOwnersStmt, err = db.PrepareContext(ctx, listAlbumOwners); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumOwners: %w", err)
 	}
+	if q.listAlbumSortArtistsStmt, err = db.PrepareContext(ctx, listAlbumSortArtists); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAlbumSortArtists: %w", err)
+	}
+	if q.listAlbumTagCountsStmt, err = db.PrepareContext(ctx, listAlbumTagCounts); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAlbumTagCounts: %w", err)
+	}
 	if q.listAlbumTagValuesStmt, err = db.PrepareContext(ctx, listAlbumTagValues); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumTagValues: %w", err)
 	}
@@ -324,6 +330,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAlbumOwnersStmt: %w", cerr)
 		}
 	}
+	if q.listAlbumSortArtistsStmt != nil {
+		if cerr := q.listAlbumSortArtistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAlbumSortArtistsStmt: %w", cerr)
+		}
+	}
+	if q.listAlbumTagCountsStmt != nil {
+		if cerr := q.listAlbumTagCountsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAlbumTagCountsStmt: %w", cerr)
+		}
+	}
 	if q.listAlbumTagValuesStmt != nil {
 		if cerr := q.listAlbumTagValuesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAlbumTagValuesStmt: %w", cerr)
@@ -534,6 +550,8 @@ type Queries struct {
 	listAlbumHitsStmt         *sql.Stmt
 	listAlbumNamesStmt        *sql.Stmt
 	listAlbumOwnersStmt       *sql.Stmt
+	listAlbumSortArtistsStmt  *sql.Stmt
+	listAlbumTagCountsStmt    *sql.Stmt
 	listAlbumTagValuesStmt    *sql.Stmt
 	listAlbumTrackArtistsStmt *sql.Stmt
 	listAlbumTracksStmt       *sql.Stmt
@@ -595,6 +613,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAlbumHitsStmt:         q.listAlbumHitsStmt,
 		listAlbumNamesStmt:        q.listAlbumNamesStmt,
 		listAlbumOwnersStmt:       q.listAlbumOwnersStmt,
+		listAlbumSortArtistsStmt:  q.listAlbumSortArtistsStmt,
+		listAlbumTagCountsStmt:    q.listAlbumTagCountsStmt,
 		listAlbumTagValuesStmt:    q.listAlbumTagValuesStmt,
 		listAlbumTrackArtistsStmt: q.listAlbumTrackArtistsStmt,
 		listAlbumTracksStmt:       q.listAlbumTracksStmt,

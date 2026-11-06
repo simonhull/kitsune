@@ -19,8 +19,28 @@ import {
 } from './source';
 
 // The slugs are chosen so FNV-1a lands each album on the cover its board shows.
+/** A few genres in turn, enough to fill the chips and to filter by. */
+const boardGenres = [
+	['Electronic', 'Ambient'],
+	['Rock'],
+	['Pop', 'Rock'],
+	['Electronic'],
+	['Metal', 'Rock'],
+	['Soundtrack'],
+	['Pop']
+];
+
 function board(id: string, title: string, artist: string): AlbumEntry {
-	return { id, title, artist, trackCount: 8, compilation: false };
+	const genres = boardGenres.at(fnv1a(id) % boardGenres.length) ?? [];
+	return {
+		id,
+		title,
+		artist,
+		trackCount: 8,
+		compilation: false,
+		addedAt: '2026-10-12T18:00:00Z',
+		displayGenres: genres
+	};
 }
 
 const glasshouse: AlbumEntry = {
@@ -171,8 +191,26 @@ function isOn({ tracks }: Album, { name }: ArtistLink): boolean {
 	return tracks.some(({ artists }) => artists.includes(name));
 }
 
-function entryOf({ id, title, artist, year, trackCount, compilation }: Album): AlbumEntry {
-	return { id, title, artist, ...(year === undefined ? {} : { year }), trackCount, compilation };
+function entryOf({
+	id,
+	title,
+	artist,
+	year,
+	trackCount,
+	compilation,
+	addedAt,
+	displayGenres
+}: Album): AlbumEntry {
+	return {
+		id,
+		title,
+		artist,
+		...(year === undefined ? {} : { year }),
+		trackCount,
+		compilation,
+		addedAt,
+		...(displayGenres === undefined ? {} : { displayGenres })
+	};
 }
 
 function detailOf(link: ArtistLink): ArtistDetail {

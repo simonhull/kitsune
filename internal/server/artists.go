@@ -35,7 +35,7 @@ func (s *Server) getArtist(w http.ResponseWriter, r *http.Request) {
 	}
 	body := api.ArtistDetail{
 		ID: d.ID, Name: d.Name, AlbumCount: d.AlbumCount,
-		Albums: toAPIAlbumEntries(d.Albums), AppearsOn: toAPIAlbumEntries(d.AppearsOn),
+		Albums: s.toAPIAlbumEntries(d.Albums), AppearsOn: s.toAPIAlbumEntries(d.AppearsOn),
 	}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
@@ -52,10 +52,10 @@ func toAPIArtistLinks(links []store.ArtistLink) []api.ArtistLink {
 	return out
 }
 
-func toAPIAlbumEntries(albums []store.AlbumSummary) []api.AlbumEntry {
+func (s *Server) toAPIAlbumEntries(albums []store.AlbumSummary) []api.AlbumEntry {
 	out := make([]api.AlbumEntry, len(albums))
 	for i := range albums {
-		out[i] = toAPIAlbumEntry(&albums[i])
+		out[i] = s.toAPIAlbumEntry(&albums[i])
 	}
 	return out
 }

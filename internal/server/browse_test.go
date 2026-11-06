@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -23,6 +24,7 @@ const (
 	annName     = "Ann"
 	annID       = "03J00000000000000000000000"
 	missingID   = "nope"
+	lowerRock   = "rock"
 )
 
 // browseAlbum is an album the browse tests seed: tracks track rows, an optional cover.
@@ -31,9 +33,19 @@ type browseAlbum struct {
 	sortName string
 	tracks   int
 	cover    *store.ArtworkWrite
+	genres   []string // Raw values, on every track.
 }
 
 func albumULID(n int) string { return fmt.Sprintf("02J%023d", n) }
+
+// genreTags returns the raw tags that hold genres.
+func genreTags(genres []string) []store.Tag {
+	tags := make([]store.Tag, len(genres))
+	for i, genre := range genres {
+		tags[i] = store.Tag{Key: library.GenreKeys()[0], Value: genre}
+	}
+	return tags
+}
 
 // seedAlbums writes the albums, each track 1 minute long, and returns the track
 // ULID of each album's first track.
@@ -51,6 +63,7 @@ func (ts *testServer) seedAlbums(tb testing.TB, albums ...browseAlbum) {
 				Duration: time.Minute,
 				Title:    fmt.Sprintf("Track %d", t),
 				TrackNo:  t,
+				Tags:     genreTags(a.genres),
 				Artists:  []store.ArtistWrite{{ULID: annID, MatchKey: "ann", Name: annName, SortName: annName}},
 				Album: store.AlbumWrite{
 					GroupKey: fmt.Sprintf("g%d", a.n), ULID: albumULID(a.n), Name: fmt.Sprintf("Album %d", a.n),
@@ -81,8 +94,14 @@ func checkEntries(t *testing.T, albums []api.AlbumEntry, cover *store.ArtworkWri
 	t.Helper()
 	art := &api.Artwork{Hash: hex.EncodeToString(cover.Hash[:]), Accent: "#aabbcc", Ground: "#112233", Width: 600, Height: 500}
 	want := []api.AlbumEntry{
-		{ID: albumULID(2), Title: "Album 2", Artist: annName, Year: 2001, TrackCount: 1},
-		{ID: albumULID(1), Title: "Album 1", Artist: annName, Year: 2001, TrackCount: 2, Artwork: art},
+		{ID: albumULID(2), Title: "Album 2", SortName: "A", Artist: annName, SortArtist: annName, Year: 2001, TrackCount: 1, DisplayGenres: []string{}},
+		{ID: albumULID(1), Title: "Album 1", SortName: "b", Artist: annName, SortArtist: annName, Year: 2001, TrackCount: 2, DisplayGenres: []string{}, Artwork: art},
+	}
+	for i := range albums {
+		if albums[i].AddedAt.IsZero() {
+			t.Errorf("album %d has no addedAt", i)
+		}
+		albums[i].AddedAt = time.Time{}
 	}
 	if !reflect.DeepEqual(albums, want) {
 		t.Errorf("albums = %+v, want %+v", albums, want)
@@ -189,6 +208,36 @@ func checkDetailTrack(t *testing.T, tr *api.Track) {
 	}
 	if tr.ID != fmt.Sprintf("01J%020d%03d", 1, 2) {
 		t.Errorf("track ID = %q, want the track's ULID", tr.ID)
+	}
+}
+
+func TestAlbumsShowDisplayGenres(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	token := ts.sessionFor(t).token
+	ts.seedAlbums(t,
+		browseAlbum{n: 1, sortName: "a", tracks: 1, genres: []string{"Pop, Rock", "(12)Spiritual"}},
+		browseAlbum{n: 2, sortName: "b", tracks: 2, genres: []string{lowerRock}},
+		browseAlbum{n: 3, sortName: "c", tracks: 1},
+	)
+	if err := ts.Handle.genres.Refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var page api.AlbumPage
+	ts.getJSON(t, token, albumsPath+"?sort=name", &page)
+	want := [][]string{{"Pop", lowerRock, "Spiritual"}, {lowerRock}, {}}
+	for i := range page.Albums {
+		if got := page.Albums[i].DisplayGenres; !slices.Equal(got, want[i]) {
+			t.Errorf("album %d: displayGenres = %q, want %q", i, got, want[i])
+		}
+	}
+	var album api.AlbumDetail
+	ts.getJSON(t, token, albumsPath+"/"+albumULID(1), &album)
+	if want := []string{"Pop, Rock", "(12)Spiritual"}; !slices.Equal(album.Genres, want) {
+		t.Errorf("genres = %q, want raw %q", album.Genres, want)
+	}
+	if !slices.Equal(album.DisplayGenres, page.Albums[0].DisplayGenres) {
+		t.Errorf("detail displayGenres = %q, list %q", album.DisplayGenres, page.Albums[0].DisplayGenres)
 	}
 }
 

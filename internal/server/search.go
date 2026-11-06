@@ -22,7 +22,7 @@ func (s *Server) getSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	body := api.SearchResults{
 		Artists: toAPIArtistLinks(found.Artists),
-		Albums:  toAPIAlbumEntries(found.Albums),
+		Albums:  s.toAPIAlbumEntries(found.Albums),
 		Tracks:  make([]api.TrackHit, len(found.Tracks)),
 	}
 	for i := range found.Tracks {

@@ -27,6 +27,13 @@ export interface AlbumEntry {
 	trackCount: number;
 	compilation: boolean;
 	artwork?: Artwork;
+	/** The title as it sorts. Everything below serves the Albums page. */
+	sortName?: string;
+	/** Who the album sorts under. Only an album list says. */
+	sortArtist?: string;
+	addedAt?: string;
+	/** Split, cleaned and spelled one way across the library. The most used on it come first. */
+	displayGenres?: string[];
 }
 
 export interface AlbumPage {

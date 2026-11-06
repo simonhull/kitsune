@@ -56,9 +56,11 @@ type Cover struct {
 type AlbumSummary struct {
 	ID          string // The album's ULID.
 	Title       string
+	SortName    string
 	Artist      string
-	Year        int // 0 is unknown.
-	TrackCount  int // Live tracks only.
+	SortArtist  string // Who the artist sorts as. Only [Store.Albums] sets it.
+	Year        int    // 0 is unknown.
+	TrackCount  int    // Live tracks only.
 	Compilation bool
 	Cover       *Cover // Nil when the album has no cover.
 	AddedAt     time.Time
@@ -163,7 +165,32 @@ func (s *Store) Albums(ctx context.Context, sort AlbumSort, limit int, cursor st
 		last := &rows[limit-1]
 		page.Next = encodeCursor(sort, last.SortName, last.AddedAt, last.ID)
 	}
-	return page, nil
+	return page, s.setSortArtists(ctx, page.Albums)
+}
+
+// setSortArtists fills in who each album sorts under. The display artist can't
+// say: it isn't always the owner's name, let alone that name's sort form.
+func (s *Store) setSortArtists(ctx context.Context, albums []AlbumSummary) error {
+	ids := make([]string, len(albums))
+	for i := range albums {
+		ids[i] = albums[i].ID
+	}
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return fmt.Errorf("sort artists: encode IDs: %w", err)
+	}
+	rows, err := s.rq.ListAlbumSortArtists(ctx, string(encoded))
+	if err != nil {
+		return fmt.Errorf("sort artists: %w", err)
+	}
+	byID := make(map[string]string, len(rows))
+	for i := range rows {
+		byID[rows[i].Ulid] = rows[i].SortArtist
+	}
+	for i := range albums {
+		albums[i].SortArtist = byID[albums[i].ID]
+	}
+	return nil
 }
 
 // albumsByName fetches limit+1 rows after cursor, in sort-name order.
@@ -282,6 +309,7 @@ func summarize(r *sqlcdb.ListAlbumsByNameRow) AlbumSummary {
 	a := AlbumSummary{
 		ID:          r.Ulid,
 		Title:       r.Name,
+		SortName:    r.SortName,
 		Artist:      r.Artist,
 		Year:        intOr0(r.Year),
 		TrackCount:  int(r.TrackCount),

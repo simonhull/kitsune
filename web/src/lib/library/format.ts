@@ -100,6 +100,20 @@ export function artistCount(count: number): string {
 	return plural(count, 'artist', 'artists');
 }
 
+/** The Albums page's fact line: what's there, or what a genre leaves of it. */
+export function albumsLine(
+	shown: number,
+	total: number,
+	genres: number,
+	genre: string | null
+): string {
+	if (genre !== null) {
+		return `${shown.toLocaleString('en-US')} OF ${plural(total, 'ALBUM', 'ALBUMS')} · ${genre.toUpperCase()}`;
+	}
+	const albums = plural(total, 'ALBUM', 'ALBUMS');
+	return genres === 0 ? albums : `${albums} · ${plural(genres, 'GENRE', 'GENRES')}`;
+}
+
 /** An artist's fact line. A guest owns nothing, so it counts where it appears instead. */
 export function artistFacts({ albumCount, appearsOn }: ArtistDetail): string {
 	const standing =

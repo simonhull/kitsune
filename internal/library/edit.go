@@ -100,6 +100,8 @@ func (s *Scanner) edit(ctx context.Context, files []store.EditFile, etag, ifMatc
 			return stopped(files, 0, err)
 		}
 	}
+	// Tracks written before a failure hold the edit, and a canceled edit still counts.
+	defer s.refreshGenres(context.WithoutCancel(ctx))
 	for i := range files {
 		file := &files[i]
 		path := filepath.Join(file.Root, file.RelPath)

@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -267,7 +268,8 @@ func TestAlbumSummaryFields(t *testing.T) {
 		t.Fatalf("Albums = %+v, %v; want 2", p, err)
 	}
 	want := store.AlbumSummary{
-		ID: albumID(1), Title: "Album 1", Artist: "Artist 1", Year: 1999, TrackCount: 2, Compilation: true,
+		ID: albumID(1), Title: "Album 1", SortName: "sort", Artist: "Artist 1", SortArtist: "Artist 1",
+		Year: 1999, TrackCount: 2, Compilation: true,
 		Cover:   &store.Cover{Hash: w.Album.Artwork.Hash, Accent: "#aabbcc", Ground: "#112233", Width: 640, Height: 480},
 		AddedAt: time.UnixMilli(1_762_000_000_000).UTC(),
 	}
@@ -524,19 +526,24 @@ func TestEditLookupsNotFound(t *testing.T) {
 	}
 }
 
-const genreKey = "GENRE"
+const (
+	genreKey  = "GENRE"
+	id3Genre  = "TCON"
+	genreRock = "Rock"
+	genrePop  = "Pop"
+)
 
 func TestAlbumTagValues(t *testing.T) {
 	t.Parallel()
 	s, _ := openBrowse(t)
 	tws := albumTracksFixture()
-	tws[0].Tags = []store.Tag{{Key: genreKey, Value: "Rock"}, {Key: genreKey, Value: "Pop"}, {Key: "MOOD", Value: "Calm"}}
+	tws[0].Tags = []store.Tag{{Key: genreKey, Value: genreRock}, {Key: genreKey, Value: genrePop}, {Key: "MOOD", Value: "Calm"}}
 	writeAll(t, s, tws...)
-	got, err := s.AlbumTagValues(t.Context(), albumID(1), []string{genreKey, "TCON"})
+	got, err := s.AlbumTagValues(t.Context(), albumID(1), []string{genreKey, id3Genre})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := map[string][]string{tws[0].ULID: {"Rock", "Pop"}}; !reflect.DeepEqual(got, want) {
+	if want := map[string][]string{tws[0].ULID: {genreRock, genrePop}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("AlbumTagValues = %v, want %v", got, want)
 	}
 	album, err := s.TrackAlbum(t.Context(), tws[0].ULID)
@@ -611,6 +618,35 @@ func TestWarnedTracks(t *testing.T) {
 	want := []store.WarnedTrack{{ID: warned.ULID, Root: testRoot, RelPath: warned.RelPath, Warnings: warned.Warnings}}
 	if !reflect.DeepEqual(tracks, want) {
 		t.Errorf("WarnedTracks = %+v, want %+v", tracks, want)
+	}
+}
+
+func TestAlbumTagCounts(t *testing.T) {
+	t.Parallel()
+	s, clock := openBrowse(t)
+	one, two, other := albumTrack(1, 1, "a"), albumTrack(1, 2, "a"), albumTrack(2, 1, "b")
+	gone := albumTrack(3, 1, "c")
+	rock := store.Tag{Key: genreKey, Value: genreRock}
+	one.Tags = []store.Tag{rock, {Key: "MOOD", Value: "Calm"}}
+	two.Tags = []store.Tag{rock, {Key: genreKey, Value: genrePop}}
+	other.Tags = []store.Tag{{Key: id3Genre, Value: "Jazz"}}
+	gone.Tags = []store.Tag{rock}
+	writeAll(t, s, one, two, other, gone)
+	markMissing(t, s, clock, gone.RelPath)
+	got, err := s.AlbumTagCounts(t.Context(), []string{genreKey, id3Genre})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.SortFunc(got, func(a, b store.AlbumTagCount) int {
+		return cmp.Or(cmp.Compare(a.AlbumID, b.AlbumID), cmp.Compare(a.Value, b.Value))
+	})
+	want := []store.AlbumTagCount{
+		{AlbumID: albumID(1), Value: genrePop, Tracks: 1},
+		{AlbumID: albumID(1), Value: genreRock, Tracks: 2},
+		{AlbumID: albumID(2), Value: "Jazz", Tracks: 1},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("AlbumTagCounts = %+v, want %+v", got, want)
 	}
 }
 

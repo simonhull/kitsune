@@ -13,7 +13,8 @@
 	import { morphsKey, startMorphs } from '#lib/morph/engine.ts';
 	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
-	import { gridWindow } from '#lib/pages/gridWindow.svelte.ts';
+	import { albumsView } from '#lib/pages/albumsView.svelte.ts';
+	import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
 	import { togglesOnSpace } from '#lib/player/keys.ts';
 	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
@@ -75,7 +76,8 @@
 				// eslint-disable-next-line svelte/no-navigation-without-resolve -- Built from resolve('/login') and the current path, with its `next`.
 				await goto(loginPath(location), { replaceState: true });
 			}
-			gridWindow.reset();
+			homeGrid.reset();
+			albumsView.reset();
 		};
 		void Promise.all(routeIds.map((route) => preloadCode(route)));
 		const leaveSession = followMediaSession(player);

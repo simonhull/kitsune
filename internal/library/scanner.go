@@ -57,6 +57,7 @@ type Options struct {
 	Artwork      *artwork.Cache   // Nil skips album art.
 	TagWrites    bool             // Files may be rewritten. Off, a scan changes nothing under the roots.
 	Write        WriteFunc        // Nil means audiometa.WriteContext.
+	Genres       *Genres          // Refreshed after scans and edits. Nil means a private one.
 }
 
 // WriteFunc saves edit to the audio file at path, as [audiometa.WriteContext] does.
@@ -86,6 +87,7 @@ type Scanner struct {
 	tagWrites bool
 	write     WriteFunc
 	claim     libraryLock // Held by the one scan, from its claim to its end.
+	genres    *Genres
 	lock      libraryLock // Held by a running scan or edit.
 	progress  atomic.Pointer[Progress]
 }
@@ -95,7 +97,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 	s := &Scanner{
 		st: st, roots: opts.Roots, grace: opts.MissingGrace, workers: opts.Workers,
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
-		tagWrites: opts.TagWrites, write: opts.Write, claim: newLibraryLock(), lock: newLibraryLock(),
+		tagWrites: opts.TagWrites, write: opts.Write, genres: opts.Genres, claim: newLibraryLock(), lock: newLibraryLock(),
 	}
 	if s.workers <= 0 {
 		s.workers = runtime.NumCPU()
@@ -105,6 +107,9 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 	}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	if s.genres == nil {
+		s.genres = NewGenres(st)
 	}
 	if s.write == nil {
 		s.write = func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
@@ -181,6 +186,7 @@ func (s *Scanner) scan(ctx context.Context, mode Mode) (Stats, error) {
 	}
 	defer s.refreshNames(ctx)
 	s.publish(func(p *Progress) { p.Total = len(sv.Jobs) })
+	defer s.refreshGenres(ctx)
 	stats := Stats{Seen: sv.Seen, SkippedRoots: sv.SkippedRoots}
 	if err = s.applySurvey(ctx, sv, &stats); err != nil {
 		return stats, fmt.Errorf("scan: %w", err)
@@ -201,6 +207,14 @@ func (s *Scanner) scan(ctx context.Context, mode Mode) (Stats, error) {
 func (s *Scanner) refreshNames(ctx context.Context) {
 	if err := s.st.RefreshNames(ctx); err != nil && ctx.Err() == nil {
 		s.log.WarnContext(ctx, "refreshing search names failed", "err", err)
+	}
+}
+
+// refreshGenres brings genres up to date after a scan or an edit, whatever its
+// outcome. A failure leaves them stale until the next one.
+func (s *Scanner) refreshGenres(ctx context.Context) {
+	if err := s.genres.Refresh(ctx); err != nil && ctx.Err() == nil {
+		s.log.WarnContext(ctx, "refreshing genres failed", "err", err)
 	}
 }
 

@@ -176,6 +176,51 @@ describe('Library', () => {
 		expect(albumsPage).toHaveBeenCalledOnce();
 	});
 
+	it('loads the whole list in big pages, from wherever Home got to', async () => {
+		const albumsPage = vi.fn<LibrarySource['albumsPage']>((sort, cursor) => {
+			const page = Number(cursor ?? 0);
+			const last = page === 2;
+			return Promise.resolve({
+				albums: sort === 'name' ? [entry(page)] : [],
+				...(last ? {} : { nextCursor: String(page + 1) })
+			});
+		});
+		const library = new Library(source({ albumsPage }), { readyMemory: forgetful() });
+		await library.loadShell();
+		albumsPage.mockClear();
+
+		await library.loadAllAlbums();
+		expect(albumsPage.mock.calls).toEqual([
+			['name', '1', 200],
+			['name', '2', 200]
+		]);
+		expect(library.albums).toHaveLength(3);
+		expect(library.hasMoreAlbums).toBe(false);
+	});
+
+	it('stops loading the whole list at a failure, and carries on when asked again', async () => {
+		let broken = false;
+		const albumsPage = vi.fn<LibrarySource['albumsPage']>((sort, cursor) => {
+			if (cursor === undefined) {
+				return Promise.resolve({ albums: [entry(0)], nextCursor: 'rest' });
+			}
+			return broken
+				? Promise.reject(new Error('no'))
+				: Promise.resolve({ albums: sort === 'name' ? [entry(1)] : [] });
+		});
+		const library = new Library(source({ albumsPage }), { readyMemory: forgetful() });
+		await library.loadShell();
+
+		broken = true;
+		await library.loadAllAlbums();
+		expect(library.hasMoreAlbums).toBe(true);
+
+		broken = false;
+		await library.loadAllAlbums();
+		expect(library.albums).toHaveLength(2);
+		expect(library.hasMoreAlbums).toBe(false);
+	});
+
 	it('asks only for counts on a ready library with nothing in it, until it has something', async () => {
 		vi.useFakeTimers();
 		const empty = { albums: 0, tracks: 0, durationMs: 0, roots: 1, issues: 0 };

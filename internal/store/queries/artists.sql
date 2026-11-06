@@ -59,3 +59,23 @@ WHERE t.album_id = ? AND t.missing_since IS NULL
         WHERE o.album_id = a.id AND o.missing_since IS NULL)))
 GROUP BY ar.id
 ORDER BY min(ta.ord), min(t.id);
+
+-- ids is a JSON array of album ULIDs. An album's sort artist is its first owner's
+-- sort name; an album nobody owns sorts by the artist it displays.
+
+-- name: ListAlbumSortArtists :many
+SELECT a.ulid, CAST(coalesce((
+    SELECT ar.sort_name
+    FROM tracks t
+    JOIN track_artists ta ON ta.track_id = t.id
+    JOIN artists ar ON ar.id = ta.artist_id
+    WHERE t.album_id = a.id AND t.missing_since IS NULL
+      AND (ta.role = 'album_artist'
+       OR (ta.ord = 0 AND a.compilation = 0 AND NOT EXISTS (
+            SELECT 1 FROM tracks o
+            JOIN track_artists oa ON oa.track_id = o.id AND oa.role = 'album_artist'
+            WHERE o.album_id = a.id AND o.missing_since IS NULL)))
+    ORDER BY ta.ord, t.id
+    LIMIT 1), a.artist) AS TEXT) AS sort_artist
+FROM albums a
+WHERE a.ulid IN (SELECT value FROM json_each(CAST(sqlc.arg(ids) AS TEXT)));

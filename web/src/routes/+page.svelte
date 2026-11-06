@@ -11,6 +11,7 @@
 	import AlbumGrid from '#lib/pages/AlbumGrid.svelte';
 	import Deck from '#lib/pages/Deck.svelte';
 	import FeatureTile from '#lib/pages/FeatureTile.svelte';
+	import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
 	import RecentCover from '#lib/pages/RecentCover.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 
@@ -78,7 +79,7 @@
 
 				<section aria-label="Your albums" class="repeat">
 					<h2 data-morph-part="card" data-morph-key="albums">Your albums</h2>
-					<AlbumGrid />
+					<AlbumGrid grid={homeGrid} />
 				</section>
 			{/if}
 		{/if}
