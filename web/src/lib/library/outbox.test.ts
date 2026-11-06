@@ -212,7 +212,8 @@ describe('Library plays', () => {
 	function library(overrides: Partial<LibrarySource> = {}, simulated = false) {
 		const store = new MemoryStorage();
 		const fake = server();
-		const source = { ...createFixtureSource(), me: () => Promise.resolve(simon) };
+		const me = { ...simon, canEditTags: false };
+		const source = { ...createFixtureSource(), me: () => Promise.resolve(me) };
 		const subject = new Library(
 			{ ...source, ...fake, ...overrides },
 			{ outbox: () => store, simulated }
@@ -283,6 +284,6 @@ describe('Library plays', () => {
 		await new Promise((done) => setTimeout(done));
 		expect(onExpired).not.toHaveBeenCalled();
 		expect(store.length).toBe(1);
-		expect(subject.user).toEqual(simon);
+		expect(subject.user).toMatchObject(simon);
 	});
 });

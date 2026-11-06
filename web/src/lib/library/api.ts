@@ -1,17 +1,23 @@
 import {
 	AlbumNotFoundError,
 	ArtistNotFoundError,
+	EditError,
 	LoginError,
 	ServerError,
 	UnauthorizedError,
 	type Album,
+	type AlbumEdit,
 	type AlbumPage,
 	type AlbumSort,
+	type AlbumTags,
 	type ArtistDetail,
 	type ArtistEntry,
+	type EditFailure,
+	type EditStopped,
 	type LibraryFacts,
 	type LibrarySource,
 	type LoginFailure,
+	type Me,
 	type PlayReport,
 	type ScanIssues,
 	type ScanStatus,
@@ -33,6 +39,55 @@ export interface ApiOptions {
 /** The URL of a cover rendition. */
 export function artworkUrl(hash: string, size: number): string {
 	return `${base}/artwork/${hash}?size=${String(size)}`;
+}
+
+/** What the server says about when to come back. */
+function retrySeconds(response: Response): number {
+	const seconds = Number(response.headers.get('Retry-After'));
+	return seconds > 0 ? seconds : defaultRetrySeconds;
+}
+
+/** What stopped an edit. Only an edit that got as far as the files says how far it got. */
+async function editFailureOf(response: Response): Promise<EditFailure> {
+	switch (response.status) {
+		case 404:
+			return { kind: 'gone' };
+		case 409:
+			return { kind: 'busy', retryAfterSeconds: retrySeconds(response) };
+	}
+	const stopped = (await response.json().catch(() => null)) as Partial<EditStopped> | null;
+	const { detail = '', changed, remaining } = stopped ?? {};
+	if (changed === undefined || remaining === undefined) {
+		switch (response.status) {
+			case 403:
+				return { kind: 'forbidden' };
+			case 412:
+				return { kind: 'stale' };
+		}
+		return { kind: 'unavailable' };
+	}
+	switch (response.status) {
+		case 403:
+			return { kind: 'unwritable', detail, changed, remaining };
+		case 412:
+			return { kind: 'stale', detail, changed, remaining };
+		case 422:
+			return { kind: 'refused', detail, changed, remaining };
+	}
+	return { kind: 'failed', detail, changed, remaining };
+}
+
+/** Why the tags couldn't be read. */
+function tagsFailureOf({ status }: Response): EditFailure {
+	switch (status) {
+		case 403:
+			return { kind: 'forbidden' };
+		case 404:
+			return { kind: 'gone' };
+		case 409:
+			return { kind: 'missing' };
+	}
+	return { kind: 'unavailable' };
 }
 
 /** Builds a {@link LibrarySource} over the real API, on the session cookie. */
@@ -77,17 +132,35 @@ export function createApiSource({
 			return { kind: 'credentials' };
 		}
 		if (response.status === 429) {
-			const seconds = Number(response.headers.get('Retry-After'));
-			return {
-				kind: 'throttled',
-				retryAfterSeconds: seconds > 0 ? seconds : defaultRetrySeconds
-			};
+			return { kind: 'throttled', retryAfterSeconds: retrySeconds(response) };
 		}
 		return { kind: 'unavailable' };
 	}
 
+	/** Asks for something an edit depends on. A 401 goes to the door, as everywhere. */
+	async function forEdit(
+		path: string,
+		failureFor: (response: Response) => EditFailure | Promise<EditFailure>,
+		init?: RequestInit
+	): Promise<Response> {
+		let response: Response;
+		try {
+			response = await call(path, init);
+		} catch {
+			throw new EditError({ kind: 'unavailable' });
+		}
+		if (response.status === 401) {
+			onUnauthorized();
+			throw new UnauthorizedError();
+		}
+		if (!response.ok) {
+			throw new EditError(await failureFor(response));
+		}
+		return response;
+	}
+
 	return {
-		me: () => read<User>('/me'),
+		me: () => read<Me>('/me'),
 
 		sessionUser: () => read<User>('/me', undefined, quietly),
 
@@ -167,6 +240,21 @@ export function createApiSource({
 		search(query, signal) {
 			const search = new URLSearchParams({ q: query });
 			return read<SearchResults>(`/search?${search.toString()}`, signal && { signal });
+		},
+
+		async albumTags(id) {
+			const response = await forEdit(`/albums/${encodeURIComponent(id)}/tags`, tagsFailureOf);
+			return (await response.json()) as AlbumTags;
+		},
+
+		// The ETag goes back as it came: comparison is strong, on the server.
+		async editAlbum(id, etag, edit: AlbumEdit) {
+			const response = await forEdit(`/albums/${encodeURIComponent(id)}/edits`, editFailureOf, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+				body: JSON.stringify(edit)
+			});
+			return (await response.json()) as Album;
 		},
 
 		streamUrl: (trackId) => `${base}/tracks/${encodeURIComponent(trackId)}/stream`,

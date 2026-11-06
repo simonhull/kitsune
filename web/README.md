@@ -46,6 +46,9 @@ With `?source=fixtures`:
   `?scan=30` is the same library as a dense run. A reload resumes the scan, and a new tab starts it
   again.
 
+- `?editFault=<busy|stale|drift|refused|partial>` makes the first tag edit fail that way, for the
+  states the editor's boards never drew.
+
 In dev, a small HUD at the bottom left shows how long the last morph took to start.
 
 ## Native binaries

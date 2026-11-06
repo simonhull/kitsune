@@ -7,6 +7,12 @@ export interface User {
 	createdAt: string;
 }
 
+/** A user, as the session sees them: what `/me` says, and logging in doesn't. */
+export interface Me extends User {
+	/** An administrator, on a server with tag writes on. */
+	canEditTags: boolean;
+}
+
 export interface Artwork {
 	/** Names the cover for `GET /artwork/{hash}`. */
 	hash: string;
@@ -60,6 +66,12 @@ export interface Track {
 	sampleRate?: number;
 	bitDepth?: number;
 	replayGain?: ReplayGain;
+	trackTotal?: number;
+	discTotal?: number;
+	year?: number;
+	genres: string[];
+	/** Changes when the file does. It isn't the stream's ETag. */
+	etag: string;
 }
 
 export interface Album extends AlbumEntry {
@@ -70,6 +82,89 @@ export interface Album extends AlbumEntry {
 	/** Distinct and sorted. */
 	formats: string[];
 	addedAt: string;
+	/** Every genre of the tracks as tagged, each once, in track order. */
+	genres: string[];
+	/** Sent back as `If-Match` to edit this album. */
+	etag: string;
+}
+
+/** Everything `GET /albums/{id}/tags` names. Four of them can be read but not edited yet. */
+export type TagField =
+	| 'title'
+	| 'album'
+	| 'artists'
+	| 'albumArtists'
+	| 'compilation'
+	| 'track'
+	| 'trackTotal'
+	| 'disc'
+	| 'discTotal'
+	| 'date'
+	| 'genres'
+	| 'composers'
+	| 'conductor'
+	| 'lyricist'
+	| 'performers'
+	| 'remixer'
+	| 'grouping'
+	| 'label'
+	| 'catalogNumber'
+	| 'barcode'
+	| 'isrc'
+	| 'originalDate'
+	| 'language'
+	| 'bpm'
+	| 'key'
+	| 'copyright'
+	| 'comment'
+	| 'lyrics'
+	| 'sortTitle'
+	| 'sortArtist'
+	| 'sortAlbum'
+	| 'sortAlbumArtist';
+
+/** Values by field, the same in every format. Numbers are decimal text. */
+export type FieldValues = Partial<Record<TagField, string[]>>;
+
+/** A tag no field covers, under its format's own key. */
+export interface RawTag {
+	key: string;
+	values: string[];
+	/** Gain, a fingerprint, or a value too long to show whole. */
+	readOnly?: boolean;
+}
+
+/** One file's tags, as a tag editor shows them. */
+export interface TrackTags {
+	id: string;
+	/** The file's base name. */
+	file: string;
+	fields: FieldValues;
+	/** Fields to show and not edit, such as timestamped lyrics. */
+	readOnly?: TagField[];
+	tags: RawTag[];
+}
+
+/** What the files hold, in album order. */
+export interface AlbumTags {
+	/** The album's `If-Match` value. */
+	etag: string;
+	tracks: TrackTags[];
+}
+
+/** A change to a file's tags. */
+export interface TagEdit {
+	set?: FieldValues;
+	/** Any field but `title`. A field also in `set` is a 400. */
+	clear?: TagField[];
+	/** By key. Empty values remove the tag. */
+	tags?: { key: string; values: string[] }[];
+}
+
+/** `all` goes to every track, and `tracks` on top of it: a field in both takes the track's. */
+export interface AlbumEdit {
+	all?: TagEdit;
+	tracks?: ({ id: string } & TagEdit)[];
 }
 
 /** An artist, as much as it takes to link to one. */
@@ -208,7 +303,7 @@ export interface PlayReport {
 /** Where every page gets its data: the real API, or the fixtures for tests and clips. */
 export interface LibrarySource {
 	/** Rejects with {@link UnauthorizedError} without a session. */
-	me(): Promise<User>;
+	me(): Promise<Me>;
 	/** {@link LibrarySource.me} for work in the background: losing the session here goes nowhere. */
 	sessionUser(): Promise<User>;
 	/** Rejects with {@link ServerError} or {@link UnauthorizedError}, and goes nowhere either. */
@@ -227,6 +322,10 @@ export interface LibrarySource {
 	artist(id: string): Promise<ArtistDetail>;
 	/** Finds artists, albums and tracks. Rejects with an `AbortError` when `signal` aborts. */
 	search(query: string, signal?: AbortSignal): Promise<SearchResults>;
+	/** Reads every tag of an album from its files. Rejects with {@link EditError}. */
+	albumTags(id: string): Promise<AlbumTags>;
+	/** Rejects with {@link EditError} unless the edit reached every file it named. */
+	editAlbum(id: string, etag: string, edit: AlbumEdit): Promise<Album>;
 	/** The URL a track's audio streams from. */
 	streamUrl(trackId: string): string;
 	/** Starts a scan. Rejects with a {@link ServerError}: 409 when one is running, 503 at shutdown. */
@@ -284,6 +383,48 @@ export class LoginError extends Error {
 
 	constructor(failure: LoginFailure) {
 		super(`login failed: ${failure.kind}`);
+		this.failure = failure;
+	}
+}
+
+/** An edit the server stopped. Each track is atomic; an album isn't. */
+export interface EditStopped {
+	/** The server's reason. */
+	detail: string;
+	/** The tracks that hold the edit. Empty when it never started. */
+	changed: string[];
+	/** The tracks that don't. */
+	remaining: string[];
+}
+
+export type EditFailure =
+	/** A scan or another edit holds the library: the server said when to come back. */
+	| { kind: 'busy'; retryAfterSeconds: number }
+	/** The ETag isn't current, or a file no longer matches what the server knows. */
+	| { kind: 'stale' }
+	/** A file changed under a write already running. */
+	| ({ kind: 'stale' } & EditStopped)
+	/** Not an administrator, or tag writes are off. */
+	| { kind: 'forbidden' }
+	/** No such album any more. */
+	| { kind: 'gone' }
+	/** A file of the album is gone, and a scan has yet to notice. */
+	| { kind: 'missing' }
+	/** The files can't take this edit. */
+	| ({ kind: 'refused' } & EditStopped)
+	/** The server may not rewrite a file. */
+	| ({ kind: 'unwritable' } & EditStopped)
+	/** Something unexpected, on the server's side. */
+	| ({ kind: 'failed' } & EditStopped)
+	/** No answer, or one the contract doesn't promise. The edit may or may not have landed. */
+	| { kind: 'unavailable' };
+
+export class EditError extends Error {
+	override name = 'EditError';
+	readonly failure: EditFailure;
+
+	constructor(failure: EditFailure) {
+		super(`edit failed: ${failure.kind}`);
 		this.failure = failure;
 	}
 }

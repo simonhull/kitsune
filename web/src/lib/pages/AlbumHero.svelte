@@ -7,6 +7,8 @@
 	import { morph } from '#lib/morph/registry.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import Icon from '#lib/shell/Icon.svelte';
+	import TagFields from './TagFields.svelte';
+	import type { TagSession } from './tagEdits.svelte.ts';
 
 	interface Props {
 		albumId: string;
@@ -14,9 +16,29 @@
 		entry: AlbumEntry | undefined;
 		/** The full album, once it has streamed in. */
 		album: Album | undefined;
+		/** Opens the editor. Left out for anyone who can't edit. */
+		edit: (() => void) | undefined;
+		editButton?: HTMLButtonElement | undefined;
+		/** The edit under way on this album, if any. */
+		session: TagSession | undefined;
+		/** Where focus goes when the editor opens. */
+		eyebrow?: HTMLElement | undefined;
 	}
 
-	let { albumId, entry, album }: Props = $props();
+	let {
+		albumId,
+		entry,
+		album,
+		edit,
+		editButton = $bindable(),
+		session,
+		eyebrow = $bindable()
+	}: Props = $props();
+
+	const files = $derived(session?.tags?.tracks.length ?? album?.tracks.length ?? 0);
+	const fileCount = $derived(`${String(files)} ${files === 1 ? 'FILE' : 'FILES'}`);
+	const open = $derived(session?.open ?? null);
+	const place = $derived((session?.tags?.tracks.findIndex(({ id }) => id === open) ?? -1) + 1);
 
 	/** Until the album streams in, and on a compilation, the name is plain text. */
 	const owners = $derived(album?.artists ?? []);
@@ -37,7 +59,12 @@
 	}
 </script>
 
-<section aria-label="Album" class="hero">
+<section
+	aria-label="Album"
+	class="hero"
+	class:editing={session !== undefined}
+	class:one={open !== null}
+>
 	<div
 		class="art"
 		data-morph-part="art"
@@ -46,7 +73,17 @@
 		<Cover {albumId} {entry} place="stage" />
 	</div>
 	<div class="words" data-morph-part="words">
-		<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>
+		{#if session === undefined}
+			<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>
+		{:else}
+			<span class="meta ready eyebrow" tabindex="-1" bind:this={eyebrow}>
+				{#if open === null}
+					EDITING TAGS · <span class="writes">WRITES TO&nbsp;</span>{fileCount}
+				{:else}
+					EDITING TAGS · TRACK {place} OF {files}
+				{/if}
+			</span>
+		{/if}
 		<!-- The fit divides by the words' width, known before layout: the first frame is final. -->
 		<h1
 			title={entry?.title}
@@ -56,15 +93,17 @@
 			{entry?.title ?? ''}
 		</h1>
 		<div class="actions">
-			<button
-				type="button"
-				class="play"
-				aria-label={`${sounding ? 'Pause' : 'Play'} ${entry?.title ?? 'album'}`}
-				disabled={!playable}
-				onclick={play}
-			>
-				<Icon name={sounding ? 'pause' : 'play'} size={28} />
-			</button>
+			{#if session === undefined}
+				<button
+					type="button"
+					class="play"
+					aria-label={`${sounding ? 'Pause' : 'Play'} ${entry?.title ?? 'album'}`}
+					disabled={!playable}
+					onclick={play}
+				>
+					<Icon name={sounding ? 'pause' : 'play'} size={28} />
+				</button>
+			{/if}
 			<span class="artist">
 				<span class="name" use:morph={{ id: `artist:${albumId}`, slot: 'hero', kind: 'title' }}>
 					{#if owners.length === 1}
@@ -81,12 +120,25 @@
 					{/if}
 				</span>
 			</span>
-			<button type="button" class="ghost" disabled={!playable} onclick={shuffle}>Shuffle</button>
-			<button type="button" class="ghost round" aria-label="Favorite" disabled
-				><Icon name="heart-outline" /></button
-			>
-			<span class="ghost" aria-disabled="true">Edit tags</span>
+			{#if session === undefined}
+				<button type="button" class="ghost" disabled={!playable} onclick={shuffle}>Shuffle</button>
+				<button type="button" class="ghost round" aria-label="Favorite" disabled
+					><Icon name="heart-outline" /></button
+				>
+				{#if edit !== undefined}
+					<button
+						type="button"
+						class="ghost"
+						disabled={!playable}
+						bind:this={editButton}
+						onclick={edit}>Edit tags</button
+					>
+				{/if}
+			{/if}
 		</div>
+		{#if session?.wide != null && open === null}
+			<TagFields {session} wide={session.wide} />
+		{/if}
 	</div>
 </section>
 
@@ -94,10 +146,20 @@
 	.hero {
 		--hero-pad: 64px;
 		--hero-cover: 380px;
+		--hero-type: var(--type-hero);
 
 		container-type: inline-size;
 		position: relative;
 		height: var(--hero-height);
+		transition: height var(--morph-slow) var(--curve-settle);
+	}
+
+	/* Editing takes the page in hand: the stage draws up, and the tracks rise to meet it. */
+	.hero.editing {
+		--hero-cover: 260px;
+
+		transition-duration: var(--morph);
+		transition-timing-function: var(--curve-morph);
 	}
 
 	.art {
@@ -109,6 +171,29 @@
 		border-radius: var(--radius-24);
 		overflow: hidden;
 		box-shadow: 0 40px 90px rgb(0 0 0 / 50%);
+		transition:
+			width var(--morph-slow) var(--curve-settle),
+			height var(--morph-slow) var(--curve-settle),
+			top var(--morph-slow) var(--curve-settle);
+	}
+
+	.editing .art {
+		top: 104px;
+		transition-duration: var(--morph);
+		transition-timing-function: var(--curve-morph);
+	}
+
+	/* One track has the stage: its cover has flown down to the panel, so the words have the room. */
+	.one {
+		--hero-cover: 0px;
+	}
+
+	.one .art {
+		visibility: hidden;
+	}
+
+	.one .actions {
+		display: none;
 	}
 
 	.words {
@@ -119,6 +204,18 @@
 		display: flex;
 		flex-direction: column;
 		gap: 18px;
+		transition: bottom var(--morph-slow) var(--curve-settle);
+	}
+
+	.editing .words {
+		bottom: 70px;
+		gap: 0;
+		transition-duration: var(--morph);
+		transition-timing-function: var(--curve-morph);
+	}
+
+	.one .words {
+		bottom: 119px;
 	}
 
 	.meta {
@@ -131,6 +228,13 @@
 
 	.meta.ready {
 		opacity: 1;
+	}
+
+	.eyebrow {
+		margin-bottom: 8px;
+		font-size: var(--type-mono);
+		letter-spacing: 0.08em;
+		outline: none;
 	}
 
 	/*
@@ -150,11 +254,35 @@
 		max-width: var(--room);
 		padding-bottom: 0.09em;
 		margin-bottom: -0.09em;
-		font-size: max(min(var(--type-hero), var(--fit)), clamp(32px, var(--fit) * 2, 44px));
+		font-size: max(min(var(--hero-type), var(--fit)), clamp(32px, var(--fit) * 2, 44px));
 		font-weight: 900;
 		letter-spacing: var(--tracking-hero);
 		line-height: 0.92;
 		text-wrap: balance;
+		transition: font-size var(--morph-slow) var(--curve-settle);
+	}
+
+	.editing h1 {
+		--hero-type: 120px;
+
+		line-height: 0.9;
+		transition-duration: var(--morph);
+		transition-timing-function: var(--curve-morph);
+	}
+
+	.one h1 {
+		--hero-type: 88px;
+
+		letter-spacing: -0.06em;
+	}
+
+	.editing .actions {
+		margin: 18px 0 26px;
+	}
+
+	.editing .artist {
+		font-size: 20px;
+		margin-right: 0;
 	}
 
 	.actions {
@@ -226,8 +354,7 @@
 		justify-content: center;
 	}
 
-	.ghost:disabled,
-	.ghost[aria-disabled] {
+	.ghost:disabled {
 		color: var(--text-label);
 		cursor: default;
 	}
@@ -272,6 +399,43 @@
 		.play {
 			width: 56px;
 			height: 56px;
+		}
+
+		/* A phone edits the words alone: there's no room for the cover, and the fields need it. */
+		.hero.editing {
+			display: block;
+			height: var(--hero-height);
+			padding: 0;
+		}
+
+		.editing .art {
+			display: none;
+		}
+
+		.editing .words {
+			position: absolute;
+			left: var(--hero-pad);
+			right: var(--hero-pad);
+			bottom: 44px;
+		}
+
+		.editing h1 {
+			--hero-type: 56px;
+
+			font-size: max(min(var(--hero-type), var(--fit)), clamp(22px, var(--fit) * 2, 30px));
+		}
+
+		.editing .actions {
+			margin: 12px 0 16px;
+		}
+
+		.editing .artist {
+			flex-basis: auto;
+			font-size: 15px;
+		}
+
+		.writes {
+			display: none;
 		}
 
 		.artist {

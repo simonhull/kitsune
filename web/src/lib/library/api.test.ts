@@ -3,9 +3,11 @@ import { artworkUrl, createApiSource } from './api';
 import {
 	AlbumNotFoundError,
 	ArtistNotFoundError,
+	EditError,
 	LoginError,
 	ServerError,
-	UnauthorizedError
+	UnauthorizedError,
+	type EditFailure
 } from './source';
 
 function json(status: number, body: unknown = {}, headers: HeadersInit = {}): Response {
@@ -169,5 +171,98 @@ describe('ApiSource', () => {
 		const { source } = fake(json(404), json(500));
 		await expect(source.artist('a/b')).rejects.toBeInstanceOf(ArtistNotFoundError);
 		await expect(source.artist('a')).rejects.toBeInstanceOf(ServerError);
+	});
+});
+
+describe('edits', () => {
+	const stopped = { detail: 'it is read-only', changed: ['t1'], remaining: ['t2'] };
+
+	async function failureOf(answer: Response | Error): Promise<EditFailure> {
+		const { source } = fake(answer);
+		const error: unknown = await source.editAlbum('a', 'tag', {}).catch((e) => e);
+		if (!(error instanceof EditError)) {
+			throw new Error('not an edit error');
+		}
+		return error.failure;
+	}
+
+	it('sends one edit, with its ETag verbatim, past the CSRF guard', async () => {
+		const { send, source } = fake(json(200, { id: 'a', etag: 'next' }));
+		const edit = { all: { clear: ['genres' as const] } };
+		await expect(source.editAlbum('a/1', '"tag"', edit)).resolves.toMatchObject({ etag: 'next' });
+		expect(send.mock.calls.at(0)?.at(0)).toBe('/api/v1/albums/a%2F1/edits');
+		expect(init(send).method).toBe('POST');
+		expect(init(send).body).toBe('{"all":{"clear":["genres"]}}');
+		expect(init(send).headers).toMatchObject({
+			'Content-Type': 'application/json',
+			'If-Match': '"tag"',
+			'X-Kitsune-Request': '1'
+		});
+	});
+
+	it('reads an album’s tags', async () => {
+		const { send, source } = fake(json(200, { etag: 'tag', tracks: [] }));
+		await expect(source.albumTags('a/1')).resolves.toEqual({ etag: 'tag', tracks: [] });
+		expect(send.mock.calls.at(0)?.at(0)).toBe('/api/v1/albums/a%2F1/tags');
+	});
+
+	it.each([
+		[403, 'forbidden'],
+		[404, 'gone'],
+		[409, 'missing'],
+		[500, 'unavailable']
+	])('reads a %i from the tags as %s', async (status, kind) => {
+		const { source } = fake(json(status));
+		await expect(source.albumTags('a')).rejects.toMatchObject({ failure: { kind } });
+	});
+
+	it('hands a 401 from the tags to the door', async () => {
+		const { source, onUnauthorized } = fake(json(401));
+		await expect(source.albumTags('a')).rejects.toBeInstanceOf(UnauthorizedError);
+		expect(onUnauthorized).toHaveBeenCalledOnce();
+	});
+
+	it('hands a 401 to the door', async () => {
+		const { source, onUnauthorized } = fake(json(401));
+		await expect(source.editAlbum('a', 'tag', {})).rejects.toBeInstanceOf(UnauthorizedError);
+		expect(onUnauthorized).toHaveBeenCalledOnce();
+	});
+
+	it('reads when to come back from a 409, or picks a time', async () => {
+		await expect(failureOf(json(409, {}, { 'Retry-After': '30' }))).resolves.toEqual({
+			kind: 'busy',
+			retryAfterSeconds: 30
+		});
+		await expect(failureOf(json(409))).resolves.toEqual({ kind: 'busy', retryAfterSeconds: 60 });
+	});
+
+	it.each([
+		[404, 'gone'],
+		[412, 'stale'],
+		[403, 'forbidden'],
+		[400, 'unavailable'],
+		[428, 'unavailable'],
+		[502, 'unavailable']
+	])('reads a plain %i as %s', async (status, kind) => {
+		await expect(failureOf(json(status))).resolves.toEqual({ kind });
+	});
+
+	it.each([
+		[403, 'unwritable'],
+		[412, 'stale'],
+		[422, 'refused'],
+		[500, 'failed']
+	])('reads how far an edit got from a %i', async (status, kind) => {
+		await expect(failureOf(json(status, stopped))).resolves.toEqual({ kind, ...stopped });
+	});
+
+	it('survives a body that is not JSON', async () => {
+		await expect(failureOf(new Response('oops', { status: 500 }))).resolves.toEqual({
+			kind: 'unavailable'
+		});
+	});
+
+	it('reads no answer as unknown', async () => {
+		await expect(failureOf(new TypeError('offline'))).resolves.toEqual({ kind: 'unavailable' });
 	});
 });

@@ -9,6 +9,10 @@
 	--card: #151311;
 	--ground: #0a0908;
 
+	/* A value the server would refuse. */
+	--problem: #ff8fa3;
+	--problem-edge: #e04f6a;
+
 	/* Text. */
 	--text: #f5f1ec;
 	--text-secondary: #cbc4bc;
@@ -60,4 +64,5 @@
 	--morph-slow: 600ms;
 	--morph-drop: 180ms;
 	--curve-morph: ease-out;
+	--curve-settle: cubic-bezier(0.22, 1.12, 0.36, 1);
 }

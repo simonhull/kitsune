@@ -2,12 +2,13 @@ import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { preload } from '#lib/cover/rungs.ts';
 import { decodesAhead, mostQueued, openingFor, throwGap } from '#lib/pages/deck.ts';
 import { createApiSource } from './api.ts';
-import { cueOf, type NowPlaying } from './cue.ts';
+import { cueOf, retagged, type NowPlaying } from './cue.ts';
 import {
 	createFixtureSource,
 	createScanFixtureSource,
 	defaultScanGap,
-	scanStart
+	scanStart,
+	type FixtureEditFault
 } from './fixtures.ts';
 import { healthFixture } from './healthFixtures.ts';
 import { Outbox } from './outbox.ts';
@@ -18,16 +19,18 @@ import {
 	ServerError,
 	UnauthorizedError,
 	type Album,
+	type AlbumEdit,
 	type AlbumEntry,
+	type AlbumTags,
 	type ArtistDetail,
 	type ArtistEntry,
 	type ArtistLink,
 	type LibraryFacts,
 	type LibrarySource,
+	type Me,
 	type ScanIssues,
 	type ScanMode,
-	type ScanRefusal,
-	type User
+	type ScanRefusal
 } from './source.ts';
 
 /** The grid's page: 60 divides evenly into every column count, so pages stack with no seam. */
@@ -109,6 +112,8 @@ export interface PlayerView {
 	/** From the first play until a reset, whatever has happened since. */
 	readonly started: boolean;
 	readonly cue: NowPlaying | null;
+	/** Takes in an album just edited. */
+	retag(album: Album): void;
 	reset(): void;
 }
 
@@ -131,7 +136,7 @@ async function cardFor(entry: AlbumEntry): Promise<AlbumEntry> {
 
 /** The client's view of the library. List entries seed the first frame of the next page. */
 export class Library {
-	user = $state.raw<User | null>(null);
+	user = $state.raw<Me | null>(null);
 	facts = $state.raw<LibraryFacts | null>(null);
 	/** Newest first: the feature album, then what's beside it. */
 	recent = $state.raw<AlbumEntry[]>([]);
@@ -299,7 +304,9 @@ export class Library {
 
 	/** Exchanges a name and password for a session. Rejects with `LoginError`. */
 	async login(name: string, password: string): Promise<void> {
-		this.user = await this.#source.login(name, password);
+		await this.#source.login(name, password);
+		// Logging in names the user; only `/me` says what they may do.
+		this.user = await this.#source.me();
 		this.#session = Promise.resolve('signed-in');
 	}
 
@@ -813,6 +820,50 @@ export class Library {
 		}
 	}
 
+	/** Reads every tag of an album from its files. Rejects with `EditError`. */
+	albumTags(id: string): Promise<AlbumTags> {
+		return this.#source.albumTags(id);
+	}
+
+	/** Saves an edit of an album's tracks, and shows it. Rejects with `EditError`. */
+	async editAlbum(id: string, etag: string, edit: AlbumEdit): Promise<void> {
+		this.#adopt(await this.#source.editAlbum(id, etag, edit));
+	}
+
+	/** Reads an album again, for when what's held has turned out to be behind the server. */
+	async reread(id: string): Promise<void> {
+		this.#adopt(await this.#source.album(id));
+	}
+
+	/** Puts an album everywhere it's shown, so nothing waits for a reload to catch up. */
+	#adopt(album: Album): void {
+		this.#albums.set(album.id, album);
+		const { year, displayGenres } = album;
+		const retold = (entry: AlbumEntry): AlbumEntry =>
+			entry.id === album.id ? { ...entry, year, displayGenres } : entry;
+		const entry = this.#entries.get(album.id);
+		if (entry !== undefined) {
+			this.#entries.set(album.id, retold(entry));
+		}
+		this.recent = this.recent.map(retold);
+		this.albums = this.albums.map(retold);
+		this.#player?.retag(album);
+		this.#recue(album);
+	}
+
+	/** A cue only shows what would play, so it follows the album's order; a queue keeps its own. */
+	#recue(album: Album): void {
+		const { playing } = this;
+		if (playing?.album.id !== album.id) {
+			return;
+		}
+		const index = album.tracks.findIndex(({ id }) => id === playing.track.id);
+		this.playing =
+			this.#player?.started === true || index < 0
+				? retagged(playing, album)
+				: cueOf(album, album.tracks, index);
+	}
+
 	/** Reacts to a lost session. Parallel calls are one event: the app leaves once. */
 	async expire(): Promise<void> {
 		if (this.#expiring || this.onExpired === null) {
@@ -867,12 +918,13 @@ function fromQuery(): Library {
 	const latencyMs = Number(query.get('latency') ?? 0);
 	const health = healthFixture(query.get('health'));
 	const role = query.get('role') === 'user' ? 'user' : 'admin';
+	const editFault = (query.get('editFault') ?? undefined) as FixtureEditFault | undefined;
 	const pinnedAlbumId = query.get('playing') ?? undefined;
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
 		const readyMemory = { seen: () => false, mark: () => undefined };
-		return new Library(createFixtureSource({ latencyMs, health, role }), {
+		return new Library(createFixtureSource({ latencyMs, health, role, editFault }), {
 			pinnedAlbumId,
 			readyMemory,
 			simulated: true

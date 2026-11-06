@@ -17,7 +17,16 @@ import {
 import type { Album, Track } from './source';
 
 function track(fields: Partial<Track> = {}): Track {
-	return { id: 't', title: 'T', artists: ['A'], durationMs: 1000, format: 'FLAC', ...fields };
+	return {
+		id: 't',
+		title: 'T',
+		artists: ['A'],
+		durationMs: 1000,
+		format: 'FLAC',
+		genres: [],
+		etag: '',
+		...fields
+	};
 }
 
 const album: Album = {
@@ -30,7 +39,9 @@ const album: Album = {
 	tracks: [track(), track()],
 	durationMs: 1_500_000,
 	formats: ['FLAC'],
-	addedAt: '2026-10-12T18:00:00Z'
+	addedAt: '2026-10-12T18:00:00Z',
+	genres: [],
+	etag: ''
 };
 
 describe('clock', () => {
@@ -111,7 +122,7 @@ describe('formatOf', () => {
 describe('formatLine', () => {
 	const hi = track({ bitDepth: 24, sampleRate: 96_000 });
 	const cd = track({ bitDepth: 16, sampleRate: 44_100 });
-	const mp3 = track({ format: 'MP3' });
+	const mp3 = track({ format: 'MP3', genres: [], etag: '' });
 	const ogg = track({ format: 'Ogg' });
 
 	it('gives the one format an album has', () => {

@@ -15,6 +15,7 @@
 	import { watchInput } from '#lib/morph/journey.ts';
 	import { albumsView } from '#lib/pages/albumsView.svelte.ts';
 	import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
+	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
 	import { togglesOnSpace } from '#lib/player/keys.ts';
 	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
@@ -45,6 +46,8 @@
 
 	const stageEntry = $derived(stageAlbum === null ? undefined : library.entry(stageAlbum));
 	const palette = $derived(stageAlbum === null ? null : paletteFor(stageEntry));
+
+	const edit = $derived(onAlbum && stageAlbum !== null ? tagEdits.of(stageAlbum) : undefined);
 
 	const morphs = startMorphs();
 	setContext(morphsKey, morphs);
@@ -78,6 +81,7 @@
 			}
 			homeGrid.reset();
 			albumsView.reset();
+			tagEdits.reset();
 		};
 		void Promise.all(routeIds.map((route) => preloadCode(route)));
 		const leaveSession = followMediaSession(player);
@@ -99,6 +103,8 @@
 
 <div
 	class="shell"
+	class:editing={edit !== undefined}
+	class:one={edit?.open != null}
 	style:--accent={palette?.accent}
 	style:--on-accent={palette?.onAccent}
 	style:--wash={palette?.wash}
@@ -143,6 +149,14 @@
 		min-height: 100dvh;
 	}
 
+	.shell.editing {
+		--hero-height: 430px;
+	}
+
+	.shell.one {
+		--hero-height: 260px;
+	}
+
 	main {
 		position: relative;
 		z-index: 1;
@@ -179,6 +193,17 @@
 	@media (max-width: 820px) {
 		.shell {
 			--hero-height: 640px;
+		}
+
+		.shell.editing {
+			--hero-height: 300px;
+		}
+
+		/* On a phone the editor has the screen: its board has no room for either. */
+		.shell.editing :global(.nav),
+		.shell.editing :global(.island) {
+			opacity: 0;
+			pointer-events: none;
 		}
 	}
 </style>
