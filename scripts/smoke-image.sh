@@ -21,7 +21,7 @@ echo 'smoke-test-password-1' | run --rm -i "$image" users add -admin -password-s
 run -d --name "$name" -p "$port:4533" "$image"
 
 expect() { # status path content-type
-	got=$(curl -s --retry 20 --retry-connrefused --retry-delay 1 -o /dev/null \
+	got=$(curl -s --retry 20 --retry-all-errors --retry-delay 1 -o /dev/null \
 		-w '%{http_code} %{content_type}' "http://127.0.0.1:$port$2")
 	case $got in
 	"$1 $3"*) echo "ok   $2: $got" ;;
