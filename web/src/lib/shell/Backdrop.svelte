@@ -55,6 +55,7 @@
 		height: var(--hero-height);
 		overflow: hidden;
 		opacity: 0;
+		transition: height var(--morph) var(--curve-morph);
 	}
 
 	.fade {

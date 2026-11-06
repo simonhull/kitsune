@@ -9,6 +9,8 @@ function track(replayGain?: ReplayGain): Track {
 		artists: [],
 		durationMs: 1000,
 		format: 'FLAC',
+		genres: [],
+		etag: '',
 		...(replayGain === undefined ? {} : { replayGain })
 	};
 }

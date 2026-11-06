@@ -15,12 +15,30 @@ const album: Album = {
 	compilation: false,
 	artwork: { hash: 'abc', accent: '#112233', ground: '#000000', width: 1, height: 1 },
 	tracks: [
-		{ id: 't0', title: 'T0', artists: ['Guest'], durationMs: 100_000, format: 'FLAC' },
-		{ id: 't1', title: 'T1', artists: [], durationMs: 200_000, format: 'FLAC' }
+		{
+			id: 't0',
+			title: 'T0',
+			artists: ['Guest'],
+			durationMs: 100_000,
+			format: 'FLAC',
+			genres: [],
+			etag: ''
+		},
+		{
+			id: 't1',
+			title: 'T1',
+			artists: [],
+			durationMs: 200_000,
+			format: 'FLAC',
+			genres: [],
+			etag: ''
+		}
 	],
 	durationMs: 300_000,
 	formats: ['FLAC'],
-	addedAt: '2026-10-12T18:00:00Z'
+	addedAt: '2026-10-12T18:00:00Z',
+	genres: [],
+	etag: ''
 };
 
 class FakeSession {

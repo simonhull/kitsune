@@ -1,9 +1,13 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
+	import type { Album } from '#lib/library/source.ts';
 	import { whenSettled } from '#lib/morph/settled.ts';
 	import AlbumHero from '#lib/pages/AlbumHero.svelte';
+	import TagBar from '#lib/pages/TagBar.svelte';
+	import TagRows from '#lib/pages/TagRows.svelte';
+	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
 	import TrackList from '#lib/pages/TrackList.svelte';
 	import { player } from '#lib/player/player.svelte.ts';
 	import type { PageProps } from './$types';
@@ -14,6 +18,11 @@
 	const entry = $derived(library.entry(id));
 	const album = $derived(library.album(id));
 	const cuedId = $derived(library.playing?.album.id === id ? library.playing.track.id : undefined);
+	const session = $derived(tagEdits.of(id));
+
+	let editButton: HTMLButtonElement | undefined = $state();
+	let eyebrow: HTMLElement | undefined = $state();
+	let announcement = $state('');
 
 	// Never awaited: the first frame is built from the list entry, and tracks stream in.
 	$effect(() => {
@@ -22,6 +31,17 @@
 		void library.album(wanted);
 		// Untracked: a failure must wait for Try again, not re-run this and ask forever.
 		untrack(() => void library.loadAlbum(wanted));
+	});
+
+	// Edits outlive the page. Only a page left with something unsaved comes back to them.
+	$effect(() => {
+		const wanted = id;
+		untrack(() => {
+			tagEdits.arrive(wanted);
+		});
+		return () => {
+			tagEdits.depart(wanted);
+		};
 	});
 
 	// The album last opened is the one cued, but the island mustn't change under a flight.
@@ -33,7 +53,41 @@
 			});
 		}
 	});
+
+	async function openEditor(): Promise<void> {
+		tagEdits.open(id);
+		announcement = '';
+		await tick();
+		eyebrow?.focus();
+	}
+
+	async function leftEditor(words: string): Promise<void> {
+		announcement = words;
+		await tick();
+		editButton?.focus();
+	}
+
+	function leave(): void {
+		tagEdits.close(id);
+		void leftEditor('');
+	}
+
+	async function write(): Promise<void> {
+		const written = await session?.write();
+		if (written?.kind === 'done') {
+			await leftEditor('Tags written.');
+		} else if (written?.kind === 'problem') {
+			await tick();
+			document.getElementById(written.field)?.focus();
+		}
+	}
 </script>
+
+{#snippet editor(held: Album)}
+	{#if session?.tags != null}
+		<TagRows album={held} tags={session.tags} {session} />
+	{/if}
+{/snippet}
 
 <svelte:head>
 	<title>{entry?.title ?? 'Album'} · Kitsune</title>
@@ -46,7 +100,15 @@
 	</div>
 {:else}
 	<div class="album">
-		<AlbumHero albumId={id} {entry} {album} />
+		<AlbumHero
+			albumId={id}
+			{entry}
+			{album}
+			edit={library.user?.canEditTags === true ? () => void openEditor() : undefined}
+			bind:editButton
+			{session}
+			bind:eyebrow
+		/>
 		<TrackList
 			{album}
 			{cuedId}
@@ -59,7 +121,13 @@
 			gone={library.failed(id)}
 			unavailable={library.unavailable(id)}
 			retry={() => void library.loadAlbum(id)}
+			editing={session !== undefined}
+			editor={session?.tags == null ? undefined : editor}
 		/>
+		{#if session !== undefined}
+			<TagBar {session} {leave} write={() => void write()} />
+		{/if}
+		<p class="visually-hidden" role="status">{announcement}</p>
 	</div>
 {/if}
 

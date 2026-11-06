@@ -50,6 +50,16 @@ button {
 	outline-offset: 2px;
 }
 
+/* Read out and never seen: a real label where the layout already says it. */
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
 /* Pictures of a page: a clone must not replay what the original already played. */
 .ghost-layer *,
 .morph-layer * {

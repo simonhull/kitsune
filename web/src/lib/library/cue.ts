@@ -44,3 +44,12 @@ export function cueOf(
 		moreCount: Math.max(0, rest.length - upNextShown)
 	};
 }
+
+/**
+ * Names a cue from an album just edited, keeping its order and its place: the track is the same
+ * one, whatever its number says now. Tracks not in the album stay as they were.
+ */
+export function retagged(cue: NowPlaying, album: Album): NowPlaying {
+	const fresh = (track: Track): Track => album.tracks.find(({ id }) => id === track.id) ?? track;
+	return { ...cue, album, track: fresh(cue.track), upNext: cue.upNext.map(fresh) };
+}

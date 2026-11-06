@@ -3,20 +3,27 @@ import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
 	AlbumNotFoundError,
 	ArtistNotFoundError,
+	EditError,
 	LoginError,
 	type Album,
+	type AlbumEdit,
 	type AlbumEntry,
 	type AlbumPage,
 	type AlbumSort,
+	type AlbumTags,
 	type ArtistDetail,
 	type ArtistEntry,
 	type ArtistLink,
 	type LibrarySource,
+	type Me,
+	type RawTag,
 	type ScanStatus,
 	type SearchResults,
+	type TagEdit,
+	type TagField,
 	type Track,
 	type TrackHit,
-	type User
+	type TrackTags
 } from './source';
 
 // The slugs are chosen so FNV-1a lands each album on the cover its board shows.
@@ -66,6 +73,9 @@ const seaSampler: AlbumEntry = {
 	compilation: true
 };
 
+/** The genres every fixture track is tagged with, as the tag editor's boards show them. */
+const boardTags = ['Ambient', 'Post-rock'];
+
 function artistLink(name: string): ArtistLink {
 	return { id: `artist-${name.toLowerCase().replaceAll(' ', '-')}`, name };
 }
@@ -88,7 +98,11 @@ function track(
 		format: 'FLAC',
 		sampleRate: 96_000,
 		bitDepth: 24,
-		...(gain === null ? {} : { replayGain: { trackGain: gain } })
+		...(gain === null ? {} : { replayGain: { trackGain: gain } }),
+		trackTotal: album.trackCount,
+		discTotal: 1,
+		genres: boardTags,
+		etag: `${album.id}-${String(trackNo)}:0`
 	};
 }
 
@@ -129,10 +143,12 @@ function albumFrom(entry: AlbumEntry, tracks: Track[], year: number): Album {
 		...entry,
 		artists: entry.compilation ? [] : [artistLink(entry.artist)],
 		year,
-		tracks,
+		tracks: tracks.map((track) => ({ ...track, year })),
 		durationMs: tracks.reduce((sum, { durationMs }) => sum + durationMs, 0),
 		formats: ['FLAC'],
-		addedAt: '2026-10-12T18:00:00Z'
+		addedAt: '2026-10-12T18:00:00Z',
+		genres: boardTags,
+		etag: `${entry.id}:0`
 	};
 }
 
@@ -161,11 +177,12 @@ const byName = [...albums.values()]
 	.filter((album) => album.id !== tinLantern.id)
 	.toSorted((a, b) => a.title.localeCompare(b.title));
 
-const user: User = {
+const user: Me = {
 	id: 1,
 	name: 'Simon',
 	role: 'admin',
-	createdAt: '2026-01-01T00:00:00Z'
+	createdAt: '2026-01-01T00:00:00Z',
+	canEditTags: true
 };
 
 /** The boards' counts, the real library's: the fake one is only a window onto it. */
@@ -245,19 +262,258 @@ function find(query: string): SearchResults {
 	};
 }
 
+/** Moves an ETag on, as a rewrite of the file would. */
+function nextEtag(etag: string): string {
+	const [name = '', count = '0'] = etag.split(':');
+	return `${name}:${String(Number(count) + 1)}`;
+}
+
+/** What a tag editor sees of a track that's never been edited, in the boards' words. */
+function tagsOf(album: Album, track: Track, index: number): TrackTags {
+	const number = (value: number | undefined): string[] =>
+		value === undefined ? [] : [String(value)];
+	return {
+		id: track.id,
+		file: `${String(index + 1).padStart(2, '0')}-${track.title.toLowerCase().replaceAll(' ', '-')}.flac`,
+		fields: {
+			title: [track.title],
+			album: [album.title],
+			artists: track.artists,
+			...(album.compilation ? { compilation: ['1'] } : { albumArtists: [album.artist] }),
+			track: number(track.trackNo),
+			trackTotal: number(album.trackCount),
+			disc: number(track.discNo),
+			discTotal: ['1'],
+			date: [`${String(album.year)}-03-12`],
+			genres: track.genres
+		},
+		tags: []
+	};
+}
+
+/** The tags no field covers. The last few are read-only, each for its own reason. */
+function otherTags({ id, replayGain }: Track): RawTag[] {
+	return [
+		{ key: 'ENCODED-BY', values: ['[as tagged]'] },
+		{ key: 'MOOD', values: ['Slow', 'Tidal'] },
+		{ key: 'MUSICBRAINZ_TRACKID', values: [`fixture-${id}`] },
+		...(replayGain?.trackGain === undefined
+			? []
+			: [
+					{
+						key: 'REPLAYGAIN_TRACK_GAIN',
+						values: [`${String(replayGain.trackGain)} dB`],
+						readOnly: true
+					}
+				]),
+		{ key: 'ACOUSTID_FINGERPRINT', values: ['AQADtMmSJMmS'], readOnly: true },
+		{ key: 'NOTES', values: [`${'A value too long to show whole. '.repeat(8)}…`], readOnly: true }
+	];
+}
+
+/** Credits and such for the board's own track, and timestamped lyrics for the one after it. */
+const boardTrackTags: Record<string, Partial<TrackTags>> = {
+	'glasshouse-66-2': {
+		fields: {
+			artists: ['Low Tide Choir', 'Ines Duarte'],
+			composers: ['Mara Quill'],
+			label: ['Northlight'],
+			catalogNumber: ['NL-014'],
+			originalDate: ['2019'],
+			language: ['eng'],
+			bpm: ['92'],
+			key: ['D min'],
+			sortArtist: ['Low Tide Choir'],
+			lyrics: ['[Your lyrics stay as they are in the file.]']
+		}
+	},
+	'glasshouse-66-3': {
+		fields: { lyrics: ['[00:01.00] Glass over water\n[00:04.20] Light in the seams'] },
+		readOnly: ['lyrics']
+	}
+};
+
+function allTagsOf(album: Album): AlbumTags {
+	return {
+		etag: album.etag,
+		tracks: album.tracks.map((track, index) => {
+			const base = tagsOf(album, track, index);
+			const extra = boardTrackTags[track.id] ?? {};
+			return {
+				...base,
+				...extra,
+				fields: { ...base.fields, ...extra.fields },
+				tags: otherTags(track)
+			};
+		})
+	};
+}
+
+/** Does to one file's tags what `POST /albums/{id}/edits` would. */
+function applied(track: TrackTags, edit: TagEdit): TrackTags {
+	const fields = { ...track.fields, ...edit.set };
+	for (const field of edit.clear ?? []) {
+		fields[field] = [];
+	}
+	const changes = new Map(edit.tags?.map(({ key, values }) => [key, values]));
+	const tags = track.tags
+		.map((tag) => ({ ...tag, values: changes.get(tag.key) ?? tag.values }))
+		.filter(({ values }) => values.length > 0);
+	return { ...track, fields, tags };
+}
+
+/** Lays an edit of every track and of one track over each other, as the server does. */
+function layered(all: TagEdit | undefined, own: TagEdit | undefined): TagEdit {
+	const named = (edit: TagEdit | undefined): TagField[] => [
+		...(Object.keys(edit?.set ?? {}) as TagField[]),
+		...(edit?.clear ?? [])
+	];
+	const mine = named(own);
+	const set = Object.entries(all?.set ?? {}).filter(([field]) => !mine.includes(field as TagField));
+	return {
+		set: { ...Object.fromEntries(set), ...own?.set },
+		clear: [...(all?.clear ?? []).filter((field) => !mine.includes(field)), ...(own?.clear ?? [])],
+		tags: own?.tags ?? []
+	};
+}
+
+function first(track: TrackTags, field: TagField): string | undefined {
+	return track.fields[field]?.at(0);
+}
+
+/** A number as the library reads one. */
+function numbered(track: TrackTags, field: TagField): { value?: number } {
+	const value = first(track, field);
+	return value === undefined ? {} : { value: Number(value) };
+}
+
+/** The library's view of tags just written. */
+function reindexed(album: Album, tags: AlbumTags, touched: readonly string[]): Album {
+	const held = new Map(album.tracks.map((track) => [track.id, track]));
+	const tracks = tags.tracks.flatMap((tagged) => {
+		const was = held.get(tagged.id);
+		if (was === undefined) {
+			return [];
+		}
+		const rest = { ...was };
+		delete rest.trackNo;
+		delete rest.discNo;
+		delete rest.year;
+		const trackNo = numbered(tagged, 'track').value;
+		const discNo = numbered(tagged, 'disc').value;
+		const year = Number(first(tagged, 'date')?.slice(0, 4) ?? 0);
+		return [
+			{
+				...rest,
+				title: first(tagged, 'title') ?? was.title,
+				genres: tagged.fields.genres ?? [],
+				...(trackNo === undefined ? {} : { trackNo }),
+				...(discNo === undefined ? {} : { discNo }),
+				...(year === 0 ? {} : { year }),
+				etag: touched.includes(tagged.id) ? nextEtag(was.etag) : was.etag
+			}
+		];
+	});
+	const ordered = tracks.toSorted(
+		(a, b) => (a.discNo ?? 1) - (b.discNo ?? 1) || (a.trackNo ?? Infinity) - (b.trackNo ?? Infinity)
+	);
+	const [{ year } = album] = ordered;
+	const rest = { ...album };
+	delete rest.year;
+	return {
+		...rest,
+		...(year === undefined ? {} : { year }),
+		tracks: ordered,
+		genres: [...new Set(ordered.flatMap(({ genres }) => genres))],
+		etag: nextEtag(album.etag)
+	};
+}
+
+/** Each way an edit can go wrong, for the states the boards never drew. */
+export type FixtureEditFault = 'busy' | 'stale' | 'drift' | 'refused' | 'partial';
+
 export interface FixtureOptions {
 	/** Delay every response by this many milliseconds, as a real server would. */
 	latencyMs?: number;
 	/** The state the Health page opens on. */
 	health?: HealthFixture;
-	role?: User['role'];
+	role?: Me['role'];
+	/** Fail the first edit this way. A drift never clears: only a scan would help. */
+	editFault?: FixtureEditFault | undefined;
 }
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
 export function createFixtureSource(options: FixtureOptions = {}): LibrarySource {
 	const { latencyMs = 0, health = 'idle', role = 'admin' } = options;
-	const signedIn: User = { ...user, role };
+	const signedIn: Me = { ...user, role, canEditTags: role === 'admin' };
 	const scans = createHealthFixture(health, role);
+	let fault = options.editFault;
+	// Each source has its own: an edit is for this tab, until a reload.
+	const held = new Map(albums);
+	const heldTags = new Map<string, AlbumTags>();
+
+	function tagsIn(album: Album): AlbumTags {
+		const tags = heldTags.get(album.id) ?? allTagsOf(album);
+		heldTags.set(album.id, tags);
+		return tags;
+	}
+
+	/** Writes `edit` to the album's tracks, stopping before `upTo` of them when told. */
+	function write(album: Album, edit: AlbumEdit, upTo = Infinity): Album {
+		const tags = tagsIn(album);
+		const own = new Map(edit.tracks?.map(({ id, ...change }) => [id, change]));
+		const named = tags.tracks.filter(({ id }) => edit.all !== undefined || own.has(id));
+		const touched = named.slice(0, upTo).map(({ id }) => id);
+		const tracks = tags.tracks.map((track) =>
+			touched.includes(track.id) ? applied(track, layered(edit.all, own.get(track.id))) : track
+		);
+		const after = reindexed(album, { ...tags, tracks }, touched);
+		heldTags.set(album.id, { etag: after.etag, tracks });
+		held.set(album.id, after);
+		return after;
+	}
+
+	/** Tags are for administrators, as on the server. */
+	function refuseAnyoneElse(): void {
+		if (!signedIn.canEditTags) {
+			throw new EditError({ kind: 'forbidden' });
+		}
+	}
+
+	/** Stops an edit the way {@link FixtureOptions.editFault} says, once. */
+	function stumble(album: Album, edit: AlbumEdit): void {
+		const planned = fault;
+		fault = planned === 'drift' ? planned : undefined;
+		const ids = album.tracks.map(({ id }) => id);
+		switch (planned) {
+			case 'busy':
+				throw new EditError({ kind: 'busy', retryAfterSeconds: 30 });
+			case 'stale':
+				write(album, { tracks: [{ id: ids.at(-1) ?? '', set: { title: ['Moved by a scan'] } }] });
+				throw new EditError({ kind: 'stale' });
+			case 'drift':
+				throw new EditError({ kind: 'stale' });
+			case 'refused':
+				throw new EditError({
+					kind: 'refused',
+					detail: "year 1066: the file can't take this edit",
+					changed: [],
+					remaining: ids
+				});
+			case 'partial': {
+				const reached = Math.ceil((edit.tracks?.length ?? ids.length) / 2);
+				const named = edit.all === undefined ? (edit.tracks?.map(({ id }) => id) ?? []) : ids;
+				write(album, edit, reached);
+				throw new EditError({
+					kind: 'failed',
+					detail: 'internal error',
+					changed: named.slice(0, reached),
+					remaining: named.slice(reached)
+				});
+			}
+			case undefined:
+		}
+	}
 
 	async function respond<T>(answer: () => T): Promise<T> {
 		if (latencyMs > 0) {
@@ -283,7 +539,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			respond(() => ({ albums: (sort === 'added' ? newestFirst : byName).slice(0, limit) })),
 		album: (id) =>
 			respond(() => {
-				const album = albums.get(id);
+				const album = held.get(id);
 				if (album === undefined) {
 					throw new AlbumNotFoundError(id);
 				}
@@ -302,6 +558,28 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			respond(() => {
 				signal?.throwIfAborted();
 				return find(query);
+			}),
+		albumTags: (id) =>
+			respond(() => {
+				refuseAnyoneElse();
+				const album = held.get(id);
+				if (album === undefined) {
+					throw new EditError({ kind: 'gone' });
+				}
+				return tagsIn(album);
+			}),
+		editAlbum: (id, etag, edit) =>
+			respond(() => {
+				refuseAnyoneElse();
+				const album = held.get(id);
+				if (album === undefined) {
+					throw new EditError({ kind: 'gone' });
+				}
+				if (album.etag !== etag) {
+					throw new EditError({ kind: 'stale' });
+				}
+				stumble(album, edit);
+				return write(album, edit);
 			}),
 		// Never fetched: the fixtures play on a silent clock.
 		streamUrl: (trackId) => `fixture:${trackId}`,
@@ -417,8 +695,15 @@ export function createScanFixtureSource({
 		return answer();
 	}
 
+	/** The real thing has the library locked for the whole of a scan. */
+	const busy = (): Promise<never> =>
+		respond(() => {
+			throw new EditError({ kind: 'busy', retryAfterSeconds: 30 });
+		});
+
 	return {
 		...base,
+		editAlbum: busy,
 		facts: () =>
 			respond(() => {
 				const albums = found();

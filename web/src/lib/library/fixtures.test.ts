@@ -118,6 +118,123 @@ describe('fixtures', () => {
 	});
 });
 
+describe('edits on the fixtures', () => {
+	it('lets the signed-in user edit tags', async () => {
+		await expect(createFixtureSource().me()).resolves.toMatchObject({ canEditTags: true });
+	});
+
+	it('moves ETags on, as a rewrite would, and refuses an old one', async () => {
+		const source = createFixtureSource();
+		const before = await source.album('glasshouse-66');
+		const after = await source.editAlbum('glasshouse-66', before.etag, {
+			all: { set: { date: ['1999'], genres: ['Noise'] } }
+		});
+		expect(after.year).toBe(1999);
+		expect(after.genres).toEqual(['Noise']);
+		expect(
+			after.tracks.every(({ year, genres }) => year === 1999 && genres.at(0) === 'Noise')
+		).toBe(true);
+		expect(after.etag).not.toBe(before.etag);
+		await expect(
+			source.editAlbum('glasshouse-66', before.etag, { all: { set: { date: ['2000'] } } })
+		).rejects.toMatchObject({ failure: { kind: 'stale' } });
+	});
+
+	it('reads back what it wrote, track on top of album, and reorders by number', async () => {
+		const source = createFixtureSource();
+		const { etag } = await source.album('glasshouse-66');
+		const after = await source.editAlbum('glasshouse-66', etag, {
+			all: { set: { date: ['1999'] } },
+			tracks: [
+				{ id: 'glasshouse-66-1', set: { title: ['First'], track: ['99'] }, clear: ['date'] },
+				{ id: 'glasshouse-66-2', tags: [{ key: 'MOOD', values: [] }] }
+			]
+		});
+		expect(after.tracks.at(-1)).toMatchObject({ id: 'glasshouse-66-1', title: 'First' });
+		const tags = await source.albumTags('glasshouse-66');
+		expect(tags.etag).toBe(after.etag);
+		const [first, second] = tags.tracks;
+		expect(first?.fields.date).toEqual([]);
+		expect(second?.fields.date).toEqual(['1999']);
+		expect(second?.tags.map(({ key }) => key)).not.toContain('MOOD');
+	});
+
+	it('shows a tag editor the boards’ tags, read-only ones included', async () => {
+		const { tracks } = await createFixtureSource().albumTags('glasshouse-66');
+		const [, second, third] = tracks;
+		expect(second?.fields.composers).toEqual(['Mara Quill']);
+		expect(third?.readOnly).toEqual(['lyrics']);
+		expect(second?.tags.filter(({ readOnly }) => readOnly === true).length).toBeGreaterThan(0);
+	});
+
+	it('keeps an edit to the source it was made on', async () => {
+		const { etag } = await createFixtureSource().album('night-ferry-94');
+		await createFixtureSource().editAlbum('night-ferry-94', etag, {
+			all: { set: { date: ['1999'] } }
+		});
+		const fresh = await createFixtureSource().album('night-ferry-94');
+		expect(fresh.year).not.toBe(1999);
+	});
+
+	it('answers for an album it has never heard of', async () => {
+		const source = createFixtureSource();
+		await expect(source.editAlbum('nope', 'x', {})).rejects.toMatchObject({
+			failure: { kind: 'gone' }
+		});
+		await expect(source.albumTags('nope')).rejects.toMatchObject({ failure: { kind: 'gone' } });
+	});
+
+	describe('faults', () => {
+		const edit = { all: { set: { date: ['1999'] } } };
+
+		it('fails once, then takes the same edit', async () => {
+			const source = createFixtureSource({ editFault: 'busy' });
+			const { etag } = await source.album('glasshouse-66');
+			await expect(source.editAlbum('glasshouse-66', etag, edit)).rejects.toMatchObject({
+				failure: { kind: 'busy' }
+			});
+			await expect(source.editAlbum('glasshouse-66', etag, edit)).resolves.toMatchObject({
+				year: 1999
+			});
+		});
+
+		it('moves the album on under a stale edit, and not under a drift', async () => {
+			const stale = createFixtureSource({ editFault: 'stale' });
+			const { etag } = await stale.album('glasshouse-66');
+			await expect(stale.editAlbum('glasshouse-66', etag, edit)).rejects.toMatchObject({
+				failure: { kind: 'stale' }
+			});
+			expect((await stale.albumTags('glasshouse-66')).etag).not.toBe(etag);
+			const drift = createFixtureSource({ editFault: 'drift' });
+			await expect(drift.editAlbum('glasshouse-66', etag, edit)).rejects.toMatchObject({
+				failure: { kind: 'stale' }
+			});
+			expect((await drift.albumTags('glasshouse-66')).etag).toBe(etag);
+		});
+
+		it('stops partway, holding what it reached', async () => {
+			const source = createFixtureSource({ editFault: 'partial' });
+			const { etag } = await source.album('glasshouse-66');
+			const error: unknown = await source.editAlbum('glasshouse-66', etag, edit).catch((e) => e);
+			expect(error).toMatchObject({ failure: { kind: 'failed' } });
+			const { tracks } = await source.albumTags('glasshouse-66');
+			expect(tracks.filter(({ fields }) => fields.date?.at(0) === '1999').length).toBe(5);
+		});
+	});
+
+	it('holds the library during a scan, as a server does', async () => {
+		const source = createScanFixtureSource({
+			scanMs: 1000,
+			gapMs: 100,
+			startedAt: 0,
+			now: () => 0
+		});
+		await expect(source.editAlbum('scan-0', 'x', {})).rejects.toMatchObject({
+			failure: { kind: 'busy' }
+		});
+	});
+});
+
 describe('a scan', () => {
 	let clock = 0;
 	const scan = createScanFixtureSource({

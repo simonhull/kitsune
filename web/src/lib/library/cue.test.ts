@@ -8,7 +8,9 @@ function tracks(count: number): Track[] {
 		title: `T${String(index)}`,
 		artists: [],
 		durationMs: 1000,
-		format: 'MP3'
+		format: 'MP3',
+		genres: [],
+		etag: ''
 	}));
 }
 
@@ -23,7 +25,9 @@ function album(count: number): Album {
 		tracks: tracks(count),
 		durationMs: 1000,
 		formats: ['MP3'],
-		addedAt: '2026-10-12T18:00:00Z'
+		addedAt: '2026-10-12T18:00:00Z',
+		genres: [],
+		etag: ''
 	};
 }
 

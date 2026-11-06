@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import {
 		addedOn,
 		clock,
@@ -25,15 +26,22 @@
 		/** It couldn't be fetched this time. */
 		unavailable: boolean;
 		retry: () => void;
+		/** Whether the album is being edited: the panel takes the editor's shape. */
+		editing: boolean;
+		/** Takes the rows' place in the panel, once the files have been read. */
+		editor: Snippet<[Album]> | undefined;
 	}
 
-	let { album, cuedId, sounding, play, gone, unavailable, retry }: Props = $props();
+	let { album, cuedId, sounding, play, gone, unavailable, retry, editing, editor }: Props =
+		$props();
 
 	const multiDisc = $derived(isMultiDisc(album?.tracks ?? []));
 </script>
 
-<section aria-label="Tracks" class="panel" data-morph-part="panel">
-	{#if gone}
+<section aria-label="Tracks" class="panel" class:editing data-morph-part="panel">
+	{#if album !== undefined && editor !== undefined}
+		{@render editor(album)}
+	{:else if gone}
 		<p class="note">This album isn't in the library any more.</p>
 	{:else if unavailable}
 		<p class="note">
@@ -97,6 +105,21 @@
 		background: rgb(21 19 17 / 82%);
 		border: 1px solid rgb(255 255 255 / 7%);
 		backdrop-filter: blur(24px);
+		transition:
+			margin-top var(--morph-slow) var(--curve-settle),
+			width var(--morph-slow) var(--curve-settle),
+			max-width var(--morph-slow) var(--curve-settle);
+	}
+
+	.editing {
+		margin-top: -34px;
+		width: calc(100% - 64px);
+		max-width: 1376px;
+		padding: 12px 24px;
+		border-radius: var(--radius-28);
+		background: var(--card);
+		transition-duration: var(--morph);
+		transition-timing-function: var(--curve-morph);
 	}
 
 	.note {
@@ -216,6 +239,14 @@
 			width: calc(100% - 16px);
 			padding: 8px;
 			border-radius: var(--radius-28);
+		}
+
+		.editing {
+			margin-top: -20px;
+			width: 100%;
+			padding: 8px 16px;
+			border: 0;
+			border-radius: var(--radius-28) var(--radius-28) 0 0;
 		}
 
 		.row {
