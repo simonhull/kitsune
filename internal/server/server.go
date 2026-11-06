@@ -194,6 +194,7 @@ func (s *Server) routes() []route {
 		{pattern: "GET /artists", handle: s.getArtists},
 		{pattern: "GET /artists/{id}", handle: s.getArtist},
 		{pattern: "GET /library", handle: s.getLibrary},
+		{pattern: "GET /library/index", handle: s.getLibraryIndex},
 		{pattern: "GET /search", handle: s.getSearch},
 		{pattern: "GET /tracks/{id}", handle: s.getTrack},
 		{pattern: "GET /tracks/{id}/stream", handle: s.getTrackStream},

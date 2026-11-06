@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+	albumHoldings,
 	albumsLine,
 	albumFacts,
 	artistCount,
 	artistFacts,
+	artistHoldings,
 	balancedLines,
 	clock,
 	credit,
@@ -11,6 +13,7 @@ import {
 	formatOf,
 	gain,
 	isMultiDisc,
+	libraryLine,
 	trackGain,
 	trackLabel
 } from './format';
@@ -186,5 +189,32 @@ describe('artistCount', () => {
 	it('says one or many', () => {
 		expect(artistCount(1)).toBe('1 artist');
 		expect(artistCount(1200)).toBe('1,200 artists');
+	});
+});
+
+describe('the Library’s lines', () => {
+	it('says where you are and how much there is', () => {
+		expect(libraryLine('L', 912, 7586)).toBe('L · 912 ARTISTS · 7,586 SONGS');
+	});
+
+	it('counts what an artist has', () => {
+		const albums = [{ tracks: [1, 2] }, { tracks: [3] }];
+		expect(artistHoldings(albums)).toBe('2 ALBUMS · 3 SONGS');
+		expect(artistHoldings([{ tracks: [1] }])).toBe('1 ALBUM · 1 SONG');
+	});
+
+	it('drops an album’s year when it has none', () => {
+		expect(albumHoldings(2021, 10)).toBe('2021 · 10 songs');
+		expect(albumHoldings(undefined, 1)).toBe('1 song');
+	});
+});
+
+describe('credit on a shared album', () => {
+	it('adds nothing when the song is by everyone the album names', () => {
+		expect(credit({ artists: ['Ann', 'Bob'] }, 'Ann, Bob')).toBeUndefined();
+	});
+
+	it('still names a song by only some of them', () => {
+		expect(credit({ artists: ['Ann'] }, 'Ann, Bob')).toBe('Ann');
 	});
 });

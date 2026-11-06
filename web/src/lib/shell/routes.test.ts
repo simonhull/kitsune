@@ -39,6 +39,11 @@ describe('the route table', () => {
 		expect(journeyOf('/health')).toBe('health');
 	});
 
+	it('gives the Library a place in the nav and a journey of its own', () => {
+		expect(navOf('/library')).toMatchObject({ look: 'home', current: 'library' });
+		expect(journeyOf('/library')).toBe('library');
+	});
+
 	it('gives every route a journey name', () => {
 		for (const id of routeIds) {
 			expect(journeyOf(id)).toBeDefined();

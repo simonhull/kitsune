@@ -15,6 +15,7 @@ import {
 	type EditFailure,
 	type EditStopped,
 	type LibraryFacts,
+	type LibraryIndex,
 	type LibrarySource,
 	type LoginFailure,
 	type Me,
@@ -194,6 +195,8 @@ export function createApiSource({
 		},
 
 		facts: () => read<LibraryFacts>('/library'),
+
+		libraryIndex: () => read<LibraryIndex>('/library/index'),
 
 		async ready() {
 			return (await call('/readyz')).ok;

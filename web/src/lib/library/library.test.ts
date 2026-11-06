@@ -1156,6 +1156,14 @@ describe('tag edits', () => {
 		expect(library.playing?.album.year).toBe(1999);
 	});
 
+	it('has the library list read again after an edit, even one that fails', async () => {
+		const { library } = await opened({ editAlbum: () => Promise.reject(new Error('stopped')) });
+		await library.loadIndex();
+		expect(library.indexStale).toBe(false);
+		await expect(edit(library, { all: { set: { date: ['1999'] } } })).rejects.toThrow('stopped');
+		expect(library.indexStale).toBe(true);
+	});
+
 	it('takes the album the server sends back: a track renumbered moves', async () => {
 		const { library } = await opened();
 		const first = trackAt(library, 0);
@@ -1221,5 +1229,136 @@ describe('tag edits', () => {
 		await library.reread(id);
 		expect(library.album(id)?.year).toBe(1999);
 		expect(library.playing?.album.year).toBe(1999);
+	});
+});
+
+describe('the library index', () => {
+	const scanned = (endedAt: string): LibraryFacts => ({
+		albums: 1,
+		tracks: 8,
+		durationMs: 0,
+		roots: 1,
+		...noTrouble,
+		scan: {
+			state: 'idle',
+			read: 0,
+			total: 0,
+			last: {
+				mode: 'quick',
+				outcome: 'finished',
+				startedAt: endedAt,
+				endedAt,
+				seen: 0,
+				read: 0,
+				added: 0,
+				updated: 0,
+				moved: 0,
+				missing: 0,
+				deleted: 0,
+				issues: 0,
+				skippedRoots: 0
+			}
+		}
+	});
+
+	it('reads it, and seeds the first frame of the album and artist a row leads to', async () => {
+		const library = new Library(source(), { readyMemory: forgetful() });
+		await library.loadIndex();
+		if (library.index.kind !== 'ready') {
+			throw new Error(library.index.kind);
+		}
+		const [group] = library.index.value.artists.filter(({ id }) => id !== undefined);
+		const album = group?.albums.at(0);
+		expect(library.entry(album?.id ?? '')).toMatchObject({
+			title: album?.title,
+			trackCount: album?.tracks.length
+		});
+		expect(library.artistName(group?.id ?? '')).toBe(group?.name);
+	});
+
+	it('keeps an entry that knows more than the index does', async () => {
+		const library = new Library(source(), { readyMemory: forgetful() });
+		await library.loadShell();
+		const before = library.entry(library.recent.at(0)?.id ?? '');
+		await library.loadIndex();
+		expect(library.entry(before?.id ?? '')).toBe(before);
+	});
+
+	it('is stale once a scan ends, and fresh again once read', async () => {
+		const library = new Library(source(), { readyMemory: forgetful() });
+		library.facts = scanned('2026-11-06T10:00:00Z');
+		await library.loadIndex();
+		expect(library.indexStale).toBe(false);
+		library.facts = scanned('2026-11-06T11:00:00Z');
+		expect(library.indexStale).toBe(true);
+		await library.loadIndex();
+		expect(library.indexStale).toBe(false);
+	});
+
+	it('is stale after an edit', async () => {
+		const library = new Library(source(), { readyMemory: forgetful() });
+		await library.loadIndex();
+		library.markIndexStale();
+		expect(library.indexStale).toBe(true);
+	});
+
+	it('asks once however often it is asked', async () => {
+		const libraryIndex = vi.fn<LibrarySource['libraryIndex']>(() =>
+			Promise.resolve({ artists: [] })
+		);
+		const library = new Library(source({ libraryIndex }), { readyMemory: forgetful() });
+		await Promise.all([library.loadIndex(), library.loadIndex()]);
+		expect(libraryIndex).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps the list through a failed refresh, and says so with nothing to show', async () => {
+		const libraryIndex = vi
+			.fn<LibrarySource['libraryIndex']>()
+			.mockRejectedValueOnce(new ServerError(500))
+			.mockResolvedValueOnce({ artists: [] })
+			.mockRejectedValueOnce(new ServerError(500));
+		const library = new Library(source({ libraryIndex }), { readyMemory: forgetful() });
+		await library.loadIndex();
+		expect(library.index.kind).toBe('unavailable');
+		await library.loadIndex();
+		await library.loadIndex();
+		expect(library.index.kind).toBe('ready');
+	});
+
+	it('forgets it with the session, and drops an answer from before', async () => {
+		let answer: (index: { artists: never[] }) => void = () => undefined;
+		const libraryIndex = vi.fn<LibrarySource['libraryIndex']>(
+			() =>
+				new Promise((resolve) => {
+					answer = resolve;
+				})
+		);
+		const library = new Library(source({ libraryIndex }), { readyMemory: forgetful() });
+		const loading = library.loadIndex();
+		library.reset();
+		answer({ artists: [] });
+		await loading;
+		expect(library.index.kind).toBe('loading');
+	});
+});
+
+describe('loading an album twice', () => {
+	it('waits for the fetch already out, so the second caller finds the album there', async () => {
+		let answer: (album: Awaited<ReturnType<LibrarySource['album']>>) => void = () => undefined;
+		const fixture = createFixtureSource();
+		const known = await fixture.album('glasshouse-66');
+		const album = vi.fn<LibrarySource['album']>(
+			() =>
+				new Promise((resolve) => {
+					answer = resolve;
+				})
+		);
+		const library = new Library(source({ album }), { readyMemory: forgetful() });
+		void library.loadAlbum(known.id);
+		const second = library.loadAlbum(known.id);
+		answer(known);
+		await second;
+		expect(library.album(known.id)).toBe(known);
+		expect(album).toHaveBeenCalledTimes(1);
 	});
 });

@@ -168,11 +168,14 @@ export type RouteName =
 	| 'search'
 	| 'artists'
 	| 'artist'
-	| 'health';
+	| 'health'
+	| 'library';
 
 export type ChoreographyName =
 	| 'home-to-album'
 	| 'album-to-home'
+	| 'library-to-album'
+	| 'album-to-library'
 	| 'home-to-now-playing'
 	| 'now-playing-to-home'
 	| 'album-to-now-playing'
@@ -339,6 +342,26 @@ const albumToHome: Choreography = {
 	island: null
 };
 
+/** Library to Album: the cover leaves its songs as it leaves a card on Home. */
+const libraryToAlbum: Choreography = { ...homeToAlbum, name: 'library-to-album' };
+
+/**
+ * Album to Library, which is not that played back: nothing falls, and no color drains into the
+ * cover. The album stays where it is and thins out as the list rises through it, the artist first
+ * and then the songs, and the cover takes its place among them. The page never leaves to uncover
+ * one behind it: this is a list arriving, which is why it has no bloom.
+ */
+const albumToLibrary: Choreography = {
+	name: 'album-to-library',
+	motion: base,
+	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['card'] },
+	leaving: fadeOut(0, exit),
+	arriving: { intro: rise(16, 60), card: rise(40, 90) },
+	stages: { album: fadeOut(0, base) },
+	bloom: null,
+	island: null
+};
+
 /**
  * Home to Now playing: two levels down in one move. The island's cover rises to the center of
  * the stage and the song's name follows it up, the rest of the island gathers into the pill
@@ -482,6 +505,8 @@ export const blend: Choreography = {
 const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
 	'home>album': homeToAlbum,
 	'album>home': albumToHome,
+	'library>album': libraryToAlbum,
+	'album>library': albumToLibrary,
 	'home>now-playing': homeToNowPlaying,
 	'now-playing>home': nowPlayingToHome,
 	'album>now-playing': albumToNowPlaying,

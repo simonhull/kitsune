@@ -514,6 +514,180 @@ func (q *Queries) ListAlbumsByName(ctx context.Context, arg ListAlbumsByNamePara
 	return items, nil
 }
 
+const listIndexAlbums = `-- name: ListIndexAlbums :many
+
+SELECT
+    a.id, a.ulid, a.name, a.sort_name, a.artist, a.year, a.compilation,
+    a.artwork_hash, w.width AS artwork_width, w.height AS artwork_height,
+    w.accent AS artwork_accent, w.ground AS artwork_ground,
+    ar.ulid AS owner_ulid, ar.name AS owner_name, ar.sort_name AS owner_sort_name,
+    ar.match_key AS owner_match_key, ar.mbid AS owner_mbid
+FROM albums a
+LEFT JOIN artwork w ON w.hash = a.artwork_hash
+LEFT JOIN artists ar ON ar.id = (
+    SELECT ta.artist_id
+    FROM tracks t
+    JOIN track_artists ta ON ta.track_id = t.id
+    WHERE t.album_id = a.id AND t.missing_since IS NULL
+      AND (ta.role = 'album_artist'
+       OR (ta.ord = 0 AND a.compilation = 0 AND NOT EXISTS (
+            SELECT 1 FROM tracks o
+            JOIN track_artists oa ON oa.track_id = o.id AND oa.role = 'album_artist'
+            WHERE o.album_id = a.id AND o.missing_since IS NULL)))
+    ORDER BY ta.ord, t.id
+    LIMIT 1)
+WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL)
+`
+
+type ListIndexAlbumsRow struct {
+	ID            int64
+	Ulid          string
+	Name          string
+	SortName      string
+	Artist        string
+	Year          *int64
+	Compilation   int64
+	ArtworkHash   []byte
+	ArtworkWidth  *int64
+	ArtworkHeight *int64
+	ArtworkAccent *string
+	ArtworkGround *string
+	OwnerUlid     *string
+	OwnerName     *string
+	OwnerSortName *string
+	OwnerMatchKey *string
+	OwnerMbid     *string
+}
+
+// The library index, read whole: three queries for the whole library, never one per
+// album. An album's owner is its first one, by the test in artists.sql, repeated
+// here because a query can't share it. The order is orderIndex's business.
+func (q *Queries) ListIndexAlbums(ctx context.Context) ([]ListIndexAlbumsRow, error) {
+	rows, err := q.query(ctx, q.listIndexAlbumsStmt, listIndexAlbums)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexAlbumsRow
+	for rows.Next() {
+		var i ListIndexAlbumsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ulid,
+			&i.Name,
+			&i.SortName,
+			&i.Artist,
+			&i.Year,
+			&i.Compilation,
+			&i.ArtworkHash,
+			&i.ArtworkWidth,
+			&i.ArtworkHeight,
+			&i.ArtworkAccent,
+			&i.ArtworkGround,
+			&i.OwnerUlid,
+			&i.OwnerName,
+			&i.OwnerSortName,
+			&i.OwnerMatchKey,
+			&i.OwnerMbid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndexTrackArtists = `-- name: ListIndexTrackArtists :many
+SELECT ta.track_id, ar.name
+FROM track_artists ta
+JOIN artists ar ON ar.id = ta.artist_id
+JOIN tracks t ON t.id = ta.track_id AND t.missing_since IS NULL
+WHERE ta.role = 'artist'
+ORDER BY ta.track_id, ta.ord
+`
+
+type ListIndexTrackArtistsRow struct {
+	TrackID int64
+	Name    string
+}
+
+func (q *Queries) ListIndexTrackArtists(ctx context.Context) ([]ListIndexTrackArtistsRow, error) {
+	rows, err := q.query(ctx, q.listIndexTrackArtistsStmt, listIndexTrackArtists)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTrackArtistsRow
+	for rows.Next() {
+		var i ListIndexTrackArtistsRow
+		if err := rows.Scan(&i.TrackID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndexTracks = `-- name: ListIndexTracks :many
+SELECT id, album_id, ulid, title, disc_no, track_no, duration_ms
+FROM tracks
+WHERE missing_since IS NULL
+ORDER BY album_id, coalesce(disc_no, 1), track_no NULLS LAST, title, id
+`
+
+type ListIndexTracksRow struct {
+	ID         int64
+	AlbumID    int64
+	Ulid       string
+	Title      string
+	DiscNo     *int64
+	TrackNo    *int64
+	DurationMs int64
+}
+
+func (q *Queries) ListIndexTracks(ctx context.Context) ([]ListIndexTracksRow, error) {
+	rows, err := q.query(ctx, q.listIndexTracksStmt, listIndexTracks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTracksRow
+	for rows.Next() {
+		var i ListIndexTracksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AlbumID,
+			&i.Ulid,
+			&i.Title,
+			&i.DiscNo,
+			&i.TrackNo,
+			&i.DurationMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listScanIssues = `-- name: ListScanIssues :many
 SELECT root, rel_path, kind, message, size, mtime FROM scan_issues ORDER BY root, rel_path
 `

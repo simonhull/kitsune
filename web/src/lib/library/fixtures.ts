@@ -1,4 +1,5 @@
 import { fnv1a } from '#lib/cover/cover.ts';
+import { letterOf } from '#lib/pages/libraryRows.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
 	AlbumNotFoundError,
@@ -14,6 +15,9 @@ import {
 	type ArtistDetail,
 	type ArtistEntry,
 	type ArtistLink,
+	type LibraryAlbum,
+	type LibraryArtist,
+	type LibraryIndex,
 	type LibrarySource,
 	type Me,
 	type RawTag,
@@ -170,6 +174,126 @@ const albums = new Map<string, Album>(
 		].map((entry) => albumFrom(entry, tracksFor(entry), 2019 + (fnv1a(entry.id) % 7)))
 	].map((album) => [album.id, album])
 );
+
+/** Named by a title, a length and who it's by, if that's not the album's own artist. */
+type Song = [title: string, seconds: number, by?: string];
+
+function extraAlbum(entry: AlbumEntry, year: number | undefined, songs: Song[], disc = 1): Album {
+	const tracks = songs.map(([title, seconds, by], index) => ({
+		...track(entry, index + 1, title, seconds, null),
+		discNo: disc,
+		...(by === undefined ? {} : { artists: [by] })
+	}));
+	return { ...albumFrom({ ...entry, trackCount: tracks.length }, tracks, year ?? 0), year };
+}
+
+/** Two discs, with track numbers that start again on the second. */
+function twoDiscs(entry: AlbumEntry, year: number, one: Song[], two: Song[]): Album {
+	const first = extraAlbum(entry, year, one);
+	const second = extraAlbum(entry, year, two, 2).tracks.map((each) => ({
+		...each,
+		id: `${each.id}-2`
+	}));
+	const tracks = [...first.tracks, ...second];
+	return { ...first, tracks, trackCount: tracks.length };
+}
+
+const longTitle =
+	'A Collection of Very Nearly Everything We Ever Recorded in the Basement of the Old Fire Hall';
+const longArtist = 'The Extraordinarily Long-Winded Philharmonic Orchestra of Upper Saskatchewan';
+
+/** Only the Library lists these: Home's fixtures are counted, and stay as their boards have them. */
+const listOnly = new Map<string, Album>(
+	[
+		extraAlbum(board('tidewrack-41', 'Tidewrack', 'Low Tide Choir'), 2018, [
+			['Kelp Line', 251],
+			['What the Water Kept', 320],
+			['Gulls', 178],
+			['Neap', 220],
+			['Spring Tide', 284],
+			['Driftwood Hymn', 372]
+		]),
+		extraAlbum(board('undated-52', 'Undated', 'Low Tide Choir'), undefined, [['Loose Ends', 200]]),
+		twoDiscs(
+			board('long-way-round-63', 'Long Way Round', 'Mere Coast'),
+			2020,
+			[
+				['Outbound', 240],
+				['Crossing', 300],
+				['Landfall', 280]
+			],
+			[
+				['Homebound', 260],
+				['Shipping Forecast', 190, 'Ilse Varga']
+			]
+		),
+		extraAlbum(board('shared-shore-74', 'Shared Shore', 'Ana Lindqvist, Ilse Varga'), 2022, [
+			['Two Tides', 200, 'Ana Lindqvist, Ilse Varga'],
+			['Their Harbor', 215, 'Ana Lindqvist, Ilse Varga']
+		]),
+		extraAlbum(board('rooms-85', longTitle, longArtist), 2016, [
+			['An Unreasonably Long Song Title That Has Nowhere Left to Go on This Row at All', 900],
+			['Short', 60, 'Somebody Else With Rather a Long Name of Their Own, Actually']
+		]),
+		extraAlbum(board('zero-96', '8 Hours', '808 Harbour'), 2017, [['Signal One', 200]]),
+		extraAlbum(board('elan-97', 'Vital', 'Élan Quartet'), 2015, [['Accent', 200]])
+	].map((album) => [album.id, album])
+);
+
+/** Where an album files: as `GET /library/index` has it, the first of its artists, or their name. */
+function ownerOf({ artist, compilation }: Album): Pick<LibraryArtist, 'name' | 'sortName'> {
+	const name = artist.split(', ').at(0) ?? artist;
+	return {
+		name,
+		sortName: !compilation && name.startsWith('The ') ? `${name.slice(4)}, The` : name
+	};
+}
+
+function listed({ tracks, year, ...album }: Album): LibraryAlbum {
+	const { id, title, artist, compilation } = album;
+	return {
+		id,
+		title,
+		artist,
+		compilation,
+		...(year === undefined ? {} : { year }),
+		tracks: tracks.map(({ id: track, title: name, durationMs, artists, discNo, trackNo }) => ({
+			id: track,
+			title: name,
+			durationMs,
+			artists,
+			...(discNo === undefined ? {} : { discNo }),
+			...(trackNo === undefined ? {} : { trackNo })
+		}))
+	};
+}
+
+function indexFixture(): LibraryIndex {
+	const groups = new Map<string, LibraryArtist>();
+	for (const album of [...albums.values(), ...listOnly.values()]) {
+		const owner = ownerOf(album);
+		const group = groups.get(owner.name) ?? {
+			...owner,
+			...(album.compilation ? {} : { id: artistLink(owner.name).id }),
+			albums: []
+		};
+		group.albums.push(listed(album));
+		groups.set(owner.name, group);
+	}
+	const files = ({ sortName }: LibraryArtist): string => `${letterOf(sortName)}${sortName}`;
+	const artists = [...groups.values()].toSorted((a, b) => {
+		const [one, two] = [files(a), files(b)];
+		return one.startsWith('#') === two.startsWith('#')
+			? one.localeCompare(two)
+			: one < two
+				? -1
+				: 1;
+	});
+	for (const artist of artists) {
+		artist.albums.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+	}
+	return { artists };
+}
 
 const newestFirst = [glasshouse, paperSuns, redSignal, longSummer, tidewater, afterHours];
 
@@ -534,12 +658,13 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				return signedIn;
 			}),
 		facts: () => respond(() => ({ ...counts, ...scans.facts() })),
+		libraryIndex: () => respond(indexFixture),
 		ready: () => respond(() => true),
 		albumsPage: (sort, _cursor, limit) =>
 			respond(() => ({ albums: (sort === 'added' ? newestFirst : byName).slice(0, limit) })),
 		album: (id) =>
 			respond(() => {
-				const album = held.get(id);
+				const album = held.get(id) ?? listOnly.get(id);
 				if (album === undefined) {
 					throw new AlbumNotFoundError(id);
 				}

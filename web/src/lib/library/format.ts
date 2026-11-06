@@ -31,12 +31,15 @@ export function balancedLines(title: string): [string, string] {
 }
 
 /** Reports whether an album's tracks span more than one disc. An unset disc counts as disc 1. */
-export function isMultiDisc(tracks: readonly Track[]): boolean {
+export function isMultiDisc(tracks: readonly Pick<Track, 'discNo'>[]): boolean {
 	return new Set(tracks.map((track) => track.discNo ?? 1)).size > 1;
 }
 
 /** A track's number as tagged: `03`, `2-03` on a multi-disc album, or a dash with no number. */
-export function trackLabel({ discNo, trackNo }: Track, multiDisc: boolean): string {
+export function trackLabel(
+	{ discNo, trackNo }: Pick<Track, 'discNo' | 'trackNo'>,
+	multiDisc: boolean
+): string {
 	if (trackNo === undefined) {
 		return '–';
 	}
@@ -48,10 +51,14 @@ export function trackLabel({ discNo, trackNo }: Track, multiDisc: boolean): stri
  * Who a track credits beyond the album. A guest is a track artist beside the album artist; a track
  * that doesn't name the album artist at all, as on a compilation, shows its own artists plainly.
  */
-export function credit({ artists }: Track, albumArtist: string): string | undefined {
+export function credit(
+	{ artists }: Pick<Track, 'artists'>,
+	albumArtist: string
+): string | undefined {
 	const named = artists.filter((artist) => artist !== '');
 	const guests = named.filter((artist) => artist !== albumArtist);
-	if (guests.length === 0) {
+	// An album shared by several artists shows them joined: a song by all of them adds nothing.
+	if (guests.length === 0 || named.join(', ') === albumArtist) {
 		return undefined;
 	}
 	return guests.length < named.length ? `feat. ${guests.join(', ')}` : guests.join(', ');
@@ -93,6 +100,24 @@ export function albumFacts(entry: AlbumEntry, album: Album): string {
 		plural(album.tracks.length, 'TRACK', 'TRACKS'),
 		`${minutes.toLocaleString('en-US')} MIN`
 	].join(' · ');
+}
+
+/** The line over the Library page: the letter you're at, and how much there is. */
+export function libraryLine(letter: string, artists: number, songs: number): string {
+	return `${letter} · ${plural(artists, 'ARTIST', 'ARTISTS')} · ${plural(songs, 'SONG', 'SONGS')}`;
+}
+
+/** What an artist has in the Library, under its name. */
+export function artistHoldings(albums: readonly { tracks: readonly unknown[] }[]): string {
+	const songs = albums.reduce((sum, { tracks }) => sum + tracks.length, 0);
+	return `${plural(albums.length, 'ALBUM', 'ALBUMS')} · ${plural(songs, 'SONG', 'SONGS')}`;
+}
+
+/** An album's line in the Library. A missing year drops its segment. */
+export function albumHoldings(year: number | undefined, songs: number): string {
+	return [...(year === undefined ? [] : [String(year)]), plural(songs, 'song', 'songs')].join(
+		' · '
+	);
 }
 
 /** How many artists a list holds. */

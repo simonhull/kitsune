@@ -265,6 +265,16 @@ describe('choreographyFor', () => {
 		}
 	});
 
+	it('goes from the Library to an album as Home does, and comes back its own way', () => {
+		const out = choreographyFor('library', 'album');
+		const back = choreographyFor('album', 'library');
+		expect(out.travel).toEqual(choreographyFor('home', 'album').travel);
+		expect(back.name).not.toBe(choreographyFor('album', 'home').name);
+		expect(back.bloom).toBeNull();
+		// Nothing moves on its way out, so the album can't read as dropping away from a page behind it.
+		expect(back.leaving.to).toEqual({ opacity: 0 });
+	});
+
 	it('blends a page into itself', () => {
 		expect(choreographyFor('home', 'home')).toBe(blend);
 	});

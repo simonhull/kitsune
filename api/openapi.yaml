@@ -487,6 +487,38 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /library/index:
+    get:
+      operationId: getLibraryIndex
+      summary: List every song in the library, by artist and album.
+      description: >-
+        The whole library in one response, for a client that needs every row's
+        height: the one browse list that doesn't page. Artists come by sort name,
+        those not under a letter from A to Z first, and each artist's albums
+        newest first. An album appears once, under its first owner. An album with
+        no owner a reader shows, such as a compilation, groups under the artist
+        it displays, in a group with no `id`. The response is gzipped when
+        `Accept-Encoding` allows it.
+      responses:
+        "200":
+          description: Every artist with an album, its albums and their tracks.
+          headers:
+            Vary:
+              schema: { type: string }
+            Content-Encoding:
+              description: "`gzip`, when the response is compressed."
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LibraryIndex" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /search:
     get:
       operationId: getSearch
@@ -1105,6 +1137,56 @@ components:
         album: { type: string }
         durationMs: { type: integer, format: int64 }
         artwork: { $ref: "#/components/schemas/Artwork" }
+    LibraryIndex:
+      type: object
+      additionalProperties: false
+      required: [artists]
+      properties:
+        artists:
+          type: array
+          items: { $ref: "#/components/schemas/LibraryArtist" }
+    LibraryArtist:
+      type: object
+      additionalProperties: false
+      required: [name, sortName, albums]
+      properties:
+        id:
+          type: string
+          description: Absent for a group with no owner a reader shows, such as Various Artists.
+        name: { type: string }
+        sortName:
+          type: string
+          description: Who the artist files under, which decides the letter it's found at.
+        albums:
+          type: array
+          items: { $ref: "#/components/schemas/LibraryAlbum" }
+    LibraryAlbum:
+      type: object
+      additionalProperties: false
+      required: [id, title, artist, compilation, tracks]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        compilation: { type: boolean }
+        year: { type: integer }
+        artwork: { $ref: "#/components/schemas/Artwork" }
+        tracks:
+          type: array
+          items: { $ref: "#/components/schemas/LibraryTrack" }
+    LibraryTrack:
+      type: object
+      additionalProperties: false
+      required: [id, title, durationMs, artists]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        durationMs: { type: integer, format: int64 }
+        artists:
+          type: array
+          items: { type: string }
+        discNo: { type: integer }
+        trackNo: { type: integer }
     SearchResults:
       type: object
       additionalProperties: false

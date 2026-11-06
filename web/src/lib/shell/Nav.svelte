@@ -32,6 +32,11 @@
 		>
 		<a
 			class="item"
+			href={resolve('/library')}
+			aria-current={current === 'library' ? 'page' : undefined}>Library</a
+		>
+		<a
+			class="item"
 			href={resolve('/albums')}
 			aria-current={current === 'albums' ? 'page' : undefined}>Albums</a
 		>
@@ -280,11 +285,28 @@
 		}
 	}
 
-	/* Everything left must still fit a small phone: the targets stay 44px tall. */
-	@media (max-width: 360px) {
+	/* Everything left must still fit a phone: the targets stay 44px tall. */
+	@media (max-width: 430px) {
 		.item,
 		.item[aria-current='page'] {
 			padding: 0 7px;
+		}
+
+		.nav {
+			gap: 2px;
+		}
+
+		.search {
+			margin-left: 2px;
+			padding: 0 14px;
+		}
+	}
+
+	@media (max-width: 374px) {
+		.item,
+		.item[aria-current='page'] {
+			padding: 0 3px;
+			font-size: 13px;
 		}
 	}
 </style>

@@ -83,6 +83,47 @@ WHERE ta.role = 'artist'
   AND ta.track_id IN (SELECT t.id FROM tracks t WHERE t.album_id = ? AND t.missing_since IS NULL)
 ORDER BY ta.track_id, ta.ord;
 
+-- The library index, read whole: three queries for the whole library, never one per
+-- album. An album's owner is its first one, by the test in artists.sql, repeated
+-- here because a query can't share it. The order is orderIndex's business.
+
+-- name: ListIndexAlbums :many
+SELECT
+    a.id, a.ulid, a.name, a.sort_name, a.artist, a.year, a.compilation,
+    a.artwork_hash, w.width AS artwork_width, w.height AS artwork_height,
+    w.accent AS artwork_accent, w.ground AS artwork_ground,
+    ar.ulid AS owner_ulid, ar.name AS owner_name, ar.sort_name AS owner_sort_name,
+    ar.match_key AS owner_match_key, ar.mbid AS owner_mbid
+FROM albums a
+LEFT JOIN artwork w ON w.hash = a.artwork_hash
+LEFT JOIN artists ar ON ar.id = (
+    SELECT ta.artist_id
+    FROM tracks t
+    JOIN track_artists ta ON ta.track_id = t.id
+    WHERE t.album_id = a.id AND t.missing_since IS NULL
+      AND (ta.role = 'album_artist'
+       OR (ta.ord = 0 AND a.compilation = 0 AND NOT EXISTS (
+            SELECT 1 FROM tracks o
+            JOIN track_artists oa ON oa.track_id = o.id AND oa.role = 'album_artist'
+            WHERE o.album_id = a.id AND o.missing_since IS NULL)))
+    ORDER BY ta.ord, t.id
+    LIMIT 1)
+WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL);
+
+-- name: ListIndexTracks :many
+SELECT id, album_id, ulid, title, disc_no, track_no, duration_ms
+FROM tracks
+WHERE missing_since IS NULL
+ORDER BY album_id, coalesce(disc_no, 1), track_no NULLS LAST, title, id;
+
+-- name: ListIndexTrackArtists :many
+SELECT ta.track_id, ar.name
+FROM track_artists ta
+JOIN artists ar ON ar.id = ta.artist_id
+JOIN tracks t ON t.id = ta.track_id AND t.missing_since IS NULL
+WHERE ta.role = 'artist'
+ORDER BY ta.track_id, ta.ord;
+
 -- name: CountLiveAlbums :one
 SELECT count(*) FROM albums a
 WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL);

@@ -283,6 +283,42 @@ type SearchResults struct {
 	Tracks  []TrackHit   `json:"tracks"`
 }
 
+// LibraryIndex is the response to GET /library/index: every song, by artist and
+// album, in the order a client shows them.
+type LibraryIndex struct {
+	Artists []LibraryArtist `json:"artists"`
+}
+
+// LibraryArtist is one heading of the library index. ID is empty for a group
+// with no owner a reader shows, such as Various Artists.
+type LibraryArtist struct {
+	ID       string         `json:"id,omitzero"`
+	Name     string         `json:"name"`
+	SortName string         `json:"sortName"`
+	Albums   []LibraryAlbum `json:"albums"`
+}
+
+// LibraryAlbum is an album in the library index.
+type LibraryAlbum struct {
+	ID          string         `json:"id"`
+	Title       string         `json:"title"`
+	Artist      string         `json:"artist"`
+	Compilation bool           `json:"compilation"`
+	Year        int            `json:"year,omitzero"`
+	Artwork     *Artwork       `json:"artwork,omitzero"`
+	Tracks      []LibraryTrack `json:"tracks"`
+}
+
+// LibraryTrack is a song in the library index.
+type LibraryTrack struct {
+	ID         string   `json:"id"`
+	Title      string   `json:"title"`
+	DurationMs int64    `json:"durationMs"`
+	Artists    []string `json:"artists"`
+	DiscNo     int      `json:"discNo,omitzero"`
+	TrackNo    int      `json:"trackNo,omitzero"`
+}
+
 // LibraryFacts is the response to GET /library.
 type LibraryFacts struct {
 	Albums     int64 `json:"albums"`

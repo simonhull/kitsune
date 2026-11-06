@@ -2,12 +2,14 @@ package server
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/simonhull/kitsune/api"
@@ -83,6 +85,71 @@ func writeBody(w http.ResponseWriter, status int, mediaType string, v any) {
 	h.Set("Content-Type", mediaType)
 	w.WriteHeader(status)
 	_, _ = w.Write(body) //nolint:gosec // G705: a JSON body of api types with a JSON media type; browsers do not render it as HTML.
+}
+
+// writeCompressed writes a 200 of v as JSON, gzipped if the request allows it.
+// It is for one large response, and not middleware: streams and artwork are
+// already compressed, and must stay rangeable.
+func writeCompressed(w http.ResponseWriter, r *http.Request, v any) {
+	h := w.Header()
+	h.Add("Vary", "Accept-Encoding")
+	if !acceptsGzip(strings.Join(r.Header.Values("Accept-Encoding"), ",")) {
+		writeBody(w, http.StatusOK, api.JSONMediaType, v)
+		return
+	}
+	body, err := marshal(v)
+	if err == nil {
+		body, err = gzipped(body)
+	}
+	if err != nil {
+		writeBody(w, http.StatusOK, api.JSONMediaType, v)
+		return
+	}
+	h.Set("Content-Type", api.JSONMediaType)
+	h.Set("Content-Encoding", "gzip")
+	h.Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
+// gzipped compresses b.
+func gzipped(b []byte) ([]byte, error) {
+	var out bytes.Buffer
+	zipper := gzip.NewWriter(&out)
+	if _, err := zipper.Write(b); err != nil {
+		return nil, fmt.Errorf("gzip: %w", err)
+	}
+	if err := zipper.Close(); err != nil {
+		return nil, fmt.Errorf("gzip: %w", err)
+	}
+	return out.Bytes(), nil
+}
+
+// acceptsGzip reports whether an Accept-Encoding value allows gzip: named, or
+// covered by *, and not with a weight of zero. A name beats *.
+func acceptsGzip(accept string) bool {
+	star := false
+	for item := range strings.SplitSeq(accept, ",") {
+		coding, params, _ := strings.Cut(item, ";")
+		allowed := !zeroWeight(params)
+		switch strings.ToLower(strings.TrimSpace(coding)) {
+		case "gzip":
+			return allowed
+		case "*":
+			star = allowed
+		}
+	}
+	return star
+}
+
+// zeroWeight reports whether an Accept-Encoding item's parameters set q to 0.
+func zeroWeight(params string) bool {
+	name, value, ok := strings.Cut(params, "=")
+	if !ok || !strings.EqualFold(strings.TrimSpace(name), "q") {
+		return false
+	}
+	q, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	return err == nil && q == 0
 }
 
 // marshal encodes v. Raw tags straight from audio files may hold invalid
