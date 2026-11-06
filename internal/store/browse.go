@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math"
@@ -116,7 +117,17 @@ type EditFile struct {
 type LibraryFacts struct {
 	Albums, Tracks int64
 	Duration       time.Duration
-	Issues         int64
+	Issues         int64 // Files the scanner could not read: the next three together.
+	Unreadable     int64
+	Corrupted      int64
+	Unsupported    int64
+	WarnedTracks   int64 // Live tracks the scanner read with warnings.
+}
+
+// WarnedTrack is a live track the scanner read with warnings.
+type WarnedTrack struct {
+	ID, Root, RelPath string
+	Warnings          []string
 }
 
 // Albums returns one page of albums that have a live track, in the order of
@@ -461,7 +472,8 @@ func (s *Store) TrackFile(ctx context.Context, id string) (TrackFile, error) {
 }
 
 // Facts returns the library's counts: albums and tracks that are live, their
-// total duration, and the files the scanner could not read.
+// total duration, the files the scanner could not read and the tracks it read
+// with warnings.
 func (s *Store) Facts(ctx context.Context) (LibraryFacts, error) {
 	albums, err := s.rq.CountLiveAlbums(ctx)
 	if err != nil {
@@ -471,12 +483,62 @@ func (s *Store) Facts(ctx context.Context) (LibraryFacts, error) {
 	if err != nil {
 		return LibraryFacts{}, fmt.Errorf("facts: tracks: %w", err)
 	}
-	issues, err := s.rq.CountScanIssues(ctx)
+	kinds, err := s.rq.CountScanIssuesByKind(ctx)
 	if err != nil {
 		return LibraryFacts{}, fmt.Errorf("facts: issues: %w", err)
 	}
-	return LibraryFacts{
-		Albums: albums, Tracks: tracks.Tracks, Issues: issues,
+	warned, err := s.rq.CountWarnedTracks(ctx)
+	if err != nil {
+		return LibraryFacts{}, fmt.Errorf("facts: warnings: %w", err)
+	}
+	f := LibraryFacts{
+		Albums: albums, Tracks: tracks.Tracks, WarnedTracks: warned,
 		Duration: time.Duration(tracks.DurationMs) * time.Millisecond,
-	}, nil
+	}
+	for _, k := range kinds {
+		f.Issues += k.Issues
+		switch IssueKind(k.Kind) {
+		case IssueUnreadable:
+			f.Unreadable = k.Issues
+		case IssueCorrupted:
+			f.Corrupted = k.Issues
+		case IssueUnsupported:
+			f.Unsupported = k.Issues
+		}
+	}
+	return f, nil
+}
+
+// ScanIssues returns every file the scanner could not read, by root and path.
+func (s *Store) ScanIssues(ctx context.Context) ([]ScanIssue, error) {
+	rows, err := s.rq.ListScanIssues(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("scan issues: %w", err)
+	}
+	issues := make([]ScanIssue, len(rows))
+	for i := range rows {
+		r := &rows[i]
+		issues[i] = ScanIssue{
+			Root: r.Root, RelPath: r.RelPath, Kind: IssueKind(r.Kind), Message: r.Message, Size: r.Size, MTime: fromMS(r.Mtime),
+		}
+	}
+	return issues, nil
+}
+
+// WarnedTracks returns the live tracks the scanner read with warnings, by root
+// and path.
+func (s *Store) WarnedTracks(ctx context.Context) ([]WarnedTrack, error) {
+	rows, err := s.rq.ListWarnedTracks(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("warned tracks: %w", err)
+	}
+	tracks := make([]WarnedTrack, len(rows))
+	for i := range rows {
+		r := &rows[i]
+		tracks[i] = WarnedTrack{ID: r.Ulid, Root: r.Root, RelPath: r.RelPath}
+		if err = json.Unmarshal([]byte(r.ScanWarnings), &tracks[i].Warnings); err != nil {
+			return nil, fmt.Errorf("warned track %s: %w", r.Ulid, err)
+		}
+	}
+	return tracks, nil
 }

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/simonhull/audiometa"
@@ -27,6 +27,25 @@ const (
 	// Full reads every file.
 	Full
 )
+
+// String returns the mode's lowercase name.
+func (m Mode) String() string {
+	if m == Full {
+		return "full"
+	}
+	return "quick"
+}
+
+// ParseMode returns the mode with the name [Mode.String] gives it.
+func ParseMode(name string) (Mode, bool) {
+	switch name {
+	case Quick.String():
+		return Quick, true
+	case Full.String():
+		return Full, true
+	}
+	return Quick, false
+}
 
 // Options configures [NewScanner].
 type Options struct {
@@ -49,7 +68,7 @@ type Stats struct {
 	Deleted                                            int64 // Tracks past the grace period.
 	Pruned                                             store.Pruned
 	SkippedRoots                                       int
-	Covers                                             int // Album covers stored: successful artwork.Cache.Put calls.
+	Covers                                             int // Albums the scan found a cover for.
 	Swept                                              int // Temp files left by an interrupted edit, removed.
 }
 
@@ -66,8 +85,9 @@ type Scanner struct {
 	artwork   *artwork.Cache
 	tagWrites bool
 	write     WriteFunc
-	mu        sync.Mutex  // Held by the one scan, from before it waits for lock.
+	claim     libraryLock // Held by the one scan, from its claim to its end.
 	lock      libraryLock // Held by a running scan or edit.
+	progress  atomic.Pointer[Progress]
 }
 
 // NewScanner returns a scanner that writes to st.
@@ -75,7 +95,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 	s := &Scanner{
 		st: st, roots: opts.Roots, grace: opts.MissingGrace, workers: opts.Workers,
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
-		tagWrites: opts.TagWrites, write: opts.Write, lock: newLibraryLock(),
+		tagWrites: opts.TagWrites, write: opts.Write, claim: newLibraryLock(), lock: newLibraryLock(),
 	}
 	if s.workers <= 0 {
 		s.workers = runtime.NumCPU()
@@ -91,7 +111,21 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 			return audiometa.WriteContext(ctx, path, edit)
 		}
 	}
+	s.progress.Store(&Progress{})
 	return s
+}
+
+// Claim reserves the scanner for one scan without waiting, so a caller can
+// refuse a request before starting anything. It returns [ErrScanRunning] while
+// another scan holds the scanner. Otherwise the caller must call the returned
+// func once, on any goroutine: it runs the scan as [Scanner.Scan] does, logs how
+// it went and gives the scanner back. [Scanner.Progress] shows the scan from the
+// moment Claim returns.
+func (s *Scanner) Claim(mode Mode) (func(context.Context) (Stats, error), error) {
+	if !s.claim.tryLock() {
+		return nil, ErrScanRunning
+	}
+	return s.claimed(mode), nil
 }
 
 // Scan walks the roots, reads the files mode asks for and updates the store.
@@ -99,10 +133,28 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 // finish. A canceled ctx ends the scan with an error wrapping ctx.Err();
 // everything read by then is stored.
 func (s *Scanner) Scan(ctx context.Context, mode Mode) (Stats, error) {
-	if !s.mu.TryLock() {
-		return Stats{}, ErrScanRunning
+	run, err := s.Claim(mode)
+	if err != nil {
+		return Stats{}, err
 	}
-	defer s.mu.Unlock()
+	return run(ctx)
+}
+
+// run is one scan, with the claim held, which it gives back.
+func (s *Scanner) run(ctx context.Context, mode Mode) (Stats, error) {
+	defer s.claim.unlock()
+	start := time.Now()
+	stats, err := s.exclusiveScan(ctx, mode)
+	if ctxErr := ctx.Err(); err != nil && ctxErr != nil {
+		err = fmt.Errorf("scan: %w", ctxErr) // A canceled query says only "interrupted".
+	}
+	s.logScan(ctx, mode, &stats, err, time.Since(start))
+	s.ended(&stats, err)
+	return stats, err
+}
+
+// exclusiveScan waits for the library lock and scans holding it.
+func (s *Scanner) exclusiveScan(ctx context.Context, mode Mode) (Stats, error) {
 	if err := s.lock.lock(ctx); err != nil {
 		return Stats{}, fmt.Errorf("scan: %w", err)
 	}
@@ -128,6 +180,7 @@ func (s *Scanner) scan(ctx context.Context, mode Mode) (Stats, error) {
 		return Stats{}, fmt.Errorf("scan: survey: %w", err)
 	}
 	defer s.refreshNames(ctx)
+	s.publish(func(p *Progress) { p.Total = len(sv.Jobs) })
 	stats := Stats{Seen: sv.Seen, SkippedRoots: sv.SkippedRoots}
 	if err = s.applySurvey(ctx, sv, &stats); err != nil {
 		return stats, fmt.Errorf("scan: %w", err)

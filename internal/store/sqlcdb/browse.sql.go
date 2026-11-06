@@ -22,12 +22,44 @@ func (q *Queries) CountLiveAlbums(ctx context.Context) (int64, error) {
 	return count, err
 }
 
-const countScanIssues = `-- name: CountScanIssues :one
-SELECT count(*) FROM scan_issues
+const countScanIssuesByKind = `-- name: CountScanIssuesByKind :many
+SELECT kind, count(*) AS issues FROM scan_issues GROUP BY kind
 `
 
-func (q *Queries) CountScanIssues(ctx context.Context) (int64, error) {
-	row := q.queryRow(ctx, q.countScanIssuesStmt, countScanIssues)
+type CountScanIssuesByKindRow struct {
+	Kind   string
+	Issues int64
+}
+
+func (q *Queries) CountScanIssuesByKind(ctx context.Context) ([]CountScanIssuesByKindRow, error) {
+	rows, err := q.query(ctx, q.countScanIssuesByKindStmt, countScanIssuesByKind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountScanIssuesByKindRow
+	for rows.Next() {
+		var i CountScanIssuesByKindRow
+		if err := rows.Scan(&i.Kind, &i.Issues); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countWarnedTracks = `-- name: CountWarnedTracks :one
+SELECT count(*) FROM tracks WHERE missing_since IS NULL AND scan_warnings <> '[]'
+`
+
+func (q *Queries) CountWarnedTracks(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countWarnedTracksStmt, countWarnedTracks)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -497,6 +529,91 @@ func (q *Queries) ListAlbumsByName(ctx context.Context, arg ListAlbumsByNamePara
 			&i.ArtworkAccent,
 			&i.ArtworkGround,
 			&i.TrackCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScanIssues = `-- name: ListScanIssues :many
+SELECT root, rel_path, kind, message, size, mtime FROM scan_issues ORDER BY root, rel_path
+`
+
+type ListScanIssuesRow struct {
+	Root    string
+	RelPath string
+	Kind    string
+	Message string
+	Size    int64
+	Mtime   int64
+}
+
+func (q *Queries) ListScanIssues(ctx context.Context) ([]ListScanIssuesRow, error) {
+	rows, err := q.query(ctx, q.listScanIssuesStmt, listScanIssues)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListScanIssuesRow
+	for rows.Next() {
+		var i ListScanIssuesRow
+		if err := rows.Scan(
+			&i.Root,
+			&i.RelPath,
+			&i.Kind,
+			&i.Message,
+			&i.Size,
+			&i.Mtime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWarnedTracks = `-- name: ListWarnedTracks :many
+SELECT ulid, root, rel_path, scan_warnings
+FROM tracks
+WHERE missing_since IS NULL AND scan_warnings <> '[]'
+ORDER BY root, rel_path
+`
+
+type ListWarnedTracksRow struct {
+	Ulid         string
+	Root         string
+	RelPath      string
+	ScanWarnings string
+}
+
+func (q *Queries) ListWarnedTracks(ctx context.Context) ([]ListWarnedTracksRow, error) {
+	rows, err := q.query(ctx, q.listWarnedTracksStmt, listWarnedTracks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWarnedTracksRow
+	for rows.Next() {
+		var i ListWarnedTracksRow
+		if err := rows.Scan(
+			&i.Ulid,
+			&i.Root,
+			&i.RelPath,
+			&i.ScanWarnings,
 		); err != nil {
 			return nil, err
 		}

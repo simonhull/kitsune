@@ -149,9 +149,36 @@ func (s *Server) getLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	body := api.LibraryFacts{
 		Albums: f.Albums, Tracks: f.Tracks, DurationMs: f.Duration.Milliseconds(),
-		Roots: s.roots, Issues: f.Issues,
+		Roots: s.roots, Issues: f.Issues, Scan: toAPIScan(s.scanner.Progress(), isAdmin(r.Context())),
+		IssueCounts: api.IssueCounts{
+			Unreadable: f.Unreadable, Corrupted: f.Corrupted, Unsupported: f.Unsupported, Warnings: f.WarnedTracks,
+		},
 	}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+}
+
+// toAPIScan returns the wire form of p. Only an administrator sees why a scan
+// failed.
+func toAPIScan(p library.Progress, admin bool) api.ScanStatus {
+	out := api.ScanStatus{State: api.ScanIdle}
+	if p.Running {
+		out = api.ScanStatus{State: api.ScanRunning, Mode: p.Mode.String(), Read: p.Read, Total: p.Total, StartedAt: &p.StartedAt}
+	}
+	if l := p.Last; l != nil {
+		st := &l.Stats
+		out.Last = &api.ScanResult{
+			Mode: l.Mode.String(), Outcome: api.ScanFinished, StartedAt: l.StartedAt, EndedAt: l.EndedAt,
+			Seen: st.Seen, Read: st.Read, Added: st.Added, Updated: st.Updated, Moved: st.Moved,
+			Missing: st.Missing, Deleted: st.Deleted, Issues: st.Issues, SkippedRoots: st.SkippedRoots,
+		}
+		if l.Err != "" {
+			out.Last.Outcome = api.ScanFailed
+		}
+		if admin {
+			out.Last.Error = l.Err
+		}
+	}
+	return out
 }
 
 // toAPIArtwork returns the wire form of a cover, or nil for none.

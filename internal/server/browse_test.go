@@ -216,13 +216,13 @@ func TestLibraryFacts(t *testing.T) {
 	token := ts.sessionFor(t).token
 	var empty api.LibraryFacts
 	ts.getJSON(t, token, libraryPath, &empty)
-	if empty != (api.LibraryFacts{Roots: 2}) {
+	if empty != (api.LibraryFacts{Roots: 2, Scan: api.ScanStatus{State: api.ScanIdle}}) {
 		t.Errorf("empty library = %+v, want only roots: 2", empty)
 	}
 	ts.seedAlbums(t, browseAlbum{n: 1, sortName: "a", tracks: 2}, browseAlbum{n: 2, sortName: "b", tracks: 1})
 	var got api.LibraryFacts
 	ts.getJSON(t, token, libraryPath, &got)
-	if want := (api.LibraryFacts{Albums: 2, Tracks: 3, DurationMs: 3 * 60_000, Roots: 2}); got != want {
+	if want := (api.LibraryFacts{Albums: 2, Tracks: 3, DurationMs: 3 * 60_000, Roots: 2, Scan: api.ScanStatus{State: api.ScanIdle}}); got != want {
 		t.Errorf("facts = %+v, want %+v", got, want)
 	}
 }

@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/simonhull/audiometa"
 
@@ -31,24 +31,99 @@ var (
 	coverExts  = [...]string{".jpg", ".jpeg", ".png", ".webp"}    //nolint:gochecknoglobals // As above.
 )
 
-// covers finds and stores one cover per album during a read. A nil *covers
-// finds nothing.
+// covers finds and stores one cover per album during a read: the one the first
+// track of the album with art has, whichever file a worker happens to finish
+// first. A nil *covers finds nothing.
 type covers struct {
-	cache  *artwork.Cache
-	log    *slog.Logger
-	claims sync.Map // Group keys whose album has a stored cover or a worker looking for one.
-	stored atomic.Int64
+	cache *artwork.Cache
+	log   *slog.Logger
+	mu    sync.Mutex
+	best  map[string]rank // By group key: the first track found with a cover.
 }
 
-// attach looks for the cover of tw's album if no other file has claimed the
-// album, and puts it on tw. f is open on the file tw was made from. It appends
+func newCovers(cache *artwork.Cache, log *slog.Logger) *covers {
+	return &covers{cache: cache, log: log, best: make(map[string]rank)}
+}
+
+// rank is a track's place in its album when a cover is chosen: lowest disc, then
+// lowest track, then path. No disc tag means the only disc, and a track with no
+// number comes last.
+type rank struct {
+	disc, track int
+	path        string
+}
+
+func rankOf(tw *store.TrackWrite) rank {
+	r := rank{disc: tw.DiscNo, track: tw.TrackNo, path: filepath.Join(tw.Root, tw.RelPath)}
+	if r.disc == 0 {
+		r.disc = 1
+	}
+	if r.track == 0 {
+		r.track = math.MaxInt
+	}
+	return r
+}
+
+func (r rank) before(other rank) bool {
+	return cmp.Or(cmp.Compare(r.disc, other.disc), cmp.Compare(r.track, other.track), strings.Compare(r.path, other.path)) < 0
+}
+
+// ahead reports whether r comes before the album's best so far. The caller holds mu.
+func (c *covers) ahead(album string, r rank) bool {
+	best, ok := c.best[album]
+	return !ok || r.before(best)
+}
+
+// wants reports whether a cover from r would improve on the album's.
+func (c *covers) wants(album string, r rank) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ahead(album, r)
+}
+
+// take makes r the album's best, and reports false when a track before it has
+// got there first.
+func (c *covers) take(album string, r rank) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.ahead(album, r) {
+		return false
+	}
+	c.best[album] = r
+	return true
+}
+
+// count returns how many albums have a cover.
+func (c *covers) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.best)
+}
+
+// settle drops tw's cover when a track before it has one by now. Workers finish in
+// any order, and the album keeps the last cover written, so the writer must not
+// let a later track's cover land after an earlier one's.
+func (c *covers) settle(tw *store.TrackWrite) {
+	if tw.Album.Artwork == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.best[tw.Album.GroupKey] != rankOf(tw) {
+		tw.Album.Artwork = nil
+	}
+}
+
+// attach looks for the cover of tw's album if tw comes before every track with
+// one so far, and puts it on tw. f is open on the file tw was made from. It appends
 // the warnings the search produced to tw. It returns an error only when ctx
 // ended, so that the caller drops the result.
 func (c *covers) attach(ctx context.Context, f *audiometa.File, j *job, tw *store.TrackWrite) error {
 	if c == nil || c.cache == nil {
 		return nil
 	}
-	if _, taken := c.claims.LoadOrStore(tw.Album.GroupKey, struct{}{}); taken {
+	r := rankOf(tw)
+	if !c.wants(tw.Album.GroupKey, r) {
 		return nil
 	}
 	seen := len(f.Warnings)
@@ -59,15 +134,14 @@ func (c *covers) attach(ctx context.Context, f *audiometa.File, j *job, tw *stor
 	}
 	tw.Warnings = append(tw.Warnings, s.warnings...)
 	if art == nil {
-		// Only a stored cover holds the claim: the album's next track tries again.
-		c.claims.Delete(tw.Album.GroupKey)
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("find cover: %w", err)
 		}
 		return nil
 	}
-	c.stored.Add(1)
-	tw.Album.Artwork = art
+	if c.take(tw.Album.GroupKey, r) {
+		tw.Album.Artwork = art
+	}
 	return nil
 }
 

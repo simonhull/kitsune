@@ -156,6 +156,14 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   wait for the file to change.
 - One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it
   gets `ErrBusy`; a scan that meets an edit waits. Readers never take it.
+- `Scanner.Claim` reserves the one scan without waiting, so a refusal is known before anything starts;
+  `Scan` is a claim that runs at once. A scan a handler starts runs as the app's background work
+  (`app.startScan`), so shutdown cancels it and waits. A scheduled scan that meets a running one retries
+  once, when that one ends. `POST /admin/library/scan` answers 202 or 409 from the claim.
+- `Scanner.Progress` is an immutable snapshot swapped atomically, which only the claim's holder
+  changes. `GET /library` carries it, and the reason a scan failed goes to administrators only.
+- No library root reaches a client. `GET /admin/library/issues` sends paths relative to the root and
+  passes messages through `StripRoot`; `GET /library` gives everyone counts by kind.
 - Scans remove audiometa's temp files (`isWriteTemp`), and only with `library.tag_writes` on: off,
   nothing under a root ever changes.
 
@@ -165,8 +173,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   SHA-256 of the source image, so a request only ever reads a file and a file never changes.
   The ladder is 128/512/1024 on the longest side and never upscales; `Path` returns the largest
   rung at or below the request. A zero-size file counts as missing.
-- The scanner finds one cover per album per scan (`covers` in `internal/library/cover.go`).
-  A look that finds nothing releases its claim so the album's next track tries. Art never fails
+- The scanner finds one cover per album per scan (`covers` in `internal/library/cover.go`): the cover
+  of the album's first track, by disc, track number and path, that has one. A track looks unless one
+  before it has found a cover, and the writer drops a cover that arrives after a better one, so
+  worker order never decides. Art never fails
   a file: bad images become warnings, cache failures are logged. Folder art is read through
   `os.Root`, never through `fs.FS` (it rejects non-UTF-8 names).
 - A cover's accent and ground colors come from the encoded 128 rendition, so a fresh render and

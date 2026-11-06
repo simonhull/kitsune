@@ -227,4 +227,88 @@ type LibraryFacts struct {
 	Roots int `json:"roots"`
 	// Issues counts the files the scanner could not read.
 	Issues int64 `json:"issues"`
+	// IssueCounts breaks the issues down by kind, and counts track warnings.
+	IssueCounts IssueCounts `json:"issueCounts"`
+	// Scan says where scanning stands.
+	Scan ScanStatus `json:"scan"`
+}
+
+// IssueCounts counts what a scan had trouble with. It is all a non-administrator
+// sees of it.
+type IssueCounts struct {
+	Unreadable  int64 `json:"unreadable"`
+	Corrupted   int64 `json:"corrupted"`
+	Unsupported int64 `json:"unsupported"`
+	// Warnings counts the live tracks read with warnings. They play.
+	Warnings int64 `json:"warnings"`
+}
+
+// ScanIssues is the response to GET /admin/library/issues.
+type ScanIssues struct {
+	Issues   []ScanIssue   `json:"issues"`
+	Warnings []TrackWarned `json:"warnings"`
+}
+
+// ScanIssue is a file the scanner could not read. Path is relative to its
+// library root, and Message holds no root.
+type ScanIssue struct {
+	Path    string `json:"path"`
+	Kind    string `json:"kind"`
+	Message string `json:"message"`
+}
+
+// TrackWarned is a live track read with warnings. Path is relative to its library
+// root, and Messages hold no root.
+type TrackWarned struct {
+	TrackID  string   `json:"trackId"`
+	Path     string   `json:"path"`
+	Messages []string `json:"messages"`
+}
+
+// ScanRequest is the body of POST /admin/library/scan. Mode is quick or full.
+type ScanRequest struct {
+	Mode string `json:"mode"`
+}
+
+// The values of ScanStatus.State.
+const (
+	ScanIdle    = "idle"
+	ScanRunning = "running"
+)
+
+// The values of ScanResult.Outcome.
+const (
+	ScanFinished = "finished"
+	ScanFailed   = "failed"
+)
+
+// ScanStatus says where scanning stands. Mode, Read, Total and StartedAt describe
+// the running scan.
+type ScanStatus struct {
+	State     string     `json:"state"`
+	Mode      string     `json:"mode,omitzero"`
+	Read      int        `json:"read"`
+	Total     int        `json:"total"` // 0 until the scan has counted its files.
+	StartedAt *time.Time `json:"startedAt,omitzero"`
+	// Last is the last scan to end since the server started.
+	Last *ScanResult `json:"last,omitzero"`
+}
+
+// ScanResult says how a scan ended.
+type ScanResult struct {
+	Mode         string    `json:"mode"`
+	Outcome      string    `json:"outcome"`
+	StartedAt    time.Time `json:"startedAt"`
+	EndedAt      time.Time `json:"endedAt"`
+	Seen         int       `json:"seen"`
+	Read         int       `json:"read"`
+	Added        int       `json:"added"`
+	Updated      int       `json:"updated"`
+	Moved        int       `json:"moved"`
+	Missing      int       `json:"missing"`
+	Deleted      int64     `json:"deleted"`
+	Issues       int       `json:"issues"`
+	SkippedRoots int       `json:"skippedRoots"`
+	// Error says why a failed scan failed, for administrators only.
+	Error string `json:"error,omitzero"`
 }

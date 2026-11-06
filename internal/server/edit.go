@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	// maxEditBody caps an edit's request body.
+	// maxEditBody caps the request body of an edit or a scan.
 	maxEditBody = 64 << 10
 	// retryAfterSeconds is the Retry-After of an edit the library can't take now.
 	retryAfterSeconds = "30"
@@ -85,17 +85,21 @@ func (s *Server) readEdit(w http.ResponseWriter, r *http.Request, req any) (stri
 		writeProblem(w, r, http.StatusPreconditionRequired, "send the etag you read as If-Match")
 		return "", false
 	}
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err == nil && mediaType == api.JSONMediaType {
-		err = json.UnmarshalRead(http.MaxBytesReader(w, r.Body, maxEditBody), req, json.RejectUnknownMembers(true))
-	} else {
-		err = errors.ErrUnsupported
-	}
-	if err != nil {
+	if err := readJSON(w, r, req); err != nil {
 		writeProblem(w, r, http.StatusBadRequest, "request body must be a JSON edit of the fields this route takes")
 		return "", false
 	}
 	return ifMatch, true
+}
+
+// readJSON reads a JSON body into req, refusing other media types and unknown
+// members.
+func readJSON(w http.ResponseWriter, r *http.Request, req any) error {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != api.JSONMediaType {
+		return errors.ErrUnsupported
+	}
+	return json.UnmarshalRead(http.MaxBytesReader(w, r.Body, maxEditBody), req, json.RejectUnknownMembers(true)) //nolint:wrapcheck // The caller only tells the client the body is bad.
 }
 
 func validNumber(n *int) bool { return n == nil || (*n >= minNumber && *n <= maxNumber) }

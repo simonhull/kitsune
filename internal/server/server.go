@@ -39,7 +39,11 @@ type Config struct {
 	Library       *store.Store                // Required; New panics if nil. Backs the browse routes.
 	Roots         int                         // The number of configured library roots, reported by GET /library.
 	TagWrites     bool                        // Administrators may edit tags. Off leaves every file alone.
-	Scanner       *library.Scanner            // Required with TagWrites; New panics if nil. Applies tag edits.
+	Scanner       *library.Scanner            // Required; New panics if nil. Applies tag edits and reports scans.
+	// StartScan claims a scan and runs it in the background; required, New panics if
+	// nil. It returns [library.ErrScanRunning] while one runs, and another error when
+	// the server is stopping.
+	StartScan func(library.Mode) error
 	// Context bounds tag edits. Nil means context.Background. An edit runs on it and
 	// not on the request, so a client that goes away can't stop an album midway.
 	Context context.Context //nolint:containedctx // The server's lifetime, not a request's.
@@ -62,6 +66,7 @@ type Server struct {
 	roots         int
 	tagWrites     bool
 	scanner       *library.Scanner
+	startScan     func(library.Mode) error
 	editContext   context.Context //nolint:containedctx // Config.Context: the server's lifetime, not a request's.
 	limiter       *loginLimiter
 }
@@ -78,8 +83,8 @@ type route struct {
 
 // New returns a server for cfg.
 //
-// New panics if cfg.Auth or cfg.Library is nil, cfg.TagWrites comes without
-// cfg.Scanner or cfg.BasePath is malformed, which are programming errors.
+// New panics if cfg.Auth, cfg.Library, cfg.Scanner or cfg.StartScan is nil or
+// cfg.BasePath is malformed, which are programming errors.
 func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built once at startup; a value keeps every caller a plain literal.
 	checkConfig(&cfg)
 	s := &Server{
@@ -96,6 +101,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		roots:         cfg.Roots,
 		tagWrites:     cfg.TagWrites,
 		scanner:       cfg.Scanner,
+		startScan:     cfg.StartScan,
 		editContext:   cfg.Context,
 		limiter:       newLoginLimiter(maxLimiterKeys),
 	}
@@ -126,8 +132,11 @@ func checkConfig(cfg *Config) {
 	if cfg.Library == nil {
 		panic("server: Config.Library is required")
 	}
-	if cfg.TagWrites && cfg.Scanner == nil {
-		panic("server: Config.Scanner is required with TagWrites")
+	if cfg.Scanner == nil {
+		panic("server: Config.Scanner is required")
+	}
+	if cfg.StartScan == nil {
+		panic("server: Config.StartScan is required")
 	}
 	if b := cfg.BasePath; b != "" && (!strings.HasPrefix(b, "/") || strings.HasSuffix(b, "/")) {
 		panic("server: Config.BasePath must be empty, or start with / and not end with /")
@@ -167,6 +176,8 @@ func (s *Server) routes() []route {
 		{pattern: "GET /readyz", public: true, handle: s.getReady},
 		{pattern: "POST /auth/login", public: true, handle: s.login},
 		{pattern: "POST /auth/logout", handle: s.logout},
+		{pattern: "GET /admin/library/issues", admin: true, handle: s.getIssues},
+		{pattern: "POST /admin/library/scan", admin: true, handle: s.postScan},
 		{pattern: "GET /me", handle: s.getMe},
 		{pattern: "GET /artwork/{hash}", handle: s.getArtwork},
 		{pattern: "GET /albums", handle: s.getAlbums},

@@ -331,11 +331,77 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
+  /admin/library/scan:
+    post:
+      operationId: postScan
+      summary: Start a scan.
+      description: >-
+        For administrators. The scan is claimed before this answers, so a 202
+        means it is running, and a 409 means another one is. It runs on after the
+        response: `GET /library` follows it. A Quick scan reads new and changed
+        files, a Full one every file. Neither changes a file.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScanRequest" }
+      responses:
+        "202":
+          description: The scan has started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanStatus" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/Problem"
+  /admin/library/issues:
+    get:
+      operationId: getIssues
+      summary: List what scans had trouble with.
+      description: >-
+        For administrators: `GET /library` gives everyone the counts. Paths are
+        relative to their library root, and messages hold no root. A Full scan
+        does not clear an issue: a file stays listed until it is readable or
+        gone.
+      responses:
+        "200":
+          description: Files that could not be read and tracks read with warnings.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanIssues" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
   /library:
     get:
       operationId: getLibrary
       summary: Report what the library holds.
-      description: Counts live tracks and albums that have a live track.
+      description: >-
+        Counts live tracks and albums that have a live track. `scan` says where
+        scanning stands, so a client can poll this while a scan runs; the
+        counts themselves move little until it ends.
       responses:
         "200":
           description: The library's counts.
@@ -885,10 +951,96 @@ components:
     LibraryFacts:
       type: object
       additionalProperties: false
-      required: [albums, tracks, durationMs, roots, issues]
+      required: [albums, tracks, durationMs, roots, issues, issueCounts, scan]
       properties:
         albums: { type: integer, format: int64 }
         tracks: { type: integer, format: int64 }
         durationMs: { type: integer, format: int64 }
         roots: { type: integer, description: The number of configured library roots. }
         issues: { type: integer, format: int64, description: Files the scanner could not read. }
+        issueCounts: { $ref: "#/components/schemas/IssueCounts" }
+        scan: { $ref: "#/components/schemas/ScanStatus" }
+    IssueCounts:
+      type: object
+      additionalProperties: false
+      required: [unreadable, corrupted, unsupported, warnings]
+      properties:
+        unreadable: { type: integer, format: int64, description: 'Files an I/O or permission error stopped. Tried again every scan.' }
+        corrupted: { type: integer, format: int64, description: Structurally broken files. }
+        unsupported: { type: integer, format: int64, description: Files of a format Kitsune can't read. }
+        warnings: { type: integer, format: int64, description: Live tracks read with warnings. They play; `issues` leaves them out. }
+    ScanIssues:
+      type: object
+      additionalProperties: false
+      required: [issues, warnings]
+      properties:
+        issues:
+          type: array
+          items: { $ref: "#/components/schemas/ScanIssue" }
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/TrackWarned" }
+    ScanIssue:
+      type: object
+      additionalProperties: false
+      required: [path, kind, message]
+      properties:
+        path: { type: string, description: Relative to its library root. }
+        kind: { type: string, enum: [unreadable, corrupted, unsupported] }
+        message: { type: string }
+    TrackWarned:
+      type: object
+      additionalProperties: false
+      required: [trackId, path, messages]
+      properties:
+        trackId: { type: string }
+        path: { type: string, description: Relative to its library root. }
+        messages:
+          type: array
+          items: { type: string }
+    ScanRequest:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [quick, full] }
+    ScanStatus:
+      type: object
+      additionalProperties: false
+      description: >-
+        `mode`, `read`, `total` and `startedAt` describe the running scan: idle,
+        the first and last are absent and the numbers are 0.
+      required: [state, read, total]
+      properties:
+        state: { type: string, enum: [idle, running] }
+        mode: { type: string, enum: [quick, full] }
+        read: { type: integer, description: Files the scan has read. }
+        total:
+          type: integer
+          description: >-
+            Files the scan has to read: every file for a Full scan, new and
+            changed ones for a Quick one. 0 until it has walked the roots.
+        startedAt: { type: string, format: date-time }
+        last: { $ref: "#/components/schemas/ScanResult" }
+    ScanResult:
+      type: object
+      additionalProperties: false
+      description: >-
+        How the last scan to end went. It is held in memory: a restart starts
+        over from the Quick scan every start runs.
+      required: [mode, outcome, startedAt, endedAt, seen, read, added, updated, moved, missing, deleted, issues, skippedRoots]
+      properties:
+        mode: { type: string, enum: [quick, full] }
+        outcome: { type: string, enum: [finished, failed] }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        seen: { type: integer, description: Audio files found under the roots. }
+        read: { type: integer }
+        added: { type: integer }
+        updated: { type: integer }
+        moved: { type: integer }
+        missing: { type: integer, description: Tracks newly marked missing. }
+        deleted: { type: integer, format: int64, description: Tracks deleted after the grace period. }
+        issues: { type: integer, description: Files this scan read and could not use. }
+        skippedRoots: { type: integer, description: Roots left alone because they looked like an outage. }
+        error: { type: string, description: 'Why it failed, without library paths. Administrators only.' }

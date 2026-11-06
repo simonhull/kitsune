@@ -27,11 +27,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countLiveAlbumsStmt, err = db.PrepareContext(ctx, countLiveAlbums); err != nil {
 		return nil, fmt.Errorf("error preparing query CountLiveAlbums: %w", err)
 	}
-	if q.countScanIssuesStmt, err = db.PrepareContext(ctx, countScanIssues); err != nil {
-		return nil, fmt.Errorf("error preparing query CountScanIssues: %w", err)
+	if q.countScanIssuesByKindStmt, err = db.PrepareContext(ctx, countScanIssuesByKind); err != nil {
+		return nil, fmt.Errorf("error preparing query CountScanIssuesByKind: %w", err)
 	}
 	if q.countUsersStmt, err = db.PrepareContext(ctx, countUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUsers: %w", err)
+	}
+	if q.countWarnedTracksStmt, err = db.PrepareContext(ctx, countWarnedTracks); err != nil {
+		return nil, fmt.Errorf("error preparing query CountWarnedTracks: %w", err)
 	}
 	if q.createSessionStmt, err = db.PrepareContext(ctx, createSession); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateSession: %w", err)
@@ -126,11 +129,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listOwningArtistsStmt, err = db.PrepareContext(ctx, listOwningArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListOwningArtists: %w", err)
 	}
+	if q.listScanIssuesStmt, err = db.PrepareContext(ctx, listScanIssues); err != nil {
+		return nil, fmt.Errorf("error preparing query ListScanIssues: %w", err)
+	}
 	if q.listTrackHitArtistsStmt, err = db.PrepareContext(ctx, listTrackHitArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackHitArtists: %w", err)
 	}
 	if q.listTrackHitsStmt, err = db.PrepareContext(ctx, listTrackHits); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackHits: %w", err)
+	}
+	if q.listWarnedTracksStmt, err = db.PrepareContext(ctx, listWarnedTracks); err != nil {
+		return nil, fmt.Errorf("error preparing query ListWarnedTracks: %w", err)
 	}
 	if q.liveTrackFactsStmt, err = db.PrepareContext(ctx, liveTrackFacts); err != nil {
 		return nil, fmt.Errorf("error preparing query LiveTrackFacts: %w", err)
@@ -190,14 +199,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countLiveAlbumsStmt: %w", cerr)
 		}
 	}
-	if q.countScanIssuesStmt != nil {
-		if cerr := q.countScanIssuesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing countScanIssuesStmt: %w", cerr)
+	if q.countScanIssuesByKindStmt != nil {
+		if cerr := q.countScanIssuesByKindStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countScanIssuesByKindStmt: %w", cerr)
 		}
 	}
 	if q.countUsersStmt != nil {
 		if cerr := q.countUsersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countUsersStmt: %w", cerr)
+		}
+	}
+	if q.countWarnedTracksStmt != nil {
+		if cerr := q.countWarnedTracksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countWarnedTracksStmt: %w", cerr)
 		}
 	}
 	if q.createSessionStmt != nil {
@@ -355,6 +369,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listOwningArtistsStmt: %w", cerr)
 		}
 	}
+	if q.listScanIssuesStmt != nil {
+		if cerr := q.listScanIssuesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listScanIssuesStmt: %w", cerr)
+		}
+	}
 	if q.listTrackHitArtistsStmt != nil {
 		if cerr := q.listTrackHitArtistsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTrackHitArtistsStmt: %w", cerr)
@@ -363,6 +382,11 @@ func (q *Queries) Close() error {
 	if q.listTrackHitsStmt != nil {
 		if cerr := q.listTrackHitsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTrackHitsStmt: %w", cerr)
+		}
+	}
+	if q.listWarnedTracksStmt != nil {
+		if cerr := q.listWarnedTracksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listWarnedTracksStmt: %w", cerr)
 		}
 	}
 	if q.liveTrackFactsStmt != nil {
@@ -485,8 +509,9 @@ type Queries struct {
 	db                        DBTX
 	tx                        *sql.Tx
 	countLiveAlbumsStmt       *sql.Stmt
-	countScanIssuesStmt       *sql.Stmt
+	countScanIssuesByKindStmt *sql.Stmt
 	countUsersStmt            *sql.Stmt
+	countWarnedTracksStmt     *sql.Stmt
 	createSessionStmt         *sql.Stmt
 	createUserStmt            *sql.Stmt
 	deleteExpiredSessionsStmt *sql.Stmt
@@ -518,8 +543,10 @@ type Queries struct {
 	listArtistHitsStmt        *sql.Stmt
 	listArtistNamesStmt       *sql.Stmt
 	listOwningArtistsStmt     *sql.Stmt
+	listScanIssuesStmt        *sql.Stmt
 	listTrackHitArtistsStmt   *sql.Stmt
 	listTrackHitsStmt         *sql.Stmt
+	listWarnedTracksStmt      *sql.Stmt
 	liveTrackFactsStmt        *sql.Stmt
 	markMissingStmt           *sql.Stmt
 	missingByDigestStmt       *sql.Stmt
@@ -543,8 +570,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		db:                        tx,
 		tx:                        tx,
 		countLiveAlbumsStmt:       q.countLiveAlbumsStmt,
-		countScanIssuesStmt:       q.countScanIssuesStmt,
+		countScanIssuesByKindStmt: q.countScanIssuesByKindStmt,
 		countUsersStmt:            q.countUsersStmt,
+		countWarnedTracksStmt:     q.countWarnedTracksStmt,
 		createSessionStmt:         q.createSessionStmt,
 		createUserStmt:            q.createUserStmt,
 		deleteExpiredSessionsStmt: q.deleteExpiredSessionsStmt,
@@ -576,8 +604,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listArtistHitsStmt:        q.listArtistHitsStmt,
 		listArtistNamesStmt:       q.listArtistNamesStmt,
 		listOwningArtistsStmt:     q.listOwningArtistsStmt,
+		listScanIssuesStmt:        q.listScanIssuesStmt,
 		listTrackHitArtistsStmt:   q.listTrackHitArtistsStmt,
 		listTrackHitsStmt:         q.listTrackHitsStmt,
+		listWarnedTracksStmt:      q.listWarnedTracksStmt,
 		liveTrackFactsStmt:        q.liveTrackFactsStmt,
 		markMissingStmt:           q.markMissingStmt,
 		missingByDigestStmt:       q.missingByDigestStmt,

@@ -22,6 +22,7 @@ import (
 	"github.com/simonhull/audiometa"
 
 	"github.com/simonhull/kitsune/internal/artwork"
+	"github.com/simonhull/kitsune/internal/store"
 )
 
 const (
@@ -305,7 +306,7 @@ func sameAlbum(t *testing.T, root string, rels ...string) {
 	}
 }
 
-func TestOnePutPerAlbum(t *testing.T) {
+func TestOneCoverPerAlbum(t *testing.T) {
 	t.Parallel()
 	l := newArtLib(t)
 	root := l.roots[0]
@@ -321,6 +322,103 @@ func TestOnePutPerAlbum(t *testing.T) {
 	retag(t, filepath.Join(root, "x", "5.flac"), "Second")
 	if got := l.scan(Quick).Covers; got != 1 {
 		t.Errorf("Covers = %d after a new album, want 1", got)
+	}
+}
+
+// numbered gives the file at rel, under root, its own art and these numbers.
+func numbered(t *testing.T, root, rel string, disc, track int, art []byte) {
+	t.Helper()
+	path := filepath.Join(root, rel)
+	embed(t, path, pic(art, audiometa.ArtworkFrontCover))
+	err := audiometa.Write(path, func(f *audiometa.File) error {
+		f.Tags.DiscNumber, f.Tags.TrackNumber = disc, track
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+}
+
+func TestCoverComesFromTheFirstTrack(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		first, other [2]int // Disc and track of a.flac, read first, and of b.flac.
+		wantFirst    bool
+	}{
+		{"the file read first is first", [2]int{1, 1}, [2]int{1, 2}, true},
+		{"the file read last is first", [2]int{1, 2}, [2]int{1, 1}, false},
+		{"disc beats track", [2]int{2, 1}, [2]int{1, 9}, false},
+		{"no disc is the first disc", [2]int{0, 1}, [2]int{1, 2}, true},
+		{"no number comes last", [2]int{1, 0}, [2]int{1, 7}, false},
+		{"a tie goes to the path", [2]int{1, 1}, [2]int{1, 1}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			l := newArtLib(t)
+			l.sequential()
+			root := l.roots[0]
+			l.copyTo(root, "a.flac", sampleFLAC)
+			l.copyTo(root, "b.flac", sampleFLAC)
+			sameAlbum(t, root, "a.flac", "b.flac")
+			art, otherArt := testPNG(t, red()), testPNG(t, blue())
+			numbered(t, root, "a.flac", tt.first[0], tt.first[1], art)
+			numbered(t, root, "b.flac", tt.other[0], tt.other[1], otherArt)
+			want := otherArt
+			if tt.wantFirst {
+				want = art
+			}
+			l.scan(Full)
+			wantHash(t, l.albumOf("a.flac").hash, want)
+		})
+	}
+}
+
+func TestCoverIsTheSameEveryFullScan(t *testing.T) {
+	t.Parallel()
+	l := newArtLib(t)
+	l.opts.Workers = 8
+	l.scanner = NewScanner(l.st, l.opts)
+	root := l.roots[0]
+	const tracks = 8
+	rels := make([]string, tracks)
+	for i := range rels {
+		rels[i] = fmt.Sprintf("%d.flac", i)
+		l.copyTo(root, rels[i], sampleFLAC)
+	}
+	sameAlbum(t, root, rels...)
+	want := testPNG(t, red())
+	numbered(t, root, rels[tracks-1], 1, 1, want) // The last file read, by path.
+	for i, rel := range rels[:tracks-1] {
+		numbered(t, root, rel, 1, i+2, testPNG(t, color.RGBA{0x10, byte(i * 0x20), 0x40, 0xFF})) //nolint:gosec // i is below 8.
+	}
+	for range 5 {
+		l.scan(Full)
+		wantHash(t, l.albumOf(rels[0]).hash, want)
+	}
+	if got := l.artworkRows(); got != 1 {
+		t.Errorf("%d artwork rows after the scans, want the one cover", got)
+	}
+}
+
+func TestLateCoverDoesNotReplaceAnEarlierOne(t *testing.T) {
+	t.Parallel()
+	c := newCovers(nil, nil)
+	track := func(n int) *store.TrackWrite {
+		return &store.TrackWrite{TrackNo: n, RelPath: "a", Album: store.AlbumWrite{GroupKey: "g", Artwork: &store.ArtworkWrite{}}}
+	}
+	early, late := track(1), track(5)
+	if !c.take("g", rankOf(late)) || !c.take("g", rankOf(early)) {
+		t.Fatal("a track ahead of the album's best did not take it")
+	}
+	if c.take("g", rankOf(late)) {
+		t.Error("a later track took the album from an earlier one")
+	}
+	c.settle(early) // The writer sees them in either order.
+	c.settle(late)
+	if early.Album.Artwork == nil || late.Album.Artwork != nil {
+		t.Errorf("early cover %v, late cover %v; want only the early one kept", early.Album.Artwork, late.Album.Artwork)
 	}
 }
 

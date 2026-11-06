@@ -511,10 +511,39 @@ func TestScanCancelled(t *testing.T) {
 func TestScanRunningIsRefused(t *testing.T) {
 	t.Parallel()
 	l := newTestLib(t, 1)
-	l.scanner.mu.Lock()
-	defer l.scanner.mu.Unlock()
-	if _, err := l.scanner.Scan(t.Context(), Quick); !errors.Is(err, ErrScanRunning) {
+	run, err := l.scanner.Claim(Full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = l.scanner.Claim(Quick); !errors.Is(err, ErrScanRunning) {
+		t.Errorf("Claim = %v, want ErrScanRunning", err)
+	}
+	if _, err = l.scanner.Scan(t.Context(), Quick); !errors.Is(err, ErrScanRunning) {
 		t.Errorf("Scan = %v, want ErrScanRunning", err)
+	}
+	if _, err = run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = l.scanner.Scan(t.Context(), Quick); err != nil {
+		t.Errorf("Scan after the claimed scan = %v, want nil", err)
+	}
+}
+
+func TestClaimedScanReadsWhatItsModeAsks(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	l.copyTo(l.roots[0], xFLAC, sampleFLAC)
+	l.scan(Quick)
+	run, err := l.scanner.Claim(Full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats, err := run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Read != 1 {
+		t.Errorf("Read = %d, want 1: a Full scan reads every file", stats.Read)
 	}
 }
 
@@ -595,6 +624,10 @@ func TestScanHoldsTheLockUntilItEnds(t *testing.T) {
 	t.Parallel()
 	l := newTestLib(t, 1)
 	l.copyTo(l.roots[0], "one.flac", sampleFLAC)
+	run, err := l.scanner.Claim(Quick) // It reads the clock, which the hook below waits on.
+	if err != nil {
+		t.Fatal(err)
+	}
 	walked, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	l.scanner.now = func() time.Time {
@@ -606,18 +639,18 @@ func TestScanHoldsTheLockUntilItEnds(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := l.scanner.Scan(t.Context(), Quick)
-		done <- err
+		_, runErr := run(t.Context())
+		done <- runErr
 	}()
 	<-walked
-	if err := l.scanner.exclusive(func() error { return nil }); !errors.Is(err, ErrBusy) {
+	if err = l.scanner.exclusive(func() error { return nil }); !errors.Is(err, ErrBusy) {
 		t.Errorf("exclusive during a scan = %v, want ErrBusy", err)
 	}
 	close(release)
-	if err := <-done; err != nil {
+	if err = <-done; err != nil {
 		t.Fatal(err)
 	}
-	if err := l.scanner.exclusive(func() error { return nil }); err != nil {
+	if err = l.scanner.exclusive(func() error { return nil }); err != nil {
 		t.Errorf("exclusive after the scan = %v", err)
 	}
 }
@@ -891,5 +924,112 @@ func TestScanRefreshesSearchNames(t *testing.T) {
 	}
 	if len(found.Artists) != 1 || len(found.Albums) != 1 {
 		t.Errorf("after a scan: %+v, want the artist and the album", found)
+	}
+}
+
+// describe sums up p for comparing.
+func describe(p *Progress) string {
+	out := fmt.Sprintf("idle %d/%d", p.Read, p.Total)
+	if p.Running {
+		out = fmt.Sprintf("%s %d/%d", p.Mode, p.Read, p.Total)
+	}
+	if l := p.Last; l != nil {
+		out += fmt.Sprintf(", last %s read %d added %d err %q", l.Mode, l.Stats.Read, l.Stats.Added, l.Err)
+	}
+	return out
+}
+
+func TestProgressFollowsAScan(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	l.copyTo(l.roots[0], "a.flac", sampleFLAC)
+	l.copyTo(l.roots[0], "b.flac", sampleFLAC)
+	check := func(when, want string) {
+		t.Helper()
+		got := l.scanner.Progress()
+		if d := describe(&got); d != want {
+			t.Errorf("%s: %s, want %s", when, d, want)
+		}
+	}
+	check("before any scan", "idle 0/0")
+	run, err := l.scanner.Claim(Full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("after the claim", "full 0/0")
+	if got := l.scanner.Progress().StartedAt; !got.Equal(l.clock.Now()) {
+		t.Errorf("StartedAt = %v, want the claim's time", got)
+	}
+	if _, err = run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	check("after the scan", `idle 0/0, last full read 2 added 2 err ""`)
+}
+
+func TestProgressCountsReads(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	l.copyTo(l.roots[0], "a.flac", sampleFLAC)
+	l.copyTo(l.roots[0], "b.flac", sampleFLAC)
+	l.opts.Workers = 1
+	l.scanner = NewScanner(l.st, l.opts)
+	if _, err := l.scanner.Claim(Quick); err != nil {
+		t.Fatal(err)
+	}
+	l.scanner.publish(func(p *Progress) { p.Total = 2 })
+	w := writer{s: l.scanner, stats: &Stats{}, claimed: map[int64]struct{}{}}
+	is := store.ScanIssue{Root: l.roots[0], RelPath: "a.flac", Kind: store.IssueCorrupted}
+	if err := w.handle(t.Context(), &result{job: &job{}, issue: &is}); err != nil {
+		t.Fatal(err)
+	}
+	if got := l.scanner.Progress(); got.Read != 1 || got.Total != 2 {
+		t.Errorf("Progress = %+v, want 1 of 2 read", got)
+	}
+}
+
+func TestProgressKeepsTheLastResultWhileScanning(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	l.scan(Full)
+	if _, err := l.scanner.Claim(Quick); err != nil {
+		t.Fatal(err)
+	}
+	got := l.scanner.Progress()
+	if !got.Running || got.Last == nil || got.Last.Mode != Full {
+		t.Errorf("Progress = %+v, want a running scan and the last Full one", got)
+	}
+}
+
+func TestProgressReportsAFailureWithoutTheRoot(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	if _, err := l.scanner.Claim(Full); err != nil {
+		t.Fatal(err)
+	}
+	l.scanner.ended(&Stats{}, fmt.Errorf("scan: root %s: open %s: %w", l.roots[0], filepath.Join(l.roots[0], "a"), os.ErrPermission))
+	last := l.scanner.Progress().Last
+	if last == nil || last.Err != "scan: root <root>: open a: permission denied" {
+		t.Errorf("Last = %+v, want the failure with the root out of it", last)
+	}
+}
+
+func TestStripRoot(t *testing.T) {
+	t.Parallel()
+	const root = "/mnt/music"
+	tests := []struct{ name, msg, root, want string }{
+		{"a file", "/mnt/music/a/b.wav: unsupported format: wav", root, "a/b.wav: unsupported format: wav"},
+		{"the root", "open /mnt/music: permission denied", root, "open <root>: permission denied"},
+		{"a trailing slash", "/mnt/music/a.wav: bad", root + "/", "a.wav: bad"},
+		{"every mention", "/mnt/music/a -> /mnt/music/b", root, "a -> b"},
+		{"nothing to strip", "no path", root, "no path"},
+		{"a root that is not UTF-8", "/mnt/�/a: bad", "/mnt/\xff", "a: bad"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := StripRoot(tt.msg, tt.root); got != tt.want {
+				t.Errorf("StripRoot(%q, %q) = %q, want %q", tt.msg, tt.root, got, tt.want)
+			}
+		})
 	}
 }
