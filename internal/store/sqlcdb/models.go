@@ -36,6 +36,14 @@ type Artwork struct {
 	Source string
 }
 
+type Play struct {
+	UserID   int64
+	TrackID  int64
+	PlayedAt int64
+	Source   string
+	ClientID string
+}
+
 type ScanIssue struct {
 	Root    string
 	RelPath string

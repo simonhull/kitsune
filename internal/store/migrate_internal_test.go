@@ -158,7 +158,16 @@ func seedLibrary(t *testing.T, db *sql.DB) {
 		exec("INSERT INTO track_tags (track_id, key, ord, value) VALUES (?, 'TITLE', 0, ?)", n, title)
 		exec("INSERT INTO track_artists (track_id, role, ord, artist_id) VALUES (?, 'artist', 0, 1)", n)
 		exec("INSERT INTO tracks_fts (rowid, title, artists, album, album_artist) VALUES (?, ?, 'Band', 'Album', 'Band')", n, foldSearch(title))
+		if hasPlays(t, db) {
+			exec("INSERT INTO plays (user_id, track_id, played_at, source, client_id) VALUES (1, ?, ?, 'web', ?)", n, n, word)
+		}
 	}
+}
+
+// hasPlays reports whether the database has reached the version with plays.
+func hasPlays(t *testing.T, db *sql.DB) bool {
+	t.Helper()
+	return rawInt(t, db, "SELECT count(*) FROM sqlite_schema WHERE name = 'plays'") == 1
 }
 
 // rawRows returns a query's rows, each row as one line.
@@ -202,7 +211,9 @@ func rawRows(t *testing.T, db *sql.DB, query string, args ...any) []string {
 }
 
 // libraryFacts is what must survive a migration, said in public IDs: row counts
-// per table, then who owns what, then which ULID each FTS word finds.
+// per table, then who owns what, then which ULID each FTS word finds. Plays are
+// listed where the table exists, so a database seeded before it says the same on
+// both sides: nothing.
 func libraryFacts(t *testing.T, db *sql.DB) []string {
 	t.Helper()
 	facts := make([]string, 0, 32)
@@ -216,6 +227,10 @@ func libraryFacts(t *testing.T, db *sql.DB) []string {
 		"SELECT t.ulid, l.role, l.ord, a.ulid FROM track_artists l JOIN tracks t ON t.id = l.track_id JOIN artists a ON a.id = l.artist_id ORDER BY 1, 2, 3",
 	} {
 		facts = append(facts, rawRows(t, db, query)...)
+	}
+	if hasPlays(t, db) {
+		facts = append(facts, rawRows(t, db, `SELECT t.ulid, u.name, p.played_at, p.source, p.client_id
+			FROM plays p JOIN tracks t ON t.id = p.track_id JOIN users u ON u.id = p.user_id ORDER BY 1`)...)
 	}
 	for _, word := range seedWords {
 		hits := rawRows(t, db, `SELECT t.ulid FROM tracks_fts CROSS JOIN tracks t ON t.id = tracks_fts.rowid
@@ -588,21 +603,19 @@ func setVersion(t *testing.T, path string, version int64) {
 	}
 }
 
-// closedStore is a database at the latest version with a user in it, closed.
+// closedStore is a database at the baseline with a user in it, closed: what a
+// binary from before migrations left behind, but for the version.
 func closedStore(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), FileName)
-	s, err := Open(t.Context(), path, Options{})
-	if err != nil {
+	d := newScratchDB(t)
+	d.mustSettle(t, shippedSteps(t)[:1])
+	if _, err := d.w.ExecContext(t.Context(), "INSERT INTO users (name, password_hash, role, created_at) VALUES ('simon', 'h', 'admin', 1)"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.CreateUser(t.Context(), NewUser{Name: "simon", PasswordHash: "h", Role: RoleAdmin}); err != nil {
+	if err := d.w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	return d.path
 }
 
 func TestAdoption(t *testing.T) {
@@ -621,6 +634,30 @@ func TestAdoption(t *testing.T) {
 	}
 	if n, countErr := s.CountUsers(t.Context()); countErr != nil || n != 1 {
 		t.Errorf("CountUsers = %d, %v, want 1", n, countErr)
+	}
+	backups, err := listBackups(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backups) != 1 || backups[0].from != 1 {
+		t.Errorf("listBackups = %v, want one from version 1: the steps after adoption are real", backups)
+	}
+}
+
+func TestAdoptionAloneNeedsNoBackup(t *testing.T) {
+	t.Parallel()
+	path := closedStore(t)
+	setVersion(t, path, adoptHash)
+	w, err := openWriter(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	scratchDB{w: w, path: path}.mustSettle(t, shippedSteps(t)[:1])
+
+	if got := rawInt(t, w, "PRAGMA user_version"); got != 1 {
+		t.Errorf("user_version = %d, want 1", got)
 	}
 	if backups, listErr := listBackups(path); listErr != nil || len(backups) != 0 {
 		t.Errorf("listBackups = %v, %v, want none: adoption applies nothing", backups, listErr)

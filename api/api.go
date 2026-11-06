@@ -54,6 +54,18 @@ type User struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// PlayReport is the body of POST /me/plays: one listen that counted. It names no
+// user: a play is always the caller's.
+type PlayReport struct {
+	TrackID string `json:"trackId"`
+	// PlayedAt is when the listen started, by the client's clock.
+	PlayedAt time.Time `json:"playedAt"`
+	// Source names the client.
+	Source string `json:"source"`
+	// ClientID is the client's own ID for the listen, so a retry counts once.
+	ClientID string `json:"clientId"`
+}
+
 // Me is the response to GET /me: the [User], and what the user may do.
 type Me struct {
 	User `json:",inline"`

@@ -99,6 +99,40 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /me/plays:
+    post:
+      operationId: postPlay
+      summary: Record that the caller played a track.
+      description: >-
+        One report per listen that counted, which the client decides. A second
+        report with the same `clientId` changes nothing and answers the same, so
+        a client can retry whenever it isn't sure. The track may be missing from
+        disk, and only one deleted from the library is a 404. A `playedAt` ahead
+        of the server's clock is taken as now.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlayReport" }
+      responses:
+        "204":
+          description: The play is recorded.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
   /artwork/{hash}:
     get:
       operationId: getArtwork
@@ -708,6 +742,26 @@ components:
         canEditTags:
           type: boolean
           description: True for an administrator on a server with `library.tag_writes` on.
+    PlayReport:
+      type: object
+      additionalProperties: false
+      required: [trackId, playedAt, source, clientId]
+      properties:
+        trackId: { type: string, minLength: 1 }
+        playedAt:
+          type: string
+          format: date-time
+          description: When the listen started, by the client's clock.
+        source:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The client's name.
+        clientId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The client's own ID for this listen.
     LoginRequest:
       type: object
       additionalProperties: false
