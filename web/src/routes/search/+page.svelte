@@ -4,9 +4,11 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { library } from '#lib/library/library.svelte.ts';
-	import { resultsOf, searchLine } from '#lib/library/search.svelte.ts';
+	import { emWidth } from '#lib/library/fit.ts';
+	import { resultsOf, searchLine, spotlight } from '#lib/library/search.svelte.ts';
 	import { queryIn, searchFor } from '#lib/library/searchUrl.ts';
-	import AlbumShelf from '#lib/pages/AlbumShelf.svelte';
+	import AlbumCard from '#lib/pages/AlbumCard.svelte';
+	import TopResult from '#lib/pages/TopResult.svelte';
 	import TrackHits from '#lib/pages/TrackHits.svelte';
 
 	/** A word in progress waits this long, which is still inside keeping up with the fingers. */
@@ -16,11 +18,14 @@
 
 	const query = $derived(queryIn(page.url));
 	const results = $derived(resultsOf(search.state));
+	const found = $derived(results === null ? null : spotlight(results, search.answered));
 	const line = $derived(searchLine(search.state));
+	/** Looking is a passing note over results. Everything else has the page to itself. */
+	const speaks = $derived(!line.fact && search.state.kind !== 'looking');
 
 	/** What's in the box. It runs ahead of the URL: the box must never wait for it. */
 	let text = $state(untrack(() => query));
-	let field: HTMLInputElement | undefined = $state();
+	let field: HTMLTextAreaElement | undefined = $state();
 	let pending: ReturnType<typeof setTimeout> | undefined;
 
 	/** The URL says what's searched, so a search can be shared, and a reload lands on it. */
@@ -37,6 +42,8 @@
 	}
 
 	function typed(): void {
+		// A pasted line break: a query is one line, however many it wraps to.
+		text = text.replace(/\s*\n\s*/gu, ' ');
 		clearTimeout(pending);
 		pending = setTimeout(write, debounceMs);
 	}
@@ -44,6 +51,14 @@
 	function submitted(event: SubmitEvent): void {
 		event.preventDefault();
 		write();
+	}
+
+	/** Enter searches, as it would in a one-line box. It's still choosing a word mid-composition. */
+	function pressed(event: KeyboardEvent): void {
+		if (event.key === 'Enter' && !event.isComposing) {
+			event.preventDefault();
+			write();
+		}
 	}
 
 	$effect(() => {
@@ -85,79 +100,84 @@
 </svelte:head>
 
 <div class="search">
-	<div class="ask">
-		<h1>Search</h1>
-		<form role="search" onsubmit={submitted}>
-			<input
-				bind:this={field}
-				bind:value={text}
-				oninput={typed}
-				type="search"
-				name="q"
-				aria-label="Search your library"
-				placeholder="Search"
-				enterkeyhint="search"
-				autocomplete="off"
-				autocapitalize="off"
-				spellcheck="false"
-				maxlength="256"
-			/>
-		</form>
-		<p class="line" class:fact={line.fact} role="status">
-			{line.text}
-			{#if search.state.kind === 'failed'}
-				<button
-					type="button"
-					onclick={() => {
-						search.run(query);
-					}}>Try again</button
-				>
-			{/if}
-		</p>
-	</div>
+	<h1>Search</h1>
+	<form role="search" onsubmit={submitted}>
+		<!-- A box that wraps, so a query past what shrinking can fit still shows every word. -->
+		<div class="box" style:--width={emWidth(text, 900, -0.06)}>
+			<div class="fit">
+				<span class="ruler" aria-hidden="true">{text === '' ? 'Search' : text}</span>
+				<textarea
+					bind:this={field}
+					bind:value={text}
+					oninput={typed}
+					onkeydown={pressed}
+					name="q"
+					rows="1"
+					aria-label="Search your library"
+					placeholder="Search"
+					enterkeyhint="search"
+					autocomplete="off"
+					autocapitalize="off"
+					spellcheck="false"
+					maxlength="256"></textarea>
+			</div>
+		</div>
+	</form>
+	<p class="line" class:fact={line.fact} class:speaks role="status">
+		{line.text}
+		{#if search.state.kind === 'failed'}
+			<button
+				type="button"
+				onclick={() => {
+					search.run(query);
+				}}>Try again</button
+			>
+		{/if}
+	</p>
 
-	{#if results !== null}
-		{#if results.artists.length > 0}
-			<section aria-labelledby="found-artists">
-				<h2 id="found-artists">Artists</h2>
-				<ul class="artists">
-					{#each results.artists as artist (artist.id)}
-						<li>
-							<a class="artist" href={resolve('/artists/[id]', { id: artist.id })}>{artist.name}</a>
-						</li>
+	{#if results !== null && found !== null}
+		<div class="found" class:alone={found.albums.length === 0}>
+			<TopResult top={found.top} {results} />
+			{#if found.albums.length > 0}
+				<section class="albums" aria-labelledby="found-albums">
+					<h2 id="found-albums">Albums</h2>
+					{#each found.albums as album (album.id)}
+						<AlbumCard {album} />
 					{/each}
-				</ul>
-			</section>
-		{/if}
-		{#if results.albums.length > 0}
-			<section aria-labelledby="found-albums">
-				<h2 id="found-albums">Albums</h2>
-				<AlbumShelf albums={results.albums} />
-			</section>
-		{/if}
-		{#if results.tracks.length > 0}
-			<section aria-labelledby="found-tracks">
-				<h2 id="found-tracks">Tracks</h2>
-				<TrackHits tracks={results.tracks} />
-			</section>
-		{/if}
+				</section>
+			{/if}
+			{#if found.artists.length > 0}
+				<section class="wide" aria-labelledby="found-artists">
+					<h2 id="found-artists">Artists</h2>
+					<ul class="artists">
+						{#each found.artists as artist (artist.id)}
+							<li>
+								<a class="artist" href={resolve('/artists/[id]', { id: artist.id })}
+									>{artist.name}</a
+								>
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
+			{#if found.tracks.length > 0}
+				<section class="wide" aria-labelledby="found-tracks">
+					<h2 id="found-tracks">Tracks</h2>
+					<TrackHits tracks={found.tracks} />
+				</section>
+			{/if}
+		</div>
 	{/if}
 </div>
 
 <style>
 	.search {
-		max-width: 1400px;
-		margin: 0 auto;
-		padding: 106px 32px 140px;
-		display: flex;
-		flex-direction: column;
-		gap: 56px;
-	}
+		--gutter: 64px;
 
-	.ask {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
+		container-type: inline-size;
+		max-width: 1440px;
+		margin: 0 auto;
+		padding: 96px var(--gutter) 140px;
 	}
 
 	/* The box says what the page is: this one is for whoever can't see it. */
@@ -170,71 +190,167 @@
 		white-space: nowrap;
 	}
 
-	input {
+	/* Everything inside sizes from here, so the box and its ruler can't disagree. */
+	.box {
+		--largest: clamp(56px, 8cqw, 96px);
+		--smallest: clamp(28px, 3.4cqw, 44px);
+		--fit: calc(100cqw / max(var(--width), 1));
+
+		min-height: calc(var(--largest) * 1.28 + 2px);
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		border-bottom: 2px solid var(--fox);
+		font-size: clamp(var(--smallest), var(--fit), var(--largest));
+		font-weight: 900;
+		letter-spacing: -0.06em;
+		line-height: 1.25;
+	}
+
+	.fit {
+		display: grid;
+	}
+
+	/* It sets the height: a textarea can't grow to its words without help everywhere. */
+	.ruler,
+	textarea {
+		grid-area: 1 / 1;
+		min-width: 0;
+		/* Geist's descenders run past the line box, which would give the box something to scroll. */
+		padding: 0 0 0.03em;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	.ruler {
+		visibility: hidden;
+	}
+
+	textarea {
+		display: block;
 		width: 100%;
-		padding: 18px 24px 20px;
-		border: 1px solid var(--edge-card);
-		border-radius: var(--radius-28);
-		background: var(--card);
+		height: 100%;
+		border: 0;
+		border-radius: 0;
+		outline: none;
+		background: transparent;
 		color: var(--text);
 		caret-color: var(--fox);
 		font: inherit;
-		font-size: clamp(32px, 5vw, 64px);
-		font-weight: 800;
-		letter-spacing: var(--tracking-display);
-		line-height: 1.1;
+		letter-spacing: inherit;
+		overflow: hidden;
+		resize: none;
 		appearance: none;
 	}
 
-	input::placeholder {
+	textarea::placeholder {
 		color: var(--text-label);
 		opacity: 1;
 	}
 
-	input::-webkit-search-cancel-button {
-		display: none;
-	}
-
 	.line {
-		min-height: var(--target);
-		padding: 0 24px;
+		margin-top: 8px;
+		min-height: 16px;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0 8px;
-		font-size: var(--type-body);
-		color: var(--text-secondary);
+		gap: 8px 20px;
+		font-family: var(--font-mono);
+		font-size: var(--type-mono);
+		line-height: 16px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--text-meta);
 		overflow-wrap: anywhere;
 	}
 
-	.line.fact {
-		font-family: var(--font-mono);
-		font-size: 13px;
-		color: var(--text-meta);
+	/* The app talking, with nothing else on the page to compete with. */
+	.line.speaks {
+		margin-top: 32px;
+		max-width: 22em;
+		font-family: var(--font-sans);
+		font-size: var(--type-section);
+		font-weight: 800;
+		line-height: 1.05;
+		letter-spacing: var(--tracking-section);
+		text-transform: none;
+		color: var(--text-secondary);
 	}
 
 	.line button {
 		min-height: var(--target);
-		padding: 0;
-		border: 0;
-		background: none;
+		padding: 0 18px;
+		border: 1px solid var(--edge-strong);
+		border-radius: var(--radius-pill);
+		background: rgb(10 9 8 / 30%);
+		font-size: 14px;
+		font-weight: 600;
+		letter-spacing: normal;
+	}
+
+	.line button:hover {
 		color: var(--fox);
 	}
 
-	section {
+	/* One grid, so albums past the first row come back under the Top result. */
+	.found {
+		margin-top: 24px;
+		display: grid;
+		grid-template-columns: repeat(7, minmax(0, 1fr));
+		grid-template-rows: 16px;
+		gap: 12px 16px;
+	}
+
+	.found :global(.top) {
+		grid-column: 1 / span 3;
+		grid-row: 1 / span 2;
+		margin-right: 16px;
+	}
+
+	.found.alone {
+		grid-template-rows: none;
+	}
+
+	.found.alone :global(.top) {
+		grid-column: 1 / -1;
+		grid-row: auto;
+		margin-right: 0;
+	}
+
+	.albums {
+		display: contents;
+	}
+
+	.albums h2 {
+		grid-column: 4 / -1;
+		grid-row: 1;
+	}
+
+	.albums :global(.card) {
+		margin-bottom: 16px;
+	}
+
+	.wide {
+		grid-column: 1 / -1;
+		min-width: 0;
+		margin-top: 16px;
 		display: flex;
 		flex-direction: column;
-		gap: 24px;
+		gap: 4px;
 	}
 
 	h2 {
-		font-size: var(--type-section);
-		font-weight: 800;
-		letter-spacing: var(--tracking-section);
+		font-family: var(--font-mono);
+		font-size: var(--type-mono);
+		font-weight: 400;
+		line-height: 16px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--text-meta);
 	}
 
 	.artists {
-		margin: 0;
+		margin: 8px 0 0;
 		padding: 0;
 		list-style: none;
 		display: flex;
@@ -258,13 +374,42 @@
 		color: var(--fox);
 	}
 
-	@media (max-width: 720px) {
+	@media (max-width: 1160px) {
 		.search {
-			padding: 98px 16px 128px;
-			gap: 40px;
+			--gutter: 32px;
 		}
 
-		h2 {
+		.found {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+			grid-template-rows: none;
+		}
+
+		.found :global(.top) {
+			grid-column: 1 / -1;
+			grid-row: auto;
+			margin-right: 0;
+		}
+
+		.albums h2 {
+			grid-column: 1 / -1;
+			grid-row: auto;
+			margin-top: 16px;
+		}
+	}
+
+	@media (max-width: 720px) {
+		.search {
+			--gutter: 16px;
+
+			padding-top: 98px;
+			padding-bottom: 128px;
+		}
+
+		.found {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.line.speaks {
 			font-size: 32px;
 		}
 	}

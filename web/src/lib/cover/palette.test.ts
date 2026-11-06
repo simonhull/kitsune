@@ -54,13 +54,7 @@ describe('paletteFor', () => {
 	});
 
 	it('leaves a generated cover its own colors', () => {
-		const palette = paletteFor({
-			id: 'glasshouse-66',
-			title: 'G',
-			artist: 'L',
-			trackCount: 1,
-			compilation: false
-		});
+		const palette = paletteFor({ id: 'glasshouse-66' });
 		expect(palette.accent).toMatch(/^#[0-9A-F]{6}$/);
 		expect(palette.accent).not.toBe(neutralPalette.accent);
 	});

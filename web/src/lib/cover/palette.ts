@@ -142,7 +142,7 @@ function fromArtwork(accentHex: string, groundHex: string): AlbumPalette {
  * flight. A cover's accent and ground come from the server; a generated cover brings its own, and
  * nothing known yet means the frame's.
  */
-export function paletteFor(entry: AlbumEntry | undefined): AlbumPalette {
+export function paletteFor(entry: Pick<AlbumEntry, 'id' | 'artwork'> | undefined): AlbumPalette {
 	if (entry === undefined) {
 		return neutralPalette;
 	}
