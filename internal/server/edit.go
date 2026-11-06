@@ -6,7 +6,6 @@ import (
 	"errors"
 	"mime"
 	"net/http"
-	"strings"
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/library"
@@ -14,39 +13,54 @@ import (
 )
 
 const (
-	// maxEditBody caps the request body of an edit or a scan.
-	maxEditBody = 64 << 10
+	// maxEditBody caps the request body of an edit or a scan. An edit of a large
+	// album can repeat lyrics on every track.
+	maxEditBody = 1 << 20
 	// retryAfterSeconds is the Retry-After of an edit the library can't take now.
 	retryAfterSeconds = "30"
-	// The numbers a track or disc tag can hold in every format: M4A's are 16 bits.
-	minNumber, maxNumber = 1, 65535
-	// The years the API takes.
-	minYear, maxYear = 1000, 9999
+	// staleDetail is what a client whose ETag or files fell behind is told.
+	staleDetail = "the files changed since you read them; read them again"
 )
 
-// patchTrack edits a track's title and numbers.
-func (s *Server) patchTrack(w http.ResponseWriter, r *http.Request) {
-	var req api.TrackEdit
-	ifMatch, ok := s.readEdit(w, r, &req)
-	if !ok {
-		return
+// getAlbumTags answers with what a tag editor shows of an album.
+func (s *Server) getAlbumTags(w http.ResponseWriter, r *http.Request) {
+	tracks, etag, err := s.scanner.AlbumTags(r.Context(), r.PathValue("id"))
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeProblem(w, r, http.StatusNotFound, "no such album")
+	case errors.Is(err, library.ErrStale):
+		writeProblem(w, r, http.StatusConflict, "a file of this album is gone; scan the library")
+	case err != nil:
+		s.internalError(w, r, "read tags", err)
+	default:
+		body := api.AlbumTags{Etag: etag, Tracks: make([]api.TrackTags, len(tracks))}
+		for i := range tracks {
+			body.Tracks[i] = toAPITrackTags(&tracks[i])
+		}
+		writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 	}
-	if !validTrackEdit(&req) {
-		writeProblem(w, r, http.StatusBadRequest, "name at least one field; numbers run from 1 to 65535")
-		return
-	}
-	id := r.PathValue("id")
-	edit := library.Edit{Title: req.Title, TrackNo: req.TrackNo, DiscNo: req.DiscNo}
-	//nolint:contextcheck // An edit outlives its request on purpose; see Config.Context.
-	if err := s.scanner.EditTrack(s.editContext, id, ifMatch, &edit); err != nil {
-		s.editFailed(w, r, err)
-		return
-	}
-	s.writeTrack(w, afterEdit(r), id)
 }
 
-// patchAlbum edits the year and genres of every track of an album.
-func (s *Server) patchAlbum(w http.ResponseWriter, r *http.Request) {
+func toAPITrackTags(t *library.TrackTags) api.TrackTags {
+	out := api.TrackTags{
+		ID: t.ID, File: t.File,
+		Fields: make(map[string][]string, len(t.Fields)),
+		Tags:   make([]api.RawTag, len(t.Tags)),
+	}
+	for name, values := range t.Fields {
+		out.Fields[string(name)] = values
+	}
+	for _, name := range t.ReadOnly {
+		out.ReadOnly = append(out.ReadOnly, string(name))
+	}
+	for i := range t.Tags {
+		out.Tags[i] = api.RawTag{Key: t.Tags[i].Key, Values: t.Tags[i].Values, ReadOnly: t.Tags[i].ReadOnly}
+	}
+	return out
+}
+
+// postAlbumEdit edits the tags of an album's tracks.
+func (s *Server) postAlbumEdit(w http.ResponseWriter, r *http.Request) {
 	var req api.AlbumEdit
 	ifMatch, ok := s.readEdit(w, r, &req)
 	if !ok {
@@ -54,7 +68,7 @@ func (s *Server) patchAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 	edit, ok := albumEdit(&req)
 	if !ok {
-		writeProblem(w, r, http.StatusBadRequest, "name at least one field; a year runs from 1000 to 9999 and a genre is not blank")
+		writeProblem(w, r, http.StatusBadRequest, "name at least one field, and each track once")
 		return
 	}
 	id := r.PathValue("id")
@@ -102,58 +116,78 @@ func readJSON(w http.ResponseWriter, r *http.Request, req any) error {
 	return json.UnmarshalRead(http.MaxBytesReader(w, r.Body, maxEditBody), req, json.RejectUnknownMembers(true)) //nolint:wrapcheck // The caller only tells the client the body is bad.
 }
 
-func validNumber(n *int) bool { return n == nil || (*n >= minNumber && *n <= maxNumber) }
-
-func validTrackEdit(req *api.TrackEdit) bool {
-	named := req.Title != nil || req.TrackNo != nil || req.DiscNo != nil
-	return named && validNumber(req.TrackNo) && validNumber(req.DiscNo)
+// albumEdit returns the edit req asks for. What a value may hold is the library's
+// to judge, file by file. It reports false for a request that names nothing, or
+// names a track twice or not at all, or both sets and clears a field.
+func albumEdit(req *api.AlbumEdit) (library.AlbumEdit, bool) {
+	all, ok := tagEdit(&req.All)
+	if !ok {
+		return library.AlbumEdit{}, false
+	}
+	edit := library.AlbumEdit{All: all, Tracks: make(map[string]library.Edit, len(req.Tracks))}
+	named := !all.Empty()
+	for i := range req.Tracks {
+		tr := &req.Tracks[i]
+		own, valid := tagEdit(&tr.TagEdit)
+		if _, twice := edit.Tracks[tr.ID]; !valid || twice || tr.ID == "" {
+			return library.AlbumEdit{}, false
+		}
+		edit.Tracks[tr.ID] = own
+		named = named || !own.Empty()
+	}
+	return edit, named
 }
 
-// albumEdit returns the edit req asks for, with its genres trimmed. It reports
-// false for a request that names nothing or holds an invalid value.
-func albumEdit(req *api.AlbumEdit) (library.Edit, bool) {
-	if req.Year == nil && req.Genres == nil {
-		return library.Edit{}, false
+// tagEdit returns the edit req asks for, reporting false for a field both set and
+// cleared or a tag named twice.
+func tagEdit(req *api.TagEdit) (library.Edit, bool) {
+	fields := make(map[library.Field][]string, len(req.Set)+len(req.Clear))
+	for name, values := range req.Set {
+		fields[library.Field(name)] = values
 	}
-	if req.Year != nil && (*req.Year < minYear || *req.Year > maxYear) {
-		return library.Edit{}, false
-	}
-	edit := library.Edit{Year: req.Year}
-	if req.Genres != nil {
-		edit.Genres = make([]string, len(req.Genres))
-	}
-	for i, g := range req.Genres {
-		if edit.Genres[i] = strings.TrimSpace(g); edit.Genres[i] == "" {
+	for _, name := range req.Clear {
+		if _, set := req.Set[name]; set {
 			return library.Edit{}, false
 		}
+		fields[library.Field(name)] = nil
 	}
-	return edit, true
+	tags := make(map[string][]string, len(req.Tags))
+	for i := range req.Tags {
+		tag := &req.Tags[i]
+		if _, twice := tags[tag.Key]; twice {
+			return library.Edit{}, false
+		}
+		tags[tag.Key] = tag.Values
+	}
+	return library.Edit{Fields: fields, Tags: tags}, true
 }
 
 // editFailed answers an edit that did not finish.
 func (s *Server) editFailed(w http.ResponseWriter, r *http.Request, err error) {
+	if stopped, ok := errors.AsType[*library.EditError](err); ok {
+		s.editStopped(w, r, stopped)
+		return
+	}
 	switch {
 	case errors.Is(err, library.ErrBusy):
 		w.Header().Set("Retry-After", retryAfterSeconds)
 		writeProblem(w, r, http.StatusConflict, "a scan or another edit is running")
-		return
 	case errors.Is(err, store.ErrNotFound):
-		writeProblem(w, r, http.StatusNotFound, "no such track or album")
-		return
+		writeProblem(w, r, http.StatusNotFound, "no such album")
 	case errors.Is(err, library.ErrStale):
-		writeProblem(w, r, http.StatusPreconditionFailed, "the files changed since you read them; read them again")
-		return
-	}
-	stopped, ok := errors.AsType[*library.EditError](err)
-	if !ok {
+		writeProblem(w, r, http.StatusPreconditionFailed, staleDetail)
+	default:
 		s.internalError(w, r, "edit tags", err)
-		return
 	}
+}
+
+// editStopped answers an edit that was refused or stopped, saying how far it got.
+func (s *Server) editStopped(w http.ResponseWriter, r *http.Request, stopped *library.EditError) {
 	status, detail := editStatus(stopped.Err), "internal error" // An unexpected cause stays in the log.
 	if status != http.StatusInternalServerError {
 		detail = stopped.Err.Error()
 	}
-	s.log.ErrorContext(r.Context(), "edit tags", "requestId", requestID(r.Context()), "err", err)
+	s.log.ErrorContext(r.Context(), "edit tags", "requestId", requestID(r.Context()), "err", stopped)
 	body := api.EditProblem{Problem: newProblem(r, status, detail), Changed: stopped.Changed, Remaining: stopped.Remaining}
 	writeBody(w, status, api.ProblemMediaType, &body)
 }
@@ -165,6 +199,8 @@ func editStatus(err error) int {
 		return http.StatusUnprocessableEntity
 	case errors.Is(err, library.ErrNotWritable):
 		return http.StatusForbidden
+	case errors.Is(err, library.ErrStale):
+		return http.StatusPreconditionFailed
 	}
 	return http.StatusInternalServerError
 }

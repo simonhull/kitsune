@@ -189,13 +189,13 @@ func (s *Server) routes() []route {
 		{pattern: "GET /artwork/{hash}", handle: s.getArtwork},
 		{pattern: "GET /albums", handle: s.getAlbums},
 		{pattern: "GET /albums/{id}", handle: s.getAlbum},
-		{pattern: "PATCH /albums/{id}", admin: true, handle: s.patchAlbum},
+		{pattern: "POST /albums/{id}/edits", admin: true, handle: s.postAlbumEdit},
+		{pattern: "GET /albums/{id}/tags", admin: true, handle: s.getAlbumTags},
 		{pattern: "GET /artists", handle: s.getArtists},
 		{pattern: "GET /artists/{id}", handle: s.getArtist},
 		{pattern: "GET /library", handle: s.getLibrary},
 		{pattern: "GET /search", handle: s.getSearch},
 		{pattern: "GET /tracks/{id}", handle: s.getTrack},
-		{pattern: "PATCH /tracks/{id}", admin: true, handle: s.patchTrack},
 		{pattern: "GET /tracks/{id}/stream", handle: s.getTrackStream},
 	}
 }

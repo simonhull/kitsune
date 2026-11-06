@@ -57,9 +57,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   not built dynamically, which supersedes the dynamic-sorts rule in the Store section for these two.
   This also supersedes the spec's `next_cursor` and limit 500: the API says `nextCursor` and caps
   `limit` at 200.
-- Tag edits are `PATCH /tracks/{id}` and `PATCH /albums/{id}`. Their validators are the `etag` fields
-  in the body, a hash of `ulid:size:mtime_ms` per track, and not response headers. Clients send one
-  back verbatim as `If-Match`; comparison is strong and happens under the library lock.
+- Tag edits are one route, `POST /albums/{id}/edits`, and `GET /albums/{id}/tags` reads what an editor
+  shows, from the files. The validator is the album's `etag` field in the body, a hash of
+  `ulid:size:mtime_ms` per track, and not a response header. Clients send it back verbatim as
+  `If-Match`; comparison is strong and happens under the library lock.
 - A canceled query fails with `sqlite3: interrupted`, not `context.Canceled`: check
   `r.Context().Err()` before logging an error from a handler a client can abandon.
 - Responses carry `api` types built field by field (`toAPIUser`); never marshal a
@@ -139,12 +140,14 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   through `MatchKey` (trim, collapse spaces, NFC, case fold); no punctuation stripping,
   no splitting of names.
 - Raw tag names live only in `keys.go`'s candidate tables, verified per format against
-  real files written by audiometa, and in `writekeys.go`'s write table, which maps each editable
-  field to every key it owns. Add a key there, never inline.
+  real files written by audiometa, in `writekeys.go`'s field table, which maps each field to its
+  keys per format, its mirrors and its dependents, and in `rawtags.go`'s allow rule for raw edits.
+  Add a key there, never inline. A key the table owns in any format can't be edited raw: a scan reads
+  candidates in every format, so a raw tag could otherwise move a track to another album.
 - audiometa reports tags as stored; display fallbacks (title from file name, sort name
   from name, disc folders) are Kitsune's and live here.
 - The scanner is the only library writer: one goroutine resolves identity and writes. Tag edits go
-  through it too (`Scanner.EditTrack`, `Scanner.EditAlbum`), holding the library lock.
+  through it too (`Scanner.EditAlbum`), holding the library lock.
   Identity order: row at the path, then a single digest match among missing tracks,
   then same relative path, then base name, then a new ULID.
 - An outage must never look like deletions, because a missing track is eventually

@@ -488,13 +488,6 @@ func TestEditLookupsCarryTheETagsOfReads(t *testing.T) {
 	if etag != d.ETag || len(files) != len(d.Tracks) {
 		t.Errorf("%d files with ETag %s, want %d with %s", len(files), etag, len(d.Tracks), d.ETag)
 	}
-	file, trackETag, err := s.TrackEditFile(t.Context(), d.Tracks[1].ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if file.RelPath == "" || file.ID == 0 || trackETag != d.Tracks[1].ETag || !strings.HasPrefix(trackETag, `"`) {
-		t.Errorf("file %+v with ETag %s, want the track's %s", file, trackETag, d.Tracks[1].ETag)
-	}
 }
 
 func TestAlbumETagCoversLiveTracksOnly(t *testing.T) {
@@ -517,9 +510,6 @@ func TestEditLookupsNotFound(t *testing.T) {
 	s, _ := openBrowse(t)
 	if _, _, err := s.AlbumEditFiles(t.Context(), "nope"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("AlbumEditFiles = %v", err)
-	}
-	if _, _, err := s.TrackEditFile(t.Context(), "nope"); !errors.Is(err, store.ErrNotFound) {
-		t.Errorf("TrackEditFile = %v", err)
 	}
 	if _, err := s.TrackAlbum(t.Context(), "nope"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("TrackAlbum = %v", err)
