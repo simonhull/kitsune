@@ -742,15 +742,24 @@ components:
     AlbumEntry:
       type: object
       additionalProperties: false
-      required: [id, title, artist, trackCount, compilation, displayGenres]
+      required: [id, title, sortName, artist, trackCount, compilation, addedAt, displayGenres]
       properties:
         id: { type: string }
         title: { type: string }
+        sortName:
+          type: string
+          description: The title as the album sorts, from its sort tag, else the title itself.
         artist: { type: string }
+        sortArtist:
+          type: string
+          description: >-
+            Who the album sorts under: its first owner's sort name, else
+            `artist`. Only `GET /albums` sends it.
         year: { type: integer }
         trackCount: { type: integer }
         compilation: { type: boolean }
         artwork: { $ref: "#/components/schemas/Artwork" }
+        addedAt: { type: string, format: date-time }
         displayGenres:
           type: array
           description: >-
@@ -855,10 +864,11 @@ components:
       description: An album entry's properties, repeated (allOf does not mix with additionalProperties false), plus its tracks.
       type: object
       additionalProperties: false
-      required: [id, title, artist, artists, trackCount, compilation, tracks, durationMs, formats, addedAt, genres, displayGenres, etag]
+      required: [id, title, sortName, artist, artists, trackCount, compilation, tracks, durationMs, formats, addedAt, genres, displayGenres, etag]
       properties:
         id: { type: string }
         title: { type: string }
+        sortName: { type: string }
         artist: { type: string }
         artists:
           type: array

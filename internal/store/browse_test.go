@@ -268,7 +268,8 @@ func TestAlbumSummaryFields(t *testing.T) {
 		t.Fatalf("Albums = %+v, %v; want 2", p, err)
 	}
 	want := store.AlbumSummary{
-		ID: albumID(1), Title: "Album 1", Artist: "Artist 1", Year: 1999, TrackCount: 2, Compilation: true,
+		ID: albumID(1), Title: "Album 1", SortName: "sort", Artist: "Artist 1", SortArtist: "Artist 1",
+		Year: 1999, TrackCount: 2, Compilation: true,
 		Cover:   &store.Cover{Hash: w.Album.Artwork.Hash, Accent: "#aabbcc", Ground: "#112233", Width: 640, Height: 480},
 		AddedAt: time.UnixMilli(1_762_000_000_000).UTC(),
 	}

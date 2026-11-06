@@ -193,16 +193,16 @@ func toAPIArtwork(c *store.Cover) *api.Artwork {
 
 func (s *Server) toAPIAlbumEntry(a *store.AlbumSummary) api.AlbumEntry {
 	return api.AlbumEntry{
-		ID: a.ID, Title: a.Title, Artist: a.Artist, Year: a.Year, TrackCount: a.TrackCount,
-		Compilation: a.Compilation, Artwork: toAPIArtwork(a.Cover),
-		DisplayGenres: append([]string{}, s.genres.Of(a.ID)...),
+		ID: a.ID, Title: a.Title, SortName: a.SortName, Artist: a.Artist, SortArtist: a.SortArtist,
+		Year: a.Year, TrackCount: a.TrackCount, Compilation: a.Compilation, Artwork: toAPIArtwork(a.Cover),
+		AddedAt: a.AddedAt, DisplayGenres: append([]string{}, s.genres.Of(a.ID)...),
 	}
 }
 
 // toAPIAlbumDetail builds the wire form of d, with genres by track ID.
 func toAPIAlbumDetail(d *store.AlbumDetail, genres map[string][]string) api.AlbumDetail {
 	out := api.AlbumDetail{
-		ID: d.ID, Title: d.Title, Artist: d.Artist, Year: d.Year, TrackCount: d.TrackCount,
+		ID: d.ID, Title: d.Title, SortName: d.SortName, Artist: d.Artist, Year: d.Year, TrackCount: d.TrackCount,
 		Compilation: d.Compilation, Artwork: toAPIArtwork(d.Cover),
 		Artists:       toAPIArtistLinks(d.Artists),
 		Tracks:        make([]api.Track, len(d.Tracks)),

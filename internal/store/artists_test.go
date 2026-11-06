@@ -258,3 +258,35 @@ func TestAlbumLinkSurvivesAMissingTrack(t *testing.T) {
 		t.Errorf("artists = %+v, want only the live track's artist", d.Artists)
 	}
 }
+
+// sortAlbum returns a one-track album with the given owners.
+func sortAlbum(n int, compilation bool, artists, albumArtists []store.ArtistWrite) store.TrackWrite {
+	w := albumTrack(n, 1, fmt.Sprintf("album %d", n))
+	w.Album.Artist = fmt.Sprintf("Shown %d", n)
+	w.Album.Compilation = compilation
+	w.Artists, w.AlbumArtists = artists, albumArtists
+	return w
+}
+
+func TestAlbumsSayWhoTheySortUnder(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	beatles := store.ArtistWrite{ULID: "03J00000000000000000000001", MatchKey: "the beatles", Name: "The Beatles", SortName: "Beatles, The"}
+	cash := store.ArtistWrite{ULID: "03J00000000000000000000002", MatchKey: "johnny cash", Name: "Johnny Cash", SortName: "Cash, Johnny"}
+	guest := store.ArtistWrite{ULID: "03J00000000000000000000003", MatchKey: "someone", Name: "Someone", SortName: "Someone"}
+	writeAll(t, s,
+		sortAlbum(1, false, []store.ArtistWrite{guest}, []store.ArtistWrite{beatles, cash}),
+		sortAlbum(2, false, []store.ArtistWrite{cash, guest}, nil),
+		sortAlbum(3, true, []store.ArtistWrite{guest}, nil),
+	)
+	page, err := s.Albums(t.Context(), store.SortName, store.MaxAlbumLimit, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Beatles, The", "Cash, Johnny", "Shown 3"}
+	for i := range page.Albums {
+		if got := page.Albums[i].SortArtist; got != want[i] {
+			t.Errorf("album %d sorts under %q, want %q", i, got, want[i])
+		}
+	}
+}

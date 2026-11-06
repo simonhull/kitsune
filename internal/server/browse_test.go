@@ -94,8 +94,14 @@ func checkEntries(t *testing.T, albums []api.AlbumEntry, cover *store.ArtworkWri
 	t.Helper()
 	art := &api.Artwork{Hash: hex.EncodeToString(cover.Hash[:]), Accent: "#aabbcc", Ground: "#112233", Width: 600, Height: 500}
 	want := []api.AlbumEntry{
-		{ID: albumULID(2), Title: "Album 2", Artist: annName, Year: 2001, TrackCount: 1, DisplayGenres: []string{}},
-		{ID: albumULID(1), Title: "Album 1", Artist: annName, Year: 2001, TrackCount: 2, DisplayGenres: []string{}, Artwork: art},
+		{ID: albumULID(2), Title: "Album 2", SortName: "A", Artist: annName, SortArtist: annName, Year: 2001, TrackCount: 1, DisplayGenres: []string{}},
+		{ID: albumULID(1), Title: "Album 1", SortName: "b", Artist: annName, SortArtist: annName, Year: 2001, TrackCount: 2, DisplayGenres: []string{}, Artwork: art},
+	}
+	for i := range albums {
+		if albums[i].AddedAt.IsZero() {
+			t.Errorf("album %d has no addedAt", i)
+		}
+		albums[i].AddedAt = time.Time{}
 	}
 	if !reflect.DeepEqual(albums, want) {
 		t.Errorf("albums = %+v, want %+v", albums, want)

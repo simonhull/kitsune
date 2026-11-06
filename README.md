@@ -77,9 +77,11 @@ Every route is under `/api/v1` and, except login, needs a session. `api/openapi.
   newest first) or `sort=name` (ignoring case), `limit` 1 to 200 (default 60), and `cursor`, the
   previous page's `nextCursor`. Paging is by keyset, so albums added between pages never repeat or
   skip one. A cursor belongs to the sort that issued it; a bad one is a 400. Each entry carries what
-  a page transition needs: title, artist, track count and the cover's hash and colors.
+  a page transition needs (title, artist, track count, the cover's hash and colors) and what the
+  Albums page sorts and filters by: `sortName`, `sortArtist`, `addedAt` and `displayGenres`, an
+  album's genres with commas split, ID3v1 numbers stripped and one spelling across the library.
 - `GET /albums/{id}` returns an album with its tracks, in disc and track order (an unset disc counts
-  as disc 1), its total duration and its formats.
+  as disc 1), its total duration, its formats, and both its raw `genres` and its `displayGenres`.
 - `GET /library` counts live albums and tracks, their duration, the configured roots and the files
   the scanner could not read.
 
