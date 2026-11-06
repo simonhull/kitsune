@@ -24,6 +24,7 @@ const metrics: RowMetrics = {
 	albumHead: 0,
 	albumMin: 100,
 	artistHead: 0,
+	artistMin: 0,
 	albumGap: 40,
 	artistGap: 60
 };
@@ -115,6 +116,28 @@ describe('layOut', () => {
 
 	it('lays out nothing for an empty library', () => {
 		expect(layOut({ artists: [] }, metrics)).toMatchObject({ rows: [], height: 0 });
+	});
+});
+
+describe('an artist shorter than its name', () => {
+	const index: LibraryIndex = {
+		artists: [artist('A', [album('a', [song('a1')])]), artist('B', [album('b', [song('b1')])])]
+	};
+
+	it('stands tall enough to hold the name where it pins', () => {
+		const { artists } = layOut(index, { ...metrics, artistMin: 300 });
+		expect(artists[0]?.height).toBe(300);
+	});
+
+	it('moves the next artist down by as much', () => {
+		const { artists, height } = layOut(index, { ...metrics, artistMin: 300 });
+		expect(artists[1]?.top).toBe(300 + metrics.artistGap);
+		expect(height).toBe(2 * 300 + metrics.artistGap);
+	});
+
+	it('leaves a taller artist as it is', () => {
+		const { artists } = layOut(index, { ...metrics, artistMin: 50 });
+		expect(artists[0]?.height).toBe(metrics.albumMin);
 	});
 });
 

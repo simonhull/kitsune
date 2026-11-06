@@ -11,6 +11,8 @@ export interface RowMetrics {
 	albumMin: number;
 	/** What stands above an artist's albums. */
 	artistHead: number;
+	/** The least height of an artist: a long name needs room to reach where it pins. */
+	artistMin: number;
 	albumGap: number;
 	artistGap: number;
 }
@@ -65,6 +67,7 @@ export function layOut(index: LibraryIndex, metrics: RowMetrics): Layout {
 				metrics
 			);
 		}
+		y = Math.max(y, top + metrics.artistMin);
 		layout.artists.push({ artist, top, height: y - top });
 		const letter = letterOf(artist.sortName);
 		if (!layout.letters.has(letter)) {
