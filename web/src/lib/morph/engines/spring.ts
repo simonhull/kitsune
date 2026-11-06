@@ -189,6 +189,19 @@ function standIn(unit: HTMLElement): Node {
 }
 
 /**
+ * Holds what's stuck to the screen where it stands. A clone has no scroller to stick to, so it would
+ * go back to the top of its block, somewhere off screen.
+ */
+function keepPinned(from: HTMLElement, picture: Node): void {
+	if (picture instanceof HTMLElement && from.dataset['morphPinned'] !== undefined) {
+		const top = from.getBoundingClientRect().top;
+		const start = from.parentElement?.getBoundingClientRect().top ?? top;
+		picture.style.position = 'relative';
+		picture.style.top = `${String(top - start)}px`;
+	}
+}
+
+/**
  * Clones a page for a ghost, in full only near the fold. `cloneNode` on the whole of it would fetch
  * every lazy image at once: an image ignores `loading` the moment it's cloned with a `src`.
  */
@@ -206,6 +219,7 @@ function pictureOfPage(root: Element, near: ReadonlySet<Element>): Node {
 			if (whole instanceof Element) {
 				settleImages(whole);
 			}
+			keepPinned(child, whole);
 			picture.appendChild(whole);
 		}
 	}

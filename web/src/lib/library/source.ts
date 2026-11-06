@@ -204,6 +204,40 @@ export interface SearchResults {
 	tracks: TrackHit[];
 }
 
+/** A song in the library list: as much as a row shows, and what it takes to find the rest. */
+export interface LibraryTrack {
+	id: string;
+	title: string;
+	durationMs: number;
+	artists: string[];
+	discNo?: number;
+	trackNo?: number;
+}
+
+export interface LibraryAlbum {
+	id: string;
+	title: string;
+	artist: string;
+	compilation: boolean;
+	year?: number;
+	artwork?: Artwork;
+	tracks: LibraryTrack[];
+}
+
+export interface LibraryArtist {
+	/** Absent for a group with nobody to link to, such as Various Artists. */
+	id?: string;
+	name: string;
+	/** Who it files under, which decides its letter. */
+	sortName: string;
+	albums: LibraryAlbum[];
+}
+
+/** Every song, by artist and album, in the order they're shown. */
+export interface LibraryIndex {
+	artists: LibraryArtist[];
+}
+
 export interface LibraryFacts {
 	albums: number;
 	tracks: number;
@@ -311,6 +345,7 @@ export interface LibrarySource {
 	/** Rejects with {@link LoginError} when the session wasn't granted. */
 	login(name: string, password: string): Promise<User>;
 	facts(): Promise<LibraryFacts>;
+	libraryIndex(): Promise<LibraryIndex>;
 	/** Reports whether the first scan has finished. */
 	ready(): Promise<boolean>;
 	albumsPage(sort: AlbumSort, cursor?: string, limit?: number): Promise<AlbumPage>;

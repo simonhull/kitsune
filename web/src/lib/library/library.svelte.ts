@@ -26,6 +26,7 @@ import {
 	type ArtistEntry,
 	type ArtistLink,
 	type LibraryFacts,
+	type LibraryIndex,
 	type LibrarySource,
 	type Me,
 	type ScanIssues,
@@ -162,6 +163,8 @@ export class Library {
 	artists = $state.raw<Load<ArtistEntry[]>>({ kind: 'loading' });
 	/** What scans had trouble with, for administrators. */
 	issues = $state.raw<Load<ScanIssues>>({ kind: 'loading' });
+	/** Every song, for the Library page. Nothing asks until it opens. */
+	index = $state.raw<Load<LibraryIndex>>({ kind: 'loading' });
 	/** Sends the app to the door. Set by the shell once it can navigate. */
 	onExpired: (() => Promise<void>) | null = null;
 	/** The search page's question and answer, kept while the page is away. */
@@ -179,9 +182,15 @@ export class Library {
 	readonly #albums = new SvelteMap<string, Album>();
 	readonly #missing = new SvelteSet<string>();
 	readonly #unavailable = new SvelteSet<string>();
-	readonly #loading = new SvelteSet<string>();
+	/** Every album fetch still out: asking again waits for the same one. */
+	readonly #loading = new SvelteMap<string, Promise<void>>();
 	readonly #artists = new SvelteMap<string, Load<ArtistDetail>>();
 	readonly #artistNames = new SvelteMap<string, string>();
+	/** The scan the index was last read after, by when it ended. */
+	#indexedAfter: string | undefined;
+	#indexLoad: Promise<void> | null = null;
+	/** Set when something other than a scan has changed what the index holds. */
+	#indexEdited = $state(false);
 	#player: PlayerView | null = null;
 	#session: Promise<Session> | null = null;
 	#shell: Promise<void> | null = null;
@@ -772,6 +781,59 @@ export class Library {
 		}
 	}
 
+	/** Reports whether a scan or an edit has finished since the index was read. */
+	get indexStale(): boolean {
+		return this.#indexEdited || this.facts?.scan.last?.endedAt !== this.#indexedAfter;
+	}
+
+	/** Says an edit has changed what the index holds: the next look reads it again. */
+	markIndexStale(): void {
+		this.#indexEdited = true;
+	}
+
+	/** Reads the whole library, once at a time. A list already here stays through a refresh. */
+	loadIndex(): Promise<void> {
+		this.#indexLoad ??= this.#loadIndex().finally(() => {
+			this.#indexLoad = null;
+		});
+		return this.#indexLoad;
+	}
+
+	async #loadIndex(): Promise<void> {
+		const epoch = this.#epoch;
+		if (this.index.kind !== 'ready') {
+			this.index = { kind: 'loading' };
+		}
+		this.#indexedAfter = this.facts?.scan.last?.endedAt;
+		this.#indexEdited = false;
+		try {
+			const index = await this.#source.libraryIndex();
+			if (epoch === this.#epoch) {
+				this.#rememberIndex(index);
+				this.index = { kind: 'ready', value: index };
+			}
+		} catch (error) {
+			const lost = this.index.kind !== 'ready' && !(error instanceof UnauthorizedError);
+			if (epoch === this.#epoch && lost) {
+				this.index = { kind: 'unavailable' };
+			}
+		}
+	}
+
+	/** Seeds the next page's first frame, without replacing an entry that knows more. */
+	#rememberIndex({ artists }: LibraryIndex): void {
+		for (const { id, name, albums } of artists) {
+			if (id !== undefined) {
+				this.#artistNames.set(id, name);
+			}
+			for (const { tracks, ...album } of albums) {
+				if (!this.#entries.has(album.id)) {
+					this.#entries.set(album.id, { ...album, trackCount: tracks.length });
+				}
+			}
+		}
+	}
+
 	/** Asks for an artist. One already here stays through a refresh, unless the server disowns it. */
 	async loadArtist(id: string): Promise<void> {
 		const epoch = this.#epoch;
@@ -798,11 +860,20 @@ export class Library {
 	}
 
 	/** Streams an album's tracks in. Failures surface through {@link Library.failed}. */
-	async loadAlbum(id: string): Promise<void> {
-		if (this.#albums.has(id) || this.#loading.has(id)) {
-			return;
+	loadAlbum(id: string): Promise<void> {
+		if (this.#albums.has(id)) {
+			return Promise.resolve();
 		}
-		this.#loading.add(id);
+		const loading =
+			this.#loading.get(id) ??
+			this.#fetchAlbum(id).finally(() => {
+				this.#loading.delete(id);
+			});
+		this.#loading.set(id, loading);
+		return loading;
+	}
+
+	async #fetchAlbum(id: string): Promise<void> {
 		this.#unavailable.delete(id);
 		try {
 			const album = await this.#source.album(id);
@@ -815,8 +886,6 @@ export class Library {
 			} else if (!(error instanceof UnauthorizedError)) {
 				this.#unavailable.add(id);
 			}
-		} finally {
-			this.#loading.delete(id);
 		}
 	}
 
@@ -827,7 +896,12 @@ export class Library {
 
 	/** Saves an edit of an album's tracks, and shows it. Rejects with `EditError`. */
 	async editAlbum(id: string, etag: string, edit: AlbumEdit): Promise<void> {
-		this.#adopt(await this.#source.editAlbum(id, etag, edit));
+		try {
+			this.#adopt(await this.#source.editAlbum(id, etag, edit));
+		} finally {
+			// A save that stops partway has still written files, so the list reads them again either way.
+			this.markIndexStale();
+		}
 	}
 
 	/** Reads an album again, for when what's held has turned out to be behind the server. */
@@ -903,6 +977,9 @@ export class Library {
 		this.#unavailable.clear();
 		this.artists = { kind: 'loading' };
 		this.issues = { kind: 'loading' };
+		this.index = { kind: 'loading' };
+		this.#indexedAfter = undefined;
+		this.#indexEdited = false;
 		this.#artists.clear();
 		this.#artistNames.clear();
 		this.search.reset();

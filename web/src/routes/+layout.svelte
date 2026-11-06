@@ -15,6 +15,7 @@
 	import { watchInput } from '#lib/morph/journey.ts';
 	import { albumsView } from '#lib/pages/albumsView.svelte.ts';
 	import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
+	import { libraryView } from '#lib/pages/libraryView.svelte.ts';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
 	import { togglesOnSpace } from '#lib/player/keys.ts';
@@ -81,6 +82,7 @@
 			}
 			homeGrid.reset();
 			albumsView.reset();
+			libraryView.reset();
 			tagEdits.reset();
 		};
 		void Promise.all(routeIds.map((route) => preloadCode(route)));

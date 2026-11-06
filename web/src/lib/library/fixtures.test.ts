@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { letterOf } from '#lib/pages/libraryRows.ts';
 import { burstSize, burstTimes, createFixtureSource, createScanFixtureSource } from './fixtures';
 import { AlbumNotFoundError, ArtistNotFoundError, LoginError, type LibrarySource } from './source';
 
@@ -333,5 +334,38 @@ describe('a scan', () => {
 		expect(await scan.album(entry?.id ?? '')).toMatchObject(entry ?? {});
 		await expect(scan.album('scan-99999')).rejects.toBeInstanceOf(AlbumNotFoundError);
 		await expect(scan.album('glasshouse-66')).rejects.toBeInstanceOf(AlbumNotFoundError);
+	});
+});
+
+describe('the library index', () => {
+	it('has what the page must render', async () => {
+		const { artists } = await createFixtureSource().libraryIndex();
+		const albums = artists.flatMap((artist) => artist.albums);
+		expect(artists.find(({ name }) => name === 'Various Artists')?.id).toBeUndefined();
+		expect(albums.filter(({ compilation }) => compilation).length).toBeGreaterThan(0);
+		expect(
+			albums.some(({ tracks }) => new Set(tracks.map(({ discNo }) => discNo ?? 1)).size > 1)
+		).toBe(true);
+		expect(albums.some(({ artwork }) => artwork === undefined)).toBe(true);
+		expect(artists.some(({ name }) => name.length > 60)).toBe(true);
+		expect(artists.some(({ sortName }) => letterOf(sortName) === '#')).toBe(true);
+		expect(new Set(artists.map(({ sortName }) => letterOf(sortName))).size).toBeGreaterThan(5);
+	});
+
+	it('files # first and every letter in order, as the server does', async () => {
+		const { artists } = await createFixtureSource().libraryIndex();
+		const letters = artists.map(({ sortName }) => letterOf(sortName));
+		expect(letters).toEqual(letters.toSorted());
+		expect(letters.at(0)).toBe('#');
+	});
+
+	it('plays what it lists', async () => {
+		const fixture = createFixtureSource();
+		const { artists } = await fixture.libraryIndex();
+		for (const { id, tracks } of artists.flatMap((artist) => artist.albums)) {
+			expect((await fixture.album(id)).tracks.map((track) => track.id)).toEqual(
+				tracks.map((track) => track.id)
+			);
+		}
 	});
 });
