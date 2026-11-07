@@ -524,6 +524,26 @@ func TestServeScansLibrary(t *testing.T) { //nolint:paralleltest // overrides au
 	if added, ok := entry["added"].(float64); !ok || added != 1 {
 		t.Errorf("scan finished = %v, want added 1", entry)
 	}
+	waitFingerprinted(t, ra.app.store)
+}
+
+// waitFingerprinted waits for the background pass to leave no track without a
+// fingerprint.
+func waitFingerprinted(t *testing.T, st *store.Store) {
+	t.Helper()
+	const deadline, poll = 5 * time.Second, 5 * time.Millisecond
+	for start := time.Now(); ; time.Sleep(poll) {
+		n, err := st.CountUndigested(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n == 0 {
+			return
+		}
+		if time.Since(start) > deadline {
+			t.Fatalf("%d tracks still wait for a fingerprint: the pass never ran", n)
+		}
+	}
 }
 
 func TestServeNotReadyUntilScanned(t *testing.T) { //nolint:paralleltest // overrides authParams.

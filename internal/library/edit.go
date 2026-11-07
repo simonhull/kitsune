@@ -87,12 +87,13 @@ func (e *AlbumEdit) forFiles(files []store.EditFile) ([]fileEdit, error) {
 // if the edit stops midway. A canceled ctx stops the edit between or inside
 // files, never leaving one half written.
 //
-// It returns [ErrBusy] while a scan or another edit holds the library, an error
+// It waits out a batch of the fingerprint pass, returns [ErrBusy] while a scan or
+// another edit holds the library, and returns an error
 // wrapping [store.ErrNotFound] for an unknown ID, [ErrStale] when ifMatch is not
 // the current ETag or a file drifted from the store, and an [*EditError] when
 // the edit was refused or stopped.
 func (s *Scanner) EditAlbum(ctx context.Context, id, ifMatch string, e *AlbumEdit) error {
-	return s.exclusive(func() error {
+	return s.exclusive(ctx, func() error {
 		files, etag, err := s.st.AlbumEditFiles(ctx, id)
 		if err != nil {
 			return err //nolint:wrapcheck // The store's error already says what failed.
@@ -133,6 +134,8 @@ func (s *Scanner) edit(ctx context.Context, edits []fileEdit) error {
 		}
 	}
 	// Tracks written before a failure hold the edit, and a canceled edit still counts.
+	// A rewritten file loses its fingerprint, which the pass makes again.
+	defer s.askForPass()
 	defer s.settle(ctx)
 	for i := range edits {
 		file := edits[i].file

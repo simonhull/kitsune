@@ -365,6 +365,7 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.work.Go(func() {
 		a.scanner.Run(bgCtx, a.quickScan.Hour, a.quickScan.Minute, func() { a.scanned.Store(true) })
 	})
+	a.work.Go(func() { a.scanner.RunFingerprints(bgCtx) }) // Readiness never waits for it.
 
 	served := make(chan error, 1)
 	go func() { served <- a.http.Serve(ln) }()

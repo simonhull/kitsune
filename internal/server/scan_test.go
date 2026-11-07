@@ -74,6 +74,17 @@ func TestLibraryShowsARunningScan(t *testing.T) {
 	}
 }
 
+func TestLibraryShowsTheFingerprintPass(t *testing.T) {
+	t.Parallel()
+	if got := toAPIFingerprints(library.FingerprintProgress{Done: 3, Total: 40}); got != (api.FingerprintStatus{Done: 3, Total: 40}) {
+		t.Errorf("toAPIFingerprints = %+v, want 3 of 40", got)
+	}
+	ts := newTestServer(t, testServerOptions{LibraryRoot: t.TempDir()})
+	if got := ts.getLibrary(t, ts.tokenFor(t, store.RoleUser)).Fingerprints; got != (api.FingerprintStatus{}) {
+		t.Errorf("fingerprints with no pass = %+v, want zero", got)
+	}
+}
+
 func TestOnlyAdminsSeeWhyAScanFailed(t *testing.T) {
 	t.Parallel()
 	const reason = "scan: the disk went away"

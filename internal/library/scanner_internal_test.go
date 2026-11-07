@@ -36,6 +36,17 @@ func (l *testLib) scan(mode Mode) *Stats {
 	return &stats
 }
 
+// fingerprint runs a fingerprint pass, as the server does after a scan, so the
+// tracks can be followed when they move, and fails the test on error.
+func (l *testLib) fingerprint() FingerprintStats {
+	l.t.Helper()
+	stats, err := l.scanner.Fingerprint(l.t.Context())
+	if err != nil {
+		l.t.Fatalf("Fingerprint: %v", err)
+	}
+	return stats
+}
+
 // albumDetail returns the library's only album.
 func (l *testLib) albumDetail() store.AlbumDetail {
 	l.t.Helper()
@@ -144,6 +155,7 @@ func TestScanMoveKeepsID(t *testing.T) {
 	l.copyTo(root, "old/one.flac", sampleFLAC)
 	l.copyTo(root, keepMP3, sampleMP3)
 	l.scan(Quick)
+	l.fingerprint()
 	id := l.id(root, "old/one.flac")
 	if err := os.MkdirAll(filepath.Join(root, "new"), dirMode); err != nil {
 		t.Fatal(err)
@@ -173,6 +185,7 @@ func TestScanMoveBetweenRoots(t *testing.T) {
 			l.copyTo(l.roots[1], "keep.m4a", sampleM4A)
 			l.copyTo(l.roots[from], xFLAC, sampleFLAC)
 			l.scan(Quick)
+			l.fingerprint()
 			id := l.id(l.roots[from], xFLAC)
 			to := 1 - from
 			if err := os.Rename(filepath.Join(l.roots[from], xFLAC), filepath.Join(l.roots[to], xFLAC)); err != nil {
@@ -197,6 +210,7 @@ func TestScanMoveTieBreaksOnBaseName(t *testing.T) {
 	l.copyTo(root, "a/x.flac", sampleFLAC)
 	l.copyTo(root, "b/y.flac", sampleFLAC)
 	l.scan(Quick)
+	l.fingerprint()
 	idY := l.id(root, "b/y.flac")
 	remove(t, root, "a/x.flac")
 	remove(t, root, "b/y.flac")
@@ -221,6 +235,7 @@ func TestScanAmbiguousMoveIsNew(t *testing.T) {
 			l.copyTo(root, "a/x.flac", sampleFLAC)
 			l.copyTo(root, "b/x.flac", sampleFLAC)
 			l.scan(Quick)
+			l.fingerprint()
 			old := []int64{l.id(root, "a/x.flac"), l.id(root, "b/x.flac")}
 			remove(t, root, "a/x.flac")
 			remove(t, root, "b/x.flac")
@@ -249,6 +264,7 @@ func TestScanRootRenameKeepsDuplicateIDs(t *testing.T) {
 	populate(second)
 	l.use(first)
 	l.scan(Quick)
+	l.fingerprint()
 	idA, idB := l.id(first, "a/x.flac"), l.id(first, "b/x.flac")
 	l.use(second)
 	stats := l.scan(Quick)
@@ -267,6 +283,7 @@ func TestScanTwoNewFilesOneMissing(t *testing.T) {
 	l.copyTo(root, keepMP3, sampleMP3)
 	l.copyTo(root, "old.flac", sampleFLAC)
 	l.scan(Quick)
+	l.fingerprint()
 	id := l.id(root, "old.flac")
 	remove(t, root, "old.flac")
 	l.copyTo(root, "n1.flac", sampleFLAC)
@@ -292,6 +309,7 @@ func TestScanReappearanceKeepsIDOverCopy(t *testing.T) {
 			l.copyTo(root, keepMP3, sampleMP3)
 			l.copyTo(root, original, sampleFLAC)
 			l.scan(Quick)
+			l.fingerprint()
 			id := l.id(root, original)
 			remove(t, root, original)
 			wantStats(t, l.scan(Quick), &Stats{Seen: 1, Missing: 1})
@@ -607,9 +625,9 @@ func TestReindexMissingFile(t *testing.T) {
 func TestEditDuringScanIsRefused(t *testing.T) {
 	t.Parallel()
 	l := newTestLib(t, 1)
-	l.scanner.lock <- struct{}{} // What a running scan holds.
+	l.scanner.lock.tryLock(heldByScan) // What a running scan holds.
 	defer l.scanner.lock.unlock()
-	err := l.scanner.exclusive(func() error {
+	err := l.scanner.exclusive(t.Context(), func() error {
 		t.Error("the edit ran during a scan")
 		return nil
 	})
@@ -643,14 +661,14 @@ func TestScanHoldsTheLockUntilItEnds(t *testing.T) {
 		done <- runErr
 	}()
 	<-walked
-	if err = l.scanner.exclusive(func() error { return nil }); !errors.Is(err, ErrBusy) {
+	if err = l.scanner.exclusive(t.Context(), func() error { return nil }); !errors.Is(err, ErrBusy) {
 		t.Errorf("exclusive during a scan = %v, want ErrBusy", err)
 	}
 	close(release)
 	if err = <-done; err != nil {
 		t.Fatal(err)
 	}
-	if err = l.scanner.exclusive(func() error { return nil }); err != nil {
+	if err = l.scanner.exclusive(t.Context(), func() error { return nil }); err != nil {
 		t.Errorf("exclusive after the scan = %v", err)
 	}
 }
@@ -660,7 +678,7 @@ func TestScanWaitsForAnEdit(t *testing.T) {
 	l := newTestLib(t, 1)
 	l.copyTo(l.roots[0], "one.flac", sampleFLAC)
 	started, scanned := make(chan struct{}), make(chan error, 1)
-	err := l.scanner.exclusive(func() error {
+	err := l.scanner.exclusive(t.Context(), func() error {
 		go func() {
 			close(started)
 			_, scanErr := l.scanner.Scan(t.Context(), Quick)
@@ -690,7 +708,7 @@ func TestScanWaitingForAnEditStopsWithItsContext(t *testing.T) {
 	l := newTestLib(t, 1)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	err := l.scanner.exclusive(func() error {
+	err := l.scanner.exclusive(t.Context(), func() error {
 		_, scanErr := l.scanner.Scan(ctx, Quick)
 		return scanErr
 	})

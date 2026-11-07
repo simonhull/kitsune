@@ -23,7 +23,7 @@ func (s *Scanner) scheduled(ctx context.Context) {
 		return // The scan has logged how it went.
 	}
 	s.log.InfoContext(ctx, "a scan is running; the scheduled scan will retry when it ends")
-	if s.claim.lock(ctx) != nil {
+	if s.claim.lock(ctx, heldByScan) != nil {
 		return
 	}
 	_, _ = s.claimed(Quick)(ctx) // As above.
@@ -44,7 +44,8 @@ func (s *Scanner) logScan(ctx context.Context, mode Mode, stats *Stats, err erro
 			slog.Int("issues", stats.Issues), slog.Int64("deleted", stats.Deleted),
 			slog.Int64("prunedAlbums", stats.Pruned.Albums), slog.Int64("prunedArtists", stats.Pruned.Artists),
 			slog.Int("prunedArtwork", len(stats.Pruned.Artwork)), slog.Int("covers", stats.Covers),
-			slog.Int("skippedRoots", stats.SkippedRoots), slog.Int("swept", stats.Swept), slog.Duration("duration", elapsed))
+			slog.Int("skippedRoots", stats.SkippedRoots), slog.Int("swept", stats.Swept), slog.Int("hashed", stats.Hashed),
+			slog.Duration("duration", elapsed))
 	}
 }
 

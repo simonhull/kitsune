@@ -226,7 +226,7 @@ func TestEditOfAVanishedFileIsStale(t *testing.T) {
 func TestEditWhileBusyIsRefused(t *testing.T) {
 	t.Parallel()
 	l := newEditLib(t)
-	l.scanner.lock <- struct{}{}
+	l.scanner.lock.tryLock(heldByScan)
 	defer l.scanner.lock.unlock()
 	if err := l.editAlbum(); !errors.Is(err, ErrBusy) {
 		t.Errorf("EditAlbum = %v, want ErrBusy", err)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -71,6 +72,7 @@ type Stats struct {
 	SkippedRoots                                       int
 	Covers                                             int // Albums the scan found a cover for.
 	Swept                                              int // Temp files left by an interrupted edit, removed.
+	Hashed                                             int // New files fingerprinted to look for a move.
 }
 
 // Scanner keeps the store in step with the library roots. It is safe for
@@ -86,10 +88,15 @@ type Scanner struct {
 	artwork   *artwork.Cache
 	tagWrites bool
 	write     WriteFunc
-	claim     libraryLock // Held by the one scan, from its claim to its end.
+	claim     *libraryLock // Held by the one scan, from its claim to its end.
 	genres    *Genres
-	lock      libraryLock // Held by a running scan or edit.
+	lock      *libraryLock // Held by a running scan or edit, or a batch of the fingerprint pass.
 	progress  atomic.Pointer[Progress]
+
+	fingerprint  fingerprintFunc                     // Reads a file's fingerprint; tests replace it.
+	fingerprints atomic.Pointer[FingerprintProgress] // The pass's progress.
+	wantPass     chan struct{}                       // Holds a token when tracks may wait for a fingerprint.
+	passing      sync.Mutex                          // Held by the one fingerprint pass.
 }
 
 // NewScanner returns a scanner that writes to st.
@@ -98,6 +105,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 		st: st, roots: opts.Roots, grace: opts.MissingGrace, workers: opts.Workers,
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
 		tagWrites: opts.TagWrites, write: opts.Write, genres: opts.Genres, claim: newLibraryLock(), lock: newLibraryLock(),
+		fingerprint: readFingerprint, wantPass: make(chan struct{}, 1),
 	}
 	if s.workers <= 0 {
 		s.workers = runtime.NumCPU()
@@ -117,6 +125,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 		}
 	}
 	s.progress.Store(&Progress{})
+	s.fingerprints.Store(&FingerprintProgress{})
 	return s
 }
 
@@ -127,7 +136,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 // it went and gives the scanner back. [Scanner.Progress] shows the scan from the
 // moment Claim returns.
 func (s *Scanner) Claim(mode Mode) (func(context.Context) (Stats, error), error) {
-	if !s.claim.tryLock() {
+	if !s.claim.tryLock(heldByScan) {
 		return nil, ErrScanRunning
 	}
 	return s.claimed(mode), nil
@@ -155,12 +164,13 @@ func (s *Scanner) run(ctx context.Context, mode Mode) (Stats, error) {
 	}
 	s.logScan(ctx, mode, &stats, err, time.Since(start))
 	s.ended(&stats, err)
+	s.askForPass()
 	return stats, err
 }
 
 // exclusiveScan waits for the library lock and scans holding it.
 func (s *Scanner) exclusiveScan(ctx context.Context, mode Mode) (Stats, error) {
-	if err := s.lock.lock(ctx); err != nil {
+	if err := s.lock.lock(ctx, heldByScan); err != nil {
 		return Stats{}, fmt.Errorf("scan: %w", err)
 	}
 	defer s.lock.unlock()

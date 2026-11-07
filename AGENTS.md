@@ -171,7 +171,17 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
   wait for the file to change.
 - One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it
-  gets `ErrBusy`; a scan that meets an edit waits. Readers never take it.
+  gets `ErrBusy`; a scan that meets an edit waits. Readers never take it. The fingerprint pass holds
+  it for one batch at a time (32 files or about 2 s), so an edit or a scan waits out a batch, and
+  the pass lets them go first and pauses while a scan is claimed.
+- Fingerprints (`audio_digest`) are only for following a moved file, and may be missing. A scan
+  doesn't hash, which would read all the audio, unless a missing track has a fingerprint: then a
+  file with no track at its path is hashed inline, so it can be matched. A file at a known path never
+  is; a write without a fingerprint keeps the stored one while size and mtime are unchanged, and
+  clears it otherwise. `Scanner.RunFingerprints` fills the rest in the background, one reader in path
+  order, at start and after every scan and edit, as the app's background work. A file that moves
+  before the pass reaches it gets a new ID: the known limit. `GET /library` carries the pass's
+  progress (`Scanner.Fingerprints`), a snapshot swapped like `Progress`; readiness never waits for it.
 - `Scanner.Claim` reserves the one scan without waiting, so a refusal is known before anything starts;
   `Scan` is a claim that runs at once. A scan a handler starts runs as the app's background work
   (`app.startScan`), so shutdown cancels it and waits. A scheduled scan that meets a running one retries
