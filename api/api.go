@@ -78,6 +78,14 @@ const (
 	LastfmReconnect = "reconnect" // Last.fm rejected the session; nothing goes until the user connects again.
 )
 
+// Listening is the response to GET /me/listening: what the caller has done
+// with the library, counted.
+type Listening struct {
+	Plays  int `json:"plays"`
+	Hearts int `json:"hearts"`
+	Rated  int `json:"rated"`
+}
+
 // LastfmStatus is the response to GET and PATCH /me/lastfm. It never carries
 // the session key.
 type LastfmStatus struct {

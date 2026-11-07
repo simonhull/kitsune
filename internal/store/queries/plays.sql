@@ -13,3 +13,11 @@ JOIN tracks AS t ON t.id = p.track_id
 WHERE p.user_id = ?
 ORDER BY p.played_at DESC
 LIMIT ?;
+
+-- name: CountUserListening :one
+SELECT
+    (SELECT count(*) FROM plays p WHERE p.user_id = sqlc.arg(user_id)) AS plays,
+    (SELECT count(*) FROM track_hearts h WHERE h.user_id = sqlc.arg(user_id))
+      + (SELECT count(*) FROM album_hearts h WHERE h.user_id = sqlc.arg(user_id))
+      + (SELECT count(*) FROM artist_hearts h WHERE h.user_id = sqlc.arg(user_id)) AS hearts,
+    (SELECT count(*) FROM track_ratings r WHERE r.user_id = sqlc.arg(user_id)) AS rated;

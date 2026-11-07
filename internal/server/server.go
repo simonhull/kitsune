@@ -213,6 +213,7 @@ func (s *Server) routes() []route {
 		{pattern: "DELETE /me/hearts/{kind}/{id}", handle: s.deleteHeart},
 		{pattern: "PUT /me/ratings/tracks/{id}", handle: s.putRating},
 		{pattern: "DELETE /me/ratings/tracks/{id}", handle: s.deleteRating},
+		{pattern: "GET /me/listening", handle: s.getListening},
 		{pattern: "GET /me/lastfm", handle: s.getLastfm},
 		{pattern: "PATCH /me/lastfm", handle: s.patchLastfm},
 		{pattern: "DELETE /me/lastfm", handle: s.deleteLastfm},

@@ -57,6 +57,22 @@ func (s *Store) RecordPlay(ctx context.Context, p *NewPlay) error {
 	return nil
 }
 
+// Listening is what a person has done with the library, counted.
+type Listening struct {
+	Plays  int // Plays that counted.
+	Hearts int // Hearts on tracks, albums and artists.
+	Rated  int // Tracks with stars.
+}
+
+// CountListening counts the user's plays, hearts and rated tracks.
+func (s *Store) CountListening(ctx context.Context, userID int64) (Listening, error) {
+	row, err := s.rq.CountUserListening(ctx, userID)
+	if err != nil {
+		return Listening{}, fmt.Errorf("count listening: %w", err)
+	}
+	return Listening{Plays: int(row.Plays), Hearts: int(row.Hearts), Rated: int(row.Rated)}, nil
+}
+
 // RecentPlays returns up to limit of a user's plays, newest first.
 func (s *Store) RecentPlays(ctx context.Context, userID, limit int64) ([]Play, error) {
 	rows, err := s.rq.RecentPlays(ctx, sqlcdb.RecentPlaysParams{UserID: userID, Limit: limit})

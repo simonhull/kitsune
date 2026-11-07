@@ -39,6 +39,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countScanIssuesByKindStmt, err = db.PrepareContext(ctx, countScanIssuesByKind); err != nil {
 		return nil, fmt.Errorf("error preparing query CountScanIssuesByKind: %w", err)
 	}
+	if q.countUserListeningStmt, err = db.PrepareContext(ctx, countUserListening); err != nil {
+		return nil, fmt.Errorf("error preparing query CountUserListening: %w", err)
+	}
 	if q.countUsersStmt, err = db.PrepareContext(ctx, countUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUsers: %w", err)
 	}
@@ -334,6 +337,11 @@ func (q *Queries) Close() error {
 	if q.countScanIssuesByKindStmt != nil {
 		if cerr := q.countScanIssuesByKindStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countScanIssuesByKindStmt: %w", cerr)
+		}
+	}
+	if q.countUserListeningStmt != nil {
+		if cerr := q.countUserListeningStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countUserListeningStmt: %w", cerr)
 		}
 	}
 	if q.countUsersStmt != nil {
@@ -825,6 +833,7 @@ type Queries struct {
 	artistRowIDStmt            *sql.Stmt
 	countLiveAlbumsStmt        *sql.Stmt
 	countScanIssuesByKindStmt  *sql.Stmt
+	countUserListeningStmt     *sql.Stmt
 	countUsersStmt             *sql.Stmt
 	countWarnedTracksStmt      *sql.Stmt
 	createSessionStmt          *sql.Stmt
@@ -925,6 +934,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		artistRowIDStmt:            q.artistRowIDStmt,
 		countLiveAlbumsStmt:        q.countLiveAlbumsStmt,
 		countScanIssuesByKindStmt:  q.countScanIssuesByKindStmt,
+		countUserListeningStmt:     q.countUserListeningStmt,
 		countUsersStmt:             q.countUsersStmt,
 		countWarnedTracksStmt:      q.countWarnedTracksStmt,
 		createSessionStmt:          q.createSessionStmt,

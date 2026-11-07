@@ -133,6 +133,8 @@
 		look={nav.look}
 		current={nav.current}
 		healthIssues={library.admin ? library.facts?.issues : undefined}
+		you={routeId === '/you'}
+		attention={library.lastfm?.state === 'reconnect'}
 	/>
 	<main>
 		{#if library.down && library.facts === null && !onLogin}

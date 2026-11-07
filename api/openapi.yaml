@@ -245,6 +245,24 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           $ref: "#/components/responses/Problem"
+  /me/listening:
+    get:
+      operationId: getListening
+      summary: Count the caller's plays, hearts and rated tracks.
+      responses:
+        "200":
+          description: The counts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listening" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /me/lastfm:
     get:
       operationId: getLastfm
@@ -1075,6 +1093,23 @@ components:
       required: [stars]
       properties:
         stars: { type: integer, minimum: 1, maximum: 5 }
+    Listening:
+      type: object
+      additionalProperties: false
+      required: [plays, hearts, rated]
+      properties:
+        plays:
+          type: integer
+          minimum: 0
+          description: Plays that counted.
+        hearts:
+          type: integer
+          minimum: 0
+          description: Hearts on tracks, albums and artists.
+        rated:
+          type: integer
+          minimum: 0
+          description: Tracks with stars.
     LastfmStatus:
       type: object
       additionalProperties: false

@@ -9,9 +9,13 @@
 		look: NavLook;
 		current: NavItem | null;
 		healthIssues: number | undefined;
+		/** On the You page, which the fox opens. */
+		you: boolean;
+		/** Last.fm needs reconnecting: plays are piling up. */
+		attention: boolean;
 	}
 
-	let { look, current, healthIssues }: Props = $props();
+	let { look, current, healthIssues, you, attention }: Props = $props();
 </script>
 
 <header class="bar" data-route={look} inert={look === 'gone' || look === 'door'}>
@@ -19,10 +23,12 @@
 		<span class="pill" aria-hidden="true"></span>
 		<a
 			class="fox"
-			href={resolve('/')}
-			aria-label="Kitsune home"
-			data-sveltekit-reset="false"
-			use:morph={{ id: 'fox', slot: 'nav', kind: 'control' }}><Icon name="fox" size={22} /></a
+			href={resolve('/you')}
+			aria-label={attention ? 'You: Last.fm needs reconnecting' : 'You'}
+			aria-current={you ? 'page' : undefined}
+			use:morph={{ id: 'fox', slot: 'nav', kind: 'control' }}
+			><Icon name="fox" size={22} />{#if attention}<span class="dot" aria-hidden="true"
+				></span>{/if}</a
 		>
 		<a
 			class="item"
@@ -149,6 +155,25 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+	}
+
+	/* Board A: on You the fox wears a ring of its own, since no item holds the pill. */
+	.fox[aria-current='page'] {
+		box-shadow:
+			0 0 0 3px var(--ground),
+			0 0 0 5px var(--fox);
+	}
+
+	/* Only for a Last.fm that needs reconnecting: the states board allows nothing louder. */
+	.dot {
+		position: absolute;
+		top: -1px;
+		right: -1px;
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		background: var(--fox);
+		box-shadow: 0 0 0 3px var(--ground);
 	}
 
 	.item {

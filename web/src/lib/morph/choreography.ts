@@ -169,7 +169,8 @@ export type RouteName =
 	| 'artists'
 	| 'artist'
 	| 'health'
-	| 'library';
+	| 'library'
+	| 'you';
 
 export type ChoreographyName =
 	| 'home-to-album'

@@ -7,6 +7,7 @@ import {
 	createFixtureSource,
 	createScanFixtureSource,
 	defaultScanGap,
+	lastfmFixture,
 	scanStart,
 	type FixtureEditFault
 } from './fixtures.ts';
@@ -26,9 +27,12 @@ import {
 	type ArtistDetail,
 	type ArtistEntry,
 	type ArtistLink,
+	type LastfmStatus,
+	type LastfmSwitches,
 	type LibraryFacts,
 	type LibraryIndex,
 	type LibrarySource,
+	type Listening,
 	type Me,
 	type ScanIssues,
 	type ScanMode,
@@ -166,6 +170,11 @@ export class Library {
 	issues = $state.raw<Load<ScanIssues>>({ kind: 'loading' });
 	/** Every song, for the Library page. Nothing asks until it opens. */
 	index = $state.raw<Load<LibraryIndex>>({ kind: 'loading' });
+	/**
+	 * The signed-in person's Last.fm connection, read with the shell and after every change. Null
+	 * until it's known, and when it can't be: nothing waits on it.
+	 */
+	lastfm = $state.raw<LastfmStatus | null>(null);
 	/** Sends the app to the door. Set by the shell once it can navigate. */
 	onExpired: (() => Promise<void>) | null = null;
 	/** The search page's question and answer, kept while the page is away. */
@@ -315,6 +324,53 @@ export class Library {
 		}
 	}
 
+	/** Tells the server a track started, for Last.fm. Fixtures have nobody to tell. */
+	nowPlaying(trackId: string): void {
+		if (this.user !== null && !this.simulated) {
+			this.#source.nowPlaying(trackId).catch(() => undefined);
+		}
+	}
+
+	/** Reads the Last.fm connection again. A failure leaves what was known. */
+	async refreshLastfm(): Promise<void> {
+		const epoch = this.#epoch;
+		try {
+			const status = await this.#source.lastfm();
+			if (epoch === this.#epoch) {
+				this.lastfm = status;
+			}
+		} catch {
+			// The You page says nothing it doesn't know; the dot stays as it was.
+		}
+	}
+
+	/** Starts connecting Last.fm, and returns the last.fm page to go to. Rejects with `ServerError`. */
+	connectLastfm(): Promise<string> {
+		return this.#source.connectLastfm();
+	}
+
+	/** Changes the Last.fm switches. Rejects with `ServerError`, and then nothing has changed. */
+	async setLastfm(patch: LastfmSwitches): Promise<void> {
+		this.lastfm = await this.#source.setLastfm(patch);
+	}
+
+	/** Disconnects Last.fm: everything waiting for it goes too. */
+	async disconnectLastfm(): Promise<void> {
+		await this.#source.disconnectLastfm();
+		await this.refreshLastfm();
+	}
+
+	/** Counts the signed-in person's plays, hearts and rated songs. */
+	listening(): Promise<Listening> {
+		return this.#source.listening();
+	}
+
+	/** Ends the session and goes to the door, the way a lost session does. */
+	async signOut(): Promise<void> {
+		await this.#source.logout();
+		await this.expire();
+	}
+
 	/** Exchanges a name and password for a session. Rejects with `LoginError`. */
 	async login(name: string, password: string): Promise<void> {
 		await this.#source.login(name, password);
@@ -337,6 +393,7 @@ export class Library {
 		try {
 			this.user ??= await this.#source.me();
 			this.flushPlays();
+			void this.refreshLastfm();
 			const [facts, recent, first, ready] = await Promise.all([
 				this.#source.facts(),
 				this.#source.albumsPage('added', undefined, recentCount),
@@ -969,6 +1026,7 @@ export class Library {
 		this.#waited = false;
 		this.user = null;
 		this.facts = null;
+		this.lastfm = null;
 		this.recent = [];
 		this.albums = [];
 		this.hasMoreAlbums = false;
@@ -1004,12 +1062,13 @@ function fromQuery(): Library {
 	const health = healthFixture(query.get('health'));
 	const role = query.get('role') === 'user' ? 'user' : 'admin';
 	const editFault = (query.get('editFault') ?? undefined) as FixtureEditFault | undefined;
+	const lastfm = lastfmFixture(query.get('lastfm'));
 	const pinnedAlbumId = query.get('playing') ?? undefined;
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
 		const readyMemory = { seen: () => false, mark: () => undefined };
-		return new Library(createFixtureSource({ latencyMs, health, role, editFault }), {
+		return new Library(createFixtureSource({ latencyMs, health, role, editFault, lastfm }), {
 			pinnedAlbumId,
 			readyMemory,
 			simulated: true

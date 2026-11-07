@@ -9,6 +9,28 @@ import (
 	"context"
 )
 
+const countUserListening = `-- name: CountUserListening :one
+SELECT
+    (SELECT count(*) FROM plays p WHERE p.user_id = ?1) AS plays,
+    (SELECT count(*) FROM track_hearts h WHERE h.user_id = ?1)
+      + (SELECT count(*) FROM album_hearts h WHERE h.user_id = ?1)
+      + (SELECT count(*) FROM artist_hearts h WHERE h.user_id = ?1) AS hearts,
+    (SELECT count(*) FROM track_ratings r WHERE r.user_id = ?1) AS rated
+`
+
+type CountUserListeningRow struct {
+	Plays  int64
+	Hearts int64
+	Rated  int64
+}
+
+func (q *Queries) CountUserListening(ctx context.Context, userID int64) (CountUserListeningRow, error) {
+	row := q.queryRow(ctx, q.countUserListeningStmt, countUserListening, userID)
+	var i CountUserListeningRow
+	err := row.Scan(&i.Plays, &i.Hearts, &i.Rated)
+	return i, err
+}
+
 const insertPlay = `-- name: InsertPlay :execrows
 INSERT INTO plays (user_id, track_id, played_at, source, client_id)
 VALUES (?, ?, ?, ?, ?)

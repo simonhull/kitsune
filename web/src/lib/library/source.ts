@@ -351,6 +351,43 @@ export interface PlayReport {
 	clientId: string;
 }
 
+/** What someone has done with the library, counted. */
+export interface Listening {
+	/** Plays that counted. */
+	plays: number;
+	/** Hearts on tracks, albums and artists. */
+	hearts: number;
+	/** Tracks with stars. */
+	rated: number;
+}
+
+/**
+ * How a Last.fm connection stands: `waiting` while Last.fm isn't answering, `reconnect` once it has
+ * stopped taking the session.
+ */
+export type LastfmState = 'ok' | 'waiting' | 'reconnect';
+
+/** The caller's Last.fm connection. The session key never leaves the server. */
+export interface LastfmStatus {
+	/** False when the server has no Last.fm key. */
+	configured: boolean;
+	connected: boolean;
+	/** The Last.fm user name, when connected. */
+	name?: string;
+	scrobble: boolean;
+	nowPlaying: boolean;
+	loves: boolean;
+	state: LastfmState;
+	/** Plays the server holds for Last.fm. */
+	waiting: number;
+	lastSentAt?: string;
+	/** When a waiting outbox is next tried. */
+	retryAt?: string;
+}
+
+/** The three switches. One left out stays as it is. */
+export type LastfmSwitches = Partial<Pick<LastfmStatus, 'scrobble' | 'nowPlaying' | 'loves'>>;
+
 /** Where every page gets its data: the real API, or the fixtures for tests and clips. */
 export interface LibrarySource {
 	/** Rejects with {@link UnauthorizedError} without a session. */
@@ -365,6 +402,18 @@ export interface LibrarySource {
 	setStars(trackId: string, stars: number | null): Promise<void>;
 	/** Rejects with {@link LoginError} when the session wasn't granted. */
 	login(name: string, password: string): Promise<User>;
+	/** Ends the session. */
+	logout(): Promise<void>;
+	/** Counts the caller's plays, hearts and rated tracks. */
+	listening(): Promise<Listening>;
+	lastfm(): Promise<LastfmStatus>;
+	/** The last.fm page to send the browser to. Rejects with a {@link ServerError}: 409 when not set up. */
+	connectLastfm(): Promise<string>;
+	/** Rejects with a {@link ServerError}: 404 when not connected. */
+	setLastfm(patch: LastfmSwitches): Promise<LastfmStatus>;
+	disconnectLastfm(): Promise<void>;
+	/** Says a track started. Best effort, so it goes nowhere on a 401 either. */
+	nowPlaying(trackId: string): Promise<void>;
 	facts(): Promise<LibraryFacts>;
 	libraryIndex(): Promise<LibraryIndex>;
 	/** Reports whether the first scan has finished. */
