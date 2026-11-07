@@ -1,3 +1,21 @@
+-- table album_hearts
+CREATE TABLE album_hearts (
+	user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	album_id   INTEGER NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+	hearted_at INTEGER NOT NULL,
+	PRIMARY KEY (user_id, album_id)
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=album_id type=INTEGER notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=hearted_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=albums from=album_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+--   foreign key id=1 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index album_hearts_album
+CREATE INDEX album_hearts_album ON album_hearts (album_id);
+--   key seqno=0 cid=1 name=album_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=0 name=user_id desc=0 coll=BINARY key=0
+
 -- table albums
 CREATE TABLE albums (
 	id          INTEGER PRIMARY KEY,
@@ -41,6 +59,24 @@ CREATE INDEX albums_sort ON albums (sort_name, id);
 --   key seqno=0 cid=4 name=sort_name desc=0 coll=NOCASE key=1
 --   key seqno=1 cid=0 name=id desc=0 coll=BINARY key=1
 --   key seqno=2 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- table artist_hearts
+CREATE TABLE artist_hearts (
+	user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	artist_id  INTEGER NOT NULL REFERENCES artists (id) ON DELETE CASCADE,
+	hearted_at INTEGER NOT NULL,
+	PRIMARY KEY (user_id, artist_id)
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=artist_id type=INTEGER notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=hearted_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=artists from=artist_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+--   foreign key id=1 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index artist_hearts_artist
+CREATE INDEX artist_hearts_artist ON artist_hearts (artist_id);
+--   key seqno=0 cid=1 name=artist_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=0 name=user_id desc=0 coll=BINARY key=0
 
 -- table artists
 CREATE TABLE artists (
@@ -170,6 +206,44 @@ CREATE INDEX track_artists_artist ON track_artists (artist_id);
 --   key seqno=1 cid=0 name=track_id desc=0 coll=BINARY key=0
 --   key seqno=2 cid=1 name=role desc=0 coll=BINARY key=0
 --   key seqno=3 cid=2 name=ord desc=0 coll=BINARY key=0
+
+-- table track_hearts
+CREATE TABLE track_hearts (
+	user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	track_id   INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+	hearted_at INTEGER NOT NULL, -- the first heart: hearting again keeps it
+	PRIMARY KEY (user_id, track_id)
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=hearted_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+--   foreign key id=1 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index track_hearts_track
+CREATE INDEX track_hearts_track ON track_hearts (track_id);
+--   key seqno=0 cid=1 name=track_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=0 name=user_id desc=0 coll=BINARY key=0
+
+-- table track_ratings
+CREATE TABLE track_ratings (
+	user_id  INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	track_id INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+	stars    INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+	rated_at INTEGER NOT NULL, -- the latest rating
+	PRIMARY KEY (user_id, track_id)
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=stars type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=rated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+--   foreign key id=1 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index track_ratings_track
+CREATE INDEX track_ratings_track ON track_ratings (track_id);
+--   key seqno=0 cid=1 name=track_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=0 name=user_id desc=0 coll=BINARY key=0
 
 -- table track_tags
 CREATE TABLE track_tags (

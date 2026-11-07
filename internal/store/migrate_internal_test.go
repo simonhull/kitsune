@@ -158,16 +158,37 @@ func seedLibrary(t *testing.T, db *sql.DB) {
 		exec("INSERT INTO track_tags (track_id, key, ord, value) VALUES (?, 'TITLE', 0, ?)", n, title)
 		exec("INSERT INTO track_artists (track_id, role, ord, artist_id) VALUES (?, 'artist', 0, 1)", n)
 		exec("INSERT INTO tracks_fts (rowid, title, artists, album, album_artist) VALUES (?, ?, 'Band', 'Album', 'Band')", n, foldSearch(title))
-		if hasPlays(t, db) {
+		if hasTable(t, db, "plays") {
 			exec("INSERT INTO plays (user_id, track_id, played_at, source, client_id) VALUES (1, ?, ?, 'web', ?)", n, n, word)
 		}
+		if hasTable(t, db, "track_hearts") && n%2 == 1 {
+			exec("INSERT INTO track_hearts (user_id, track_id, hearted_at) VALUES (1, ?, ?)", n, n)
+		}
+		if hasTable(t, db, "track_ratings") && n <= MaxStars {
+			exec("INSERT INTO track_ratings (user_id, track_id, stars, rated_at) VALUES (1, ?, ?, ?)", n, n, n)
+		}
+	}
+	if hasTable(t, db, "album_hearts") {
+		exec("INSERT INTO album_hearts (user_id, album_id, hearted_at) VALUES (1, 1, 1)")
+	}
+	if hasTable(t, db, "artist_hearts") {
+		exec("INSERT INTO artist_hearts (user_id, artist_id, hearted_at) VALUES (1, 1, 1)")
 	}
 }
 
-// hasPlays reports whether the database has reached the version with plays.
-func hasPlays(t *testing.T, db *sql.DB) bool {
+// hasTable reports whether the database has reached the version with table.
+func hasTable(t *testing.T, db *sql.DB, table string) bool {
 	t.Helper()
-	return rawInt(t, db, "SELECT count(*) FROM sqlite_schema WHERE name = 'plays'") == 1
+	return len(rawRows(t, db, "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?", table)) == 1
+}
+
+// markFacts lists, in public IDs, every mark a table holds, for the tables the
+// database has: a database seeded before them says the same on both sides.
+var markFacts = []struct{ table, query string }{ //nolint:gochecknoglobals // Read-only fixture shared by the tests below.
+	{"track_hearts", "SELECT 'heart', t.ulid, u.name, h.hearted_at FROM track_hearts h JOIN tracks t ON t.id = h.track_id JOIN users u ON u.id = h.user_id ORDER BY 2"},
+	{"album_hearts", "SELECT 'heart', a.ulid, u.name, h.hearted_at FROM album_hearts h JOIN albums a ON a.id = h.album_id JOIN users u ON u.id = h.user_id ORDER BY 2"},
+	{"artist_hearts", "SELECT 'heart', a.ulid, u.name, h.hearted_at FROM artist_hearts h JOIN artists a ON a.id = h.artist_id JOIN users u ON u.id = h.user_id ORDER BY 2"},
+	{"track_ratings", "SELECT 'stars', t.ulid, u.name, r.stars, r.rated_at FROM track_ratings r JOIN tracks t ON t.id = r.track_id JOIN users u ON u.id = r.user_id ORDER BY 2"},
 }
 
 // rawRows returns a query's rows, each row as one line.
@@ -211,9 +232,9 @@ func rawRows(t *testing.T, db *sql.DB, query string, args ...any) []string {
 }
 
 // libraryFacts is what must survive a migration, said in public IDs: row counts
-// per table, then who owns what, then which ULID each FTS word finds. Plays are
-// listed where the table exists, so a database seeded before it says the same on
-// both sides: nothing.
+// per table, then who owns what, then which ULID each FTS word finds. Plays and
+// marks are listed where their tables exist, so a database seeded before them
+// says the same on both sides: nothing.
 func libraryFacts(t *testing.T, db *sql.DB) []string {
 	t.Helper()
 	facts := make([]string, 0, 32)
@@ -228,9 +249,14 @@ func libraryFacts(t *testing.T, db *sql.DB) []string {
 	} {
 		facts = append(facts, rawRows(t, db, query)...)
 	}
-	if hasPlays(t, db) {
+	if hasTable(t, db, "plays") {
 		facts = append(facts, rawRows(t, db, `SELECT t.ulid, u.name, p.played_at, p.source, p.client_id
 			FROM plays p JOIN tracks t ON t.id = p.track_id JOIN users u ON u.id = p.user_id ORDER BY 1`)...)
+	}
+	for _, m := range markFacts {
+		if hasTable(t, db, m.table) {
+			facts = append(facts, rawRows(t, db, m.query)...)
+		}
 	}
 	for _, word := range seedWords {
 		hits := rawRows(t, db, `SELECT t.ulid FROM tracks_fts CROSS JOIN tracks t ON t.id = tracks_fts.rowid

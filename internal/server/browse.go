@@ -162,7 +162,8 @@ func (s *Server) getLibrary(w http.ResponseWriter, r *http.Request) {
 // getLibraryIndex lists every song, by artist and album. A client that goes away
 // is no fault: a canceled query reads as an interrupted one.
 func (s *Server) getLibraryIndex(w http.ResponseWriter, r *http.Request) {
-	index, err := s.library.LibraryIndex(r.Context())
+	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
+	index, err := s.library.LibraryIndex(r.Context(), user.ID)
 	if r.Context().Err() != nil {
 		return
 	}
