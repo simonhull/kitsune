@@ -55,21 +55,40 @@ type Server struct {
 	failures []int                     // Error codes or HTTP statuses for the next calls, in order.
 	ignore   map[string]bool           // Artists whose scrobbles are ignored.
 	next     int                       // Tokens handed out by the approval page.
+	down     bool                      // Every API call fails with 503, as an outage does.
+	mux      *http.ServeMux
 }
 
-// New starts a fake and stops it when the test ends.
+// New starts a fake on the loopback network and stops it when the test ends.
 func New(tb testing.TB) *Server {
 	tb.Helper()
+	s := NewInMemory()
+	s.Server = httptest.NewServer(s.mux)
+	tb.Cleanup(s.Close)
+	return s
+}
+
+// NewInMemory returns a fake that answers only through [Server.RoundTrip],
+// and so opens no listener: inside a [testing/synctest] bubble, one would
+// keep the bubble's clock from moving. Use [Server.InMemoryClient].
+func NewInMemory() *Server {
 	s := &Server{
 		tokens: map[string]lastfm.Session{}, sessions: map[string]string{},
 		issued: map[string]bool{}, ignore: map[string]bool{},
+		mux: http.NewServeMux(),
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /2.0/", s.api)
-	mux.HandleFunc("GET /api/auth/", s.auth)
-	s.Server = httptest.NewServer(mux)
-	tb.Cleanup(s.Close)
+	s.mux.HandleFunc("POST /2.0/", s.api)
+	s.mux.HandleFunc("GET /api/auth/", s.auth)
 	return s
+}
+
+// InMemoryClient returns a client that reaches the fake without the network.
+func (s *Server) InMemoryClient() *lastfm.Client {
+	c := lastfm.New(APIKey, Secret)
+	c.APIBase = "http://lastfm.test/2.0/"
+	c.AuthBase = "http://lastfm.test/api/auth/"
+	c.HTTP = &http.Client{Transport: s}
+	return c
 }
 
 // Client returns a client for the fake.
@@ -84,6 +103,21 @@ func (s *Server) Point(c *lastfm.Client) {
 	c.APIBase = s.URL + "/2.0/"
 	c.AuthBase = s.URL + "/api/auth/"
 	c.HTTP = s.Server.Client()
+}
+
+// RoundTrip answers req in memory, implementing [http.RoundTripper].
+func (s *Server) RoundTrip(req *http.Request) (*http.Response, error) {
+	rec := httptest.NewRecorder()
+	s.mux.ServeHTTP(rec, req)
+	return rec.Result(), nil
+}
+
+// SetDown makes every API call fail with 503 Service Unavailable while down
+// is true, as an outage does. Calls made meanwhile are not recorded.
+func (s *Server) SetDown(down bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.down = down
 }
 
 // Approve makes token exchangeable, once, for a session of user name with key.
@@ -201,6 +235,10 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 	params := r.PostForm
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.down {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
 	a := s.answer(params)
 	s.calls = append(s.calls, Call{Method: params.Get("method"), Params: params, OK: a.status == http.StatusOK && a.code == 0})
 	if a.body == nil {

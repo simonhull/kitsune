@@ -39,6 +39,7 @@ var (
 	keysAlbumArtistMBID = []string{"MUSICBRAINZ_ALBUMARTISTID", "MUSICBRAINZ ALBUM ARTIST ID"}
 	keysCompilation     = []string{"COMPILATION", "TCMP", "cpil"}
 	keysAlbumMBID       = []string{"MUSICBRAINZ_ALBUMID", "MUSICBRAINZ ALBUM ID"}
+	keysTrackMBID       = []string{"MUSICBRAINZ_TRACKID", "MUSICBRAINZ TRACK ID"}
 	keysGenre           = []string{"GENRE", "TCON", "\xA9gen"}
 	keysDate            = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day"}
 	keysOriginalDate    = []string{"TDOR", "TORY", "ORIGINALDATE"}
@@ -51,6 +52,16 @@ var (
 func GenreKeys() []string {
 	out := make([]string, len(keysGenre))
 	for i, k := range keysGenre {
+		out[i] = tagKey(k)
+	}
+	return out
+}
+
+// TrackMBIDKeys returns the raw tag keys that hold a track's MusicBrainz ID,
+// as the store keeps them.
+func TrackMBIDKeys() []string {
+	out := make([]string, len(keysTrackMBID))
+	for i, k := range keysTrackMBID {
 		out[i] = tagKey(k)
 	}
 	return out

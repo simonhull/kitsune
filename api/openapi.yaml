@@ -245,6 +245,182 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           $ref: "#/components/responses/Problem"
+  /me/lastfm:
+    get:
+      operationId: getLastfm
+      summary: Report the caller's Last.fm connection.
+      description: >-
+        Whether the server has a Last.fm key, whether the caller is connected,
+        what they send, and how the sending goes. The session key never leaves
+        the server.
+      responses:
+        "200":
+          description: The connection.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LastfmStatus" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    patch:
+      operationId: patchLastfm
+      summary: Change what the caller sends to Last.fm.
+      description: >-
+        A switch the body leaves out stays as it is. Turning one off sends
+        nothing new of its kind; what already waits still goes.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LastfmSwitches" }
+      responses:
+        "200":
+          description: The connection, changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LastfmStatus" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteLastfm
+      summary: Disconnect the caller's Last.fm account.
+      description: >-
+        Forgets the session and everything waiting to be sent. Answers the same
+        when there was nothing to disconnect.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      responses:
+        "204":
+          description: Disconnected.
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+  /me/lastfm/connect:
+    post:
+      operationId: connectLastfm
+      summary: Start connecting the caller's Last.fm account.
+      description: >-
+        Returns the last.fm page to send the browser to, and sets the
+        short-lived kitsune_lastfm_state cookie that the callback checks.
+        Last.fm sends the browser back to GET /lastfm/callback.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      responses:
+        "200":
+          description: Where to go.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LastfmConnect" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: The server has no Last.fm key.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /lastfm/callback:
+    get:
+      operationId: lastfmCallback
+      summary: Finish connecting a Last.fm account.
+      description: >-
+        Where last.fm sends the browser back. It needs the session cookie and
+        the state cookie from POST /me/lastfm/connect, which must match `state`
+        and belong to the same user. It always redirects to the You page, with
+        `lastfm` set to `connected`, `refused` or `failed`, and never answers
+        with a page.
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: false
+          description: Last.fm's one-time token; absent when the user said no.
+          schema: { type: string }
+        - name: state
+          in: query
+          required: false
+          schema: { type: string }
+        - name: kitsune_lastfm_state
+          in: cookie
+          required: false
+          description: The value POST /me/lastfm/connect set; it must match `state`.
+          schema: { type: string }
+      responses:
+        "303":
+          description: Back to the You page.
+          headers:
+            Location:
+              required: true
+              schema: { type: string }
+            Set-Cookie:
+              description: Clears the state cookie.
+              schema: { type: string }
+  /me/now-playing:
+    post:
+      operationId: postNowPlaying
+      summary: Say that the caller started a track.
+      description: >-
+        Tells Last.fm in the background, when the caller is connected and
+        shows what's playing. Best effort: nothing is retried, and it answers
+        the same whatever happens.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NowPlaying" }
+      responses:
+        "204":
+          description: Noted.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
   /artwork/{hash}:
     get:
       operationId: getArtwork
@@ -899,6 +1075,52 @@ components:
       required: [stars]
       properties:
         stars: { type: integer, minimum: 1, maximum: 5 }
+    LastfmStatus:
+      type: object
+      additionalProperties: false
+      required: [configured, connected, scrobble, nowPlaying, loves, state, waiting]
+      properties:
+        configured:
+          type: boolean
+          description: False when the server has no Last.fm key.
+        connected: { type: boolean }
+        name:
+          type: string
+          description: The Last.fm user name, when connected.
+        scrobble: { type: boolean }
+        nowPlaying: { type: boolean }
+        loves: { type: boolean }
+        state:
+          type: string
+          enum: [ok, waiting, reconnect]
+          description: >-
+            `waiting` while Last.fm isn't answering and the outbox waits for
+            `retryAt`; `reconnect` when Last.fm rejected the session.
+        waiting:
+          type: integer
+          minimum: 0
+          description: Plays the server holds for Last.fm.
+        lastSentAt: { type: string, format: date-time }
+        retryAt: { type: string, format: date-time }
+    LastfmSwitches:
+      type: object
+      additionalProperties: false
+      properties:
+        scrobble: { type: boolean }
+        nowPlaying: { type: boolean }
+        loves: { type: boolean }
+    LastfmConnect:
+      type: object
+      additionalProperties: false
+      required: [url]
+      properties:
+        url: { type: string, format: uri }
+    NowPlaying:
+      type: object
+      additionalProperties: false
+      required: [trackId]
+      properties:
+        trackId: { type: string, minLength: 1 }
     LoginRequest:
       type: object
       additionalProperties: false

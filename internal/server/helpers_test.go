@@ -20,8 +20,10 @@ import (
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
+	"github.com/simonhull/kitsune/internal/lastfm/lastfmtest"
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/openapitest"
+	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -96,6 +98,7 @@ type testServerOptions struct {
 	Write         library.WriteFunc        // Nil means real writes.
 	StartScan     func(library.Mode) error // Nil means claim and run on the scanner.
 	Web           fs.FS                    // Nil means no web client.
+	Lastfm        *lastfmtest.Server       // Nil means Last.fm is not set up; else the sender runs against it.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -154,9 +157,20 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		}
 	}
 	logs := &syncBuffer{}
+	logger := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: o.LogLevel}))
+	var sender *scrobbler.Scrobbler
+	if o.Lastfm != nil {
+		sender = scrobbler.New(st, scrobbler.Options{
+			Client: o.Lastfm.Client(), MBIDKeys: library.TrackMBIDKeys(), Logger: logger, Now: clock.Now,
+		})
+		ctx, cancel := context.WithCancel(context.WithoutCancel(tb.Context()))
+		var sending sync.WaitGroup
+		sending.Go(func() { sender.Run(ctx) })
+		tb.Cleanup(func() { cancel(); sending.Wait() }) // Before the store closes.
+	}
 	h := New(Config{
 		Auth:          svc,
-		Logger:        slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: o.LogLevel})),
+		Logger:        logger,
 		Now:           clock.Now,
 		ClientIP:      testClientIP,
 		SecureCookies: o.SecureCookies,
@@ -169,6 +183,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		Scanner:       scanner,
 		StartScan:     o.StartScan,
 		Web:           o.Web,
+		Lastfm:        sender,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)

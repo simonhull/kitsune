@@ -38,6 +38,9 @@ func (s *Server) changeHeart(w http.ResponseWriter, r *http.Request, change hear
 	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
 	err := change(r.Context(), user.ID, kind, r.PathValue("id"))
+	if err == nil && kind == store.KindTrack {
+		s.lastfm.Poke() // A love or unlove may be waiting.
+	}
 	s.answerMark(w, r, err, "no such "+kind.String(), "change heart")
 }
 
