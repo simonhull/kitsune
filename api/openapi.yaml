@@ -61,6 +61,65 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /setup:
+    get:
+      operationId: getSetup
+      summary: Say whether the first account is still to be made.
+      description: >-
+        `needed` is true while the server has no accounts, and false for good
+        once one exists. `codeRequired` is true while needed when the caller's
+        address is outside the server's network (loopback, private ranges,
+        link-local and 100.64.0.0/10), read through trusted proxies only.
+      security: []
+      responses:
+        "200":
+          description: Whether setup is needed, and whether it needs the code.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SetupStatus" }
+    post:
+      operationId: setup
+      summary: Make the first account, an administrator, and sign in as it.
+      description: >-
+        Works only while the server has no accounts; of two racing requests
+        exactly one succeeds. From outside the server's network it needs the
+        setup code the server logged at startup. Wrong codes count against the
+        login rate limit per client IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetupRequest" }
+      responses:
+        "200":
+          description: >-
+            The new administrator's session, set as the kitsune_session cookie.
+            The body carries no token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: The setup code is missing or wrong.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: An account exists, so setup is done.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: Too many wrong setup codes.
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /auth/logout:
     post:
       operationId: logout
@@ -1164,6 +1223,23 @@ components:
         name: { type: string, minLength: 1 }
         password: { type: string, minLength: 1 }
         cookie: { type: boolean, default: false }
+    SetupStatus:
+      type: object
+      additionalProperties: false
+      required: [needed, codeRequired]
+      properties:
+        needed: { type: boolean }
+        codeRequired: { type: boolean }
+    SetupRequest:
+      type: object
+      additionalProperties: false
+      required: [name, password]
+      properties:
+        name: { type: string, minLength: 1 }
+        password: { type: string, minLength: 1 }
+        code:
+          type: string
+          description: The setup code from the server's log; needed only from outside its network.
     Session:
       type: object
       additionalProperties: false

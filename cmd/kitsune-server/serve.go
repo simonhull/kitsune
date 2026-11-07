@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -53,28 +52,6 @@ const (
 // not started, or shutdown has begun.
 var errStopping = errors.New("the server is stopping")
 
-// plainShellWord matches a string that a shell reads as one word.
-var plainShellWord = regexp.MustCompile(`^[A-Za-z0-9_./:@%+=,-]+$`)
-
-// shellQuote quotes s for a POSIX shell, leaving plain words alone.
-func shellQuote(s string) string {
-	if plainShellWord.MatchString(s) {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-// noUsersError means the database has no users, so nobody could sign in.
-type noUsersError struct{ configPath string }
-
-func (e *noUsersError) Error() string {
-	cmd := "kitsune-server users add"
-	if e.configPath != "" {
-		cmd += " -config " + shellQuote(e.configPath)
-	}
-	return "no users yet; create an administrator first:\n  " + cmd + " -admin NAME"
-}
-
 // newLogger returns a JSON logger on w at the given level.
 func newLogger(w io.Writer, level slog.Level) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level}))
@@ -104,7 +81,7 @@ func runServe(args []string, env config.Env, stderr io.Writer) error {
 	context.AfterFunc(ctx, stop)
 
 	lastfmURL, _ := env(lastfmURLEnv)
-	return serveConfig(ctx, &cfg, launch{configPath: *path, lastfmURL: lastfmURL}, log)
+	return serveConfig(ctx, &cfg, launch{lastfmURL: lastfmURL}, log)
 }
 
 // lastfmURLEnv names the root of a fake Last.fm to talk to in place of the
@@ -115,11 +92,10 @@ const lastfmURLEnv = "KITSUNE_LASTFM_URL"
 // errBadLastfmURL means KITSUNE_LASTFM_URL is not an absolute http URL.
 var errBadLastfmURL = errors.New(lastfmURLEnv + " must be an absolute http or https URL")
 
-// launch is what serve takes besides the config: where the config came from,
-// and the fake Last.fm to use, if any.
+// launch is what serve takes besides the config: the fake Last.fm to use, if
+// any.
 type launch struct {
-	configPath string
-	lastfmURL  string // "" means the real Last.fm.
+	lastfmURL string // "" means the real Last.fm.
 }
 
 // serveConfig opens the app, listens and serves until ctx ends.
@@ -153,6 +129,10 @@ type app struct {
 	drain     time.Duration // How long shutdown waits for in-flight requests.
 	basePath  string
 	dataDir   string
+	baseURL   string
+	// setupCode makes the first account from outside the server's network.
+	// It is "" when the server started with accounts.
+	setupCode string
 
 	// Background work outlives requests. Shutdown cancels it and waits, so a
 	// pending scan batch is written before the store closes.
@@ -161,20 +141,16 @@ type app struct {
 	workCtx context.Context //nolint:containedctx // The work's lifetime, not a request's. Nil unless serving.
 }
 
-// openApp opens the database and builds the HTTP server. It refuses to start
-// when there are no users, without creating anything.
+// openApp creates data_dir if needed, opens and migrates the database in it,
+// and builds the HTTP server.
 func openApp(ctx context.Context, cfg *config.Config, l launch, log *slog.Logger) (*app, error) {
-	noUsers := &noUsersError{configPath: l.configPath}
-	dbPath := filepath.Join(cfg.Storage.DataDir, store.FileName)
-	if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
-		return nil, noUsers
+	if err := os.MkdirAll(cfg.Storage.DataDir, dataDirMode); err != nil {
+		return nil, fmt.Errorf("create data_dir: %w", err)
 	}
+	dbPath := filepath.Join(cfg.Storage.DataDir, store.FileName)
 	st, err := store.Open(ctx, dbPath, store.Options{Migrate: true, Logger: log})
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
-	}
-	if err = requireUsers(ctx, st, noUsers); err != nil {
-		return nil, errors.Join(err, st.Close())
 	}
 	a, err := buildApp(ctx, cfg, l.lastfmURL, st, log)
 	if err != nil {
@@ -183,16 +159,17 @@ func openApp(ctx context.Context, cfg *config.Config, l launch, log *slog.Logger
 	return a, nil
 }
 
-// requireUsers returns noUsers when st has no users.
-func requireUsers(ctx context.Context, st *store.Store, noUsers *noUsersError) error {
+// firstRunCode returns a fresh setup code when st has no accounts, so the first
+// can be made in a browser, and "" when it has some.
+func firstRunCode(ctx context.Context, st *store.Store) (string, error) {
 	n, err := st.CountUsers(ctx)
 	if err != nil {
-		return fmt.Errorf("count users: %w", err)
+		return "", fmt.Errorf("count users: %w", err)
 	}
-	if n == 0 {
-		return noUsers
+	if n > 0 {
+		return "", nil
 	}
-	return nil
+	return newSetupCode(), nil
 }
 
 // buildApp wires the auth service and the HTTP server over st. ctx ends tag edits:
@@ -216,23 +193,22 @@ func buildApp(ctx context.Context, cfg *config.Config, lastfmURL string, st *sto
 	if err = genres.Refresh(ctx); err != nil {
 		return nil, fmt.Errorf("read genres: %w", err)
 	}
+	setupCode, err := firstRunCode(ctx, st)
+	if err != nil {
+		return nil, err
+	}
 	a := &app{
-		log:   log,
-		store: st,
-		auth:  svc,
-		scanner: library.NewScanner(st, library.Options{
-			Roots:        cfg.Library.Roots,
-			MissingGrace: cfg.Library.MissingGrace,
-			Logger:       log,
-			Artwork:      covers,
-			TagWrites:    cfg.Library.TagWrites,
-			Genres:       genres,
-		}),
+		log:       log,
+		store:     st,
+		auth:      svc,
+		scanner:   newScanner(cfg, st, covers, genres, log),
 		lastfm:    sender,
 		quickScan: cfg.Library.QuickScan,
 		drain:     shutdownTimeout,
 		basePath:  cfg.Server.BasePath(),
 		dataDir:   cfg.Storage.DataDir,
+		baseURL:   cfg.Server.BaseURL,
+		setupCode: setupCode,
 	}
 	handler := server.New(server.Config{
 		Auth:          svc,
@@ -252,12 +228,25 @@ func buildApp(ctx context.Context, cfg *config.Config, lastfmURL string, st *sto
 		Web:           webClient(cfg, log),
 		Lastfm:        a.lastfm,
 		PublicURL:     cfg.Server.BaseURL,
+		SetupCode:     setupCode,
 	})
 	a.http = newHTTPServer(handler, log)
 	if cfg.Server.BaseURL != "" && len(trusted) == 0 {
 		log.Warn("base_url is set but trusted_proxies is empty; every client will share the proxy's address for login rate limits")
 	}
 	return a, nil
+}
+
+// newScanner returns the library scanner over st that cfg sets up.
+func newScanner(cfg *config.Config, st *store.Store, covers *artwork.Cache, genres *library.Genres, log *slog.Logger) *library.Scanner {
+	return library.NewScanner(st, library.Options{
+		Roots:        cfg.Library.Roots,
+		MissingGrace: cfg.Library.MissingGrace,
+		Logger:       log,
+		Artwork:      covers,
+		TagWrites:    cfg.Library.TagWrites,
+		Genres:       genres,
+	})
 }
 
 // newScrobbler returns the sender for st, over the Last.fm client cfg sets up.
@@ -360,6 +349,12 @@ func (a *app) close() error {
 func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.log.InfoContext(ctx, "listening",
 		"addr", ln.Addr().String(), "version", version(), "basePath", a.basePath, "dataDir", a.dataDir)
+	if a.setupCode != "" {
+		// The one secret the server ever logs, once: whoever reads the log runs
+		// the server, and the code dies with the first account.
+		a.log.WarnContext(ctx, "no accounts yet: open Kitsune in a browser to make the first one",
+			"setupCode", a.setupCode, "url", setupURL(a.baseURL, ln.Addr()))
+	}
 
 	bgCtx, cancelBackground := context.WithCancel(ctx)
 	a.workMu.Lock()

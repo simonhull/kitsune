@@ -33,8 +33,9 @@
 	const routeId = $derived(page.route.id);
 	const onNowPlaying = $derived(routeId === '/now-playing');
 	const onAlbum = $derived(routeId === '/album/[id]');
-	const onLogin = $derived(routeId === '/login');
 	const nav = $derived(navOf(routeId));
+	/** At a door, signing in or making the first account: nothing of the app shows there. */
+	const atDoor = $derived(nav.look === 'door');
 
 	// The stage keeps its last album so it has something to fade away. It's derived, not an
 	// effect: the stage must exist the moment the route changes, for the morph to pick it up.
@@ -79,7 +80,7 @@
 	}
 
 	function onKeyDown(event: KeyboardEvent): void {
-		if (togglesOnSpace(event) && library.playing !== null && !onLogin) {
+		if (togglesOnSpace(event) && library.playing !== null && !atDoor) {
 			event.preventDefault();
 			player.toggle();
 		}
@@ -137,7 +138,7 @@
 		attention={library.lastfm?.state === 'reconnect'}
 	/>
 	<main>
-		{#if library.down && library.facts === null && !onLogin}
+		{#if library.down && library.facts === null && !atDoor}
 			<p class="down" role="status">The server isn't answering. Trying again…</p>
 		{:else}
 			{@render children()}
@@ -146,7 +147,7 @@
 	<p class="visually-hidden" role="status">{markTrouble}</p>
 	<div class="ghost-layer" aria-hidden="true"></div>
 	{#if palette !== null}<Bloom {palette} />{/if}
-	{#if library.playing !== null && !onLogin}
+	{#if library.playing !== null && !atDoor}
 		<PlayerIsland playing={library.playing} expanded={onNowPlaying} />
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>

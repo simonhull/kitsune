@@ -52,12 +52,23 @@ gives a server with the API alone, for working on the client under `mise run web
 
 ## Running
 
-Create an administrator first, then start the server:
+Start the server, then open it in a browser:
 
-    kitsune-server users add -admin NAME
     kitsune-server serve
 
-`serve` refuses to start while the database has no users, and prints the command above.
+On the first start there are no accounts yet. The server logs a warning with a setup code and its
+address, and every page of the web client goes to "It's yours.", where you make the first account:
+an administrator, signed in at once. Once any account exists the page is closed for good.
+
+From your own network (loopback, the private ranges, link-local and `100.64.0.0/10`, which is
+Tailscale's) the page asks for nothing more. From anywhere else it also asks for the setup code
+from the log. The code is held in memory only, changes at every start, and stops working once an
+account exists. Five wrong codes make the page wait, as sign-in does. Behind a reverse proxy, the
+client's address counts only through the proxies in `server.trusted_proxies`; any other proxy is
+the client, and its address decides.
+
+`kitsune-server users add -admin NAME` makes an account from the command line instead, for scripts
+and recovery. It works while the server runs, and closes the setup page too.
 
 The web client is at the root of `server.listen`. It only runs at the root of a host, so with a
 path in `server.base_url` the server gives the API alone and says so at startup.
@@ -77,8 +88,17 @@ unreadable or suddenly empty is skipped, so an unmounted disk never deletes anyt
     printf '[library]\nroots = ["/music"]\n' > server.toml
     mkdir data
     export KITSUNE_MUSIC=/path/to/music
-    docker compose run --rm kitsune users add -admin NAME
     docker compose up -d
+
+Then open `http://<host>:4533` and make the first account. From outside your network, the setup
+code is in the log: `docker compose logs kitsune`.
+
+A known limit: when Docker's userland proxy forwards a connection, as it can for a published port,
+the server sees the bridge's address, which is private, so everyone counts as your network and no
+code is asked for. That is fine for a server reachable only on a home network or a Tailnet. Before
+exposing a fresh server to the internet, make the account first (open the page from home, or
+`docker compose run --rm kitsune users add -admin NAME`), or put it behind a proxy listed in
+`server.trusted_proxies`.
 
 `KITSUNE_UID` and `KITSUNE_GID` name the user it runs as, 1000 by default, which must own `data`.
 `KITSUNE_PORT` is the host port, 4533 by default, which is also Navidrome's: choose another to run
@@ -106,7 +126,7 @@ stream a client stopped reading, and exits cleanly; a second signal quits at onc
 
 ### Browsing the library
 
-Every route is under `/api/v1` and, except login, needs a session. `api/openapi.yaml` is the contract.
+Every route is under `/api/v1` and, except login and setup, needs a session. `api/openapi.yaml` is the contract.
 
 - `GET /albums` lists albums that have a live track, a page at a time: `sort=added` (the default,
   newest first) or `sort=name` (ignoring case), `limit` 1 to 200 (default 60), and `cursor`, the

@@ -402,6 +402,10 @@ export interface LibrarySource {
 	setStars(trackId: string, stars: number | null): Promise<void>;
 	/** Rejects with {@link LoginError} when the session wasn't granted. */
 	login(name: string, password: string): Promise<User>;
+	/** Whether the first account is still to be made. Asks nobody to sign in. */
+	setupStatus(): Promise<SetupStatus>;
+	/** Makes the first account, an administrator, and signs in as it. Rejects with {@link SetupError}. */
+	setup(name: string, password: string, code?: string): Promise<User>;
 	/** Ends the session. */
 	logout(): Promise<void>;
 	/** Counts the caller's plays, hearts and rated tracks. */
@@ -488,6 +492,38 @@ export class LoginError extends Error {
 
 	constructor(failure: LoginFailure) {
 		super(`login failed: ${failure.kind}`);
+		this.failure = failure;
+	}
+}
+
+/** What `GET /setup` says. */
+export interface SetupStatus {
+	/** The server has no accounts yet. False for good once it has one. */
+	needed: boolean;
+	/** Making it needs the setup code from the server's log: this browser is outside its network. */
+	codeRequired: boolean;
+}
+
+export type SetupFailure =
+	/** An account exists: someone finished first, or setup was never open. */
+	| { kind: 'done' }
+	/** The setup code was missing or wrong. */
+	| { kind: 'code' }
+	/** Too short or too long, as the server measures it. */
+	| { kind: 'password' }
+	/** A name the server won't take. */
+	| { kind: 'name' }
+	/** Too many wrong codes: the server said when to come back. */
+	| { kind: 'throttled'; retryAfterSeconds: number }
+	/** A server error, or no answer at all. */
+	| { kind: 'unavailable' };
+
+export class SetupError extends Error {
+	override name = 'SetupError';
+	readonly failure: SetupFailure;
+
+	constructor(failure: SetupFailure) {
+		super(`setup failed: ${failure.kind}`);
 		this.failure = failure;
 	}
 }

@@ -101,6 +101,56 @@ func TestCreateUserValidates(t *testing.T) {
 	}
 }
 
+func TestCreateFirstAdminValidates(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	if _, err := e.svc.CreateFirstAdmin(t.Context(), " ", password); !errors.Is(err, auth.ErrInvalidName) {
+		t.Errorf("bad name: err = %v", err)
+	}
+	if _, err := e.svc.CreateFirstAdmin(t.Context(), simon, "short"); !errors.Is(err, auth.ErrPasswordTooShort) {
+		t.Errorf("short password: err = %v", err)
+	}
+	if n, err := e.st.CountUsers(t.Context()); err != nil || n != 0 {
+		t.Errorf("CountUsers = %d, %v; want 0", n, err)
+	}
+}
+
+func TestCreateFirstAdmin(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	u, err := e.svc.CreateFirstAdmin(t.Context(), simon, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Role != store.RoleAdmin || u.Name != simon || u.PasswordHash != "" {
+		t.Errorf("user = %+v, want admin simon with no hash", u)
+	}
+	stored, err := e.st.UserByName(t.Context(), simon)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(stored.PasswordHash, "$argon2id$") {
+		t.Error("stored hash has the wrong shape")
+	}
+	if _, err = e.svc.Login(t.Context(), simon, password, "test/1"); err != nil {
+		t.Errorf("login as the first admin: %v", err)
+	}
+	if _, err = e.svc.CreateFirstAdmin(t.Context(), "other", password); !errors.Is(err, auth.ErrSetupDone) {
+		t.Errorf("second admin: err = %v, want ErrSetupDone", err)
+	}
+}
+
+func TestCreateFirstAdminAfterCreateUser(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	if _, err := e.svc.CreateUser(t.Context(), simon, password, store.RoleUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.CreateFirstAdmin(t.Context(), "other", password); !errors.Is(err, auth.ErrSetupDone) {
+		t.Errorf("err = %v, want ErrSetupDone", err)
+	}
+}
+
 func TestLoginAndAuthenticate(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)

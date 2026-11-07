@@ -6,6 +6,7 @@ import {
 	EditError,
 	LoginError,
 	ServerError,
+	SetupError,
 	UnauthorizedError,
 	type EditFailure
 } from './source';
@@ -130,6 +131,63 @@ describe('ApiSource', () => {
 		const error = await source.login('simon', 'pw').catch((caught: unknown) => caught);
 		expect(error).toBeInstanceOf(LoginError);
 		expect((error as LoginError).failure).toEqual(failure);
+		expect(onUnauthorized).not.toHaveBeenCalled();
+	});
+
+	it('asks whether setup is needed, with no session', async () => {
+		const { send, source } = fake(json(200, { needed: true, codeRequired: false }));
+		await expect(source.setupStatus()).resolves.toEqual({ needed: true, codeRequired: false });
+		expect(send.mock.calls.at(0)?.at(0)).toBe('/api/v1/setup');
+	});
+
+	it('makes the first account, sending the code only when there is one', async () => {
+		const { send, source } = fake(
+			json(200, { user: { name: 'simon' } }),
+			json(200, { user: { name: 'simon' } })
+		);
+		await expect(source.setup('simon', 'pw', 'k7m2')).resolves.toEqual({ name: 'simon' });
+		await source.setup('simon', 'pw');
+		const bodies = send.mock.calls.map((call) => JSON.parse(String(call[1]?.body)) as unknown);
+		expect(bodies).toEqual([
+			{ name: 'simon', password: 'pw', code: 'k7m2' },
+			{ name: 'simon', password: 'pw' }
+		]);
+		expect(init(send)).toMatchObject({
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', 'X-Kitsune-Request': '1' }
+		});
+	});
+
+	it.each([
+		['a wrong code', json(403), { kind: 'code' }],
+		['an account that exists', json(409), { kind: 'done' }],
+		[
+			'too many wrong codes',
+			json(429, {}, { 'Retry-After': '30' }),
+			{ kind: 'throttled', retryAfterSeconds: 30 }
+		],
+		[
+			'a bad name',
+			json(400, { detail: 'invalid user name: no leading or trailing spaces' }),
+			{ kind: 'name' }
+		],
+		[
+			'a long password',
+			json(400, { detail: 'password too long: use at most 1024 bytes' }),
+			{ kind: 'password' }
+		],
+		[
+			'a malformed request',
+			json(400, { detail: 'request body must be a JSON SetupRequest' }),
+			{ kind: 'unavailable' }
+		],
+		['a server error', json(500), { kind: 'unavailable' }],
+		['no answer', new TypeError('offline'), { kind: 'unavailable' }]
+	])('turns %s into a setup failure, without leaving for the door', async (_, answer, failure) => {
+		const { onUnauthorized, source } = fake(answer);
+		const error = await source.setup('simon', 'pw').catch((caught: unknown) => caught);
+		expect(error).toBeInstanceOf(SetupError);
+		expect((error as SetupError).failure).toEqual(failure);
 		expect(onUnauthorized).not.toHaveBeenCalled();
 	});
 
