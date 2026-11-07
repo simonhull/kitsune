@@ -17,15 +17,18 @@ import {
 	type Row,
 	type RowMetrics
 } from './libraryRows.ts';
+import { columnsFrom, coverFor, largeFrom, stepFor, type Step } from './columns.ts';
 import { createTapper } from './libraryTap.ts';
 
 /** Where the columns stack. The page's styles say the same. */
 const stackedQuery = '(max-width: 1024px)';
 /** Where song rows have columns, and a header over them. Narrower, they're two lines. */
-const columnsQuery = '(min-width: 700px)';
+const columnsQuery = `(min-width: ${String(columnsFrom)}px)`;
+/** Where everything takes one step up. */
+const largeQuery = `(min-width: ${String(largeFrom)}px)`;
 
 /** How a width lays out: its row heights, and two lines on the screen. */
-interface Frame {
+export interface Frame {
 	metrics: RowMetrics;
 	/** How far down the page the list starts. */
 	top: number;
@@ -33,48 +36,51 @@ interface Frame {
 	line: number;
 }
 
-const wide: Frame = {
-	metrics: {
-		song: 44,
-		disc: 32,
-		albumHead: 0,
-		// The cover, its title and its facts.
-		albumMin: 264,
-		artistHead: 0,
-		// Where the name pins, 90 down under the filters, then its three lines and its facts.
-		artistMin: 382,
-		albumGap: 40,
-		artistGap: 72
-	},
-	// Under the columns' header, which stands at 96 and is 40 tall.
-	top: 152,
-	line: 152
-};
-
-/** The header's height: in a stacked layout it's part of the artist's head. */
+/** What stands under a cover beside its songs: its title and its facts, at each step. */
+const coverNames = { columns: 56, large: 72 };
+/** A stacked album's head: its cover, and the room under it. */
+const stackedHead = 112 + 20;
+/** The columns' header, in a stacked layout part of the artist's head. */
 const headerHeight = 40;
 
-const stacked: Frame = {
-	metrics: {
-		song: 48,
-		disc: 32,
-		albumHead: 72,
-		albumMin: 0,
-		artistHead: 80,
-		artistMin: 0,
-		albumGap: 20,
-		artistGap: 28
-	},
-	top: 128,
-	line: 208
-};
-
-/** A stacked frame whose artist heads carry the columns' header under the name. */
-function withHeader({ metrics, top, line }: Frame): Frame {
+/**
+ * The frame for a width. Beside the names, the songs start under the columns' header: at 152 under
+ * one standing at 96, 40 tall, and at 200 a step up, under one at 128, 50 tall. Stacked, an album
+ * is headed by its cover, and its artist's head carries the header when there are columns.
+ */
+export function frameFor(step: Step, stacked: boolean, cover: number): Frame {
+	if (stacked) {
+		const columns = step !== 'phone';
+		return {
+			metrics: {
+				song: columns ? 44 : 58,
+				disc: 32,
+				albumHead: stackedHead,
+				albumMin: 0,
+				artistHead: columns ? 80 + headerHeight : 80,
+				artistMin: 0,
+				albumGap: 24,
+				artistGap: 28
+			},
+			top: 128,
+			line: columns ? 208 + headerHeight : 208
+		};
+	}
+	const large = step === 'large';
 	return {
-		metrics: { ...metrics, artistHead: metrics.artistHead + headerHeight },
-		top,
-		line: line + headerHeight
+		metrics: {
+			song: large ? 56 : 44,
+			disc: large ? 40 : 32,
+			albumHead: 0,
+			albumMin: cover + (large ? coverNames.large : coverNames.columns),
+			artistHead: 0,
+			// Where the name pins, under the filters, then its three lines and its facts.
+			artistMin: large ? 460 : 382,
+			albumGap: large ? 56 : 40,
+			artistGap: large ? 96 : 72
+		},
+		top: large ? 200 : 152,
+		line: large ? 200 : 152
 	};
 }
 
@@ -112,8 +118,13 @@ interface Anchor {
  */
 class LibraryView {
 	stacked = $state(typeof matchMedia === 'undefined' ? false : matchMedia(stackedQuery).matches);
+	/** How wide the window is, to the pixel: the covers grow with it, between the steps. */
+	width = $state(typeof innerWidth === 'undefined' ? 1920 : innerWidth);
+	readonly step: Step = $derived(stepFor(this.width));
 	/** Whether rows have columns: from 700 wide. */
-	columns = $state(typeof matchMedia === 'undefined' ? true : matchMedia(columnsQuery).matches);
+	readonly columns = $derived(this.step !== 'phone');
+	/** How big a cover is, in pixels. */
+	readonly cover = $derived(coverFor(this.width, this.stacked));
 	first = $state(0);
 	last = $state(-1);
 	/** The artist pinned on screen, by index. */
@@ -125,9 +136,7 @@ class LibraryView {
 	/** What the list shows. It's kept here so it's still chosen on coming back. */
 	filter = $state<LibraryFilter>('everything');
 
-	readonly frame: Frame = $derived(
-		!this.stacked ? wide : this.columns ? withHeader(stacked) : stacked
-	);
+	readonly frame: Frame = $derived(frameFor(this.step, this.stacked, this.cover));
 	readonly #index = $derived(library.index.kind === 'ready' ? library.index.value : noLibrary);
 	/** Moves on to look at the marks again: a filter reads them once, and a press doesn't move rows. */
 	#looked = $state(0);
@@ -182,10 +191,10 @@ class LibraryView {
 
 	/** Follows the width. Returns the cleanup. */
 	watch(): () => void {
-		const queries = [matchMedia(stackedQuery), matchMedia(columnsQuery)];
+		const queries = [matchMedia(stackedQuery), matchMedia(columnsQuery), matchMedia(largeQuery)];
 		const read = (): void => {
 			this.stacked = queries[0]?.matches ?? false;
-			this.columns = queries[1]?.matches ?? true;
+			this.width = innerWidth;
 		};
 		read();
 		for (const query of queries) {
@@ -200,6 +209,10 @@ class LibraryView {
 
 	/** Reads the screen. A scroll settling a landing mustn't move the place: only `keep` does that. */
 	track(scroll: number, height: number, keep: boolean): void {
+		// A resize comes through here: the covers follow the width, a step only at its edge.
+		if (typeof innerWidth !== 'undefined' && innerWidth !== this.width) {
+			this.width = innerWidth;
+		}
 		const { layout, frame } = this;
 		if (layout.rows.length === 0) {
 			return;

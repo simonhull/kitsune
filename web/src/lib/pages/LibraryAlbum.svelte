@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
+	import { paletteFor } from '#lib/cover/palette.ts';
 	import { albumStars } from '#lib/library/albumStars.ts';
 	import { albumHoldings, trackLabel } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
@@ -9,7 +10,7 @@
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsShown from '#lib/shell/StarsShown.svelte';
-	import { cellOf, timeOf } from './columns.ts';
+	import { cellOf, fitLine, phoneLine, timeOf } from './columns.ts';
 	import type { AlbumBlock, Row } from './libraryRows.ts';
 	import { selection } from './selection.svelte.ts';
 
@@ -26,6 +27,12 @@
 		head: number;
 		/** The cover here is a small one, above the songs. */
 		stacked: boolean;
+		/** Under 700: two lines a song, and no columns. */
+		phone: boolean;
+		/** How big the cover is drawn, in pixels. */
+		cover: number;
+		/** How many characters a phone's second line has room for. */
+		lineChars: number;
 		/** The columns that fit, and the grid they make. */
 		shown: readonly ColumnId[];
 		grid: string;
@@ -53,6 +60,9 @@
 		rows,
 		head,
 		stacked,
+		phone,
+		cover,
+		lineChars,
 		shown,
 		grid,
 		pref,
@@ -109,6 +119,38 @@
 	const album = $derived(block.album);
 	const hearted = $derived(library.marks.hearted('albums', album.id));
 	const stars = $derived(albumStars(album.tracks, library.marks));
+	/**
+	 * The cover's glow, in its own color: the accent, or, for a cover with no color of its own,
+	 * its ground lifted, so it glows its own way and not the frame's amber.
+	 */
+	const glow = $derived.by(() => {
+		const palette = paletteFor(album);
+		const tinted = album.artwork === undefined || album.artwork.accent !== '#f28c28';
+		return tinted
+			? `color-mix(in srgb, ${palette.accent} 45%, transparent)`
+			: `color-mix(in srgb, ${palette.wash} 22%, transparent)`;
+	});
+	/** What says the same for every song of the album: a phone's line leaves it to the heading. */
+	const shared = $derived.by(() => {
+		if (!phone) {
+			return new Set<string>();
+		}
+		const same = pref.order.filter((id) => {
+			const texts = album.tracks.map((track) => {
+				const cell = cellOf(id, {
+					track,
+					album,
+					stars: null,
+					hearted: false,
+					artistWhenDifferent: pref.artistWhenDifferent,
+					now
+				});
+				return cell.look === 'name' || cell.look === 'fact' ? cell.text : '';
+			});
+			return texts.every((text) => text === texts[0]);
+		});
+		return new Set<string>(same);
+	});
 </script>
 
 <section
@@ -125,8 +167,18 @@
 			data-morph-pinned={stacked ? undefined : ''}
 		>
 			<a class="art" href={resolve('/album/[id]', { id: album.id })} aria-label={album.title}>
-				<span class="square" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}>
-					<Cover albumId={album.id} entry={album} place={stacked ? 'small' : 'card'} lazy />
+				<span
+					class="square"
+					style:--glow={glow}
+					use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
+				>
+					<Cover
+						albumId={album.id}
+						entry={album}
+						place={stacked ? 'small' : 'card'}
+						box={cover}
+						lazy
+					/>
 				</span>
 			</a>
 			<div class="names">
@@ -188,6 +240,7 @@
 					}}
 					<div
 						class="row"
+						class:two={phone}
 						class:cued
 						class:picked
 						class:picking={selection.any}
@@ -196,7 +249,7 @@
 						data-track={track.id}
 						style:top={at}
 						style:height={`${String(row.height)}px`}
-						style:grid-template-columns={grid}
+						style:grid-template-columns={phone ? undefined : grid}
 						oncontextmenu={(event) => {
 							event.preventDefault();
 							openMenu(track.id, event.clientX, event.clientY);
@@ -239,9 +292,24 @@
 									{trackLabel(track, false)}
 								{/if}
 							</span>
-							<span class="name">{track.title}</span>
+							{#if phone}
+								<span class="lines">
+									<span class="name">{track.title}</span>
+									<span class="line"
+										><span class="parts"
+											>{fitLine(
+												phoneLine(pref.order, context, (id) => shared.has(id)),
+												timeOf(track),
+												lineChars
+											).join(' · ')}</span
+										><span class="line-time">{timeOf(track)}</span></span
+									>
+								</span>
+							{:else}
+								<span class="name">{track.title}</span>
+							{/if}
 						</button>
-						{#each shown as id (id)}
+						{#each phone ? [] : shown as id (id)}
 							{@const cell = cellOf(id, context)}
 							{#if cell.look === 'stars'}
 								<span class="rate" role="group" aria-label={`Rate ${track.title}`}>
@@ -267,7 +335,7 @@
 								>
 							{/if}
 						{/each}
-						<span class="mono time">{timeOf(track)}</span>
+						{#if !phone}<span class="mono time">{timeOf(track)}</span>{/if}
 						<button
 							type="button"
 							class="more"
@@ -301,7 +369,7 @@
 		top: 0;
 		bottom: 0;
 		left: 0;
-		width: 208px;
+		width: var(--cover, 208px);
 	}
 
 	/* Stuck under the header while the songs beside it scroll, and gone with the last of them. */
@@ -314,13 +382,18 @@
 		display: block;
 	}
 
+	/* Its own color glows under it: the boards' 0 32 80 -28 at 256, growing with the cover. */
 	.square {
 		position: relative;
 		display: block;
-		width: 208px;
-		height: 208px;
-		border-radius: var(--radius-20);
+		width: var(--cover, 208px);
+		height: var(--cover, 208px);
+		border-radius: clamp(18px, calc(var(--cover, 208px) * 0.085), 32px);
 		overflow: hidden;
+		box-shadow:
+			0 calc(var(--cover, 208px) * 0.125) calc(var(--cover, 208px) * 0.31)
+				calc(var(--cover, 208px) * -0.11) var(--glow, transparent),
+			0 0 0 1px rgb(255 255 255 / 6%);
 	}
 
 	.names {
@@ -379,7 +452,7 @@
 	.songs {
 		position: absolute;
 		bottom: 0;
-		left: 240px;
+		left: calc(var(--cover, 208px) + var(--cover-gap, 32px));
 		right: 0;
 	}
 
@@ -596,31 +669,103 @@
 		color: rgb(26 15 5 / 30%);
 	}
 
+	/* Two lines a song: the title, then a line of the person's columns, and its length. */
+	.row.two {
+		display: flex;
+		gap: 10px;
+		padding: 0 0 0 10px;
+	}
+
+	.two .box {
+		display: none;
+	}
+
+	.two.picking .box {
+		display: flex;
+	}
+
+	.two .play {
+		flex: 1;
+		display: flex;
+		gap: 10px;
+	}
+
+	.two .number {
+		flex: none;
+		width: 22px;
+	}
+
+	.lines {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+
+	.line {
+		display: flex;
+		gap: 0.6em;
+		min-width: 0;
+		font-family: var(--font-mono);
+		font-size: var(--type-mono);
+		font-weight: 400;
+		color: var(--text-meta);
+	}
+
+	.parts {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.parts:empty {
+		display: none;
+	}
+
+	.parts:not(:empty)::after {
+		content: ' ·';
+	}
+
+	.line-time {
+		flex: none;
+	}
+
+	.two .more {
+		flex: none;
+		width: var(--target);
+		height: var(--target);
+	}
+
+	.cued .line {
+		color: var(--fox-ink);
+	}
+
+	/* Stacked, the cover heads its album, its names beside it on its last line. */
 	@media (max-width: 1024px) {
 		.side {
 			bottom: auto;
 			width: auto;
 			right: 0;
-			height: 72px;
+			height: 112px;
 		}
 
 		.pin {
 			position: static;
 			height: 100%;
 			display: flex;
-			align-items: center;
-			gap: 12px;
+			align-items: flex-end;
+			gap: 16px;
 		}
 
 		.square {
-			width: 64px;
-			height: 64px;
 			flex: none;
-			border-radius: 14px;
 		}
 
 		.names {
 			margin-top: 0;
+			padding-bottom: 2px;
 		}
 
 		.songs {

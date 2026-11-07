@@ -3,7 +3,14 @@
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { AlbumEntry, Artwork } from '#lib/library/source.ts';
 	import GeneratedCover from './GeneratedCover.svelte';
-	import { bestDecoded, firstSight, markDecoded, rungFor, type CoverPlace } from './rungs.ts';
+	import {
+		bestDecoded,
+		firstSight,
+		markDecoded,
+		rungFor,
+		rungForBox,
+		type CoverPlace
+	} from './rungs.ts';
 
 	interface Props {
 		albumId: string;
@@ -11,12 +18,28 @@
 		entry: Pick<AlbumEntry, 'artwork'> | undefined;
 		place: CoverPlace;
 		lazy?: boolean;
+		/**
+		 * How wide it's drawn, in CSS pixels, where that's known: the rung then follows the box and the
+		 * screen's density, and a source smaller than the box shows at its own size, on its ground.
+		 */
+		box?: number | undefined;
 	}
 
-	let { albumId, entry, place, lazy = false }: Props = $props();
+	let { albumId, entry, place, lazy = false, box }: Props = $props();
 
 	const artwork = $derived(entry?.artwork);
-	const wanted = $derived(artwork === undefined ? 0 : rungFor(artwork, place));
+	const density = typeof devicePixelRatio === 'undefined' ? 1 : devicePixelRatio;
+	const wanted = $derived(
+		artwork === undefined
+			? 0
+			: box === undefined
+				? rungFor(artwork, place)
+				: rungForBox(artwork, box * density)
+	);
+	/** Never blown up into blur: a source smaller than its box sits in it at its own size. */
+	const natural = $derived(
+		box !== undefined && artwork !== undefined && Math.max(artwork.width, artwork.height) < box
+	);
 	const url = $derived(artwork === undefined ? '' : artworkUrl(artwork.hash, wanted));
 
 	/** What's already decoded shows at once: a page's first frame never waits for bytes. */
@@ -62,7 +85,13 @@
 {:else if artwork === undefined}
 	<GeneratedCover {albumId} />
 {:else}
-	<span class="cover" aria-hidden="true" data-cover-want={url} style:background={artwork.ground}>
+	<span
+		class="cover"
+		class:natural
+		aria-hidden="true"
+		data-cover-want={url}
+		style:background={artwork.ground}
+	>
 		{#if !broken}
 			{#if best !== 0 && best !== wanted}
 				<img src={artworkUrl(artwork.hash, best)} alt="" decoding="sync" draggable="false" />
@@ -109,6 +138,10 @@
 		object-fit: cover;
 		user-select: none;
 		-webkit-user-drag: none;
+	}
+
+	.natural img {
+		object-fit: scale-down;
 	}
 
 	.want {

@@ -15,6 +15,17 @@ export function rungFor({ width, height }: Pick<Artwork, 'width' | 'height'>, pl
 	return place === 'stage' && Math.max(width, height) > stageNeeds ? 1024 : 512;
 }
 
+/**
+ * The rung for a cover drawn `pixels` wide on the screen, density included: the smallest that
+ * covers it. A source with nothing more to give stops at 512, as the ladder does.
+ */
+export function rungForBox({ width, height }: Pick<Artwork, 'width' | 'height'>, pixels: number) {
+	if (pixels <= 128) {
+		return 128;
+	}
+	return pixels > 512 && Math.max(width, height) > 512 ? 1024 : 512;
+}
+
 /** The best rung decoded so far, per cover: a morph shows this at once, and never waits. */
 const decoded = new Map<string, number>();
 const fading = new Set<string>();

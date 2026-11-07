@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bestDecoded, firstSight, markDecoded, rungFor } from './rungs';
+import { bestDecoded, firstSight, markDecoded, rungFor, rungForBox } from './rungs';
 
 const big = { width: 1400, height: 1400 };
 
@@ -26,5 +26,17 @@ describe('the decoded map', () => {
 	it('fades a cover in once', () => {
 		expect(firstSight('b')).toBe(true);
 		expect(firstSight('b')).toBe(false);
+	});
+});
+
+describe('rungForBox', () => {
+	it('takes the smallest rung that covers the box, density included', () => {
+		expect(rungForBox(big, 112)).toBe(128);
+		expect(rungForBox(big, 224)).toBe(512);
+		expect(rungForBox(big, 512)).toBe(512);
+		expect(rungForBox(big, 840)).toBe(1024);
+	});
+	it('stops at 512 for a source with no more to give', () => {
+		expect(rungForBox({ width: 500, height: 480 }, 840)).toBe(512);
 	});
 });

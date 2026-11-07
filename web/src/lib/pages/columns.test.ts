@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { ColumnsPref, LibraryAlbum, LibraryTrack } from '#lib/library/source.ts';
 import {
 	cellOf,
+	coverFor,
 	defaultColumns,
 	fieldsFor,
 	fit,
+	fitLine,
 	formatCell,
 	lastWhen,
 	menuList,
@@ -66,6 +68,15 @@ describe('stepFor', () => {
 	});
 });
 
+describe('coverFor', () => {
+	it('grows from 208 at 1440 to 256 at 1920 and 420 at 3840, and 112 stacked', () => {
+		expect([1280, 1440, 1680, 1920, 2560, 3840, 5120].map((w) => coverFor(w, false))).toEqual([
+			208, 208, 232, 256, 311, 420, 420
+		]);
+		expect(coverFor(390, true)).toBe(112);
+	});
+});
+
 describe('fit', () => {
 	it('fits every default column at 1920, as the board has them', () => {
 		expect(fit(defaultColumns.order, 1104, 'columns')).toEqual({
@@ -117,7 +128,7 @@ describe('fit', () => {
 describe('template', () => {
 	it('lays the board out, names giving up width before they drop', () => {
 		expect(template(defaultColumns.order, 'columns')).toBe(
-			'20px 28px minmax(200px, 1fr) minmax(136px, 200px) 120px 84px 48px 104px 88px 44px 36px'
+			'20px 28px minmax(200px, 1fr) minmax(128px, 200px) 120px 84px 48px 104px 88px 44px 36px'
 		);
 		expect(template([], 'large')).toBe('24px 32px minmax(200px, 1fr) 56px 44px');
 	});
@@ -191,6 +202,15 @@ describe('phoneLine', () => {
 		const tagged = context({ track: track({ displayGenres: ['Dream pop'], plays: 2 }) });
 		expect(phoneLine(order, tagged, nothingShared)).toEqual(['Dream pop', '2 plays']);
 		expect(phoneLine(order, tagged, (id) => id === 'genre')).toEqual(['2 plays']);
+	});
+});
+
+describe('fitLine', () => {
+	it('keeps whole parts that fit beside the length, in order', () => {
+		const parts = ['★★★★', '31 plays', 'Oct 23'];
+		expect(fitLine(parts, '3:58', 40)).toEqual(parts);
+		expect(fitLine(parts, '3:58', 26)).toEqual(['★★★★', '31 plays']);
+		expect(fitLine(parts, '3:58', 8)).toEqual([]);
 	});
 });
 

@@ -12,7 +12,7 @@
 		/** Whether every one is hearted, so the heart says it takes them off. */
 		hearted: boolean;
 		actions: SongActions;
-		/** A phone: Play and Play next stay, and the rest go in More. */
+		/** A phone: Play stays, and the rest go in More. */
 		compact: boolean;
 		onclear: () => void;
 	}
@@ -83,13 +83,15 @@
 			actions.play();
 		}}><Icon name="play" size={14} />Play</button
 	>
-	<button
-		type="button"
-		class="text"
-		onclick={() => {
-			actions.playNext();
-		}}>Play next</button
-	>
+	{#if !compact}
+		<button
+			type="button"
+			class="text"
+			onclick={() => {
+				actions.playNext();
+			}}>Play next</button
+		>
+	{/if}
 	{#if compact}
 		<button
 			type="button"
@@ -129,6 +131,15 @@
 	{#if more && compact}
 		<div class="pop sheet" role="menu" aria-label="More for the selection">
 			<p class="sheet-facts">{facts}</p>
+			<button
+				type="button"
+				role="menuitem"
+				class="sheet-item"
+				onclick={() => {
+					actions.playNext();
+					more = false;
+				}}>Play next</button
+			>
 			<button
 				type="button"
 				role="menuitem"

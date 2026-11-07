@@ -24,6 +24,20 @@ export function stepFor(width: number): Step {
 	return width < largeFrom ? 'columns' : 'large';
 }
 
+/**
+ * How big a cover beside its songs is: 208 up to 1440, growing to 256 at 1920 and 420 at 3840, and
+ * no bigger. Stacked over its songs it's 112, heading its album.
+ */
+export function coverFor(width: number, stacked: boolean): number {
+	if (stacked) {
+		return 112;
+	}
+	if (width <= 1920) {
+		return Math.round(Math.min(256, Math.max(208, 208 + (width - 1440) * 0.1)));
+	}
+	return Math.round(Math.min(420, 256 + ((width - 1920) * 164) / 1920));
+}
+
 /** A width at each step that has columns: as drawn at 1920, and at 3840. */
 type Widths = readonly [columns: number, large: number];
 
@@ -47,7 +61,7 @@ export interface ColumnSpec {
 	look: 'name' | 'fact' | 'stars' | 'heart';
 }
 
-const names: Widths = [136, 180];
+const names: Widths = [128, 180];
 
 /** Every column a person may choose, in the menu's own order for those not shown. */
 export const columnSpecs: readonly ColumnSpec[] = [
@@ -399,6 +413,27 @@ function phonePart(
 		default:
 			return cell.look === 'name' || cell.look === 'fact' ? cell.text : '';
 	}
+}
+
+/** How wide a character of the phone's line is, at 12 px of Geist Mono, with room for the stars, which run wider. */
+export const monoAdvance = 7.8;
+
+/**
+ * Keeps the line's parts that fit in `chars` characters beside the length, whole: a part that
+ * won't fit is left out rather than cut, and so is everything after it.
+ */
+export function fitLine(parts: readonly string[], time: string, chars: number): string[] {
+	const kept: string[] = [];
+	let used = time.length;
+	for (const part of parts) {
+		const need = [...part].length + 3;
+		if (used + need > chars) {
+			break;
+		}
+		used += need;
+		kept.push(part);
+	}
+	return kept;
 }
 
 /** A track's length, as every row ends. */

@@ -7,7 +7,7 @@
 	import { emptyLine } from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { ColumnId } from '#lib/library/source.ts';
-	import { fit, template } from '#lib/pages/columns.ts';
+	import { fit, monoAdvance, template } from '#lib/pages/columns.ts';
 	import ColumnsMenu from '#lib/pages/ColumnsMenu.svelte';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import LibraryAlbum from '#lib/pages/LibraryAlbum.svelte';
@@ -48,8 +48,30 @@
 
 	/** How wide a song row is, measured, so the columns that fit are known before a row mounts. */
 	let songsWidth = $state(0);
-	const fitted = $derived(fit(columnsView.pref.order, songsWidth, 'columns'));
-	const grid = $derived(template(fitted.shown, 'columns'));
+	/** The columns' step: the phone has none, so it fits as the step above it would. */
+	const columnStep = $derived(view.step === 'large' ? 'large' : 'columns');
+	const fitted = $derived(fit(columnsView.pref.order, songsWidth, columnStep));
+	const grid = $derived(template(fitted.shown, columnStep));
+	/**
+	 * Set for a moment when the width crosses a step, so what changes size moves to it. Nothing
+	 * else animates a resize: between the steps everything follows the width as it goes.
+	 */
+	let stepping = $state(false);
+	let lastStep = view.step;
+	$effect(() => {
+		const step = view.step;
+		if (step === lastStep) {
+			return;
+		}
+		lastStep = step;
+		stepping = true;
+		const done = setTimeout(() => {
+			stepping = false;
+		}, 450);
+		return () => {
+			clearTimeout(done);
+		};
+	});
 	const fields = $derived(columnsView.fields);
 	/** When "Yesterday" is, for Last played: read once a visit. */
 	const now = Date.now();
@@ -308,7 +330,13 @@
 	/>
 {/snippet}
 
-<div class="library">
+<div
+	class="library"
+	class:large={view.step === 'large'}
+	class:stepping
+	style:--cover={`${String(view.cover)}px`}
+	style:--list-line={`${String(view.frame.line)}px`}
+>
 	<h1>Library</h1>
 
 	{#if facts !== null && facts.albums === 0}
@@ -414,6 +442,9 @@
 								{rows}
 								head={view.frame.metrics.albumHead}
 								stacked={view.stacked}
+								phone={!view.columns}
+								cover={view.cover}
+								lineChars={Math.floor((songsWidth - 96 - (selection.any ? 26 : 0)) / monoAdvance)}
 								shown={fitted.shown}
 								{grid}
 								pref={columnsView.pref}
@@ -465,14 +496,69 @@
 </div>
 
 <style>
+	/*
+	 * One layout from a phone to 4K and beyond, never a centred column. These are its sizes; from
+	 * 2560 they take one step up together, so a 4K screen at 100% reads like 1920. --cover comes from
+	 * the view, which needs it for the rows' maths.
+	 */
 	.library {
 		--name-column: clamp(220px, 23.6vw, 340px);
-		--page-edge: max(64px, calc((100vw - 1440px) / 2 + 64px));
+		--page-edge: 64px;
+		--name-gap: 44px;
+		--cover-gap: 32px;
+		--songs-right: 64px;
+		--head-top: 96px;
+		--head-row: 40px;
+		--head-type: 11px;
+		--col-gap: 12px;
+		--row-pad: 14px;
+		--cell-type: 14px;
+		--star-type: 13px;
+		--box-size: 16px;
+		--more-size: 36px;
+		--songs-left: calc(var(--page-edge) + var(--name-column) + var(--name-gap));
 
 		position: relative;
-		max-width: 1440px;
-		margin: 0 auto;
-		padding: 96px 0 140px;
+		padding: var(--head-top) 0 140px;
+	}
+
+	.library.large {
+		--name-column: clamp(340px, 13.6vw, 520px);
+		--page-edge: 96px;
+		--name-gap: 64px;
+		--cover-gap: 48px;
+		--songs-right: 120px;
+		--head-top: 128px;
+		--head-row: 50px;
+		--head-type: 13px;
+		--col-gap: 16px;
+		--row-pad: 18px;
+		--cell-type: 17px;
+		--star-type: 16px;
+		--box-size: 20px;
+		--more-size: 44px;
+		--type-display: 132px;
+		--type-title: 22px;
+		--type-body: 18px;
+		--type-mono: 15px;
+		--type-section: 52px;
+	}
+
+	/* Crossing a step, what changes size moves to it; nothing else animates a resize. */
+	.stepping :global(:is(.artist, .album, .side, .square, .songs, .row, .disc, .header, h2)) {
+		transition:
+			top var(--morph) var(--curve-morph),
+			height var(--morph) var(--curve-morph),
+			width var(--morph) var(--curve-morph),
+			left var(--morph) var(--curve-morph),
+			font-size var(--morph) var(--curve-morph),
+			padding var(--morph) var(--curve-morph);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.stepping :global(*) {
+			transition: none;
+		}
 	}
 
 	/* The boards have no page title: the pinned artist is the headline. Screen readers still get one. */
@@ -514,7 +600,7 @@
 	.top {
 		position: fixed;
 		z-index: 2;
-		top: 96px;
+		top: var(--head-top);
 		left: var(--page-edge);
 		width: var(--name-column);
 		padding-bottom: 16px;
@@ -578,10 +664,11 @@
 	.columns-head {
 		position: sticky;
 		z-index: 2;
-		top: 96px;
-		height: 40px;
-		margin: 0 92px 16px calc(64px + var(--name-column) + 44px);
-		padding-left: 240px;
+		top: var(--head-top);
+		height: var(--head-row);
+		margin: 0 var(--songs-right) calc(var(--list-line) - var(--head-top) - var(--head-row))
+			var(--songs-left);
+		padding-left: calc(var(--cover) + var(--cover-gap));
 		background: var(--ground);
 	}
 
@@ -591,13 +678,12 @@
 		left: 0;
 		right: 0;
 		bottom: 100%;
-		height: 96px;
+		height: var(--head-top);
 		background: var(--ground);
 	}
 
 	.list {
 		position: relative;
-		--list-line: 152px;
 	}
 
 	.all {
@@ -619,8 +705,8 @@
 	.measure {
 		position: absolute;
 		top: 0;
-		left: calc(64px + var(--name-column) + 44px + 240px);
-		right: 92px;
+		left: calc(var(--songs-left) + var(--cover) + var(--cover-gap));
+		right: var(--songs-right);
 		height: 0;
 		visibility: hidden;
 	}
@@ -636,7 +722,7 @@
 		z-index: 1;
 		top: 0;
 		bottom: 0;
-		left: 64px;
+		left: var(--page-edge);
 		width: var(--name-column);
 		pointer-events: none;
 	}
@@ -651,7 +737,7 @@
 	/* The name stays while its albums scroll; the next one pushes it out. */
 	.head {
 		position: sticky;
-		top: 186px;
+		top: calc(var(--head-top) + 90px);
 		pointer-events: auto;
 	}
 
@@ -703,8 +789,8 @@
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		left: calc(64px + var(--name-column) + 44px);
-		right: 92px;
+		left: var(--songs-left);
+		right: var(--songs-right);
 	}
 
 	@media (max-height: 720px) {
