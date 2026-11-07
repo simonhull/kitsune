@@ -62,6 +62,8 @@ export class Player implements PlayerView {
 	#reloadedAt: number | null = null;
 	/** The listen under way. Nothing is, from the end of the queue until it goes round again. */
 	#listen: Listen | null = null;
+	/** The listen Last.fm was last told about, as now playing. */
+	#announced: Listen | null = null;
 
 	/** Nothing audio-related exists until the first play: this module loads with no window. */
 	constructor(host: Library, create: () => AudioOutput) {
@@ -316,6 +318,11 @@ export class Player implements PlayerView {
 		if (this.status === 'loading') {
 			this.status = 'playing';
 			this.#failures = 0;
+		}
+		if (this.#listen !== null && this.#announced !== this.#listen) {
+			// Once per listen, when the sound first comes: a resume is the same song still playing.
+			this.#announced = this.#listen;
+			this.#library.nowPlaying(this.#listen.trackId);
 		}
 	}
 

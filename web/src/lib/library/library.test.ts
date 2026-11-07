@@ -1404,3 +1404,47 @@ describe('marks', () => {
 		expect(library.marks.stars('glasshouse-66-1')).toBeNull();
 	});
 });
+
+describe('Last.fm', () => {
+	it('reads the connection with the shell, and forgets it with the session', async () => {
+		const library = new Library(createFixtureSource({ lastfm: 'reconnect' }), {
+			readyMemory: forgetful()
+		});
+		await library.loadShell();
+		await vi.waitFor(() => {
+			expect(library.lastfm?.state).toBe('reconnect');
+		});
+		library.reset();
+		expect(library.lastfm).toBeNull();
+	});
+
+	it('keeps what it knew when the server does not answer', async () => {
+		const failing = vi.fn(() => Promise.reject(new ServerError(500)));
+		const library = new Library(source({ lastfm: failing }), { readyMemory: forgetful() });
+		library.lastfm = { ...(await createFixtureSource().lastfm()), connected: true };
+		await library.refreshLastfm();
+		expect(library.lastfm.connected).toBe(true);
+	});
+
+	it('takes the switches the server sends back', async () => {
+		const library = new Library(createFixtureSource({ lastfm: 'connected' }));
+		await library.setLastfm({ loves: false });
+		expect(library.lastfm).toMatchObject({ scrobble: true, loves: false });
+		await library.disconnectLastfm();
+		expect(library.lastfm).toMatchObject({ configured: true, connected: false });
+	});
+
+	it('says what started only for a real session', async () => {
+		const nowPlaying = vi.fn(() => Promise.resolve());
+		const real = new Library(source({ nowPlaying }));
+		real.nowPlaying('t1');
+		expect(nowPlaying).not.toHaveBeenCalled();
+		await real.checkSession();
+		real.nowPlaying('t1');
+		expect(nowPlaying).toHaveBeenCalledExactlyOnceWith('t1');
+		const simulated = new Library(source({ nowPlaying }), { simulated: true });
+		await simulated.checkSession();
+		simulated.nowPlaying('t2');
+		expect(nowPlaying).toHaveBeenCalledOnce();
+	});
+});

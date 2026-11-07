@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
@@ -59,7 +60,8 @@ type AlbumMarks struct {
 }
 
 // Heart hearts the item of kind with the ULID id for the user. Hearting it again
-// changes nothing, not even when it was first hearted. A track missing from disk
+// changes nothing, not even when it was first hearted. A new heart on a track
+// queues a love when the user sends hearts to Last.fm. A track missing from disk
 // still takes a heart: its file may be back. It returns an error wrapping
 // [ErrNotFound] for an item that isn't in the library.
 func (s *Store) Heart(ctx context.Context, userID int64, kind Kind, id string) error {
@@ -71,7 +73,8 @@ func (s *Store) Heart(ctx context.Context, userID int64, kind Kind, id string) e
 		}
 		switch kind {
 		case KindTrack:
-			return q.InsertTrackHeart(ctx, sqlcdb.InsertTrackHeartParams{UserID: userID, TrackID: rowID, HeartedAt: at})
+			n, insertErr := q.InsertTrackHeart(ctx, sqlcdb.InsertTrackHeartParams{UserID: userID, TrackID: rowID, HeartedAt: at})
+			return loveChanged(ctx, q, userID, rowID, OutboxLove, n, insertErr, s.now())
 		case KindAlbum:
 			return q.InsertAlbumHeart(ctx, sqlcdb.InsertAlbumHeartParams{UserID: userID, AlbumID: rowID, HeartedAt: at})
 		case KindArtist:
@@ -86,7 +89,7 @@ func (s *Store) Heart(ctx context.Context, userID int64, kind Kind, id string) e
 }
 
 // Unheart takes the user's heart off the item of kind with the ULID id, if it
-// has one. It returns an error wrapping [ErrNotFound] for an item that isn't in
+// has one, and queues an unlove for a track as Heart queues a love. It returns an error wrapping [ErrNotFound] for an item that isn't in
 // the library.
 func (s *Store) Unheart(ctx context.Context, userID int64, kind Kind, id string) error {
 	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
@@ -96,7 +99,8 @@ func (s *Store) Unheart(ctx context.Context, userID int64, kind Kind, id string)
 		}
 		switch kind {
 		case KindTrack:
-			return q.DeleteTrackHeart(ctx, sqlcdb.DeleteTrackHeartParams{UserID: userID, TrackID: rowID})
+			n, deleteErr := q.DeleteTrackHeart(ctx, sqlcdb.DeleteTrackHeartParams{UserID: userID, TrackID: rowID})
+			return loveChanged(ctx, q, userID, rowID, OutboxUnlove, n, deleteErr, s.now())
 		case KindAlbum:
 			return q.DeleteAlbumHeart(ctx, sqlcdb.DeleteAlbumHeartParams{UserID: userID, AlbumID: rowID})
 		case KindArtist:
@@ -108,6 +112,15 @@ func (s *Store) Unheart(ctx context.Context, userID int64, kind Kind, id string)
 		return fmt.Errorf("unheart %s %s: %w", kind, id, err)
 	}
 	return nil
+}
+
+// loveChanged queues a love or unlove for a track heart that changed: n is the
+// rows the change touched, and err its error.
+func loveChanged(ctx context.Context, q *sqlcdb.Queries, userID, trackRow int64, kind OutboxKind, n int64, err error, now time.Time) error {
+	if err != nil || n == 0 {
+		return err
+	}
+	return enqueueLastfm(ctx, q, userID, trackRow, kind, now, now)
 }
 
 // Rate gives the track with the ULID id the user's stars, in place of any it

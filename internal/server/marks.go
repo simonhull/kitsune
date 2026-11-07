@@ -38,7 +38,24 @@ func (s *Server) changeHeart(w http.ResponseWriter, r *http.Request, change hear
 	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
 	err := change(r.Context(), user.ID, kind, r.PathValue("id"))
+	if err == nil && kind == store.KindTrack {
+		s.lastfm.Poke() // A love or unlove may be waiting.
+	}
 	s.answerMark(w, r, err, "no such "+kind.String(), "change heart")
+}
+
+// getListening counts the caller's plays, hearts and rated tracks.
+func (s *Server) getListening(w http.ResponseWriter, r *http.Request) {
+	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
+	n, err := s.library.CountListening(r.Context(), user.ID)
+	if err != nil {
+		if r.Context().Err() == nil {
+			s.internalError(w, r, "count listening", err)
+		}
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeBody(w, http.StatusOK, api.JSONMediaType, &api.Listening{Plays: n.Plays, Hearts: n.Hearts, Rated: n.Rated})
 }
 
 // putRating gives a track the caller's stars.

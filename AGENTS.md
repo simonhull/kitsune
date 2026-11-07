@@ -206,6 +206,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `internal/server` takes everything through `server.Config`.
 - Logs are `log/slog` JSON. Log `r.URL.Path`, never the full URL or query: OpenSubsonic
   clients send credentials in the query string.
+- `KITSUNE_LASTFM_URL`, read only in `cmd/`, points the server at a stand-in Last.fm (its API at
+  `/2.0/`, its approval page at `/api/auth/`) for manual checks; production never sets it. Tests use
+  `internal/lastfm/lastfmtest` and nothing ever talks to the real Last.fm.
 - `Config.Ready` backs `/readyz`; new readiness conditions join it there (today: the first scan has finished, then the database answers).
 
 ## Lint policy

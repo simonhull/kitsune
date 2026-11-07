@@ -179,6 +179,22 @@ describe('Player', () => {
 		expect(output.preloaded).toBe('t1');
 	});
 
+	it('says each listen is playing once, when its sound starts', async () => {
+		const { player, output, library } = setup();
+		const announced = vi.spyOn(library, 'nowPlaying').mockImplementation(() => undefined);
+		player.play(album(2));
+		await settle();
+		expect(announced).toHaveBeenCalledExactlyOnceWith('t0');
+		player.toggle();
+		player.toggle();
+		await settle();
+		expect(announced).toHaveBeenCalledOnce();
+		output.elapse(100);
+		await settle();
+		expect(announced).toHaveBeenLastCalledWith('t1');
+		expect(announced).toHaveBeenCalledTimes(2);
+	});
+
 	it('toggles', async () => {
 		const { player, output } = setup();
 		player.play(album(1));

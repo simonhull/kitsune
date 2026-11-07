@@ -84,7 +84,7 @@ func (q *Queries) DeleteArtistHeart(ctx context.Context, arg DeleteArtistHeartPa
 	return err
 }
 
-const deleteTrackHeart = `-- name: DeleteTrackHeart :exec
+const deleteTrackHeart = `-- name: DeleteTrackHeart :execrows
 DELETE FROM track_hearts WHERE user_id = ? AND track_id = ?
 `
 
@@ -93,9 +93,12 @@ type DeleteTrackHeartParams struct {
 	TrackID int64
 }
 
-func (q *Queries) DeleteTrackHeart(ctx context.Context, arg DeleteTrackHeartParams) error {
-	_, err := q.exec(ctx, q.deleteTrackHeartStmt, deleteTrackHeart, arg.UserID, arg.TrackID)
-	return err
+func (q *Queries) DeleteTrackHeart(ctx context.Context, arg DeleteTrackHeartParams) (int64, error) {
+	result, err := q.exec(ctx, q.deleteTrackHeartStmt, deleteTrackHeart, arg.UserID, arg.TrackID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteTrackRating = `-- name: DeleteTrackRating :exec
@@ -144,7 +147,7 @@ func (q *Queries) InsertArtistHeart(ctx context.Context, arg InsertArtistHeartPa
 	return err
 }
 
-const insertTrackHeart = `-- name: InsertTrackHeart :exec
+const insertTrackHeart = `-- name: InsertTrackHeart :execrows
 INSERT INTO track_hearts (user_id, track_id, hearted_at) VALUES (?, ?, ?)
 ON CONFLICT (user_id, track_id) DO NOTHING
 `
@@ -155,9 +158,12 @@ type InsertTrackHeartParams struct {
 	HeartedAt int64
 }
 
-func (q *Queries) InsertTrackHeart(ctx context.Context, arg InsertTrackHeartParams) error {
-	_, err := q.exec(ctx, q.insertTrackHeartStmt, insertTrackHeart, arg.UserID, arg.TrackID, arg.HeartedAt)
-	return err
+func (q *Queries) InsertTrackHeart(ctx context.Context, arg InsertTrackHeartParams) (int64, error) {
+	result, err := q.exec(ctx, q.insertTrackHeartStmt, insertTrackHeart, arg.UserID, arg.TrackID, arg.HeartedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const listAlbumHeartedTracks = `-- name: ListAlbumHeartedTracks :many

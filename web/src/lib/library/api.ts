@@ -14,8 +14,11 @@ import {
 	type ArtistEntry,
 	type EditFailure,
 	type EditStopped,
+	type LastfmStatus,
+	type LastfmSwitches,
 	type LibraryFacts,
 	type LibraryIndex,
+	type Listening,
 	type LibrarySource,
 	type LoginFailure,
 	type MarkKind,
@@ -211,6 +214,37 @@ export function createApiSource({
 			const { user } = (await response.json()) as { user: User };
 			return user;
 		},
+
+		logout: () => read<undefined>('/auth/logout', { method: 'POST' }),
+
+		listening: () => read<Listening>('/me/listening'),
+
+		lastfm: () => read<LastfmStatus>('/me/lastfm'),
+
+		async connectLastfm() {
+			const { url } = await read<{ url: string }>('/me/lastfm/connect', { method: 'POST' });
+			return url;
+		},
+
+		setLastfm: (patch: LastfmSwitches) =>
+			read<LastfmStatus>('/me/lastfm', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(patch)
+			}),
+
+		disconnectLastfm: () => read<undefined>('/me/lastfm', { method: 'DELETE' }),
+
+		nowPlaying: (trackId: string) =>
+			read<undefined>(
+				'/me/now-playing',
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ trackId })
+				},
+				quietly
+			),
 
 		facts: () => read<LibraryFacts>('/library'),
 

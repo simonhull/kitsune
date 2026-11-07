@@ -34,6 +34,11 @@ describe('the route table', () => {
 		expect(journeyOf('/search')).toBe('search');
 	});
 
+	it('has no current item on You, which the fox opens, and blends there', () => {
+		expect(navOf('/you')).toMatchObject({ look: 'home', current: null });
+		expect(journeyOf('/you')).toBe('you');
+	});
+
 	it('has no current item on Health, which blends and dresses as Home', () => {
 		expect(navOf('/health')).toMatchObject({ look: 'home', current: null });
 		expect(journeyOf('/health')).toBe('health');

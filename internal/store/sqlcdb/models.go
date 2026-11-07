@@ -48,6 +48,28 @@ type Artwork struct {
 	Source string
 }
 
+type LastfmAccount struct {
+	UserID      int64
+	Name        string
+	SessionKey  string
+	Scrobble    int64
+	NowPlaying  int64
+	Loves       int64
+	State       string
+	ConnectedAt int64
+	LastSentAt  *int64
+}
+
+type LastfmOutbox struct {
+	ID       int64
+	UserID   int64
+	Kind     string
+	TrackID  int64
+	At       int64
+	Attempts int64
+	NextAt   int64
+}
+
 type Play struct {
 	UserID   int64
 	TrackID  int64

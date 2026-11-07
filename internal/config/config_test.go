@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/netip"
@@ -194,6 +195,7 @@ func TestKnownKeysMatchTags(t *testing.T) {
 	cfg.Server.BaseURL = "https://example.com"
 	cfg.Library.Roots = []string{musicRoot}
 	cfg.Storage.DataDir = dataPath
+	cfg.LastFM = LastFM{APIKey: "key", SharedSecret: "secret"}
 	var b strings.Builder
 	if err := cfg.WriteTOML(&b); err != nil {
 		t.Fatalf("WriteTOML: %v", err)
@@ -298,6 +300,8 @@ func TestLoadRejects(t *testing.T) {
 		{name: "nested root", body: "[library]\nroots = [\"/srv/music/jazz\", \"/srv/music\"]\n", want: []string{root1Key}},
 		{name: "root slash", body: "[library]\nroots = [\"/\", \"/srv\"]\n", want: []string{root1Key}},
 		{name: "negative grace", body: "[library]\nmissing_grace = \"-1h\"\n", want: []string{"library.missing_grace:"}},
+		{name: "lastfm key alone", body: "[lastfm]\napi_key = \"k\"\n", want: []string{"lastfm.shared_secret: not set, but lastfm.api_key is"}},
+		{name: "lastfm secret alone", body: "[lastfm]\nshared_secret = \"s\"\n", want: []string{"lastfm.api_key: not set, but lastfm.shared_secret is"}},
 		{name: "relative data_dir", body: "[storage]\ndata_dir = \"data\"\n", want: []string{"storage.data_dir:"}},
 		{name: "no data_dir anywhere", body: "", noPaths: true, want: []string{"storage.data_dir:", "XDG_DATA_HOME"}},
 		{
@@ -343,5 +347,36 @@ func TestWriteTOMLRoundTrips(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, cfg) {
 		t.Errorf("round trip = %+v, want %+v\n%s", got, cfg, b.String())
+	}
+}
+
+func TestLastFM(t *testing.T) {
+	t.Parallel()
+	got, err := Load(writeConfig(t, "[lastfm]\napi_key = \"abc\"\nshared_secret = \"hush-123\"\n"), testPaths(t))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.LastFM.APIKey != "abc" || string(got.LastFM.SharedSecret) != "hush-123" || !got.LastFM.Enabled() {
+		t.Errorf("LastFM = %+v, want abc and the secret, enabled", got.LastFM)
+	}
+	var b strings.Builder
+	if err = got.WriteTOML(&b); err != nil {
+		t.Fatalf("WriteTOML: %v", err)
+	}
+	if strings.Contains(b.String(), "hush-123") || !strings.Contains(b.String(), `shared_secret = "(set)"`) {
+		t.Errorf("WriteTOML = %s, want the secret shown as (set)", b.String())
+	}
+	if s := fmt.Sprintf("%v %+v %s", got.LastFM, got.LastFM, got.LastFM.SharedSecret); strings.Contains(s, "hush-123") {
+		t.Errorf("formatted config %q shows the secret", s)
+	}
+}
+
+func TestLastFMDefaultOff(t *testing.T) {
+	t.Parallel()
+	if Default().LastFM.Enabled() {
+		t.Error("Default().LastFM.Enabled() = true, want false")
+	}
+	if Secret("").String() != "" {
+		t.Error(`Secret("").String() != ""`)
 	}
 }

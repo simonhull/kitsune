@@ -129,7 +129,7 @@ func TestServeMigrates(t *testing.T) {
 	markUnmigrated(t, path)
 
 	cfg := e.load(t)
-	a, err := openApp(t.Context(), &cfg, e.config, slog.New(slog.DiscardHandler))
+	a, err := openApp(t.Context(), &cfg, launch{configPath: e.config}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("openApp: %v", err)
 	}
@@ -232,7 +232,7 @@ func newApp(t *testing.T, e serveEnv) (*app, *syncBuffer) {
 	logs := &syncBuffer{}
 	log := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	cfg := e.load(t)
-	a, err := openApp(t.Context(), &cfg, e.config, log)
+	a, err := openApp(t.Context(), &cfg, launch{configPath: e.config}, log)
 	if err != nil {
 		t.Fatalf("openApp: %v", err)
 	}

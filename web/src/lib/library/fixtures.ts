@@ -6,6 +6,7 @@ import {
 	ArtistNotFoundError,
 	EditError,
 	LoginError,
+	ServerError,
 	type Album,
 	type AlbumEdit,
 	type AlbumEntry,
@@ -15,6 +16,7 @@ import {
 	type ArtistDetail,
 	type ArtistEntry,
 	type ArtistLink,
+	type LastfmStatus,
 	type LibraryAlbum,
 	type LibraryArtist,
 	type LibraryIndex,
@@ -596,6 +598,65 @@ function reindexed(album: Album, tags: AlbumTags, touched: readonly string[]): A
 	};
 }
 
+/** Each state the Last.fm boards drew. */
+export type LastfmFixture = 'unset' | 'none' | 'connected' | 'waiting' | 'reconnect';
+
+const lastfmFixtures: readonly LastfmFixture[] = [
+	'unset',
+	'none',
+	'connected',
+	'waiting',
+	'reconnect'
+];
+
+/** Reads a Last.fm fixture from the URL: anything else is a server with no key yet set. */
+export function lastfmFixture(value: string | null): LastfmFixture {
+	return lastfmFixtures.find((name) => name === value) ?? 'none';
+}
+
+/** The plays board A counts. */
+const boardPlays = 3412;
+
+/** What the states board shows for each state, as of `now`. */
+export function lastfmStatusOf(fixture: LastfmFixture, now = Date.now()): LastfmStatus {
+	const off = { scrobble: true, nowPlaying: true, loves: true, state: 'ok', waiting: 0 } as const;
+	switch (fixture) {
+		case 'unset':
+			return { ...off, configured: false, connected: false };
+		case 'none':
+			return { ...off, configured: true, connected: false };
+		case 'connected':
+			return {
+				...off,
+				configured: true,
+				connected: true,
+				name: 'simonhull',
+				lastSentAt: new Date(now - 2 * 60_000).toISOString()
+			};
+		case 'waiting':
+			return {
+				...off,
+				configured: true,
+				connected: true,
+				name: 'simonhull',
+				state: 'waiting',
+				waiting: 3,
+				lastSentAt: new Date(now - 40 * 60_000).toISOString(),
+				retryAt: new Date(now + 4 * 60_000).toISOString()
+			};
+		case 'reconnect':
+			return {
+				...off,
+				configured: true,
+				connected: true,
+				name: 'simonhull',
+				state: 'reconnect',
+				waiting: 12,
+				lastSentAt: new Date(now - 3 * 86_400_000).toISOString()
+			};
+	}
+}
+
 /** Each way an edit can go wrong, for the states the boards never drew. */
 export type FixtureEditFault = 'busy' | 'stale' | 'drift' | 'refused' | 'partial';
 
@@ -607,6 +668,8 @@ export interface FixtureOptions {
 	role?: Me['role'];
 	/** Fail the first edit this way. A drift never clears: only a scan would help. */
 	editFault?: FixtureEditFault | undefined;
+	/** How Last.fm stands. */
+	lastfm?: LastfmFixture;
 }
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
@@ -621,6 +684,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	// So are the marks, like the server's are each person's.
 	const hearts = new Set(boardHearts);
 	const stars = new Map(boardStars);
+	let lastfm = lastfmStatusOf(options.lastfm ?? 'none');
 
 	/** A track as the marks have it: a stale rating goes, as the server leaves one out. */
 	function markedTrack<T extends Track | LibraryTrack>(track: T): T {
@@ -750,6 +814,31 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				}
 				return signedIn;
 			}),
+		logout: () => respond(() => undefined),
+		listening: () => respond(() => ({ plays: boardPlays, hearts: hearts.size, rated: stars.size })),
+		lastfm: () => respond(() => lastfm),
+		connectLastfm: () =>
+			respond(() => {
+				if (!lastfm.configured) {
+					throw new ServerError(409);
+				}
+				// There's no last.fm to go to: the fixture says yes at once.
+				lastfm = lastfmStatusOf('connected');
+				return 'fixture:connected';
+			}),
+		setLastfm: (patch) =>
+			respond(() => {
+				if (!lastfm.connected) {
+					throw new ServerError(404);
+				}
+				lastfm = { ...lastfm, ...patch };
+				return lastfm;
+			}),
+		disconnectLastfm: () =>
+			respond(() => {
+				lastfm = lastfmStatusOf(lastfm.configured ? 'none' : 'unset');
+			}),
+		nowPlaying: () => respond(() => undefined),
 		facts: () => respond(() => ({ ...counts, ...scans.facts() })),
 		libraryIndex: () => respond(markedIndex),
 		ready: () => respond(() => true),

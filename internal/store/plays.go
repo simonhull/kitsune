@@ -26,8 +26,9 @@ type Play struct {
 	Source   string
 }
 
-// RecordPlay stores a play, once however often it is reported. A track missing
-// from disk still takes plays: its file may be back. It returns an error
+// RecordPlay stores a play, once however often it is reported, and queues its
+// scrobble when the user sends plays to Last.fm. A track missing from disk
+// still takes plays: its file may be back. It returns an error
 // wrapping [ErrNotFound] for a track that isn't in the library.
 func (s *Store) RecordPlay(ctx context.Context, p *NewPlay) error {
 	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
@@ -38,18 +39,38 @@ func (s *Store) RecordPlay(ctx context.Context, p *NewPlay) error {
 		if err != nil {
 			return err //nolint:wrapcheck // Wrapped once, below.
 		}
-		return q.InsertPlay(ctx, sqlcdb.InsertPlayParams{
+		n, err := q.InsertPlay(ctx, sqlcdb.InsertPlayParams{
 			UserID:   p.UserID,
 			TrackID:  trackID,
 			PlayedAt: ms(p.PlayedAt),
 			Source:   p.Source,
 			ClientID: p.ClientID,
 		})
+		if err != nil || n == 0 { // A report seen before was queued for Last.fm then.
+			return err //nolint:wrapcheck // Wrapped once, below.
+		}
+		return enqueueLastfm(ctx, q, p.UserID, trackID, OutboxScrobble, p.PlayedAt, s.now())
 	})
 	if err != nil {
 		return fmt.Errorf("record play: %w", err)
 	}
 	return nil
+}
+
+// Listening is what a person has done with the library, counted.
+type Listening struct {
+	Plays  int // Plays that counted.
+	Hearts int // Hearts on tracks, albums and artists.
+	Rated  int // Tracks with stars.
+}
+
+// CountListening counts the user's plays, hearts and rated tracks.
+func (s *Store) CountListening(ctx context.Context, userID int64) (Listening, error) {
+	row, err := s.rq.CountUserListening(ctx, userID)
+	if err != nil {
+		return Listening{}, fmt.Errorf("count listening: %w", err)
+	}
+	return Listening{Plays: int(row.Plays), Hearts: int(row.Hearts), Rated: int(row.Rated)}, nil
 }
 
 // RecentPlays returns up to limit of a user's plays, newest first.

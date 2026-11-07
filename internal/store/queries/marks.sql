@@ -8,11 +8,11 @@ SELECT id FROM albums WHERE ulid = ?;
 -- name: ArtistRowID :one
 SELECT id FROM artists WHERE ulid = ?;
 
--- name: InsertTrackHeart :exec
+-- name: InsertTrackHeart :execrows
 INSERT INTO track_hearts (user_id, track_id, hearted_at) VALUES (?, ?, ?)
 ON CONFLICT (user_id, track_id) DO NOTHING;
 
--- name: DeleteTrackHeart :exec
+-- name: DeleteTrackHeart :execrows
 DELETE FROM track_hearts WHERE user_id = ? AND track_id = ?;
 
 -- name: InsertAlbumHeart :exec

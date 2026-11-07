@@ -71,6 +71,60 @@ type Rating struct {
 	Stars int `json:"stars"`
 }
 
+// The states of a Last.fm connection in [LastfmStatus].
+const (
+	LastfmOK        = "ok"        // Everything that counts is sent.
+	LastfmWaiting   = "waiting"   // Last.fm isn't answering; the outbox waits until RetryAt.
+	LastfmReconnect = "reconnect" // Last.fm rejected the session; nothing goes until the user connects again.
+)
+
+// Listening is the response to GET /me/listening: what the caller has done
+// with the library, counted.
+type Listening struct {
+	Plays  int `json:"plays"`
+	Hearts int `json:"hearts"`
+	Rated  int `json:"rated"`
+}
+
+// LastfmStatus is the response to GET and PATCH /me/lastfm. It never carries
+// the session key.
+type LastfmStatus struct {
+	// Configured is false when the server has no Last.fm key.
+	Configured bool `json:"configured"`
+	Connected  bool `json:"connected"`
+	// Name is the Last.fm user name, when connected.
+	Name       string `json:"name,omitzero"`
+	Scrobble   bool   `json:"scrobble"`
+	NowPlaying bool   `json:"nowPlaying"`
+	Loves      bool   `json:"loves"`
+	// State is LastfmOK, LastfmWaiting or LastfmReconnect.
+	State string `json:"state"`
+	// Waiting counts the plays the server holds for Last.fm.
+	Waiting    int       `json:"waiting"`
+	LastSentAt time.Time `json:"lastSentAt,omitzero"`
+	// RetryAt is when a waiting outbox is next tried.
+	RetryAt time.Time `json:"retryAt,omitzero"`
+}
+
+// LastfmSwitches is the body of PATCH /me/lastfm. A switch it leaves out
+// stays as it is.
+type LastfmSwitches struct {
+	Scrobble   *bool `json:"scrobble,omitzero"`
+	NowPlaying *bool `json:"nowPlaying,omitzero"`
+	Loves      *bool `json:"loves,omitzero"`
+}
+
+// LastfmConnect is the response to POST /me/lastfm/connect: the last.fm page
+// to send the browser to.
+type LastfmConnect struct {
+	URL string `json:"url"`
+}
+
+// NowPlaying is the body of POST /me/now-playing.
+type NowPlaying struct {
+	TrackID string `json:"trackId"`
+}
+
 // Me is the response to GET /me: the [User], and what the user may do.
 type Me struct {
 	User `json:",inline"`

@@ -20,6 +20,7 @@ import (
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/library"
+	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -52,6 +53,13 @@ type Config struct {
 	// Web is the built client, served for what isn't the API. Nil means none. A
 	// BasePath leaves it out: the client's paths are fixed to the root of a host.
 	Web fs.FS
+	// Lastfm sends plays, now playing and loves to Last.fm. Nil, or one with no
+	// client, means Last.fm is not set up here.
+	Lastfm *scrobbler.Scrobbler
+	// PublicURL is the address browsers reach the server at, base path included,
+	// such as "https://example.com/music": Last.fm sends them back there. "" means
+	// the host each request names.
+	PublicURL string
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -76,6 +84,9 @@ type Server struct {
 	genres        *library.Genres
 	editContext   context.Context //nolint:containedctx // Config.Context: the server's lifetime, not a request's.
 	limiter       *loginLimiter
+	lastfm        *scrobbler.Scrobbler
+	publicURL     string
+	lastfmStates  lastfmStates
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -112,6 +123,9 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		genres:        cfg.Genres,
 		editContext:   cfg.Context,
 		limiter:       newLoginLimiter(maxLimiterKeys),
+		lastfm:        cfg.Lastfm,
+		publicURL:     cfg.PublicURL,
+		lastfmStates:  lastfmStates{byUser: map[int64]pendingState{}},
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
@@ -199,6 +213,13 @@ func (s *Server) routes() []route {
 		{pattern: "DELETE /me/hearts/{kind}/{id}", handle: s.deleteHeart},
 		{pattern: "PUT /me/ratings/tracks/{id}", handle: s.putRating},
 		{pattern: "DELETE /me/ratings/tracks/{id}", handle: s.deleteRating},
+		{pattern: "GET /me/listening", handle: s.getListening},
+		{pattern: "GET /me/lastfm", handle: s.getLastfm},
+		{pattern: "PATCH /me/lastfm", handle: s.patchLastfm},
+		{pattern: "DELETE /me/lastfm", handle: s.deleteLastfm},
+		{pattern: "POST /me/lastfm/connect", handle: s.connectLastfm},
+		{pattern: "GET /lastfm/callback", public: true, handle: s.lastfmCallback},
+		{pattern: "POST /me/now-playing", handle: s.postNowPlaying},
 		{pattern: "GET /artwork/{hash}", handle: s.getArtwork},
 		{pattern: "GET /albums", handle: s.getAlbums},
 		{pattern: "GET /albums/{id}", handle: s.getAlbum},

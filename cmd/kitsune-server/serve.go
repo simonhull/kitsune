@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -24,7 +25,9 @@ import (
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/config"
+	"github.com/simonhull/kitsune/internal/lastfm"
 	"github.com/simonhull/kitsune/internal/library"
+	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/server"
 	"github.com/simonhull/kitsune/internal/store"
 	"github.com/simonhull/kitsune/internal/webui"
@@ -100,12 +103,28 @@ func runServe(args []string, env config.Env, stderr io.Writer) error {
 	// kills a slow drain.
 	context.AfterFunc(ctx, stop)
 
-	return serveConfig(ctx, &cfg, *path, log)
+	lastfmURL, _ := env(lastfmURLEnv)
+	return serveConfig(ctx, &cfg, launch{configPath: *path, lastfmURL: lastfmURL}, log)
+}
+
+// lastfmURLEnv names the root of a fake Last.fm to talk to in place of the
+// real one, serving the API at /2.0/ and the approval page at /api/auth/. Only
+// tests and manual checks set it; production never needs it.
+const lastfmURLEnv = "KITSUNE_LASTFM_URL"
+
+// errBadLastfmURL means KITSUNE_LASTFM_URL is not an absolute http URL.
+var errBadLastfmURL = errors.New(lastfmURLEnv + " must be an absolute http or https URL")
+
+// launch is what serve takes besides the config: where the config came from,
+// and the fake Last.fm to use, if any.
+type launch struct {
+	configPath string
+	lastfmURL  string // "" means the real Last.fm.
 }
 
 // serveConfig opens the app, listens and serves until ctx ends.
-func serveConfig(ctx context.Context, cfg *config.Config, configPath string, log *slog.Logger) (err error) {
-	a, err := openApp(ctx, cfg, configPath, log)
+func serveConfig(ctx context.Context, cfg *config.Config, l launch, log *slog.Logger) (err error) {
+	a, err := openApp(ctx, cfg, l, log)
 	if err != nil {
 		return err
 	}
@@ -127,6 +146,7 @@ type app struct {
 	store     *store.Store
 	auth      *auth.Service
 	scanner   *library.Scanner
+	lastfm    *scrobbler.Scrobbler
 	quickScan config.ClockTime
 	scanned   atomic.Bool // Set when the first scan has ended, whatever its outcome.
 	http      *http.Server
@@ -143,8 +163,8 @@ type app struct {
 
 // openApp opens the database and builds the HTTP server. It refuses to start
 // when there are no users, without creating anything.
-func openApp(ctx context.Context, cfg *config.Config, configPath string, log *slog.Logger) (*app, error) {
-	noUsers := &noUsersError{configPath: configPath}
+func openApp(ctx context.Context, cfg *config.Config, l launch, log *slog.Logger) (*app, error) {
+	noUsers := &noUsersError{configPath: l.configPath}
 	dbPath := filepath.Join(cfg.Storage.DataDir, store.FileName)
 	if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
 		return nil, noUsers
@@ -156,7 +176,7 @@ func openApp(ctx context.Context, cfg *config.Config, configPath string, log *sl
 	if err = requireUsers(ctx, st, noUsers); err != nil {
 		return nil, errors.Join(err, st.Close())
 	}
-	a, err := buildApp(ctx, cfg, st, log)
+	a, err := buildApp(ctx, cfg, l.lastfmURL, st, log)
 	if err != nil {
 		return nil, errors.Join(err, st.Close())
 	}
@@ -176,8 +196,9 @@ func requireUsers(ctx context.Context, st *store.Store, noUsers *noUsersError) e
 }
 
 // buildApp wires the auth service and the HTTP server over st. ctx ends tag edits:
-// a shutdown stops one between files, inside the drain.
-func buildApp(ctx context.Context, cfg *config.Config, st *store.Store, log *slog.Logger) (*app, error) {
+// a shutdown stops one between files, inside the drain. lastfmURL is the root of a
+// fake Last.fm, or "" for the real one.
+func buildApp(ctx context.Context, cfg *config.Config, lastfmURL string, st *store.Store, log *slog.Logger) (*app, error) {
 	svc, err := auth.New(st, auth.Options{Params: authParams()})
 	if err != nil {
 		return nil, fmt.Errorf("start auth: %w", err)
@@ -186,9 +207,10 @@ func buildApp(ctx context.Context, cfg *config.Config, st *store.Store, log *slo
 	if err != nil {
 		return nil, err
 	}
-	trusted := make([]netip.Prefix, 0, len(cfg.Server.TrustedProxies))
-	for _, n := range cfg.Server.TrustedProxies {
-		trusted = append(trusted, n.Prefix)
+	trusted := trustedPrefixes(cfg)
+	sender, err := newScrobbler(cfg.LastFM, lastfmURL, st, log)
+	if err != nil {
+		return nil, err
 	}
 	genres := library.NewGenres(st)
 	if err = genres.Refresh(ctx); err != nil {
@@ -206,6 +228,7 @@ func buildApp(ctx context.Context, cfg *config.Config, st *store.Store, log *slo
 			TagWrites:    cfg.Library.TagWrites,
 			Genres:       genres,
 		}),
+		lastfm:    sender,
 		quickScan: cfg.Library.QuickScan,
 		drain:     shutdownTimeout,
 		basePath:  cfg.Server.BasePath(),
@@ -227,12 +250,52 @@ func buildApp(ctx context.Context, cfg *config.Config, st *store.Store, log *slo
 		Genres:        genres,
 		Context:       ctx,
 		Web:           webClient(cfg, log),
+		Lastfm:        a.lastfm,
+		PublicURL:     cfg.Server.BaseURL,
 	})
 	a.http = newHTTPServer(handler, log)
 	if cfg.Server.BaseURL != "" && len(trusted) == 0 {
 		log.Warn("base_url is set but trusted_proxies is empty; every client will share the proxy's address for login rate limits")
 	}
 	return a, nil
+}
+
+// newScrobbler returns the sender for st, over the Last.fm client cfg sets up.
+func newScrobbler(cfg config.LastFM, fakeURL string, st *store.Store, log *slog.Logger) (*scrobbler.Scrobbler, error) {
+	client, err := lastfmClient(cfg, fakeURL, log)
+	if err != nil {
+		return nil, err
+	}
+	return scrobbler.New(st, scrobbler.Options{Client: client, MBIDKeys: library.TrackMBIDKeys(), Logger: log}), nil
+}
+
+// lastfmClient returns the Last.fm client cfg sets up, aimed at the fake at
+// fakeURL when that is set, or nil when Last.fm is not set up.
+func lastfmClient(cfg config.LastFM, fakeURL string, log *slog.Logger) (*lastfm.Client, error) {
+	if !cfg.Enabled() {
+		return nil, nil //nolint:nilnil // No client is how Last.fm being off reads.
+	}
+	client := lastfm.New(cfg.APIKey, string(cfg.SharedSecret))
+	if fakeURL == "" {
+		return client, nil
+	}
+	u, err := url.Parse(fakeURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, errBadLastfmURL
+	}
+	root := strings.TrimSuffix(fakeURL, "/")
+	client.APIBase, client.AuthBase = root+"/2.0/", root+"/api/auth/"
+	log.Warn("talking to a stand-in Last.fm, not the real one", "env", lastfmURLEnv, "url", root)
+	return client, nil
+}
+
+// trustedPrefixes returns the networks of the proxies cfg trusts.
+func trustedPrefixes(cfg *config.Config) []netip.Prefix {
+	trusted := make([]netip.Prefix, 0, len(cfg.Server.TrustedProxies))
+	for _, n := range cfg.Server.TrustedProxies {
+		trusted = append(trusted, n.Prefix)
+	}
+	return trusted
 }
 
 // webClient returns the client built into this binary, and says so when the
@@ -303,6 +366,7 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.workCtx = bgCtx
 	a.workMu.Unlock()
 	a.work.Go(func() { a.purgeSessions(bgCtx) })
+	a.work.Go(func() { a.lastfm.Run(bgCtx) })
 	a.work.Go(func() {
 		a.scanner.Run(bgCtx, a.quickScan.Hour, a.quickScan.Minute, func() { a.scanned.Store(true) })
 	})

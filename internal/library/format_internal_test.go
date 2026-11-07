@@ -37,7 +37,7 @@ const mbArtist1 = "mb-artist-1"
 // rawKeys is the key a format uses for each field the candidate tables cover.
 type rawKeys struct {
 	titleSort, artistSort, albumSort, albumArtist, albumArtistSort string
-	artistMBID, albumArtistMBID, compilation, albumMBID            string
+	artistMBID, albumArtistMBID, compilation, albumMBID, trackMBID string
 }
 
 func TestRawKeysPerFormat(t *testing.T) {
@@ -53,7 +53,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 				titleSort: "TITLESORT", artistSort: keyArtistSort, albumSort: "ALBUMSORT",
 				albumArtist: "ALBUMARTIST", albumArtistSort: "ALBUMARTISTSORT",
 				artistMBID: keyArtistMBID, albumArtistMBID: "MUSICBRAINZ_ALBUMARTISTID",
-				compilation: "COMPILATION", albumMBID: "MUSICBRAINZ_ALBUMID",
+				compilation: "COMPILATION", albumMBID: "MUSICBRAINZ_ALBUMID", trackMBID: "MUSICBRAINZ_TRACKID",
 			},
 			artistIDs: []string{mbArtist1, "mb-artist-2"},
 		},
@@ -63,7 +63,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 				titleSort: "TSOT", artistSort: "TSOP", albumSort: "TSOA",
 				albumArtist: "TPE2", albumArtistSort: "TSO2",
 				artistMBID: keyID3ArtistID, albumArtistMBID: "MUSICBRAINZ ALBUM ARTIST ID",
-				compilation: "TCMP", albumMBID: "MUSICBRAINZ ALBUM ID",
+				compilation: "TCMP", albumMBID: "MUSICBRAINZ ALBUM ID", trackMBID: "MUSICBRAINZ TRACK ID",
 			},
 			artistIDs: []string{mbArtist1},
 		},
@@ -73,7 +73,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 				titleSort: "sonm", artistSort: "soar", albumSort: "soal",
 				albumArtist: "aART", albumArtistSort: "soaa",
 				artistMBID: keyID3ArtistID, albumArtistMBID: "MUSICBRAINZ ALBUM ARTIST ID",
-				compilation: "cpil", albumMBID: "MUSICBRAINZ ALBUM ID",
+				compilation: "cpil", albumMBID: "MUSICBRAINZ ALBUM ID", trackMBID: "MUSICBRAINZ TRACK ID",
 			},
 			artistIDs: []string{mbArtist1},
 		},
@@ -94,6 +94,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 				f.Tags.Set(tt.keys.albumArtistMBID, "mb-albumartist-1")
 				f.Tags.Set(tt.keys.compilation, "1")
 				f.Tags.Set(tt.keys.albumMBID, "mb-album-1")
+				f.Tags.Set(tt.keys.trackMBID, "mb-track-1")
 				return nil
 			})
 			if err != nil {
@@ -136,6 +137,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 			wantMulti("album artist MBID", keysAlbumArtistMBID, []string{"mb-albumartist-1"})
 			wantSingle("compilation", keysCompilation, "1")
 			wantSingle("album MBID", keysAlbumMBID, "mb-album-1")
+			wantSingle("track MBID", keysTrackMBID, "mb-track-1")
 		})
 	}
 }

@@ -25,6 +25,7 @@ func (s *Server) postPlay(w http.ResponseWriter, r *http.Request) {
 	}
 	switch err := s.library.RecordPlay(r.Context(), &play); {
 	case err == nil:
+		s.lastfm.Poke()
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, store.ErrNotFound):
 		writeProblem(w, r, http.StatusNotFound, "no such track")
