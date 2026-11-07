@@ -7,6 +7,7 @@
 	import { emptyLine } from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import LibraryAlbum from '#lib/pages/LibraryAlbum.svelte';
+	import LibraryFilters from '#lib/pages/LibraryFilters.svelte';
 	import LibraryRail from '#lib/pages/LibraryRail.svelte';
 	import { letterOf, railHere, railLetters } from '#lib/pages/libraryRows.ts';
 	import { libraryView as view } from '#lib/pages/libraryView.svelte.ts';
@@ -24,8 +25,17 @@
 	const next = $derived(layout.artists.at(view.here + 1)?.artist);
 	const letter = $derived(artist === undefined ? undefined : letterOf(artist.sortName));
 	const letters = $derived(railLetters(layout, view.stacked));
-	const songs = $derived(layout.rows.filter(({ kind }) => kind === 'song').length);
+	const filtered = $derived(view.filter !== 'everything');
+	/** Under a filter, the letters it leaves empty: grey, and a jump to one goes on to the next. */
+	const quiet = $derived(
+		new Set(filtered ? letters.filter((each) => !layout.letters.has(each)) : [])
+	);
 	const cuedId = $derived(library.playing?.track.id);
+
+	// Before the first frame: marks pressed elsewhere since the filter last looked show on arrival.
+	if (view.filter !== 'everything') {
+		view.refilter();
+	}
 
 	/**
 	 * Whether the page has landed. Before that its scroll isn't final, and reading it now would swap
@@ -109,11 +119,25 @@
 		</p>
 	{:else if load.kind === 'ready'}
 		<div class="veil" aria-hidden="true"></div>
-		{#if letter !== undefined}
-			<p class="frame" data-morph-part="intro" data-morph-key="frame">
-				{libraryLine(letter, layout.artists.length, songs)}
-			</p>
-		{/if}
+		<div class="top">
+			<div class="filters" data-morph-part="intro" data-morph-key="filters">
+				<LibraryFilters
+					filter={view.filter}
+					choose={(filter) => {
+						view.choose(filter);
+					}}
+				/>
+			</div>
+			{#if letter !== undefined}
+				<p class="frame" data-morph-part="intro" data-morph-key="frame">
+					{libraryLine(letter, layout.artists.length, layout.songs, layout.totalSongs)}
+				</p>
+			{:else if filtered}
+				<p class="frame none" role="status">
+					{view.filter === 'hearted' ? 'Nothing hearted yet.' : 'No song rated 4 or 5 yet.'}
+				</p>
+			{/if}
+		</div>
 		{#if next !== undefined}
 			<div class="next" class:ahead={view.nextAhead} data-morph-part="intro" data-morph-key="next">
 				<span class="next-label">NEXT</span>
@@ -153,7 +177,7 @@
 								{#if id !== undefined}
 									<HeartButton kind="artists" {id} {name} size={18} />
 								{/if}
-								<p class="holdings">{artistHoldings(block.artist.albums)}</p>
+								<p class="holdings">{artistHoldings(block.artist.albums, block)}</p>
 							</div>
 						</div>
 					</div>
@@ -178,7 +202,7 @@
 			{/each}
 		</div>
 
-		<LibraryRail {letters} here={letter && railHere(letters, letter)} onjump={jump} />
+		<LibraryRail {letters} {quiet} here={letter && railHere(letters, letter)} onjump={jump} />
 	{/if}
 </div>
 
@@ -228,15 +252,19 @@
 		display: none;
 	}
 
-	/* Solid, because the name it stands over leaves upward, past it. */
-	.frame {
+	/* Solid, because the name it stands under leaves upward, past it. */
+	.top {
 		position: fixed;
 		z-index: 2;
 		top: 96px;
 		left: var(--page-edge);
 		width: var(--name-column);
-		padding: 8px 0 16px;
+		padding-bottom: 16px;
 		background: var(--ground);
+	}
+
+	.frame {
+		margin-top: 14px;
 		font-family: var(--font-mono);
 		font-size: var(--type-mono);
 		font-variant-numeric: tabular-nums;
@@ -308,10 +336,17 @@
 		pointer-events: none;
 	}
 
+	.none {
+		font-family: var(--font-sans);
+		font-size: var(--type-title);
+		letter-spacing: 0;
+		color: var(--text-secondary);
+	}
+
 	/* The name stays while its albums scroll; the next one pushes it out. */
 	.head {
 		position: sticky;
-		top: 134px;
+		top: 186px;
 		pointer-events: auto;
 	}
 
@@ -379,18 +414,33 @@
 			padding: 76px 0 128px;
 		}
 
+		/* The filters stand under the nav, and the veil goes down past them. */
 		.veil {
 			display: block;
 			position: fixed;
 			z-index: 2;
 			inset: 0 0 auto;
-			height: 76px;
+			height: 128px;
 			background: var(--ground);
+		}
+
+		.top {
+			top: 78px;
+			left: 16px;
+			width: auto;
+			padding: 0;
+			background: none;
 		}
 
 		.frame,
 		.next {
 			display: none;
+		}
+
+		.none {
+			display: block;
+			position: fixed;
+			top: 140px;
 		}
 
 		.head-column {
@@ -400,7 +450,7 @@
 		}
 
 		.head {
-			top: 76px;
+			top: 128px;
 			height: 80px;
 			padding: 8px 48px 12px 16px;
 			background: var(--ground);

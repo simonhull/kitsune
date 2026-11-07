@@ -1,5 +1,11 @@
 import { isMultiDisc } from '#lib/library/format.ts';
-import type { LibraryAlbum, LibraryArtist, LibraryIndex } from '#lib/library/source.ts';
+import type {
+	LibraryAlbum,
+	LibraryArtist,
+	LibraryIndex,
+	LibraryTrack,
+	MarkKind
+} from '#lib/library/source.ts';
 
 /** The heights a layout is built from: everything on the page has one known before it mounts. */
 export interface RowMetrics {
@@ -22,18 +28,26 @@ export type Row =
 	| { kind: 'song'; top: number; height: number; albumIndex: number; trackIndex: number };
 
 export interface AlbumBlock {
+	/** Its artist in the layout's {@link Layout.artists}. */
 	artistIndex: number;
 	album: LibraryAlbum;
 	top: number;
 	height: number;
 	firstRow: number;
 	lastRow: number;
+	/** How many of its songs show. */
+	shown: number;
 }
 
 export interface ArtistBlock {
 	artist: LibraryArtist;
+	/** Where it stands in the whole index, shown or not. */
+	source: number;
 	top: number;
 	height: number;
+	/** How many of its albums show, and of their songs. */
+	albums: number;
+	songs: number;
 }
 
 export interface Layout {
@@ -43,6 +57,43 @@ export interface Layout {
 	/** Each letter's first artist, by its index. */
 	letters: Map<string, number>;
 	height: number;
+	/** The songs it shows, and the songs there are. */
+	songs: number;
+	totalSongs: number;
+}
+
+/** What the Library list shows: everything, or what a filter keeps of it. */
+export type LibraryFilter = 'everything' | 'hearted' | 'rated';
+
+/** Whether a filter shows a song, given its album and artist. */
+export type Keep = (artist: LibraryArtist, album: LibraryAlbum, track: LibraryTrack) => boolean;
+
+/** As much of the marks as a filter reads. */
+export interface MarksView {
+	hearted(kind: MarkKind, id: string): boolean;
+	stars(trackId: string): number | null;
+}
+
+/** The least a song is rated to show under 4 and up. */
+export const goodStars = 4;
+
+/**
+ * Says what a filter keeps, or undefined to keep everything. A hearted artist keeps all its albums
+ * and a hearted album all its songs; otherwise only a hearted song shows. 4 and up looks at the song
+ * alone: an album's mean never shows a song nobody rated.
+ */
+export function keepFor(filter: LibraryFilter, marks: MarksView): Keep | undefined {
+	switch (filter) {
+		case 'everything':
+			return undefined;
+		case 'hearted':
+			return (artist, album, track) =>
+				(artist.id !== undefined && marks.hearted('artists', artist.id)) ||
+				marks.hearted('albums', album.id) ||
+				marks.hearted('tracks', track.id);
+		case 'rated':
+			return (_artist, _album, track) => (marks.stars(track.id) ?? 0) >= goodStars;
+	}
 }
 
 /** Which rows are mounted, by index. Empty when `last` is below `first`. */
@@ -51,24 +102,57 @@ export interface RowWindow {
 	last: number;
 }
 
-/** Works out where everything goes: one pass, so a library this size costs a few milliseconds. */
-export function layOut(index: LibraryIndex, metrics: RowMetrics): Layout {
-	const layout: Layout = { rows: [], albums: [], artists: [], letters: new Map(), height: 0 };
+/**
+ * Works out where everything goes, or everything `keep` shows: one pass, so a library this size
+ * costs a few milliseconds. An album with no song kept is left out, and so is an artist with none.
+ */
+export function layOut(index: LibraryIndex, metrics: RowMetrics, keep?: Keep): Layout {
+	const layout: Layout = {
+		rows: [],
+		albums: [],
+		artists: [],
+		letters: new Map(),
+		height: 0,
+		songs: 0,
+		totalSongs: 0
+	};
 	let y = 0;
-	for (const [artistIndex, artist] of index.artists.entries()) {
+	for (const [source, artist] of index.artists.entries()) {
+		const artistIndex = layout.artists.length;
 		const top = y;
-		y += metrics.artistHead;
-		for (const [position, album] of artist.albums.entries()) {
-			y = layOutAlbum(
-				layout,
-				artistIndex,
-				album,
-				y + (position === 0 ? 0 : metrics.albumGap),
-				metrics
-			);
+		let end = top + metrics.artistHead;
+		let albums = 0;
+		const songs = layout.songs;
+		for (const album of artist.albums) {
+			layout.totalSongs += album.tracks.length;
+			const shown =
+				keep === undefined
+					? album.tracks
+					: album.tracks.filter((track) => keep(artist, album, track));
+			if (shown.length > 0) {
+				end = layOutAlbum(
+					layout,
+					artistIndex,
+					album,
+					shown,
+					end + (albums === 0 ? 0 : metrics.albumGap),
+					metrics
+				);
+				albums += 1;
+			}
 		}
-		y = Math.max(y, top + metrics.artistMin);
-		layout.artists.push({ artist, top, height: y - top });
+		if (albums === 0) {
+			continue;
+		}
+		y = Math.max(end, top + metrics.artistMin);
+		layout.artists.push({
+			artist,
+			source,
+			top,
+			height: y - top,
+			albums,
+			songs: layout.songs - songs
+		});
 		const letter = letterOf(artist.sortName);
 		if (!layout.letters.has(letter)) {
 			layout.letters.set(letter, artistIndex);
@@ -79,11 +163,12 @@ export function layOut(index: LibraryIndex, metrics: RowMetrics): Layout {
 	return layout;
 }
 
-/** Adds one album at `top`, and returns where it ends. */
+/** Adds the songs of an album it shows at `top`, and returns where it ends. */
 function layOutAlbum(
 	layout: Layout,
 	artistIndex: number,
 	album: LibraryAlbum,
+	shown: readonly LibraryTrack[],
 	top: number,
 	metrics: RowMetrics
 ): number {
@@ -91,9 +176,14 @@ function layOutAlbum(
 	const albumIndex = albums.length;
 	const multiDisc = isMultiDisc(album.tracks);
 	const firstRow = rows.length;
+	// Everything shows unless a filter left some out: then it says which.
+	const kept = shown === album.tracks ? null : new Set(shown);
 	let y = top + metrics.albumHead;
 	let disc: number | null = null;
 	for (const [trackIndex, track] of album.tracks.entries()) {
+		if (kept?.has(track) === false) {
+			continue;
+		}
 		const on = track.discNo ?? 1;
 		if (multiDisc && on !== disc) {
 			disc = on;
@@ -104,7 +194,16 @@ function layOutAlbum(
 		y += metrics.song;
 	}
 	const height = Math.max(y - top, metrics.albumMin);
-	albums.push({ artistIndex, album, top, height, firstRow, lastRow: rows.length - 1 });
+	albums.push({
+		artistIndex,
+		album,
+		top,
+		height,
+		firstRow,
+		lastRow: rows.length - 1,
+		shown: shown.length
+	});
+	layout.songs += shown.length;
 	return top + height;
 }
 
@@ -150,7 +249,9 @@ export function windowAt(layout: Layout, y: number, height: number, mounted: Row
 	const lastRow = layout.rows.length - 1;
 	const near = rowAt(layout, y - height / 2);
 	const far = rowAt(layout, y + height * 1.5);
-	if (mounted.last >= mounted.first && near >= mounted.first && far <= mounted.last) {
+	// A window past the end is from a longer list, before a filter: it holds rows this one hasn't.
+	const held = mounted.last >= mounted.first && mounted.last <= lastRow;
+	if (held && near >= mounted.first && far <= mounted.last) {
 		return mounted;
 	}
 	return {

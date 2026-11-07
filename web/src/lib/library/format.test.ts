@@ -209,6 +209,17 @@ describe('the Library’s lines', () => {
 		expect(albumHoldings(2021, 10)).toBe('2021 · 10 songs');
 		expect(albumHoldings(undefined, 1)).toBe('1 song');
 	});
+
+	it('says what a filter hides', () => {
+		expect(albumHoldings(2021, 3, 10)).toBe('2021 · 3 of 10 songs');
+		expect(albumHoldings(undefined, 1, 1)).toBe('1 song');
+		expect(artistHoldings([{ tracks: [1, 2] }, { tracks: [3] }], { albums: 1, songs: 1 })).toBe(
+			'1 OF 2 ALBUMS · 1 OF 3 SONGS'
+		);
+		expect(artistHoldings([{ tracks: [1, 2] }], { albums: 1, songs: 2 })).toBe('1 ALBUM · 2 SONGS');
+		expect(libraryLine('L', 12, 40, 7586)).toBe('L · 12 ARTISTS · 40 OF 7,586 SONGS');
+		expect(libraryLine('L', 912, 7586, 7586)).toBe('L · 912 ARTISTS · 7,586 SONGS');
+	});
 });
 
 describe('credit on a shared album', () => {

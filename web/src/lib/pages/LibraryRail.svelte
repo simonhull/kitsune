@@ -1,12 +1,14 @@
 <script lang="ts">
 	interface Props {
 		letters: readonly string[];
+		/** Letters with nothing shown under them: grey, and a jump to one goes on to the next. */
+		quiet: ReadonlySet<string>;
 		/** The letter you're at. */
 		here: string | undefined;
 		onjump: (letter: string) => void;
 	}
 
-	let { letters, here, onjump }: Props = $props();
+	let { letters, quiet, here, onjump }: Props = $props();
 
 	let rail: HTMLElement | undefined = $state();
 
@@ -47,6 +49,7 @@
 	{#each letters as letter (letter)}
 		<a
 			href={`#${letter === '#' ? 'other' : letter}`}
+			class:quiet={quiet.has(letter)}
 			aria-current={letter === here ? 'true' : undefined}
 			onclick={(event) => {
 				event.preventDefault();
@@ -95,6 +98,11 @@
 		color: var(--fox);
 	}
 
+	.quiet,
+	.quiet:hover {
+		color: color-mix(in srgb, var(--text-label) 45%, var(--ground));
+	}
+
 	[aria-current='true'] {
 		color: var(--fox-ink);
 		font-weight: 700;
@@ -111,10 +119,10 @@
 
 	@media (max-width: 1024px) {
 		.rail {
-			--room: calc(100dvh - 268px);
+			--room: calc(100dvh - 320px);
 			--step: min(44px, calc(var(--room) / var(--letters)));
 
-			top: 164px;
+			top: 216px;
 			right: 2px;
 			width: 36px;
 			touch-action: none;

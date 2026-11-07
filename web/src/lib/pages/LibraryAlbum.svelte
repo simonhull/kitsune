@@ -71,10 +71,17 @@
 				{#if trouble}
 					<p class="facts trouble" role="status">Couldn't load this album</p>
 				{:else}
+					{@const hiding = block.shown < album.tracks.length}
+					<!-- What a filter hides takes the room: the stars go under it, not off the end. -->
 					<p class="facts">
-						{albumHoldings(album.year, album.tracks.length)} ·
-						<span class="stars"><StarsShown {stars} /></span>
+						{albumHoldings(album.year, block.shown, album.tracks.length)}
+						{#if !hiding}
+							· <span class="stars"><StarsShown {stars} /></span>
+						{/if}
 					</p>
+					{#if hiding}
+						<p class="facts stars"><StarsShown {stars} /></p>
+					{/if}
 				{/if}
 			</div>
 		</div>

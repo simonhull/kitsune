@@ -1,8 +1,10 @@
+import { untrack } from 'svelte';
 import { library } from '#lib/library/library.svelte.ts';
 import type { LibraryIndex } from '#lib/library/source.ts';
 import { player } from '#lib/player/player.svelte.ts';
 import {
 	artistAt,
+	keepFor,
 	layOut,
 	letterTarget,
 	rowAt,
@@ -11,6 +13,7 @@ import {
 	type AlbumBlock,
 	type ArtistBlock,
 	type Layout,
+	type LibraryFilter,
 	type Row,
 	type RowMetrics
 } from './libraryRows.ts';
@@ -36,8 +39,8 @@ const wide: Frame = {
 		// The cover, its title and its facts.
 		albumMin: 264,
 		artistHead: 0,
-		// Where the name pins, 38 down, then its three lines and its facts, with the artist's heart.
-		artistMin: 330,
+		// Where the name pins, 90 down under the filters, then its three lines and its facts.
+		artistMin: 382,
 		albumGap: 40,
 		artistGap: 72
 	},
@@ -56,8 +59,8 @@ const stacked: Frame = {
 		albumGap: 20,
 		artistGap: 28
 	},
-	top: 76,
-	line: 156
+	top: 128,
+	line: 208
 };
 
 /** How far up from the bottom of the screen the NEXT panel reaches, at its two lines. */
@@ -84,6 +87,8 @@ interface Anchor {
 	offset: number;
 	/** The song at that row, to find it again in a list that has changed. */
 	song: string | undefined;
+	/** Where its artist stands in the whole index: a filter that hides the song may keep the artist. */
+	artist: number | undefined;
 }
 
 /**
@@ -100,10 +105,24 @@ class LibraryView {
 	nextAhead = $state(false);
 	/** The album a tap couldn't play. */
 	trouble = $state<string | null>(null);
+	/** What the list shows. It's kept here so it's still chosen on coming back. */
+	filter = $state<LibraryFilter>('everything');
 
 	readonly frame = $derived(this.stacked ? stacked : wide);
 	readonly #index = $derived(library.index.kind === 'ready' ? library.index.value : noLibrary);
-	readonly layout: Layout = $derived(layOut(this.#index, this.frame.metrics));
+	/** Moves on to look at the marks again: a filter reads them once, and a press doesn't move rows. */
+	#looked = $state(0);
+	/**
+	 * The marks are read untracked, so a heart taken off under Hearted leaves its row where the press
+	 * was, to put back. Choosing a filter again, or coming back to the page, reads them afresh.
+	 */
+	readonly layout: Layout = $derived.by(() => {
+		const index = this.#index;
+		const { metrics } = this.frame;
+		const filter = this.filter;
+		void this.#looked;
+		return untrack(() => layOut(index, metrics, keepFor(filter, library.marks)));
+	});
 	readonly mounted: MountedArtist[] = $derived(this.#mount());
 
 	/** Null at the top of a list nobody has scrolled. */
@@ -175,7 +194,8 @@ class LibraryView {
 		if (keep) {
 			const row = rowAt(layout, line);
 			const offset = line - (layout.rows.at(row)?.top ?? 0);
-			this.#anchor = { row, offset, song: rowKey(layout, row) };
+			const artist = layout.artists.at(this.here)?.source;
+			this.#anchor = { row, offset, song: rowKey(layout, row), artist };
 		}
 	}
 
@@ -184,16 +204,34 @@ class LibraryView {
 		return y - this.frame.line + this.frame.top;
 	}
 
-	/** Finds the scroll that puts the screen back on its song, in whatever the layout is now. */
+	/**
+	 * Finds the scroll that puts the screen back on its song, in whatever the layout is now. A song
+	 * a filter hides lands on its artist, or the next artist shown after it.
+	 */
 	landing(): number {
 		const { layout } = this;
 		if (this.#anchor === null) {
 			return 0;
 		}
-		const { row, offset, song } = this.#anchor;
+		const { row, offset, song, artist } = this.#anchor;
 		const held = song === undefined || rowKey(layout, row) === song;
 		const found = held ? row : layout.rows.findIndex((_, index) => rowKey(layout, index) === song);
-		return this.#scrollTo((layout.rows.at(Math.max(found, 0))?.top ?? 0) + offset);
+		if (found >= 0 || artist === undefined) {
+			return this.#scrollTo((layout.rows.at(Math.max(found, 0))?.top ?? 0) + offset);
+		}
+		const next = layout.artists.find(({ source }) => source >= artist) ?? layout.artists.at(-1);
+		return this.#scrollTo((next?.top ?? 0) + this.frame.metrics.artistHead);
+	}
+
+	/** Shows what a filter keeps. Choosing the one already shown looks at the marks again. */
+	choose(filter: LibraryFilter): void {
+		this.filter = filter;
+		this.refilter();
+	}
+
+	/** Looks at the marks again, for a list that may be behind them. */
+	refilter(): void {
+		this.#looked += 1;
 	}
 
 	/** Finds the scroll that puts a letter's first artist on the line. */
@@ -214,6 +252,7 @@ class LibraryView {
 		this.last = -1;
 		this.here = 0;
 		this.trouble = null;
+		this.filter = 'everything';
 		this.#anchor = null;
 	}
 }
