@@ -37,6 +37,7 @@ func knownKeys() []string {
 		"library", "library.roots", "library.missing_grace", "library.quick_scan", "library.tag_writes",
 		"storage", "storage.data_dir",
 		"log", "log.level",
+		"lastfm", "lastfm.api_key", "lastfm.shared_secret",
 	}
 }
 
@@ -46,6 +47,7 @@ type Config struct {
 	Library Library `toml:"library"`
 	Storage Storage `toml:"storage"`
 	Log     Log     `toml:"log"`
+	LastFM  LastFM  `toml:"lastfm"`
 }
 
 // Server configures the HTTP server.
@@ -100,6 +102,43 @@ type Storage struct {
 type Log struct {
 	// Level is the minimum level logged.
 	Level slog.Level `toml:"level"`
+}
+
+// LastFM configures sending plays and loves to Last.fm. Both keys come from
+// an API account at last.fm/api; with neither set, the feature is off.
+type LastFM struct {
+	// APIKey identifies the server to Last.fm.
+	APIKey string `toml:"api_key"`
+	// SharedSecret signs every call. It is never logged or sent to a client.
+	SharedSecret Secret `toml:"shared_secret"`
+}
+
+// Enabled reports whether Last.fm is set up.
+func (l LastFM) Enabled() bool { return l.APIKey != "" && l.SharedSecret != "" }
+
+// Secret is a config value that is never printed: it formats and encodes as
+// "(set)", or "" when empty. Convert it with string() to use it.
+type Secret string
+
+// redacted is how a set [Secret] prints.
+const redacted = "(set)"
+
+// String returns "(set)", or "" for an empty secret.
+func (s Secret) String() string {
+	if s == "" {
+		return ""
+	}
+	return redacted
+}
+
+// MarshalText encodes the secret as [Secret.String] does, so
+// `kitsune-server config` never prints it.
+func (s Secret) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
+
+// UnmarshalText reads the secret as written.
+func (s *Secret) UnmarshalText(b []byte) error {
+	*s = Secret(b)
+	return nil
 }
 
 // Default returns the value of every key a config file leaves out.
@@ -193,7 +232,8 @@ func unknownKeys(md *toml.MetaData) []string {
 	return unknown
 }
 
-// WriteTOML writes c to w as a config file that Load reads back to c.
+// WriteTOML writes c to w as a config file that Load reads back to c, except
+// that a set lastfm.shared_secret is written as "(set)".
 func (c *Config) WriteTOML(w io.Writer) error {
 	if err := toml.NewEncoder(w).Encode(c); err != nil {
 		return fmt.Errorf("write config: %w", err)
@@ -224,6 +264,13 @@ func (c *Config) validate() error {
 	c.checkRoots(invalid)
 	if c.Library.MissingGrace < 0 {
 		invalid("library.missing_grace", "must not be negative")
+	}
+	if (c.LastFM.APIKey == "") != (c.LastFM.SharedSecret == "") {
+		if c.LastFM.APIKey == "" {
+			invalid("lastfm.api_key", "not set, but lastfm.shared_secret is: set both or neither")
+		} else {
+			invalid("lastfm.shared_secret", "not set, but lastfm.api_key is: set both or neither")
+		}
 	}
 	switch dir := c.Storage.DataDir; {
 	case dir == "":

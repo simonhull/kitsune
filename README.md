@@ -29,10 +29,19 @@ data_dir = ""            # "" means $XDG_DATA_HOME/kitsune-server
 
 [log]
 level = "info"           # debug, info, warn or error
+
+[lastfm]
+api_key = ""             # from an API account at last.fm/api; set both or neither
+shared_secret = ""       # never logged; `kitsune-server config` shows it as "(set)"
 ```
 
 Unknown keys are errors, so a typo cannot be silently ignored. Paths must be
 absolute. `kitsune-server config` prints the configuration in effect.
+
+With `[lastfm]` set, each user can connect their Last.fm account on the You page, and the
+server sends their plays, the song playing and their hearts as loves. Last.fm sends the browser
+back to `/api/v1/lastfm/callback` at `server.base_url`, or at the address the browser used when
+that is not set. Keep the secret out of committed files: fill it in with `op inject` or similar.
 
 ## Building
 
