@@ -9,11 +9,13 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -306,34 +308,83 @@ func TestLibraryIndexRequiresAuth(t *testing.T) {
 	ts.send(t, call{method: http.MethodGet, path: indexPath, invalid: true}).problem(t, http.StatusUnauthorized)
 }
 
-// Full size, as the spec measured it.
+// benchShapes are the libraries the index is measured on: the size of the
+// real library the song columns were designed against, and a large one.
+//
+//nolint:gochecknoglobals // A read-only table of benchmark sizes.
+var benchShapes = []struct{ tracks, albums, artists int }{
+	{tracks: 4350, albums: 435, artists: 400},
+	{tracks: 50_000, albums: 5000, artists: 4000},
+}
+
+// The fields the song columns can ask for: every one, and what the default
+// columns need.
 const (
-	benchArtists = 912
-	benchAlbums  = 927
-	benchTracks  = 7586
+	allIndexFields     = "?fields=albumArtist,genre,year,composer,format,bitrate,added,plays,lastPlayed"
+	defaultIndexFields = "?fields=genre,plays,lastPlayed,format"
 )
 
-func BenchmarkLibraryIndex(b *testing.B) {
-	ts := newTestServer(b)
-	albums := make([]indexAlbum, benchAlbums)
+// seedBench writes a library of the shape, with a genre and a composer on every
+// track, and a third of its tracks played by the user who reads it.
+func (ts *testServer) seedBench(b *testing.B, tracks, albums, artists int) string {
+	b.Helper()
+	sess := ts.sessionFor(b)
+	tws := make([]store.TrackWrite, 0, tracks)
 	for i := range albums {
-		artist := person(i%benchArtists+1, fmt.Sprintf("Artist %d", i%benchArtists))
-		count := benchTracks / benchAlbums
-		if i < benchTracks%benchAlbums {
+		artist := person(i%artists+1, fmt.Sprintf("Artist %d", i%artists))
+		count := tracks / albums
+		if i < tracks%albums {
 			count++
 		}
-		albums[i] = indexAlbum{n: i + 1, title: fmt.Sprintf("Album %d", i), artist: artist.Name, year: 1960 + i%60}
+		album := store.AlbumWrite{
+			GroupKey: fmt.Sprintf("g%d", i+1), ULID: albumULID(i + 1), Name: fmt.Sprintf("Album %d", i),
+			SortName: fmt.Sprintf("Album %d", i), Artist: artist.Name, Year: 1960 + i%60,
+		}
 		for t := range count {
-			albums[i].tracks = append(albums[i].tracks, indexTrack{
-				title: fmt.Sprintf("Track %d", t), trackNo: t + 1, artists: []store.ArtistWrite{artist},
+			tws = append(tws, store.TrackWrite{
+				ULID: fmt.Sprintf("01J%020d%03d", i+1, t), Root: musicBase, RelPath: fmt.Sprintf("a%d/%d.flac", i+1, t),
+				Format: streamFormat, Codec: flacFormat, Duration: 4 * time.Minute, SampleRate: 44100, BitDepth: 16,
+				Bitrate: 900_000 + t*1000, Lossless: true, Title: fmt.Sprintf("Track %d", t), TrackNo: t + 1,
+				Year: album.Year, Album: album, Artists: []store.ArtistWrite{artist}, AlbumArtists: []store.ArtistWrite{artist},
+				Tags: []store.Tag{
+					{Key: library.GenreKeys()[0], Value: fmt.Sprintf("Genre %d", i%30)},
+					{Key: library.ComposerKeys()[0], Value: fmt.Sprintf("Composer %d", i%700)},
+				},
 			})
 		}
 	}
-	ts.seedIndex(b, albums...)
-	token := ts.tokenFor(b, store.RoleUser)
+	if err := ts.Store.WriteBatch(b.Context(), &store.Batch{Tracks: tws}); err != nil {
+		b.Fatal(err)
+	}
+	for i := 0; i < len(tws); i += 3 {
+		if err := ts.Store.RecordPlay(b.Context(), &store.NewPlay{
+			UserID: sess.user.ID, TrackID: tws[i].ULID, PlayedAt: ts.Clock.Now(), Source: "bench", ClientID: strconv.Itoa(i),
+		}); err != nil {
+			b.Fatal(err)
+		}
+	}
+	return sess.token
+}
+
+// BenchmarkLibraryIndex times GET /library/index, gzipped, and reports the
+// response's size, with no fields and with every field.
+func BenchmarkLibraryIndex(b *testing.B) {
+	for _, shape := range benchShapes {
+		ts := newTestServer(b)
+		token := ts.seedBench(b, shape.tracks, shape.albums, shape.artists)
+		for name, query := range map[string]string{"none": "", "defaults": defaultIndexFields, "all": allIndexFields} {
+			b.Run(fmt.Sprintf("tracks=%d/fields=%s", shape.tracks, name), func(b *testing.B) {
+				benchIndex(b, ts, token, query)
+			})
+		}
+	}
+}
+
+func benchIndex(b *testing.B, ts *testServer, token, query string) {
+	b.Helper()
 	var size int64
 	for b.Loop() {
-		req, err := http.NewRequestWithContext(b.Context(), http.MethodGet, ts.URL+indexPath, http.NoBody)
+		req, err := http.NewRequestWithContext(b.Context(), http.MethodGet, ts.URL+indexPath+query, http.NoBody)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -358,7 +409,7 @@ func TestToAPILibraryIndexKeepsEmptyListsNonNull(t *testing.T) {
 	t.Parallel()
 	out := toAPILibraryIndex(&store.LibraryIndex{Artists: []store.IndexArtist{{
 		Name: annName, Albums: []store.IndexAlbum{{Tracks: []store.IndexTrack{{}}}},
-	}}})
+	}}}, &fieldWriter{})
 	body, err := json.Marshal(out)
 	if err != nil {
 		t.Fatal(err)

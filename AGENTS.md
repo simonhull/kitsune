@@ -58,7 +58,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   This also supersedes the spec's `next_cursor` and limit 500: the API says `nextCursor` and caps
   `limit` at 200.
 - `GET /library/index` is the one browse list that doesn't page: the client needs every row's height
-  to place the scrollbar and the rail. Its order lives in `orderIndex`, and nowhere else.
+  to place the scrollbar and the rail. Its order lives in `orderIndex`, and nowhere else. `fields`
+  adds what the song columns show, each read by its own query only when asked for (`IndexOptions`)
+  and sent through the nil-able `TrackFields`, so an index without it costs what it did;
+  `TestLibraryIndexWithoutFieldsIsUnchanged` holds its bytes.
 - Tag edits are one route, `POST /albums/{id}/edits`, and `GET /albums/{id}/tags` reads what an editor
   shows, from the files. The validator is the album's `etag` field in the body, a hash of
   `ulid:size:mtime_ms` per track, and not a response header. Clients send it back verbatim as

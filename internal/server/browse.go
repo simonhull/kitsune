@@ -180,8 +180,14 @@ func toAPIFingerprints(p library.FingerprintProgress) api.FingerprintStatus {
 // getLibraryIndex lists every song, by artist and album. A client that goes away
 // is no fault: a canceled query reads as an interrupted one.
 func (s *Server) getLibraryIndex(w http.ResponseWriter, r *http.Request) {
+	fields, err := parseIndexFields(r.URL.Query()["fields"])
+	if err != nil {
+		writeProblem(w, r, http.StatusBadRequest, "fields must name the index's fields, joined by commas")
+		return
+	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
-	index, err := s.library.LibraryIndex(r.Context(), user.ID)
+	opts := fields.options()
+	index, err := s.library.LibraryIndex(r.Context(), user.ID, &opts)
 	if r.Context().Err() != nil {
 		return
 	}
@@ -189,12 +195,14 @@ func (s *Server) getLibraryIndex(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, "library index", err)
 		return
 	}
-	body := toAPILibraryIndex(&index)
+	writer := fields.writer(s.genres)
+	body := toAPILibraryIndex(&index, &writer)
 	writeCompressed(w, r, &body)
 }
 
-// toAPILibraryIndex returns the wire form of the library index.
-func toAPILibraryIndex(index *store.LibraryIndex) api.LibraryIndex {
+// toAPILibraryIndex returns the wire form of the library index, with what
+// fields asks for.
+func toAPILibraryIndex(index *store.LibraryIndex, fields *fieldWriter) api.LibraryIndex {
 	out := api.LibraryIndex{Artists: make([]api.LibraryArtist, len(index.Artists))}
 	for i := range index.Artists {
 		a := &index.Artists[i]
@@ -202,13 +210,13 @@ func toAPILibraryIndex(index *store.LibraryIndex) api.LibraryIndex {
 			ID: a.ID, Name: a.Name, SortName: a.SortName, Hearted: a.Hearted, Albums: make([]api.LibraryAlbum, len(a.Albums)),
 		}
 		for j := range a.Albums {
-			out.Artists[i].Albums[j] = toAPILibraryAlbum(&a.Albums[j])
+			out.Artists[i].Albums[j] = toAPILibraryAlbum(&a.Albums[j], fields)
 		}
 	}
 	return out
 }
 
-func toAPILibraryAlbum(a *store.IndexAlbum) api.LibraryAlbum {
+func toAPILibraryAlbum(a *store.IndexAlbum, fields *fieldWriter) api.LibraryAlbum {
 	out := api.LibraryAlbum{
 		ID: a.ID, Title: a.Title, Artist: a.Artist, Compilation: a.Compilation, Hearted: a.Hearted, Year: a.Year,
 		Artwork: toAPIArtwork(a.Cover), Tracks: make([]api.LibraryTrack, len(a.Tracks)),
@@ -220,6 +228,7 @@ func toAPILibraryAlbum(a *store.IndexAlbum) api.LibraryAlbum {
 			Artists: append([]string{}, t.Artists...), DiscNo: t.DiscNo, TrackNo: t.TrackNo,
 			Hearted: t.Marks.Hearted, Stars: t.Marks.Stars,
 		}
+		fields.add(&out.Tracks[i], t)
 	}
 	return out
 }

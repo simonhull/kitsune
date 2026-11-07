@@ -1,6 +1,9 @@
 package library
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestMatchKey(t *testing.T) {
 	t.Parallel()
@@ -29,5 +32,12 @@ func TestMatchKey(t *testing.T) {
 				t.Errorf("MatchKey is not idempotent: %q then %q", got, again)
 			}
 		})
+	}
+}
+
+func TestComposerKeys(t *testing.T) {
+	t.Parallel()
+	if got, want := ComposerKeys(), []string{"COMPOSER", "TCOM", "\u00a9wrt"}; !slices.Equal(got, want) {
+		t.Errorf("ComposerKeys = %q, want %q", got, want)
 	}
 }

@@ -124,6 +124,36 @@ JOIN tracks t ON t.id = ta.track_id AND t.missing_since IS NULL
 WHERE ta.role = 'artist'
 ORDER BY ta.track_id, ta.ord;
 
+-- What the song columns ask for, read only when they do: an index without them
+-- stays as fast as it was.
+
+-- name: ListIndexTrackDetails :many
+SELECT id, year, format, sample_rate, bit_depth, bitrate, added_at
+FROM tracks
+WHERE missing_since IS NULL;
+
+-- name: ListIndexTrackAlbumArtists :many
+SELECT ta.track_id, ar.name
+FROM track_artists ta
+JOIN artists ar ON ar.id = ta.artist_id
+JOIN tracks t ON t.id = ta.track_id AND t.missing_since IS NULL
+WHERE ta.role = 'album_artist'
+ORDER BY ta.track_id, ta.ord;
+
+-- name: ListIndexTrackTags :many
+SELECT tt.track_id, tt.key, tt.value
+FROM track_tags tt
+JOIN tracks t ON t.id = tt.track_id AND t.missing_since IS NULL
+WHERE tt.key IN (sqlc.slice(tag_keys))
+ORDER BY tt.track_id, tt.key, tt.ord;
+
+-- plays_recent leads with user_id, so this reads only the person's plays.
+-- name: ListIndexPlays :many
+SELECT track_id, count(*) AS plays, CAST(max(played_at) AS INTEGER) AS last_played
+FROM plays
+WHERE user_id = ?
+GROUP BY track_id;
+
 -- name: CountLiveAlbums :one
 SELECT count(*) FROM albums a
 WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL);

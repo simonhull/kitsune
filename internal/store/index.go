@@ -51,22 +51,56 @@ type IndexTrack struct {
 	DiscNo, TrackNo int // 0 is unknown.
 	Duration        time.Duration
 	Marks           Marks // The marks of the person the index was read for.
+	// Extra holds what [IndexOptions] asked for, and is nil when it asked for
+	// nothing. It is a pointer so an index without it costs what it did.
+	Extra *IndexExtra
+}
+
+// IndexExtra is what [IndexOptions] asks for of a track. What it didn't ask for
+// is zero.
+type IndexExtra struct {
+	Year                          int    // 0 is unknown.
+	Format                        string // The container, such as "FLAC".
+	SampleRate, BitDepth, Bitrate int    // Hz, bits and bits per second; 0 is unknown or lossy.
+	AddedAt                       time.Time
+	AlbumArtists                  []string
+	Tags                          []Tag     // The values of IndexOptions.TagKeys, by key and then in order.
+	Plays                         int       // By the person the index was read for.
+	LastPlayed                    time.Time // Zero when never played.
+}
+
+// IndexOptions says what the index reads beyond what it always carries. The zero
+// value reads nothing more.
+type IndexOptions struct {
+	Details      bool     // Each track's year, format, sample rate, bit depth, bitrate and when it was added.
+	AlbumArtists bool     // Each track's album artists.
+	Plays        bool     // How often the person played each track, and when last.
+	TagKeys      []string // Raw tags to carry the values of. The store doesn't know what they mean.
+}
+
+func (o *IndexOptions) any() bool {
+	return o.Details || o.AlbumArtists || o.Plays || len(o.TagKeys) > 0
 }
 
 // indexRows is what the index's queries read, all from one snapshot.
 type indexRows struct {
-	albums  []sqlcdb.ListIndexAlbumsRow
-	tracks  []sqlcdb.ListIndexTracksRow
-	artists []sqlcdb.ListIndexTrackArtistsRow
-	marks   libraryMarks
+	albums       []sqlcdb.ListIndexAlbumsRow
+	tracks       []sqlcdb.ListIndexTracksRow
+	artists      []sqlcdb.ListIndexTrackArtistsRow
+	marks        libraryMarks
+	extra        bool // Whether IndexOptions asked for anything.
+	details      []sqlcdb.ListIndexTrackDetailsRow
+	albumArtists []sqlcdb.ListIndexTrackAlbumArtistsRow
+	tags         []sqlcdb.ListIndexTrackTagsRow
+	plays        []sqlcdb.ListIndexPlaysRow
 }
 
 // LibraryIndex returns every album with a live track, once, under its first
-// owner, with those tracks and the user's marks on all three. An album with no
-// owner a reader shows sits under the artist it displays. One read transaction
-// covers it, so a scan or a heart can't split it.
-func (s *Store) LibraryIndex(ctx context.Context, userID int64) (LibraryIndex, error) {
-	rows, err := s.indexRows(ctx, userID)
+// owner, with those tracks and the user's marks on all three, and whatever opts
+// asks for. An album with no owner a reader shows sits under the artist it
+// displays. One read transaction covers it, so a scan or a heart can't split it.
+func (s *Store) LibraryIndex(ctx context.Context, userID int64, opts *IndexOptions) (LibraryIndex, error) {
+	rows, err := s.indexRows(ctx, userID, opts)
 	if err != nil {
 		return LibraryIndex{}, fmt.Errorf("library index: %w", err)
 	}
@@ -75,7 +109,7 @@ func (s *Store) LibraryIndex(ctx context.Context, userID int64) (LibraryIndex, e
 
 // indexRows runs the index's queries, the user's marks included, on one read
 // connection.
-func (s *Store) indexRows(ctx context.Context, userID int64) (indexRows, error) {
+func (s *Store) indexRows(ctx context.Context, userID int64, opts *IndexOptions) (indexRows, error) {
 	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return indexRows{}, fmt.Errorf("begin: %w", err)
@@ -95,7 +129,37 @@ func (s *Store) indexRows(ctx context.Context, userID int64) (indexRows, error) 
 	if rows.marks, err = readLibraryMarks(ctx, q, userID); err != nil {
 		return indexRows{}, err
 	}
+	if optErr := readIndexOptions(ctx, q, userID, opts, &rows); optErr != nil {
+		return indexRows{}, optErr
+	}
 	return rows, nil
+}
+
+// readIndexOptions runs the queries opts asks for, and only those.
+func readIndexOptions(ctx context.Context, q *sqlcdb.Queries, userID int64, opts *IndexOptions, rows *indexRows) error {
+	var err error
+	rows.extra = opts.any()
+	if opts.Details {
+		if rows.details, err = q.ListIndexTrackDetails(ctx); err != nil {
+			return fmt.Errorf("track details: %w", err)
+		}
+	}
+	if opts.AlbumArtists {
+		if rows.albumArtists, err = q.ListIndexTrackAlbumArtists(ctx); err != nil {
+			return fmt.Errorf("track album artists: %w", err)
+		}
+	}
+	if len(opts.TagKeys) > 0 {
+		if rows.tags, err = q.ListIndexTrackTags(ctx, opts.TagKeys); err != nil {
+			return fmt.Errorf("track tags: %w", err)
+		}
+	}
+	if opts.Plays {
+		if rows.plays, err = q.ListIndexPlays(ctx, userID); err != nil {
+			return fmt.Errorf("plays: %w", err)
+		}
+	}
+	return nil
 }
 
 // indexGroups puts each album, with its tracks, under who it files under, in no
@@ -106,6 +170,7 @@ func indexGroups(rows *indexRows) []IndexArtist {
 		id := rows.artists[i].TrackID
 		names[id] = append(names[id], rows.artists[i].Name)
 	}
+	extras := indexExtras(rows)
 	tracks := make(map[int64][]IndexTrack, len(rows.albums))
 	for i := range rows.tracks {
 		t := &rows.tracks[i]
@@ -113,6 +178,7 @@ func indexGroups(rows *indexRows) []IndexArtist {
 			ID: t.Ulid, Title: t.Title, Artists: names[t.ID], DiscNo: intOr0(t.DiscNo), TrackNo: intOr0(t.TrackNo),
 			Duration: time.Duration(t.DurationMs) * time.Millisecond,
 			Marks:    Marks{Hearted: rows.marks.tracks[t.Ulid], Stars: rows.marks.stars[t.Ulid]},
+			Extra:    extras[t.ID],
 		})
 	}
 	groups := make([]IndexArtist, 0, len(rows.albums))
@@ -135,6 +201,46 @@ func indexGroups(rows *indexRows) []IndexArtist {
 		})
 	}
 	return groups
+}
+
+// indexExtras gathers what [IndexOptions] read, by track row ID. It is nil when
+// nothing was asked for.
+func indexExtras(rows *indexRows) map[int64]*IndexExtra {
+	if !rows.extra {
+		return nil
+	}
+	out := make(map[int64]*IndexExtra, len(rows.tracks))
+	of := func(id int64) *IndexExtra {
+		e, ok := out[id]
+		if !ok {
+			e = &IndexExtra{}
+			out[id] = e
+		}
+		return e
+	}
+	for i := range rows.tracks {
+		of(rows.tracks[i].ID)
+	}
+	for i := range rows.details {
+		r := &rows.details[i]
+		e := of(r.ID)
+		e.Year, e.Format, e.SampleRate = intOr0(r.Year), r.Format, intOr0(r.SampleRate)
+		e.BitDepth, e.Bitrate, e.AddedAt = intOr0(r.BitDepth), intOr0(r.Bitrate), fromMS(r.AddedAt)
+	}
+	for i := range rows.albumArtists {
+		e := of(rows.albumArtists[i].TrackID)
+		e.AlbumArtists = append(e.AlbumArtists, rows.albumArtists[i].Name)
+	}
+	for i := range rows.tags {
+		r := &rows.tags[i]
+		e := of(r.TrackID)
+		e.Tags = append(e.Tags, Tag{Key: r.Key, Value: r.Value})
+	}
+	for _, r := range rows.plays {
+		e := of(r.TrackID)
+		e.Plays, e.LastPlayed = int(r.Plays), fromMS(r.LastPlayed)
+	}
+	return out
 }
 
 // indexHeading returns who an album files under: its first owner, or the artist

@@ -1,6 +1,7 @@
 package library
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 
@@ -53,6 +54,20 @@ func GenreKeys() []string {
 	out := make([]string, len(keysGenre))
 	for i, k := range keysGenre {
 		out[i] = tagKey(k)
+	}
+	return out
+}
+
+// ComposerKeys returns the raw tag keys that hold composers, as the store keeps
+// them: the tag editor's, so a composer reads where it is written.
+func ComposerKeys() []string {
+	i := slices.IndexFunc(fields, func(f field) bool { return f.name == FieldComposers })
+	row := &fields[i] // The table always has composers: TestComposerKeys checks.
+	var out []string
+	for _, k := range slices.Concat(row.flac, row.mp3, row.m4a) {
+		if key := tagKey(k); !slices.Contains(out, key) {
+			out = append(out, key)
+		}
 	}
 	return out
 }

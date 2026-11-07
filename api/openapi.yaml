@@ -929,7 +929,27 @@ paths:
         no owner a reader shows, such as a compilation, groups under the artist
         it displays, in a group with no `id`. Artists, albums and tracks carry
         the caller's own hearts, and tracks the caller's stars. The response is
-        gzipped when `Accept-Encoding` allows it.
+        gzipped when `Accept-Encoding` allows it. `fields` adds to each track
+        what song columns show; without it the response is as it has always
+        been.
+      parameters:
+        - name: fields
+          in: query
+          required: false
+          description: >-
+            What else each track carries, joined by commas: `albumArtist`
+            (`albumArtists`), `genre` (`displayGenres`, spelled as albums'
+            are), `year`, `composer` (`composers`), `format` (`format`,
+            `sampleRate`, `bitDepth` and `bitrate`), `bitrate`, `added`
+            (`addedAt`), and the caller's own `plays` and `lastPlayed`
+            (`lastPlayedAt`). An unknown name is a 400.
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [albumArtist, genre, year, composer, format, bitrate, added, plays, lastPlayed]
       responses:
         "200":
           description: Every artist with an album, its albums and their tracks.
@@ -942,6 +962,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/LibraryIndex" }
+        "400":
+          $ref: "#/components/responses/Problem"
         "401":
           description: Credentials are missing, invalid or expired.
           headers:
@@ -1776,6 +1798,47 @@ components:
           minimum: 1
           maximum: 5
           description: The caller's rating. Absent when the caller hasn't rated it.
+        albumArtists:
+          type: array
+          description: With `fields=albumArtist`. Absent when the track names none.
+          items: { type: string }
+        displayGenres:
+          type: array
+          description: >-
+            With `fields=genre`: the track's genres, split and spelled as
+            albums' `displayGenres` are. Absent when it has none.
+          items: { type: string }
+        year:
+          type: integer
+          description: With `fields=year`. Absent when unknown.
+        composers:
+          type: array
+          description: With `fields=composer`, as tagged. Absent when it has none.
+          items: { type: string }
+        format:
+          type: string
+          description: With `fields=format`, such as `FLAC` or `MP3`.
+        sampleRate:
+          type: integer
+          description: With `fields=format`, in Hz. Absent when unknown.
+        bitDepth:
+          type: integer
+          description: With `fields=format`. Absent for a lossy format.
+        bitrate:
+          type: integer
+          description: With `fields=format` or `fields=bitrate`, in kbps. Absent when unknown.
+        addedAt:
+          type: string
+          format: date-time
+          description: With `fields=added`. When the library first saw the file.
+        plays:
+          type: integer
+          minimum: 1
+          description: With `fields=plays`. The caller's plays of it. Absent when never played.
+        lastPlayedAt:
+          type: string
+          format: date-time
+          description: With `fields=lastPlayed`. The caller's last play. Absent when never played.
     SearchResults:
       type: object
       additionalProperties: false
