@@ -66,6 +66,11 @@ type PlayReport struct {
 	ClientID string `json:"clientId"`
 }
 
+// Rating is the body of PUT /me/ratings/tracks/{id}: the caller's stars, 1 to 5.
+type Rating struct {
+	Stars int `json:"stars"`
+}
+
 // Me is the response to GET /me: the [User], and what the user may do.
 type Me struct {
 	User `json:",inline"`
@@ -146,6 +151,9 @@ type Track struct {
 	Genres     []string    `json:"genres"`
 	// Etag changes when the file does. It is not the stream's ETag.
 	Etag string `json:"etag"`
+	// Hearted and Stars are the caller's own. Stars is absent when unrated.
+	Hearted bool `json:"hearted"`
+	Stars   int  `json:"stars,omitzero"`
 }
 
 // TrackDetail is the response to GET /tracks/{id}: a [Track], and its
@@ -235,6 +243,8 @@ type AlbumDetail struct {
 	DisplayGenres []string `json:"displayGenres"`
 	// Etag is the If-Match value for POST /albums/{id}/edits.
 	Etag string `json:"etag"`
+	// Hearted is whether the caller has hearted the album.
+	Hearted bool `json:"hearted"`
 }
 
 // ArtistEntry is an artist as a list shows it. AlbumCount counts the albums it owns.
@@ -290,11 +300,13 @@ type LibraryIndex struct {
 }
 
 // LibraryArtist is one heading of the library index. ID is empty for a group
-// with no owner a reader shows, such as Various Artists.
+// with no owner a reader shows, such as Various Artists. The index carries the
+// caller's own hearts and stars.
 type LibraryArtist struct {
 	ID       string         `json:"id,omitzero"`
 	Name     string         `json:"name"`
 	SortName string         `json:"sortName"`
+	Hearted  bool           `json:"hearted"`
 	Albums   []LibraryAlbum `json:"albums"`
 }
 
@@ -304,6 +316,7 @@ type LibraryAlbum struct {
 	Title       string         `json:"title"`
 	Artist      string         `json:"artist"`
 	Compilation bool           `json:"compilation"`
+	Hearted     bool           `json:"hearted"`
 	Year        int            `json:"year,omitzero"`
 	Artwork     *Artwork       `json:"artwork,omitzero"`
 	Tracks      []LibraryTrack `json:"tracks"`
@@ -317,6 +330,9 @@ type LibraryTrack struct {
 	Artists    []string `json:"artists"`
 	DiscNo     int      `json:"discNo,omitzero"`
 	TrackNo    int      `json:"trackNo,omitzero"`
+	Hearted    bool     `json:"hearted"`
+	// Stars is absent when the caller hasn't rated it.
+	Stars int `json:"stars,omitzero"`
 }
 
 // LibraryFacts is the response to GET /library.

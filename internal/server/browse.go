@@ -76,9 +76,10 @@ func (s *Server) getAlbum(w http.ResponseWriter, r *http.Request) {
 	s.writeAlbum(w, r, r.PathValue("id"))
 }
 
-// writeAlbum answers with the album id.
+// writeAlbum answers with the album id, and the caller's marks on it.
 func (s *Server) writeAlbum(w http.ResponseWriter, r *http.Request, id string) {
-	body, err := s.albumDetail(r.Context(), id)
+	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
+	body, err := s.albumDetail(r.Context(), user.ID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeProblem(w, r, http.StatusNotFound, "no such album")
 		return
@@ -90,9 +91,10 @@ func (s *Server) writeAlbum(w http.ResponseWriter, r *http.Request, id string) {
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
 
-// albumDetail returns the wire form of the album id. Genres live only in the raw
-// tags, so they come separately.
-func (s *Server) albumDetail(ctx context.Context, id string) (api.AlbumDetail, error) {
+// albumDetail returns the wire form of the album id, with the user's marks.
+// Genres live only in the raw tags, and marks in their own tables, so both come
+// separately.
+func (s *Server) albumDetail(ctx context.Context, userID int64, id string) (api.AlbumDetail, error) {
 	d, err := s.library.Album(ctx, id)
 	if err != nil {
 		return api.AlbumDetail{}, fmt.Errorf("album detail: %w", err)
@@ -101,8 +103,17 @@ func (s *Server) albumDetail(ctx context.Context, id string) (api.AlbumDetail, e
 	if err != nil {
 		return api.AlbumDetail{}, fmt.Errorf("album detail: %w", err)
 	}
+	marks, err := s.library.AlbumMarks(ctx, userID, id)
+	if err != nil {
+		return api.AlbumDetail{}, fmt.Errorf("album detail: %w", err)
+	}
 	out := toAPIAlbumDetail(&d, genres)
 	out.DisplayGenres = append(out.DisplayGenres, s.genres.Of(id)...)
+	out.Hearted = marks.Hearted
+	for i := range out.Tracks {
+		m := marks.Tracks[out.Tracks[i].ID]
+		out.Tracks[i].Hearted, out.Tracks[i].Stars = m.Hearted, m.Stars
+	}
 	return out, nil
 }
 
@@ -114,7 +125,8 @@ func (s *Server) getTrack(w http.ResponseWriter, r *http.Request) {
 // writeTrack answers with the track id. It reads the whole album, which has the
 // track's validators and the album's.
 func (s *Server) writeTrack(w http.ResponseWriter, r *http.Request, id string) {
-	body, err := s.trackDetail(r.Context(), id)
+	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
+	body, err := s.trackDetail(r.Context(), user.ID, id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeProblem(w, r, http.StatusNotFound, "no such track")
 		return
@@ -126,12 +138,12 @@ func (s *Server) writeTrack(w http.ResponseWriter, r *http.Request, id string) {
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
 
-func (s *Server) trackDetail(ctx context.Context, id string) (api.TrackDetail, error) {
+func (s *Server) trackDetail(ctx context.Context, userID int64, id string) (api.TrackDetail, error) {
 	albumID, err := s.library.TrackAlbum(ctx, id)
 	if err != nil {
 		return api.TrackDetail{}, fmt.Errorf("track detail: %w", err)
 	}
-	album, err := s.albumDetail(ctx, albumID)
+	album, err := s.albumDetail(ctx, userID, albumID)
 	if err != nil {
 		return api.TrackDetail{}, err
 	}
@@ -181,7 +193,7 @@ func toAPILibraryIndex(index *store.LibraryIndex) api.LibraryIndex {
 	for i := range index.Artists {
 		a := &index.Artists[i]
 		out.Artists[i] = api.LibraryArtist{
-			ID: a.ID, Name: a.Name, SortName: a.SortName, Albums: make([]api.LibraryAlbum, len(a.Albums)),
+			ID: a.ID, Name: a.Name, SortName: a.SortName, Hearted: a.Hearted, Albums: make([]api.LibraryAlbum, len(a.Albums)),
 		}
 		for j := range a.Albums {
 			out.Artists[i].Albums[j] = toAPILibraryAlbum(&a.Albums[j])
@@ -192,7 +204,7 @@ func toAPILibraryIndex(index *store.LibraryIndex) api.LibraryIndex {
 
 func toAPILibraryAlbum(a *store.IndexAlbum) api.LibraryAlbum {
 	out := api.LibraryAlbum{
-		ID: a.ID, Title: a.Title, Artist: a.Artist, Compilation: a.Compilation, Year: a.Year,
+		ID: a.ID, Title: a.Title, Artist: a.Artist, Compilation: a.Compilation, Hearted: a.Hearted, Year: a.Year,
 		Artwork: toAPIArtwork(a.Cover), Tracks: make([]api.LibraryTrack, len(a.Tracks)),
 	}
 	for i := range a.Tracks {
@@ -200,6 +212,7 @@ func toAPILibraryAlbum(a *store.IndexAlbum) api.LibraryAlbum {
 		out.Tracks[i] = api.LibraryTrack{
 			ID: t.ID, Title: t.Title, DurationMs: t.Duration.Milliseconds(),
 			Artists: append([]string{}, t.Artists...), DiscNo: t.DiscNo, TrackNo: t.TrackNo,
+			Hearted: t.Marks.Hearted, Stars: t.Marks.Stars,
 		}
 	}
 	return out
