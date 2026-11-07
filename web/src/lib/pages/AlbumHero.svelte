@@ -48,7 +48,9 @@
 	const owners = $derived(album?.artists ?? []);
 	const meta = $derived(album === undefined ? '' : albumFacts(album, album));
 	const playable = $derived(album !== undefined && album.tracks.length > 0);
-	const sounding = $derived(player.queue?.album.id === albumId && player.sounding);
+	const sounding = $derived(
+		player.queue?.album.id === albumId && player.queue.albums === undefined && player.sounding
+	);
 	const stars = $derived(album === undefined ? null : albumStars(album.tracks, library.marks));
 
 	function play(): void {

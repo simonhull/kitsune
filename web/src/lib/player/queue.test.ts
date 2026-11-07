@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import type { Album, Track } from '#lib/library/source.ts';
-import { currentOf, inOrder, next, previous, retagged, rewound, shuffled, upcoming } from './queue';
+import {
+	albumOf,
+	appended,
+	currentOf,
+	holds,
+	inOrder,
+	next,
+	picked,
+	playingNext,
+	previous,
+	retagged,
+	rewound,
+	shuffled,
+	upcoming
+} from './queue';
 
 function album(count: number): Album {
 	const tracks: Track[] = Array.from({ length: count }, (_, index) => ({
@@ -122,5 +136,66 @@ describe('retagged', () => {
 		const queue = inOrder(album(2));
 		const after = retagged(queue, { ...album(2), tracks: [] });
 		expect(after.tracks).toEqual(queue.tracks);
+	});
+});
+
+/** Another album, with tracks of its own. */
+function other(id: string, count: number): Album {
+	const base = album(count);
+	return {
+		...base,
+		id,
+		tracks: base.tracks.map((track) => ({ ...track, id: `${id}${track.id}` }))
+	};
+}
+
+describe('a queue of picked songs', () => {
+	const a = album(3);
+	const b = other('b', 3);
+	const songs = (from: Album, ...at: number[]) =>
+		at.flatMap((index) => {
+			const track = from.tracks.at(index);
+			return track === undefined ? [] : [{ album: from, track }];
+		});
+
+	it('plays them in the order given, each with its album, at track gain', () => {
+		const queue = picked([...songs(b, 2), ...songs(a, 0, 1)]);
+		expect(queue === null ? [] : ids(queue.tracks)).toEqual(['bt2', 't0', 't1']);
+		expect(queue?.ordered).toBe(false);
+		const second = queue?.tracks.at(1);
+		expect(queue && second && albumOf(queue, second).id).toBe('a');
+		expect(picked([])).toBeNull();
+	});
+
+	it('puts songs next, after the one playing', () => {
+		const queue = playingNext({ ...inOrder(a), index: 1 }, songs(b, 0, 1));
+		expect(ids(queue.tracks)).toEqual(['t0', 't1', 'bt0', 'bt1', 't2']);
+		expect(queue.ordered).toBe(false);
+		const added = queue.tracks.at(2);
+		expect(added && albumOf(queue, added).id).toBe('b');
+		const own = queue.tracks.at(4);
+		expect(own && albumOf(queue, own).id).toBe('a');
+	});
+
+	it('adds songs at the end', () => {
+		const queue = appended(inOrder(a), songs(b, 2));
+		expect(ids(queue.tracks)).toEqual(['t0', 't1', 't2', 'bt2']);
+		expect(holds(queue, 'b')).toBe(true);
+		expect(holds(inOrder(a), 'b')).toBe(false);
+	});
+
+	it('changes nothing with nothing to add', () => {
+		const queue = inOrder(a);
+		expect(appended(queue, [])).toBe(queue);
+	});
+
+	it('takes in an edit of any album it holds', () => {
+		const queue = appended(inOrder(a), songs(b, 0));
+		const edited = { ...b, tracks: b.tracks.map((track) => ({ ...track, title: 'New' })) };
+		const after = retagged(queue, edited);
+		const last = after.tracks.at(-1);
+		expect(last?.title).toBe('New');
+		expect(last && albumOf(after, last)).toBe(edited);
+		expect(after.album).toBe(a);
 	});
 });

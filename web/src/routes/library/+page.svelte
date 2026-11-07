@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { emWidth } from '#lib/library/fit.ts';
-	import { artistHoldings, libraryLine } from '#lib/library/format.ts';
+	import { artistHoldings, clock, libraryLine } from '#lib/library/format.ts';
 	import { emptyLine } from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { ColumnId } from '#lib/library/source.ts';
@@ -13,6 +13,15 @@
 	import LibraryAlbum from '#lib/pages/LibraryAlbum.svelte';
 	import LibraryFilters from '#lib/pages/LibraryFilters.svelte';
 	import LibraryRail from '#lib/pages/LibraryRail.svelte';
+	import RowMenu from '#lib/pages/RowMenu.svelte';
+	import SelectionBar from '#lib/pages/SelectionBar.svelte';
+	import { selection } from '#lib/pages/selection.svelte.ts';
+	import {
+		actionsFor,
+		albumsByTrack,
+		type MenuTarget,
+		type SongActions
+	} from '#lib/pages/songActions.ts';
 	import { letterOf, railHere, railLetters } from '#lib/pages/libraryRows.ts';
 	import { libraryView as view } from '#lib/pages/libraryView.svelte.ts';
 	import SongHeader from '#lib/pages/SongHeader.svelte';
@@ -44,6 +53,145 @@
 	const fields = $derived(columnsView.fields);
 	/** When "Yesterday" is, for Last played: read once a visit. */
 	const now = Date.now();
+
+	/** Every song the list shows, in its order: what a Shift range and the header's box run over. */
+	const order = $derived(
+		layout.rows.flatMap((row) => {
+			const id =
+				row.kind === 'song'
+					? layout.albums.at(row.albumIndex)?.album.tracks.at(row.trackIndex)?.id
+					: undefined;
+			return id === undefined ? [] : [id];
+		})
+	);
+	/** Where each of them is in the list's rows, to scroll to. */
+	const rowOf = $derived(
+		new Map(
+			layout.rows.flatMap((row, index) => {
+				const id =
+					row.kind === 'song'
+						? layout.albums.at(row.albumIndex)?.album.tracks.at(row.trackIndex)?.id
+						: undefined;
+				return id === undefined ? [] : [[id, index] as const];
+			})
+		)
+	);
+	/** Each song of the whole index, filter or not, with its album. */
+	const songs = $derived(
+		new Map(
+			(load.kind === 'ready' ? load.value.artists : []).flatMap((artist) =>
+				artist.albums.flatMap((album) =>
+					album.tracks.map((track) => [track.id, { track, album, artist }] as const)
+				)
+			)
+		)
+	);
+	const albumOf = $derived(albumsByTrack(load.kind === 'ready' ? load.value : { artists: [] }));
+	const picked = $derived(selection.inOrder(order));
+	const pickedActions = $derived(actionsFor(picked, albumOf));
+	const pickedFacts = $derived({
+		albums: new Set(picked.map((id) => songs.get(id)?.album.id).filter((id) => id !== undefined))
+			.size,
+		durationMs: picked.reduce((sum, id) => sum + (songs.get(id)?.track.durationMs ?? 0), 0)
+	});
+	const box = $derived(selection.boxFor(order));
+
+	/** The ⋯ menu, where it was opened, and on what. */
+	let rowMenu = $state<{ x: number; y: number; target: MenuTarget; actions: SongActions } | null>(
+		null
+	);
+
+	function pick(trackId: string, how: 'toggle' | 'range'): void {
+		if (how === 'range') {
+			selection.extend(trackId, order);
+		} else {
+			selection.toggle(trackId);
+		}
+	}
+
+	/** Opens the ⋯ menu: on the picked songs, when it's opened on one of them. */
+	function openRowMenu(trackId: string, x: number, y: number): void {
+		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		if (selection.has(trackId) && selection.size > 1) {
+			const facts = `${String(pickedFacts.albums)} ${pickedFacts.albums === 1 ? 'ALBUM' : 'ALBUMS'} · ${clock(pickedFacts.durationMs / 1000)}`;
+			rowMenu = {
+				x,
+				y,
+				target: { kind: 'picked', count: picked.length, line: facts, trackIds: picked },
+				actions: pickedActions
+			};
+			return;
+		}
+		const song = songs.get(trackId);
+		if (song === undefined) {
+			return;
+		}
+		rowMenu = {
+			x,
+			y,
+			target: {
+				kind: 'song',
+				trackId,
+				albumId: song.album.id,
+				title: song.track.title,
+				line: `${song.album.title.toUpperCase()} · ${clock(song.track.durationMs / 1000)}`,
+				artistId: song.artist.id
+			},
+			actions: actionsFor([trackId], albumOf)
+		};
+	}
+
+	function closeRowMenu(refocus: boolean): void {
+		rowMenu = null;
+		if (refocus) {
+			opener?.focus();
+		}
+	}
+
+	/** Puts a song's row on screen, if it isn't, and gives it the focus. */
+	async function focusRow(trackId: string): Promise<void> {
+		const row = layout.rows.at(rowOf.get(trackId) ?? -1);
+		if (row === undefined) {
+			return;
+		}
+		const y = row.top + view.frame.top;
+		const clear = view.frame.line;
+		if (y < scrollY + clear || y + row.height > scrollY + innerHeight - 120) {
+			scrollTo({ top: y - clear - row.height * 2, behavior: 'instant' });
+			track();
+		}
+		await tick();
+		document.querySelector<HTMLElement>(`[data-track="${CSS.escape(trackId)}"] .play`)?.focus();
+	}
+
+	/** Space picks the focused song; the arrows move, and with Shift take the songs passed. */
+	function rowKey(event: KeyboardEvent, trackId: string): void {
+		if (event.key === ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+			event.preventDefault();
+			selection.toggle(trackId);
+			return;
+		}
+		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+			return;
+		}
+		event.preventDefault();
+		const at = order.indexOf(trackId);
+		const next = order.at(at + (event.key === 'ArrowDown' ? 1 : -1));
+		if (at < 0 || next === undefined || (at === 0 && event.key === 'ArrowUp')) {
+			return;
+		}
+		if (event.shiftKey) {
+			selection.add(trackId);
+			selection.add(next);
+		}
+		void focusRow(next);
+	}
+
+	function onWindowKey(event: KeyboardEvent): void {
+		if (event.key === 'Escape' && selection.any && menu === null && rowMenu === null) {
+			selection.clear();
+		}
+	}
 
 	/** The columns menu, where it was opened, and what opened it, to go back to. */
 	let menu = $state<{ x: number; y: number; hiding: ColumnId | undefined } | null>(null);
@@ -143,6 +291,23 @@
 	<title>Library · Kitsune</title>
 </svelte:head>
 
+<svelte:window onkeydown={onWindowKey} />
+
+{#snippet headerBox()}
+	<input
+		type="checkbox"
+		class="all"
+		aria-label={box === 'all' ? 'Clear every song in view' : 'Select every song in view'}
+		checked={box === 'all'}
+		indeterminate={box === 'some'}
+		onclick={(event) => {
+			selection.toggleAll(order);
+			event.currentTarget.checked = selection.boxFor(order) === 'all';
+			event.currentTarget.indeterminate = selection.boxFor(order) === 'some';
+		}}
+	/>
+{/snippet}
+
 <div class="library">
 	<h1>Library</h1>
 
@@ -176,7 +341,13 @@
 		</div>
 		{#if view.columns && !view.stacked}
 			<div class="columns-head" data-morph-part="intro" data-morph-key="columns-head">
-				<SongHeader shown={fitted.shown} hiddenCount={fitted.hiddenCount} {grid} {openMenu} />
+				<SongHeader
+					shown={fitted.shown}
+					hiddenCount={fitted.hiddenCount}
+					{grid}
+					{openMenu}
+					box={headerBox}
+				/>
 			</div>
 		{/if}
 		{#if next !== undefined}
@@ -229,6 +400,7 @@
 										hiddenCount={fitted.hiddenCount}
 										{grid}
 										{openMenu}
+										box={headerBox}
 									/>
 								</div>
 							{/if}
@@ -252,6 +424,9 @@
 								play={(trackId) => {
 									view.play(album.album.id, trackId);
 								}}
+								{pick}
+								openMenu={openRowMenu}
+								{rowKey}
 							/>
 						{/each}
 					</div>
@@ -262,6 +437,29 @@
 		<LibraryRail {letters} {quiet} here={letter && railHere(letters, letter)} onjump={jump} />
 		{#if menu !== null}
 			<ColumnsMenu x={menu.x} y={menu.y} hiding={menu.hiding} onclose={closeMenu} />
+		{/if}
+		{#if rowMenu !== null}
+			<RowMenu
+				x={rowMenu.x}
+				y={rowMenu.y}
+				target={rowMenu.target}
+				actions={rowMenu.actions}
+				onclose={closeRowMenu}
+			/>
+		{/if}
+		{#if selection.any}
+			<SelectionBar
+				count={selection.size}
+				hidden={selection.size - picked.filter((id) => rowOf.has(id)).length}
+				albums={pickedFacts.albums}
+				durationMs={pickedFacts.durationMs}
+				hearted={picked.every((id) => library.marks.hearted('tracks', id))}
+				actions={pickedActions}
+				compact={!view.columns}
+				onclear={() => {
+					selection.clear();
+				}}
+			/>
 		{/if}
 	{/if}
 </div>
@@ -400,6 +598,21 @@
 	.list {
 		position: relative;
 		--list-line: 152px;
+	}
+
+	.all {
+		width: var(--box-size, 16px);
+		height: var(--box-size, 16px);
+		margin: 0;
+		accent-color: var(--fox);
+		opacity: 0.5;
+	}
+
+	.all:checked,
+	.all:indeterminate,
+	.all:hover,
+	.all:focus-visible {
+		opacity: 1;
 	}
 
 	/* As wide as a song row: what the columns are fitted to. */

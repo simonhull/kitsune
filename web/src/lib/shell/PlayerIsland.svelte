@@ -14,9 +14,11 @@
 		playing: NowPlaying;
 		/** On Now playing the island becomes the page's pill controls, in place. */
 		expanded: boolean;
+		/** Songs are picked on the Library list: their bar has the island's place until they aren't. */
+		away?: boolean;
 	}
 
-	let { playing, expanded }: Props = $props();
+	let { playing, expanded, away = false }: Props = $props();
 
 	// The clock is the sound's, not the cue's: a held change must not put them out of step.
 	const seconds = $derived((player.current ?? playing.track).durationMs / 1000);
@@ -63,6 +65,8 @@
 	aria-label="Player"
 	class="island"
 	class:expanded
+	class:away
+	inert={away}
 	style:--slot-left={slot === null ? undefined : `${String(slot.left)}px`}
 	style:--slot-top={slot === null ? undefined : `${String(slot.top)}px`}
 	style:--slot-width={slot === null ? undefined : `${String(slot.width)}px`}
@@ -141,6 +145,22 @@
 		transform: translateX(-50%);
 		z-index: 4;
 		width: min(720px, calc(100% - 32px));
+	}
+
+	/* The selection bar has its place: it sinks out of the way, and comes back the same way. */
+	.island.away {
+		opacity: 0;
+		transform: translate(-50%, 24px);
+		pointer-events: none;
+		transition:
+			opacity var(--morph-fast) var(--curve-morph),
+			transform var(--morph-fast) var(--curve-morph);
+	}
+
+	.island:not(.away, .expanded) {
+		transition:
+			opacity var(--morph-fast) var(--curve-morph),
+			transform var(--morph-fast) var(--curve-settle);
 	}
 
 	.island.expanded {

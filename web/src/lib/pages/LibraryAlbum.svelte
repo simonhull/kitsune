@@ -11,6 +11,10 @@
 	import StarsShown from '#lib/shell/StarsShown.svelte';
 	import { cellOf, timeOf } from './columns.ts';
 	import type { AlbumBlock, Row } from './libraryRows.ts';
+	import { selection } from './selection.svelte.ts';
+
+	/** How long a finger holds a row to start picking songs. */
+	const longPressMs = 450;
 
 	interface Props {
 		block: AlbumBlock;
@@ -35,6 +39,12 @@
 		/** A tap on this album couldn't be played. */
 		trouble: boolean;
 		play: (trackId: string) => void;
+		/** A box clicked, or a row with Shift, Ctrl or Cmd. */
+		pick: (trackId: string, how: 'toggle' | 'range') => void;
+		/** Opens the ⋯ menu for a song, at a place. */
+		openMenu: (trackId: string, x: number, y: number) => void;
+		/** Space, the arrows and Shift with them, on a row. */
+		rowKey: (event: KeyboardEvent, trackId: string) => void;
 	}
 
 	let {
@@ -50,8 +60,51 @@
 		cuedId,
 		sounding,
 		trouble,
-		play
+		play,
+		pick,
+		openMenu,
+		rowKey
 	}: Props = $props();
+
+	/** The long press under way: it picks the song if the finger stays, and the tap that ends it doesn't play. */
+	let pressing: ReturnType<typeof setTimeout> | undefined;
+	let pressed = false;
+	/** Whether the row was last touched by a finger: then, while picking, a tap picks too. */
+	let touched = false;
+
+	function holdStart(event: PointerEvent, trackId: string): void {
+		touched = event.pointerType === 'touch';
+		if (!touched) {
+			return;
+		}
+		clearTimeout(pressing);
+		pressed = false;
+		pressing = setTimeout(() => {
+			pressed = true;
+			navigator.vibrate?.(10);
+			pick(trackId, 'toggle');
+		}, longPressMs);
+	}
+
+	function holdEnd(): void {
+		clearTimeout(pressing);
+	}
+
+	function tap(event: MouseEvent, trackId: string): void {
+		if (pressed) {
+			pressed = false;
+			event.preventDefault();
+			return;
+		}
+		if (event.shiftKey) {
+			pick(trackId, 'range');
+		} else if (event.ctrlKey || event.metaKey || (touched && selection.any)) {
+			// On a phone, once anything is picked, a tap picks too: playing waits for the bar.
+			pick(trackId, 'toggle');
+		} else {
+			play(trackId);
+		}
+	}
 
 	const album = $derived(block.album);
 	const hearted = $derived(library.marks.hearted('albums', album.id));
@@ -124,6 +177,7 @@
 				{@const track = album.tracks.at(row.trackIndex)}
 				{#if track !== undefined}
 					{@const cued = track.id === cuedId}
+					{@const picked = selection.has(track.id)}
 					{@const context = {
 						track,
 						album,
@@ -135,18 +189,47 @@
 					<div
 						class="row"
 						class:cued
+						class:picked
+						class:picking={selection.any}
+						role="group"
+						aria-label={track.title}
+						data-track={track.id}
 						style:top={at}
 						style:height={`${String(row.height)}px`}
 						style:grid-template-columns={grid}
+						oncontextmenu={(event) => {
+							event.preventDefault();
+							openMenu(track.id, event.clientX, event.clientY);
+						}}
+						onpointerdown={(event) => {
+							holdStart(event, track.id);
+						}}
+						onpointerup={holdEnd}
+						onpointercancel={holdEnd}
+						onpointerleave={holdEnd}
 					>
-						<span class="box"></span>
+						<span class="box">
+							<input
+								type="checkbox"
+								aria-label={`Select ${track.title}`}
+								checked={picked}
+								onclick={(event) => {
+									pick(track.id, event.shiftKey ? 'range' : 'toggle');
+									// The box says what the selection does, whatever the click did to it.
+									event.currentTarget.checked = selection.has(track.id);
+								}}
+							/>
+						</span>
 						<button
 							type="button"
 							class="play"
 							aria-label={`Play ${track.title}`}
 							aria-current={cued ? 'true' : undefined}
-							onclick={() => {
-								play(track.id);
+							onclick={(event) => {
+								tap(event, track.id);
+							}}
+							onkeydown={(event) => {
+								rowKey(event, track.id);
 							}}
 						>
 							<span class="mono number">
@@ -185,7 +268,20 @@
 							{/if}
 						{/each}
 						<span class="mono time">{timeOf(track)}</span>
-						<span class="more-cell"></span>
+						<button
+							type="button"
+							class="more"
+							aria-label={`More for ${track.title}`}
+							aria-haspopup="menu"
+							onclick={(event) => {
+								const { right, bottom } = event.currentTarget.getBoundingClientRect();
+								openMenu(track.id, right - 300, bottom + 4);
+							}}
+							><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+								><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"
+								></circle><circle cx="19" cy="12" r="1.8"></circle></svg
+							></button
+						>
 					</div>
 				{/if}
 			{/if}
@@ -409,10 +505,73 @@
 		height: 28px;
 	}
 
+	/* The box and ⋯ show on hover and on focus; once anything is picked, every box shows. */
+	.box {
+		display: flex;
+		align-items: center;
+	}
+
+	.box input {
+		width: var(--box-size, 16px);
+		height: var(--box-size, 16px);
+		margin: 0;
+		accent-color: var(--fox);
+		opacity: 0;
+	}
+
+	.more {
+		width: var(--more-size, 36px);
+		height: var(--more-size, 36px);
+		display: grid;
+		place-items: center;
+		padding: 0;
+		border: 0;
+		border-radius: var(--radius-pill);
+		background: transparent;
+		color: inherit;
+		opacity: 0;
+	}
+
+	.more svg {
+		fill: currentColor;
+	}
+
+	.more:hover {
+		background: rgb(255 255 255 / 14%);
+	}
+
+	.row:focus-within .box input,
+	.row:focus-within .more,
+	.row.picking .box input,
+	.row.cued .more {
+		opacity: 1;
+	}
+
+	.row.picked {
+		border-radius: var(--radius-12);
+		background: rgb(242 140 40 / 16%);
+	}
+
 	@media (hover: hover) {
 		.row:hover {
 			border-radius: var(--radius-12);
 			background: rgb(255 255 255 / 8%);
+		}
+
+		.row:hover .box input,
+		.row:hover .more {
+			opacity: 1;
+		}
+
+		.row.picked:hover {
+			background: rgb(242 140 40 / 22%);
+		}
+	}
+
+	/* Nothing hovers on touch: ⋯ is always there. */
+	@media (hover: none) {
+		.more {
+			opacity: 1;
 		}
 	}
 

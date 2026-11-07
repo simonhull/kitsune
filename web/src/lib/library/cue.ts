@@ -17,6 +17,8 @@ export interface NowPlaying {
 	trackCount: number;
 	format: string;
 	upNext: Track[];
+	/** The album of each of {@link NowPlaying.upNext}, which can differ in a queue of picked songs. */
+	upNextAlbums: Album[];
 	moreCount: number;
 }
 
@@ -27,20 +29,24 @@ export interface NowPlaying {
 export function cueOf(
 	album: Album,
 	tracks: readonly Track[] = album.tracks,
-	index = 0
+	index = 0,
+	albums?: ReadonlyMap<string, Album>
 ): NowPlaying | null {
 	const track = tracks.at(index);
 	if (track === undefined) {
 		return null;
 	}
 	const rest = tracks.slice(index + 1);
+	const upNext = rest.slice(0, upNextShown);
+	const of = (each: Track): Album => albums?.get(each.id) ?? album;
 	return {
-		album,
+		album: of(track),
 		track,
 		index,
 		trackCount: tracks.length,
 		format: formatOf(track),
-		upNext: rest.slice(0, upNextShown),
+		upNext,
+		upNextAlbums: upNext.map(of),
 		moreCount: Math.max(0, rest.length - upNextShown)
 	};
 }
@@ -51,5 +57,11 @@ export function cueOf(
  */
 export function retagged(cue: NowPlaying, album: Album): NowPlaying {
 	const fresh = (track: Track): Track => album.tracks.find(({ id }) => id === track.id) ?? track;
-	return { ...cue, album, track: fresh(cue.track), upNext: cue.upNext.map(fresh) };
+	return {
+		...cue,
+		album: cue.album.id === album.id ? album : cue.album,
+		track: fresh(cue.track),
+		upNext: cue.upNext.map(fresh),
+		upNextAlbums: cue.upNextAlbums.map((each) => (each.id === album.id ? album : each))
+	};
 }

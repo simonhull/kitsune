@@ -81,11 +81,9 @@
 		};
 		addEventListener('pointerdown', outside, true);
 		addEventListener('resize', away);
-		addEventListener('scroll', away, { passive: true });
 		return () => {
 			removeEventListener('pointerdown', outside, true);
 			removeEventListener('resize', away);
-			removeEventListener('scroll', away);
 		};
 	});
 </script>

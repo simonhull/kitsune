@@ -220,6 +220,46 @@ describe('Player', () => {
 		expect(player.status).toBe('playing');
 	});
 
+	it('plays picked songs, puts songs next and adds them at the end', async () => {
+		const { player } = setup();
+		const a = album(2, 'a');
+		const b = {
+			...album(2, 'b'),
+			tracks: album(2, 'b').tracks.map((t) => ({ ...t, id: `b${t.id}` }))
+		};
+		const song = (from: Album, index: number) => ({
+			album: from,
+			track: from.tracks[index] as Track
+		});
+		player.addToQueue([song(b, 1)]);
+		await settle();
+		expect(player.current?.id).toBe('bt1');
+		expect(player.album?.id).toBe('b');
+		player.playNext([song(a, 0)]);
+		player.addToQueue([song(a, 1)]);
+		expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['bt1', 't0', 't1']);
+		expect(player.current?.id).toBe('bt1');
+		player.next();
+		await settle();
+		expect(player.album?.id).toBe('a');
+		expect(player.cue?.album.id).toBe('a');
+		player.playSongs([song(b, 0), song(a, 1)]);
+		await settle();
+		expect(player.current?.id).toBe('bt0');
+		expect(player.queue?.ordered).toBe(false);
+	});
+
+	it('plays an album over a queue of picked songs that starts with it', async () => {
+		const { player } = setup();
+		const a = album(2, 'a');
+		player.playSongs([{ album: a, track: a.tracks[1] as Track }]);
+		await settle();
+		player.playOrToggle(a);
+		await settle();
+		expect(player.queue?.albums).toBeUndefined();
+		expect(player.current?.id).toBe('t0');
+	});
+
 	it('restarts past 3 seconds, and steps back before that', async () => {
 		const { player, output } = setup();
 		player.play(album(3), 1);

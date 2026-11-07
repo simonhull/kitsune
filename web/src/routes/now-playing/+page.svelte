@@ -116,10 +116,9 @@
 				<section aria-label="Up next" class="next" data-morph-part="panel">
 					<span class="next-label">UP NEXT</span>
 					{#each playing.upNext as upcoming, index (upcoming.id)}
+						{@const from = playing.upNextAlbums.at(index) ?? playing.album}
 						<span class="pill" style:opacity={1 - index * 0.2}>
-							<span class="dot"
-								><Cover albumId={playing.album.id} entry={playing.album} place="small" /></span
-							>
+							<span class="dot"><Cover albumId={from.id} entry={from} place="small" /></span>
 							<span class="pill-name" class:lead={index === 0}>{upcoming.title}</span>
 						</span>
 					{/each}
