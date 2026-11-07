@@ -9,6 +9,11 @@ describe('the route table', () => {
 		expect(journeyOf('/login')).toBe('login');
 	});
 
+	it('dresses setup as the door, and leaves it as sign-in does, so the fox flies home', () => {
+		expect(navOf('/setup')).toEqual(navOf('/login'));
+		expect(journeyOf('/setup')).toBe('login');
+	});
+
 	it('dresses both artist pages alike, as different journeys', () => {
 		for (const id of ['/artists', '/artists/[id]']) {
 			expect(navOf(id)).toMatchObject({ look: 'home', current: 'artists' });

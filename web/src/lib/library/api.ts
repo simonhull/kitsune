@@ -4,6 +4,7 @@ import {
 	EditError,
 	LoginError,
 	ServerError,
+	SetupError,
 	UnauthorizedError,
 	type Album,
 	type AlbumEdit,
@@ -27,6 +28,8 @@ import {
 	type ScanIssues,
 	type ScanStatus,
 	type SearchResults,
+	type SetupFailure,
+	type SetupStatus,
 	type User
 } from './source.ts';
 
@@ -91,6 +94,33 @@ function tagsFailureOf({ status }: Response): EditFailure {
 			return { kind: 'gone' };
 		case 409:
 			return { kind: 'missing' };
+	}
+	return { kind: 'unavailable' };
+}
+
+/**
+ * Why the first account wasn't made. A 400 names its rule in the detail, which comes from the
+ * auth service's fixed messages, never from the input.
+ */
+async function setupFailureOf(response: Response): Promise<SetupFailure> {
+	switch (response.status) {
+		case 403:
+			return { kind: 'code' };
+		case 409:
+			return { kind: 'done' };
+		case 429:
+			return { kind: 'throttled', retryAfterSeconds: retrySeconds(response) };
+		case 400: {
+			const { detail = '' } = ((await response.json().catch(() => null)) ?? {}) as {
+				detail?: string;
+			};
+			if (detail.startsWith('invalid user name')) {
+				return { kind: 'name' };
+			}
+			if (detail.startsWith('password')) {
+				return { kind: 'password' };
+			}
+		}
 	}
 	return { kind: 'unavailable' };
 }
@@ -210,6 +240,26 @@ export function createApiSource({
 			}
 			if (!response.ok) {
 				throw new LoginError(await failureOf(response));
+			}
+			const { user } = (await response.json()) as { user: User };
+			return user;
+		},
+
+		setupStatus: () => read<SetupStatus>('/setup'),
+
+		async setup(name, password, code) {
+			let response: Response;
+			try {
+				response = await call('/setup', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(code === undefined ? { name, password } : { name, password, code })
+				});
+			} catch {
+				throw new SetupError({ kind: 'unavailable' });
+			}
+			if (!response.ok) {
+				throw new SetupError(await setupFailureOf(response));
 			}
 			const { user } = (await response.json()) as { user: User };
 			return user;

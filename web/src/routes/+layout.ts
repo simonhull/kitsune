@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { library } from '#lib/library/library.svelte.ts';
-import { loginPath, safeNext } from '#lib/library/session.ts';
+import { guardTarget } from '#lib/library/session.ts';
 import type { LayoutLoad } from './$types';
 
 // A client-only app: the Go server serves static files and the API.
@@ -18,12 +18,10 @@ export const load: LayoutLoad = async ({ url, untrack }) => {
 		next: url.searchParams.get('next')
 	}));
 	const session = await library.checkSession();
-	const atTheDoor = here.pathname === '/login';
-	if (session === 'signed-out' && !atTheDoor) {
-		redirect(307, loginPath(here));
-	}
-	if (session === 'signed-in' && atTheDoor) {
-		redirect(307, safeNext(here.next, url.origin));
+	const setupNeeded = async () => (await library.setupStatus())?.needed ?? false;
+	const target = await guardTarget(here, session, setupNeeded, url.origin);
+	if (target !== null) {
+		redirect(307, target);
 	}
 	if (session !== 'signed-out') {
 		void library.loadShell();

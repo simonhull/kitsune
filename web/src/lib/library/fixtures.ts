@@ -7,6 +7,8 @@ import {
 	EditError,
 	LoginError,
 	ServerError,
+	SetupError,
+	UnauthorizedError,
 	type Album,
 	type AlbumEdit,
 	type AlbumEntry,
@@ -27,6 +29,7 @@ import {
 	type RawTag,
 	type ScanStatus,
 	type SearchResults,
+	type SetupStatus,
 	type TagEdit,
 	type TagField,
 	type Track,
@@ -657,6 +660,28 @@ export function lastfmStatusOf(fixture: LastfmFixture, now = Date.now()): Lastfm
 	}
 }
 
+/**
+ * A server on its first run: `needed` opened from its network, `code` from outside it, `done` once
+ * an account exists. Each starts signed out.
+ */
+export type SetupFixture = 'needed' | 'code' | 'done';
+
+/** Reads a setup fixture from the URL: anything else is a server set up long ago, signed in. */
+export function setupFixture(value: string | null): SetupFixture | undefined {
+	return value === 'needed' || value === 'code' || value === 'done' ? value : undefined;
+}
+
+/** The code the fixtures' server logged, in the shape a real one has. */
+export const fixtureSetupCode = 'k7m2-q9xd-4tbn-r8ve';
+
+/** Wrong codes the server takes before it makes the page wait, as its login limiter does. */
+const freeWrongCodes = 6;
+
+/** How the server compares a code: case, dashes and spaces don't count. */
+function plainCode(code: string): string {
+	return code.toLowerCase().replaceAll(/[\s-]/g, '');
+}
+
 /** Each way an edit can go wrong, for the states the boards never drew. */
 export type FixtureEditFault = 'busy' | 'stale' | 'drift' | 'refused' | 'partial';
 
@@ -670,6 +695,8 @@ export interface FixtureOptions {
 	editFault?: FixtureEditFault | undefined;
 	/** How Last.fm stands. */
 	lastfm?: LastfmFixture;
+	/** A first run, signed out. Absent means a server long set up, signed in. */
+	setup?: SetupFixture | undefined;
 }
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
@@ -685,6 +712,41 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	const hearts = new Set(boardHearts);
 	const stars = new Map(boardStars);
 	let lastfm = lastfmStatusOf(options.lastfm ?? 'none');
+	let hasAccounts = options.setup === undefined || options.setup === 'done';
+	let signedOut = options.setup !== undefined;
+	let wrongCodes = 0;
+
+	function whoIsSignedIn(): Me {
+		if (signedOut) {
+			throw new UnauthorizedError();
+		}
+		return signedIn;
+	}
+
+	/** Checks a first account as the server would, and makes it. */
+	function makeFirst(name: string, password: string, code: string | undefined): Me {
+		if (hasAccounts) {
+			throw new SetupError({ kind: 'done' });
+		}
+		if (options.setup === 'code') {
+			if (wrongCodes >= freeWrongCodes) {
+				throw new SetupError({ kind: 'throttled', retryAfterSeconds: 60 });
+			}
+			if (code === undefined || plainCode(code) !== plainCode(fixtureSetupCode)) {
+				wrongCodes += code === undefined ? 0 : 1;
+				throw new SetupError({ kind: 'code' });
+			}
+		}
+		if (name.length === 0 || name.length > 64 || name.trim() !== name) {
+			throw new SetupError({ kind: 'name' });
+		}
+		if ([...password].length < 8 || password.length > 1024) {
+			throw new SetupError({ kind: 'password' });
+		}
+		hasAccounts = true;
+		signedOut = false;
+		return signedIn;
+	}
 
 	/** A track as the marks have it: a stale rating goes, as the server leaves one out. */
 	function markedTrack<T extends Track | LibraryTrack>(track: T): T {
@@ -787,8 +849,8 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	}
 
 	return {
-		me: () => respond(() => signedIn),
-		sessionUser: () => respond(() => signedIn),
+		me: () => respond(whoIsSignedIn),
+		sessionUser: () => respond(whoIsSignedIn),
 		reportPlay: () => respond(() => undefined),
 		setHeart: (kind: MarkKind, id: string, on: boolean) =>
 			respond(() => {
@@ -809,11 +871,18 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			}),
 		login: (name) =>
 			respond(() => {
-				if (name === '') {
+				if (name === '' || !hasAccounts) {
 					throw new LoginError({ kind: 'credentials' });
 				}
+				signedOut = false;
 				return signedIn;
 			}),
+		setupStatus: () =>
+			respond((): SetupStatus => ({
+				needed: !hasAccounts,
+				codeRequired: !hasAccounts && options.setup === 'code'
+			})),
+		setup: (name, password, code) => respond(() => makeFirst(name, password, code)),
 		logout: () => respond(() => undefined),
 		listening: () => respond(() => ({ plays: boardPlays, hearts: hearts.size, rated: stars.size })),
 		lastfm: () => respond(() => lastfm),

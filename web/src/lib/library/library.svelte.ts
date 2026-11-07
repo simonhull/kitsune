@@ -9,6 +9,7 @@ import {
 	defaultScanGap,
 	lastfmFixture,
 	scanStart,
+	setupFixture,
 	type FixtureEditFault
 } from './fixtures.ts';
 import { healthFixture } from './healthFixtures.ts';
@@ -19,6 +20,7 @@ import {
 	AlbumNotFoundError,
 	ArtistNotFoundError,
 	ServerError,
+	SetupError,
 	UnauthorizedError,
 	type Album,
 	type AlbumEdit,
@@ -36,7 +38,8 @@ import {
 	type Me,
 	type ScanIssues,
 	type ScanMode,
-	type ScanRefusal
+	type ScanRefusal,
+	type SetupStatus
 } from './source.ts';
 
 /** The grid's page: 60 divides evenly into every column count, so pages stack with no seam. */
@@ -205,6 +208,7 @@ export class Library {
 	#indexEdited = $state(false);
 	#player: PlayerView | null = null;
 	#session: Promise<Session> | null = null;
+	#setup: Promise<SetupStatus | null> | null = null;
 	#shell: Promise<void> | null = null;
 	#cursor: string | undefined;
 	#more: Promise<void> | null = null;
@@ -375,6 +379,33 @@ export class Library {
 	async login(name: string, password: string): Promise<void> {
 		await this.#source.login(name, password);
 		// Logging in names the user; only `/me` says what they may do.
+		this.user = await this.#source.me();
+		this.#session = Promise.resolve('signed-in');
+	}
+
+	/**
+	 * Asks whether the first account is still to be made, once: it can only stop being needed, and
+	 * this browser says when. Null when the server didn't answer.
+	 */
+	setupStatus(): Promise<SetupStatus | null> {
+		this.#setup ??= this.#source.setupStatus().catch(() => {
+			this.#setup = null; // Unknown isn't an answer to keep: ask again next time.
+			return null;
+		});
+		return this.#setup;
+	}
+
+	/** Makes the first account and signs in as it, as {@link Library.login} does. Rejects with `SetupError`. */
+	async setup(name: string, password: string, code?: string): Promise<void> {
+		try {
+			await this.#source.setup(name, password, code);
+		} catch (error) {
+			if (error instanceof SetupError && error.failure.kind === 'done') {
+				this.#setup = Promise.resolve({ needed: false, codeRequired: false });
+			}
+			throw error;
+		}
+		this.#setup = Promise.resolve({ needed: false, codeRequired: false });
 		this.user = await this.#source.me();
 		this.#session = Promise.resolve('signed-in');
 	}
@@ -1063,12 +1094,13 @@ function fromQuery(): Library {
 	const role = query.get('role') === 'user' ? 'user' : 'admin';
 	const editFault = (query.get('editFault') ?? undefined) as FixtureEditFault | undefined;
 	const lastfm = lastfmFixture(query.get('lastfm'));
+	const setup = setupFixture(query.get('setup'));
 	const pinnedAlbumId = query.get('playing') ?? undefined;
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
 		const readyMemory = { seen: () => false, mark: () => undefined };
-		return new Library(createFixtureSource({ latencyMs, health, role, editFault, lastfm }), {
+		return new Library(createFixtureSource({ latencyMs, health, role, editFault, lastfm, setup }), {
 			pinnedAlbumId,
 			readyMemory,
 			simulated: true
