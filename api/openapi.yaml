@@ -322,6 +322,70 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /me/prefs/{key}:
+    get:
+      operationId: getPref
+      summary: Return one of the caller's preferences.
+      description: >-
+        Preferences are the caller's own, such as the Library list's columns,
+        and follow them from browser to browser. Server settings are never
+        among them. A key the caller never set is a 404, as is an unknown key,
+        and so is a value kept from before its key's rule changed: the client
+        uses its defaults.
+      parameters:
+        - $ref: "#/components/parameters/PrefKey"
+      responses:
+        "200":
+          description: >-
+            The value, as its key's schema has it. `library.columns` is the
+            only key yet; with a second, this becomes a choice by key.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LibraryColumns" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: putPref
+      summary: Set one of the caller's preferences.
+      description: >-
+        Replaces the value. Each key has its own schema, and a value that breaks
+        it, or is over 4 KiB, is a 400. An unknown key is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - $ref: "#/components/parameters/PrefKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LibraryColumns" }
+      responses:
+        "204":
+          description: Kept.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
   /me/lastfm:
     get:
       operationId: getLastfm
@@ -1059,6 +1123,14 @@ components:
       required: true
       description: What the heart is on.
       schema: { type: string, enum: [tracks, albums, artists] }
+    PrefKey:
+      name: key
+      in: path
+      required: true
+      description: >-
+        The preference, such as `library.columns`. The server knows which keys
+        there are.
+      schema: { type: string }
     ItemID:
       name: id
       in: path
@@ -1621,6 +1693,25 @@ components:
         album: { type: string }
         durationMs: { type: integer, format: int64 }
         artwork: { $ref: "#/components/schemas/Artwork" }
+    LibraryColumns:
+      type: object
+      additionalProperties: false
+      description: >-
+        `library.columns`: the Library list's song columns. Checkbox, number,
+        title, time and the row's menu are always shown and never named here.
+      required: [order, artistWhenDifferent]
+      properties:
+        order:
+          type: array
+          description: The columns shown, in their order. A column left out is hidden.
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/SongColumn" }
+        artistWhenDifferent:
+          type: boolean
+          description: Leave Artist empty where the track's artists are the album's.
+    SongColumn:
+      type: string
+      enum: [artist, albumArtist, album, genre, year, rating, heart, plays, lastPlayed, added, composer, format, bitrate]
     LibraryIndex:
       type: object
       additionalProperties: false

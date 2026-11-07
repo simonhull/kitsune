@@ -120,6 +120,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getLastfmTrackStmt, err = db.PrepareContext(ctx, getLastfmTrack); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLastfmTrack: %w", err)
 	}
+	if q.getPrefStmt, err = db.PrepareContext(ctx, getPref); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPref: %w", err)
+	}
 	if q.getTrackAlbumStmt, err = db.PrepareContext(ctx, getTrackAlbum); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTrackAlbum: %w", err)
 	}
@@ -315,6 +318,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.upsertLastfmAccountStmt, err = db.PrepareContext(ctx, upsertLastfmAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertLastfmAccount: %w", err)
 	}
+	if q.upsertPrefStmt, err = db.PrepareContext(ctx, upsertPref); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertPref: %w", err)
+	}
 	if q.upsertScanIssueStmt, err = db.PrepareContext(ctx, upsertScanIssue); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertScanIssue: %w", err)
 	}
@@ -487,6 +493,11 @@ func (q *Queries) Close() error {
 	if q.getLastfmTrackStmt != nil {
 		if cerr := q.getLastfmTrackStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLastfmTrackStmt: %w", cerr)
+		}
+	}
+	if q.getPrefStmt != nil {
+		if cerr := q.getPrefStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPrefStmt: %w", cerr)
 		}
 	}
 	if q.getTrackAlbumStmt != nil {
@@ -814,6 +825,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertLastfmAccountStmt: %w", cerr)
 		}
 	}
+	if q.upsertPrefStmt != nil {
+		if cerr := q.upsertPrefStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertPrefStmt: %w", cerr)
+		}
+	}
 	if q.upsertScanIssueStmt != nil {
 		if cerr := q.upsertScanIssueStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertScanIssueStmt: %w", cerr)
@@ -900,6 +916,7 @@ type Queries struct {
 	getArtistStmt              *sql.Stmt
 	getLastfmAccountStmt       *sql.Stmt
 	getLastfmTrackStmt         *sql.Stmt
+	getPrefStmt                *sql.Stmt
 	getTrackAlbumStmt          *sql.Stmt
 	getTrackFileStmt           *sql.Stmt
 	insertAlbumHeartStmt       *sql.Stmt
@@ -965,6 +982,7 @@ type Queries struct {
 	upsertArtistStmt           *sql.Stmt
 	upsertArtworkStmt          *sql.Stmt
 	upsertLastfmAccountStmt    *sql.Stmt
+	upsertPrefStmt             *sql.Stmt
 	upsertScanIssueStmt        *sql.Stmt
 	upsertTrackRatingStmt      *sql.Stmt
 	userByNameStmt             *sql.Stmt
@@ -1006,6 +1024,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getArtistStmt:              q.getArtistStmt,
 		getLastfmAccountStmt:       q.getLastfmAccountStmt,
 		getLastfmTrackStmt:         q.getLastfmTrackStmt,
+		getPrefStmt:                q.getPrefStmt,
 		getTrackAlbumStmt:          q.getTrackAlbumStmt,
 		getTrackFileStmt:           q.getTrackFileStmt,
 		insertAlbumHeartStmt:       q.insertAlbumHeartStmt,
@@ -1071,6 +1090,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertArtistStmt:           q.upsertArtistStmt,
 		upsertArtworkStmt:          q.upsertArtworkStmt,
 		upsertLastfmAccountStmt:    q.upsertLastfmAccountStmt,
+		upsertPrefStmt:             q.upsertPrefStmt,
 		upsertScanIssueStmt:        q.upsertScanIssueStmt,
 		upsertTrackRatingStmt:      q.upsertTrackRatingStmt,
 		userByNameStmt:             q.userByNameStmt,

@@ -67,6 +67,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `r.Context().Err()` before logging an error from a handler a client can abandon.
 - Responses carry `api` types built field by field (`toAPIUser`); never marshal a
   `store` type, so a new store column can't leak.
+- A person's preferences are `GET`/`PUT /me/prefs/{key}`. `internal/prefs` alone says which keys
+  there are and what each holds, and checks a value on the way in and again on the way out; the
+  store keeps the text. A new key is an entry there and its schema in the contract. Server settings
+  never go there.
 - Nothing the server writes (bodies, headers, logs) contains a password or token, except
   login's response and `Set-Cookie`, and the setup code's one log line (see Operations).
 - `GET /setup` and `POST /setup` are public. They make the first account, an administrator, while
