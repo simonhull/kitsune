@@ -24,6 +24,15 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
+	if q.albumHeartedStmt, err = db.PrepareContext(ctx, albumHearted); err != nil {
+		return nil, fmt.Errorf("error preparing query AlbumHearted: %w", err)
+	}
+	if q.albumRowIDStmt, err = db.PrepareContext(ctx, albumRowID); err != nil {
+		return nil, fmt.Errorf("error preparing query AlbumRowID: %w", err)
+	}
+	if q.artistRowIDStmt, err = db.PrepareContext(ctx, artistRowID); err != nil {
+		return nil, fmt.Errorf("error preparing query ArtistRowID: %w", err)
+	}
 	if q.countLiveAlbumsStmt, err = db.PrepareContext(ctx, countLiveAlbums); err != nil {
 		return nil, fmt.Errorf("error preparing query CountLiveAlbums: %w", err)
 	}
@@ -42,6 +51,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createUserStmt, err = db.PrepareContext(ctx, createUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateUser: %w", err)
 	}
+	if q.deleteAlbumHeartStmt, err = db.PrepareContext(ctx, deleteAlbumHeart); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAlbumHeart: %w", err)
+	}
+	if q.deleteArtistHeartStmt, err = db.PrepareContext(ctx, deleteArtistHeart); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteArtistHeart: %w", err)
+	}
 	if q.deleteExpiredSessionsStmt, err = db.PrepareContext(ctx, deleteExpiredSessions); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteExpiredSessions: %w", err)
 	}
@@ -56,6 +71,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteTrackArtistsStmt, err = db.PrepareContext(ctx, deleteTrackArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTrackArtists: %w", err)
+	}
+	if q.deleteTrackHeartStmt, err = db.PrepareContext(ctx, deleteTrackHeart); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTrackHeart: %w", err)
+	}
+	if q.deleteTrackRatingStmt, err = db.PrepareContext(ctx, deleteTrackRating); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTrackRating: %w", err)
 	}
 	if q.deleteTrackTagsStmt, err = db.PrepareContext(ctx, deleteTrackTags); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTrackTags: %w", err)
@@ -72,6 +93,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTrackFileStmt, err = db.PrepareContext(ctx, getTrackFile); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTrackFile: %w", err)
 	}
+	if q.insertAlbumHeartStmt, err = db.PrepareContext(ctx, insertAlbumHeart); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertAlbumHeart: %w", err)
+	}
+	if q.insertArtistHeartStmt, err = db.PrepareContext(ctx, insertArtistHeart); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertArtistHeart: %w", err)
+	}
 	if q.insertPlayStmt, err = db.PrepareContext(ctx, insertPlay); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPlay: %w", err)
 	}
@@ -80,6 +107,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertTrackArtistStmt, err = db.PrepareContext(ctx, insertTrackArtist); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTrackArtist: %w", err)
+	}
+	if q.insertTrackHeartStmt, err = db.PrepareContext(ctx, insertTrackHeart); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertTrackHeart: %w", err)
 	}
 	if q.insertTrackTagStmt, err = db.PrepareContext(ctx, insertTrackTag); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTrackTag: %w", err)
@@ -92,6 +122,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listAlbumFilesStmt, err = db.PrepareContext(ctx, listAlbumFiles); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumFiles: %w", err)
+	}
+	if q.listAlbumHeartedTracksStmt, err = db.PrepareContext(ctx, listAlbumHeartedTracks); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAlbumHeartedTracks: %w", err)
 	}
 	if q.listAlbumHitsStmt, err = db.PrepareContext(ctx, listAlbumHits); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumHits: %w", err)
@@ -114,6 +147,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAlbumTrackArtistsStmt, err = db.PrepareContext(ctx, listAlbumTrackArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumTrackArtists: %w", err)
 	}
+	if q.listAlbumTrackRatingsStmt, err = db.PrepareContext(ctx, listAlbumTrackRatings); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAlbumTrackRatings: %w", err)
+	}
 	if q.listAlbumTracksStmt, err = db.PrepareContext(ctx, listAlbumTracks); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumTracks: %w", err)
 	}
@@ -131,6 +167,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listArtistNamesStmt, err = db.PrepareContext(ctx, listArtistNames); err != nil {
 		return nil, fmt.Errorf("error preparing query ListArtistNames: %w", err)
+	}
+	if q.listHeartedAlbumsStmt, err = db.PrepareContext(ctx, listHeartedAlbums); err != nil {
+		return nil, fmt.Errorf("error preparing query ListHeartedAlbums: %w", err)
+	}
+	if q.listHeartedArtistsStmt, err = db.PrepareContext(ctx, listHeartedArtists); err != nil {
+		return nil, fmt.Errorf("error preparing query ListHeartedArtists: %w", err)
+	}
+	if q.listHeartedTracksStmt, err = db.PrepareContext(ctx, listHeartedTracks); err != nil {
+		return nil, fmt.Errorf("error preparing query ListHeartedTracks: %w", err)
 	}
 	if q.listIndexAlbumsStmt, err = db.PrepareContext(ctx, listIndexAlbums); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexAlbums: %w", err)
@@ -152,6 +197,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTrackHitsStmt, err = db.PrepareContext(ctx, listTrackHits); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackHits: %w", err)
+	}
+	if q.listTrackRatingsStmt, err = db.PrepareContext(ctx, listTrackRatings); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTrackRatings: %w", err)
 	}
 	if q.listWarnedTracksStmt, err = db.PrepareContext(ctx, listWarnedTracks); err != nil {
 		return nil, fmt.Errorf("error preparing query ListWarnedTracks: %w", err)
@@ -207,6 +255,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.upsertScanIssueStmt, err = db.PrepareContext(ctx, upsertScanIssue); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertScanIssue: %w", err)
 	}
+	if q.upsertTrackRatingStmt, err = db.PrepareContext(ctx, upsertTrackRating); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertTrackRating: %w", err)
+	}
 	if q.userByNameStmt, err = db.PrepareContext(ctx, userByName); err != nil {
 		return nil, fmt.Errorf("error preparing query UserByName: %w", err)
 	}
@@ -215,6 +266,21 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
+	if q.albumHeartedStmt != nil {
+		if cerr := q.albumHeartedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing albumHeartedStmt: %w", cerr)
+		}
+	}
+	if q.albumRowIDStmt != nil {
+		if cerr := q.albumRowIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing albumRowIDStmt: %w", cerr)
+		}
+	}
+	if q.artistRowIDStmt != nil {
+		if cerr := q.artistRowIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing artistRowIDStmt: %w", cerr)
+		}
+	}
 	if q.countLiveAlbumsStmt != nil {
 		if cerr := q.countLiveAlbumsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countLiveAlbumsStmt: %w", cerr)
@@ -245,6 +311,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing createUserStmt: %w", cerr)
 		}
 	}
+	if q.deleteAlbumHeartStmt != nil {
+		if cerr := q.deleteAlbumHeartStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAlbumHeartStmt: %w", cerr)
+		}
+	}
+	if q.deleteArtistHeartStmt != nil {
+		if cerr := q.deleteArtistHeartStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteArtistHeartStmt: %w", cerr)
+		}
+	}
 	if q.deleteExpiredSessionsStmt != nil {
 		if cerr := q.deleteExpiredSessionsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteExpiredSessionsStmt: %w", cerr)
@@ -268,6 +344,16 @@ func (q *Queries) Close() error {
 	if q.deleteTrackArtistsStmt != nil {
 		if cerr := q.deleteTrackArtistsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteTrackArtistsStmt: %w", cerr)
+		}
+	}
+	if q.deleteTrackHeartStmt != nil {
+		if cerr := q.deleteTrackHeartStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTrackHeartStmt: %w", cerr)
+		}
+	}
+	if q.deleteTrackRatingStmt != nil {
+		if cerr := q.deleteTrackRatingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTrackRatingStmt: %w", cerr)
 		}
 	}
 	if q.deleteTrackTagsStmt != nil {
@@ -295,6 +381,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTrackFileStmt: %w", cerr)
 		}
 	}
+	if q.insertAlbumHeartStmt != nil {
+		if cerr := q.insertAlbumHeartStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertAlbumHeartStmt: %w", cerr)
+		}
+	}
+	if q.insertArtistHeartStmt != nil {
+		if cerr := q.insertArtistHeartStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertArtistHeartStmt: %w", cerr)
+		}
+	}
 	if q.insertPlayStmt != nil {
 		if cerr := q.insertPlayStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertPlayStmt: %w", cerr)
@@ -308,6 +404,11 @@ func (q *Queries) Close() error {
 	if q.insertTrackArtistStmt != nil {
 		if cerr := q.insertTrackArtistStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertTrackArtistStmt: %w", cerr)
+		}
+	}
+	if q.insertTrackHeartStmt != nil {
+		if cerr := q.insertTrackHeartStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertTrackHeartStmt: %w", cerr)
 		}
 	}
 	if q.insertTrackTagStmt != nil {
@@ -328,6 +429,11 @@ func (q *Queries) Close() error {
 	if q.listAlbumFilesStmt != nil {
 		if cerr := q.listAlbumFilesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAlbumFilesStmt: %w", cerr)
+		}
+	}
+	if q.listAlbumHeartedTracksStmt != nil {
+		if cerr := q.listAlbumHeartedTracksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAlbumHeartedTracksStmt: %w", cerr)
 		}
 	}
 	if q.listAlbumHitsStmt != nil {
@@ -365,6 +471,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAlbumTrackArtistsStmt: %w", cerr)
 		}
 	}
+	if q.listAlbumTrackRatingsStmt != nil {
+		if cerr := q.listAlbumTrackRatingsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAlbumTrackRatingsStmt: %w", cerr)
+		}
+	}
 	if q.listAlbumTracksStmt != nil {
 		if cerr := q.listAlbumTracksStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAlbumTracksStmt: %w", cerr)
@@ -393,6 +504,21 @@ func (q *Queries) Close() error {
 	if q.listArtistNamesStmt != nil {
 		if cerr := q.listArtistNamesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listArtistNamesStmt: %w", cerr)
+		}
+	}
+	if q.listHeartedAlbumsStmt != nil {
+		if cerr := q.listHeartedAlbumsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listHeartedAlbumsStmt: %w", cerr)
+		}
+	}
+	if q.listHeartedArtistsStmt != nil {
+		if cerr := q.listHeartedArtistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listHeartedArtistsStmt: %w", cerr)
+		}
+	}
+	if q.listHeartedTracksStmt != nil {
+		if cerr := q.listHeartedTracksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listHeartedTracksStmt: %w", cerr)
 		}
 	}
 	if q.listIndexAlbumsStmt != nil {
@@ -428,6 +554,11 @@ func (q *Queries) Close() error {
 	if q.listTrackHitsStmt != nil {
 		if cerr := q.listTrackHitsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTrackHitsStmt: %w", cerr)
+		}
+	}
+	if q.listTrackRatingsStmt != nil {
+		if cerr := q.listTrackRatingsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTrackRatingsStmt: %w", cerr)
 		}
 	}
 	if q.listWarnedTracksStmt != nil {
@@ -520,6 +651,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertScanIssueStmt: %w", cerr)
 		}
 	}
+	if q.upsertTrackRatingStmt != nil {
+		if cerr := q.upsertTrackRatingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertTrackRatingStmt: %w", cerr)
+		}
+	}
 	if q.userByNameStmt != nil {
 		if cerr := q.userByNameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing userByNameStmt: %w", cerr)
@@ -562,137 +698,171 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                        DBTX
-	tx                        *sql.Tx
-	countLiveAlbumsStmt       *sql.Stmt
-	countScanIssuesByKindStmt *sql.Stmt
-	countUsersStmt            *sql.Stmt
-	countWarnedTracksStmt     *sql.Stmt
-	createSessionStmt         *sql.Stmt
-	createUserStmt            *sql.Stmt
-	deleteExpiredSessionsStmt *sql.Stmt
-	deleteMissingBeforeStmt   *sql.Stmt
-	deleteScanIssueStmt       *sql.Stmt
-	deleteSessionStmt         *sql.Stmt
-	deleteTrackArtistsStmt    *sql.Stmt
-	deleteTrackTagsStmt       *sql.Stmt
-	getAlbumStmt              *sql.Stmt
-	getArtistStmt             *sql.Stmt
-	getTrackAlbumStmt         *sql.Stmt
-	getTrackFileStmt          *sql.Stmt
-	insertPlayStmt            *sql.Stmt
-	insertTrackStmt           *sql.Stmt
-	insertTrackArtistStmt     *sql.Stmt
-	insertTrackTagStmt        *sql.Stmt
-	issueStatesStmt           *sql.Stmt
-	knownRootsStmt            *sql.Stmt
-	listAlbumFilesStmt        *sql.Stmt
-	listAlbumHitsStmt         *sql.Stmt
-	listAlbumNamesStmt        *sql.Stmt
-	listAlbumOwnersStmt       *sql.Stmt
-	listAlbumSortArtistsStmt  *sql.Stmt
-	listAlbumTagCountsStmt    *sql.Stmt
-	listAlbumTagValuesStmt    *sql.Stmt
-	listAlbumTrackArtistsStmt *sql.Stmt
-	listAlbumTracksStmt       *sql.Stmt
-	listAlbumsByAddedStmt     *sql.Stmt
-	listAlbumsByNameStmt      *sql.Stmt
-	listArtistAlbumsStmt      *sql.Stmt
-	listArtistHitsStmt        *sql.Stmt
-	listArtistNamesStmt       *sql.Stmt
-	listIndexAlbumsStmt       *sql.Stmt
-	listIndexTrackArtistsStmt *sql.Stmt
-	listIndexTracksStmt       *sql.Stmt
-	listOwningArtistsStmt     *sql.Stmt
-	listScanIssuesStmt        *sql.Stmt
-	listTrackHitArtistsStmt   *sql.Stmt
-	listTrackHitsStmt         *sql.Stmt
-	listWarnedTracksStmt      *sql.Stmt
-	liveTrackFactsStmt        *sql.Stmt
-	markMissingStmt           *sql.Stmt
-	missingByDigestStmt       *sql.Stmt
-	pruneAlbumsStmt           *sql.Stmt
-	pruneArtistsStmt          *sql.Stmt
-	pruneArtworkStmt          *sql.Stmt
-	recentPlaysStmt           *sql.Stmt
-	sessionByTokenHashStmt    *sql.Stmt
-	setPasswordHashStmt       *sql.Stmt
-	touchSessionStmt          *sql.Stmt
-	trackRowIDStmt            *sql.Stmt
-	trackStatesStmt           *sql.Stmt
-	updateTrackStmt           *sql.Stmt
-	upsertAlbumStmt           *sql.Stmt
-	upsertArtistStmt          *sql.Stmt
-	upsertArtworkStmt         *sql.Stmt
-	upsertScanIssueStmt       *sql.Stmt
-	userByNameStmt            *sql.Stmt
+	db                         DBTX
+	tx                         *sql.Tx
+	albumHeartedStmt           *sql.Stmt
+	albumRowIDStmt             *sql.Stmt
+	artistRowIDStmt            *sql.Stmt
+	countLiveAlbumsStmt        *sql.Stmt
+	countScanIssuesByKindStmt  *sql.Stmt
+	countUsersStmt             *sql.Stmt
+	countWarnedTracksStmt      *sql.Stmt
+	createSessionStmt          *sql.Stmt
+	createUserStmt             *sql.Stmt
+	deleteAlbumHeartStmt       *sql.Stmt
+	deleteArtistHeartStmt      *sql.Stmt
+	deleteExpiredSessionsStmt  *sql.Stmt
+	deleteMissingBeforeStmt    *sql.Stmt
+	deleteScanIssueStmt        *sql.Stmt
+	deleteSessionStmt          *sql.Stmt
+	deleteTrackArtistsStmt     *sql.Stmt
+	deleteTrackHeartStmt       *sql.Stmt
+	deleteTrackRatingStmt      *sql.Stmt
+	deleteTrackTagsStmt        *sql.Stmt
+	getAlbumStmt               *sql.Stmt
+	getArtistStmt              *sql.Stmt
+	getTrackAlbumStmt          *sql.Stmt
+	getTrackFileStmt           *sql.Stmt
+	insertAlbumHeartStmt       *sql.Stmt
+	insertArtistHeartStmt      *sql.Stmt
+	insertPlayStmt             *sql.Stmt
+	insertTrackStmt            *sql.Stmt
+	insertTrackArtistStmt      *sql.Stmt
+	insertTrackHeartStmt       *sql.Stmt
+	insertTrackTagStmt         *sql.Stmt
+	issueStatesStmt            *sql.Stmt
+	knownRootsStmt             *sql.Stmt
+	listAlbumFilesStmt         *sql.Stmt
+	listAlbumHeartedTracksStmt *sql.Stmt
+	listAlbumHitsStmt          *sql.Stmt
+	listAlbumNamesStmt         *sql.Stmt
+	listAlbumOwnersStmt        *sql.Stmt
+	listAlbumSortArtistsStmt   *sql.Stmt
+	listAlbumTagCountsStmt     *sql.Stmt
+	listAlbumTagValuesStmt     *sql.Stmt
+	listAlbumTrackArtistsStmt  *sql.Stmt
+	listAlbumTrackRatingsStmt  *sql.Stmt
+	listAlbumTracksStmt        *sql.Stmt
+	listAlbumsByAddedStmt      *sql.Stmt
+	listAlbumsByNameStmt       *sql.Stmt
+	listArtistAlbumsStmt       *sql.Stmt
+	listArtistHitsStmt         *sql.Stmt
+	listArtistNamesStmt        *sql.Stmt
+	listHeartedAlbumsStmt      *sql.Stmt
+	listHeartedArtistsStmt     *sql.Stmt
+	listHeartedTracksStmt      *sql.Stmt
+	listIndexAlbumsStmt        *sql.Stmt
+	listIndexTrackArtistsStmt  *sql.Stmt
+	listIndexTracksStmt        *sql.Stmt
+	listOwningArtistsStmt      *sql.Stmt
+	listScanIssuesStmt         *sql.Stmt
+	listTrackHitArtistsStmt    *sql.Stmt
+	listTrackHitsStmt          *sql.Stmt
+	listTrackRatingsStmt       *sql.Stmt
+	listWarnedTracksStmt       *sql.Stmt
+	liveTrackFactsStmt         *sql.Stmt
+	markMissingStmt            *sql.Stmt
+	missingByDigestStmt        *sql.Stmt
+	pruneAlbumsStmt            *sql.Stmt
+	pruneArtistsStmt           *sql.Stmt
+	pruneArtworkStmt           *sql.Stmt
+	recentPlaysStmt            *sql.Stmt
+	sessionByTokenHashStmt     *sql.Stmt
+	setPasswordHashStmt        *sql.Stmt
+	touchSessionStmt           *sql.Stmt
+	trackRowIDStmt             *sql.Stmt
+	trackStatesStmt            *sql.Stmt
+	updateTrackStmt            *sql.Stmt
+	upsertAlbumStmt            *sql.Stmt
+	upsertArtistStmt           *sql.Stmt
+	upsertArtworkStmt          *sql.Stmt
+	upsertScanIssueStmt        *sql.Stmt
+	upsertTrackRatingStmt      *sql.Stmt
+	userByNameStmt             *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                        tx,
-		tx:                        tx,
-		countLiveAlbumsStmt:       q.countLiveAlbumsStmt,
-		countScanIssuesByKindStmt: q.countScanIssuesByKindStmt,
-		countUsersStmt:            q.countUsersStmt,
-		countWarnedTracksStmt:     q.countWarnedTracksStmt,
-		createSessionStmt:         q.createSessionStmt,
-		createUserStmt:            q.createUserStmt,
-		deleteExpiredSessionsStmt: q.deleteExpiredSessionsStmt,
-		deleteMissingBeforeStmt:   q.deleteMissingBeforeStmt,
-		deleteScanIssueStmt:       q.deleteScanIssueStmt,
-		deleteSessionStmt:         q.deleteSessionStmt,
-		deleteTrackArtistsStmt:    q.deleteTrackArtistsStmt,
-		deleteTrackTagsStmt:       q.deleteTrackTagsStmt,
-		getAlbumStmt:              q.getAlbumStmt,
-		getArtistStmt:             q.getArtistStmt,
-		getTrackAlbumStmt:         q.getTrackAlbumStmt,
-		getTrackFileStmt:          q.getTrackFileStmt,
-		insertPlayStmt:            q.insertPlayStmt,
-		insertTrackStmt:           q.insertTrackStmt,
-		insertTrackArtistStmt:     q.insertTrackArtistStmt,
-		insertTrackTagStmt:        q.insertTrackTagStmt,
-		issueStatesStmt:           q.issueStatesStmt,
-		knownRootsStmt:            q.knownRootsStmt,
-		listAlbumFilesStmt:        q.listAlbumFilesStmt,
-		listAlbumHitsStmt:         q.listAlbumHitsStmt,
-		listAlbumNamesStmt:        q.listAlbumNamesStmt,
-		listAlbumOwnersStmt:       q.listAlbumOwnersStmt,
-		listAlbumSortArtistsStmt:  q.listAlbumSortArtistsStmt,
-		listAlbumTagCountsStmt:    q.listAlbumTagCountsStmt,
-		listAlbumTagValuesStmt:    q.listAlbumTagValuesStmt,
-		listAlbumTrackArtistsStmt: q.listAlbumTrackArtistsStmt,
-		listAlbumTracksStmt:       q.listAlbumTracksStmt,
-		listAlbumsByAddedStmt:     q.listAlbumsByAddedStmt,
-		listAlbumsByNameStmt:      q.listAlbumsByNameStmt,
-		listArtistAlbumsStmt:      q.listArtistAlbumsStmt,
-		listArtistHitsStmt:        q.listArtistHitsStmt,
-		listArtistNamesStmt:       q.listArtistNamesStmt,
-		listIndexAlbumsStmt:       q.listIndexAlbumsStmt,
-		listIndexTrackArtistsStmt: q.listIndexTrackArtistsStmt,
-		listIndexTracksStmt:       q.listIndexTracksStmt,
-		listOwningArtistsStmt:     q.listOwningArtistsStmt,
-		listScanIssuesStmt:        q.listScanIssuesStmt,
-		listTrackHitArtistsStmt:   q.listTrackHitArtistsStmt,
-		listTrackHitsStmt:         q.listTrackHitsStmt,
-		listWarnedTracksStmt:      q.listWarnedTracksStmt,
-		liveTrackFactsStmt:        q.liveTrackFactsStmt,
-		markMissingStmt:           q.markMissingStmt,
-		missingByDigestStmt:       q.missingByDigestStmt,
-		pruneAlbumsStmt:           q.pruneAlbumsStmt,
-		pruneArtistsStmt:          q.pruneArtistsStmt,
-		pruneArtworkStmt:          q.pruneArtworkStmt,
-		recentPlaysStmt:           q.recentPlaysStmt,
-		sessionByTokenHashStmt:    q.sessionByTokenHashStmt,
-		setPasswordHashStmt:       q.setPasswordHashStmt,
-		touchSessionStmt:          q.touchSessionStmt,
-		trackRowIDStmt:            q.trackRowIDStmt,
-		trackStatesStmt:           q.trackStatesStmt,
-		updateTrackStmt:           q.updateTrackStmt,
-		upsertAlbumStmt:           q.upsertAlbumStmt,
-		upsertArtistStmt:          q.upsertArtistStmt,
-		upsertArtworkStmt:         q.upsertArtworkStmt,
-		upsertScanIssueStmt:       q.upsertScanIssueStmt,
-		userByNameStmt:            q.userByNameStmt,
+		db:                         tx,
+		tx:                         tx,
+		albumHeartedStmt:           q.albumHeartedStmt,
+		albumRowIDStmt:             q.albumRowIDStmt,
+		artistRowIDStmt:            q.artistRowIDStmt,
+		countLiveAlbumsStmt:        q.countLiveAlbumsStmt,
+		countScanIssuesByKindStmt:  q.countScanIssuesByKindStmt,
+		countUsersStmt:             q.countUsersStmt,
+		countWarnedTracksStmt:      q.countWarnedTracksStmt,
+		createSessionStmt:          q.createSessionStmt,
+		createUserStmt:             q.createUserStmt,
+		deleteAlbumHeartStmt:       q.deleteAlbumHeartStmt,
+		deleteArtistHeartStmt:      q.deleteArtistHeartStmt,
+		deleteExpiredSessionsStmt:  q.deleteExpiredSessionsStmt,
+		deleteMissingBeforeStmt:    q.deleteMissingBeforeStmt,
+		deleteScanIssueStmt:        q.deleteScanIssueStmt,
+		deleteSessionStmt:          q.deleteSessionStmt,
+		deleteTrackArtistsStmt:     q.deleteTrackArtistsStmt,
+		deleteTrackHeartStmt:       q.deleteTrackHeartStmt,
+		deleteTrackRatingStmt:      q.deleteTrackRatingStmt,
+		deleteTrackTagsStmt:        q.deleteTrackTagsStmt,
+		getAlbumStmt:               q.getAlbumStmt,
+		getArtistStmt:              q.getArtistStmt,
+		getTrackAlbumStmt:          q.getTrackAlbumStmt,
+		getTrackFileStmt:           q.getTrackFileStmt,
+		insertAlbumHeartStmt:       q.insertAlbumHeartStmt,
+		insertArtistHeartStmt:      q.insertArtistHeartStmt,
+		insertPlayStmt:             q.insertPlayStmt,
+		insertTrackStmt:            q.insertTrackStmt,
+		insertTrackArtistStmt:      q.insertTrackArtistStmt,
+		insertTrackHeartStmt:       q.insertTrackHeartStmt,
+		insertTrackTagStmt:         q.insertTrackTagStmt,
+		issueStatesStmt:            q.issueStatesStmt,
+		knownRootsStmt:             q.knownRootsStmt,
+		listAlbumFilesStmt:         q.listAlbumFilesStmt,
+		listAlbumHeartedTracksStmt: q.listAlbumHeartedTracksStmt,
+		listAlbumHitsStmt:          q.listAlbumHitsStmt,
+		listAlbumNamesStmt:         q.listAlbumNamesStmt,
+		listAlbumOwnersStmt:        q.listAlbumOwnersStmt,
+		listAlbumSortArtistsStmt:   q.listAlbumSortArtistsStmt,
+		listAlbumTagCountsStmt:     q.listAlbumTagCountsStmt,
+		listAlbumTagValuesStmt:     q.listAlbumTagValuesStmt,
+		listAlbumTrackArtistsStmt:  q.listAlbumTrackArtistsStmt,
+		listAlbumTrackRatingsStmt:  q.listAlbumTrackRatingsStmt,
+		listAlbumTracksStmt:        q.listAlbumTracksStmt,
+		listAlbumsByAddedStmt:      q.listAlbumsByAddedStmt,
+		listAlbumsByNameStmt:       q.listAlbumsByNameStmt,
+		listArtistAlbumsStmt:       q.listArtistAlbumsStmt,
+		listArtistHitsStmt:         q.listArtistHitsStmt,
+		listArtistNamesStmt:        q.listArtistNamesStmt,
+		listHeartedAlbumsStmt:      q.listHeartedAlbumsStmt,
+		listHeartedArtistsStmt:     q.listHeartedArtistsStmt,
+		listHeartedTracksStmt:      q.listHeartedTracksStmt,
+		listIndexAlbumsStmt:        q.listIndexAlbumsStmt,
+		listIndexTrackArtistsStmt:  q.listIndexTrackArtistsStmt,
+		listIndexTracksStmt:        q.listIndexTracksStmt,
+		listOwningArtistsStmt:      q.listOwningArtistsStmt,
+		listScanIssuesStmt:         q.listScanIssuesStmt,
+		listTrackHitArtistsStmt:    q.listTrackHitArtistsStmt,
+		listTrackHitsStmt:          q.listTrackHitsStmt,
+		listTrackRatingsStmt:       q.listTrackRatingsStmt,
+		listWarnedTracksStmt:       q.listWarnedTracksStmt,
+		liveTrackFactsStmt:         q.liveTrackFactsStmt,
+		markMissingStmt:            q.markMissingStmt,
+		missingByDigestStmt:        q.missingByDigestStmt,
+		pruneAlbumsStmt:            q.pruneAlbumsStmt,
+		pruneArtistsStmt:           q.pruneArtistsStmt,
+		pruneArtworkStmt:           q.pruneArtworkStmt,
+		recentPlaysStmt:            q.recentPlaysStmt,
+		sessionByTokenHashStmt:     q.sessionByTokenHashStmt,
+		setPasswordHashStmt:        q.setPasswordHashStmt,
+		touchSessionStmt:           q.touchSessionStmt,
+		trackRowIDStmt:             q.trackRowIDStmt,
+		trackStatesStmt:            q.trackStatesStmt,
+		updateTrackStmt:            q.updateTrackStmt,
+		upsertAlbumStmt:            q.upsertAlbumStmt,
+		upsertArtistStmt:           q.upsertArtistStmt,
+		upsertArtworkStmt:          q.upsertArtworkStmt,
+		upsertScanIssueStmt:        q.upsertScanIssueStmt,
+		upsertTrackRatingStmt:      q.upsertTrackRatingStmt,
+		userByNameStmt:             q.userByNameStmt,
 	}
 }

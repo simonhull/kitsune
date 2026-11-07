@@ -47,34 +47,40 @@ func genreTags(genres []string) []store.Tag {
 	return tags
 }
 
-// seedAlbums writes the albums, each track 1 minute long, and returns the track
-// ULID of each album's first track.
+// seedAlbums writes the albums, each track 1 minute long.
 func (ts *testServer) seedAlbums(tb testing.TB, albums ...browseAlbum) {
 	tb.Helper()
 	var tws []store.TrackWrite
 	for _, a := range albums {
-		for t := 1; t <= a.tracks; t++ {
-			tws = append(tws, store.TrackWrite{
-				ULID:    fmt.Sprintf("01J%020d%03d", a.n, t),
-				Root:    "/music",
-				RelPath: fmt.Sprintf("a%d/%d.flac", a.n, t),
-				Digest:  sha256.Sum256(fmt.Appendf(nil, "%d/%d", a.n, t)),
-				Format:  flacFormat, Codec: flacFormat,
-				Duration: time.Minute,
-				Title:    fmt.Sprintf("Track %d", t),
-				TrackNo:  t,
-				Tags:     genreTags(a.genres),
-				Artists:  []store.ArtistWrite{{ULID: annID, MatchKey: "ann", Name: annName, SortName: annName}},
-				Album: store.AlbumWrite{
-					GroupKey: fmt.Sprintf("g%d", a.n), ULID: albumULID(a.n), Name: fmt.Sprintf("Album %d", a.n),
-					SortName: a.sortName, Artist: annName, Year: 2001, Artwork: a.cover,
-				},
-			})
-		}
+		tws = append(tws, a.writes()...)
 	}
 	if err := ts.Store.WriteBatch(tb.Context(), &store.Batch{Tracks: tws}); err != nil {
 		tb.Fatal(err)
 	}
+}
+
+// writes returns the track writes of a.
+func (a *browseAlbum) writes() []store.TrackWrite {
+	tws := make([]store.TrackWrite, 0, a.tracks)
+	for t := 1; t <= a.tracks; t++ {
+		tws = append(tws, store.TrackWrite{
+			ULID:    fmt.Sprintf("01J%020d%03d", a.n, t),
+			Root:    "/music",
+			RelPath: fmt.Sprintf("a%d/%d.flac", a.n, t),
+			Digest:  sha256.Sum256(fmt.Appendf(nil, "%d/%d", a.n, t)),
+			Format:  flacFormat, Codec: flacFormat,
+			Duration: time.Minute,
+			Title:    fmt.Sprintf("Track %d", t),
+			TrackNo:  t,
+			Tags:     genreTags(a.genres),
+			Artists:  []store.ArtistWrite{{ULID: annID, MatchKey: "ann", Name: annName, SortName: annName}},
+			Album: store.AlbumWrite{
+				GroupKey: fmt.Sprintf("g%d", a.n), ULID: albumULID(a.n), Name: fmt.Sprintf("Album %d", a.n),
+				SortName: a.sortName, Artist: annName, Year: 2001, Artwork: a.cover,
+			},
+		})
+	}
+	return tws
 }
 
 // getJSON sends an authenticated GET and decodes a 200 response into v.

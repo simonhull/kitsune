@@ -10,8 +10,11 @@
 		trackGain,
 		trackLabel
 	} from '#lib/library/format.ts';
+	import { library } from '#lib/library/library.svelte.ts';
 	import type { Album } from '#lib/library/source.ts';
+	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
+	import StarButtons from '#lib/shell/StarButtons.svelte';
 
 	interface Props {
 		album: Album | undefined;
@@ -56,36 +59,45 @@
 				{@const others = credit(track, album.artist)}
 				{@const rg = trackGain(track)}
 				{@const cued = track.id === cuedId}
-				<button
-					type="button"
+				<!-- The song is one button, and its marks others beside it: a button can't hold a button. -->
+				<div
 					class="row"
 					class:cued
 					class:discs={multiDisc}
-					aria-current={cued ? 'true' : undefined}
-					onclick={() => {
-						play(index);
-					}}
+					class:rated={library.marks.stars(track.id) !== null}
 				>
-					<span class="mono number">
-						{#if cued && sounding}
-							<Icon name="play" size={16} />
+					<button
+						type="button"
+						class="play"
+						aria-label={`Play ${track.title}`}
+						aria-current={cued ? 'true' : undefined}
+						onclick={() => {
+							play(index);
+						}}
+					>
+						<span class="mono number">
+							{#if cued && sounding}
+								<Icon name="play" size={16} />
+							{:else}
+								{trackLabel(track, multiDisc)}
+							{/if}
+						</span>
+						<span class="name">
+							<span class="title">{track.title}</span>
+							{#if others !== undefined}
+								<span class="featuring">{others}</span>
+							{/if}
+						</span>
+						{#if rg === null}
+							<span class="mono gain missing">no RG</span>
 						{:else}
-							{trackLabel(track, multiDisc)}
+							<span class="mono gain">RG {gain(rg)}</span>
 						{/if}
-					</span>
-					<span class="name">
-						<span class="title">{track.title}</span>
-						{#if others !== undefined}
-							<span class="featuring">{others}</span>
-						{/if}
-					</span>
-					{#if rg === null}
-						<span class="mono gain missing">no RG</span>
-					{:else}
-						<span class="mono gain">RG {gain(rg)}</span>
-					{/if}
+					</button>
+					<StarButtons trackId={track.id} title={track.title} />
+					<HeartButton kind="tracks" id={track.id} name={track.title} />
 					<span class="mono length">{clock(track.durationMs / 1000)}</span>
-				</button>
+				</div>
 			{/each}
 			<div class="facts">
 				<span>{formatLine(album.tracks)}</span>
@@ -160,18 +172,59 @@
 		}
 	}
 
+	/* On the art, so the marks wear the accent. */
 	.row {
+		--heart-on: var(--accent);
+		--heart-off: var(--text-secondary);
+
 		display: grid;
-		grid-template-columns: 56px minmax(0, 1fr) 160px 80px;
-		gap: 16px;
+		grid-template-columns: minmax(0, 1fr) auto 44px 80px;
 		align-items: center;
 		width: 100%;
 		min-height: 60px;
 		padding: 0 16px;
-		border: 0;
 		border-radius: 18px;
+	}
+
+	.play {
+		display: grid;
+		grid-template-columns: 56px minmax(0, 1fr) 160px;
+		gap: 16px;
+		align-items: center;
+		min-width: 0;
+		min-height: 60px;
+		padding: 0 16px 0 0;
+		border: 0;
 		background: none;
+		color: inherit;
+		font: inherit;
 		text-align: left;
+	}
+
+	/* Shown once rated or hearted, on hover, and on the cued row. */
+	.row :global(.stars),
+	.row :global(.heart) {
+		opacity: 0;
+	}
+
+	.row.rated :global(.stars),
+	.row :global(.heart.on),
+	.row :global(.stars:has(:focus-visible)),
+	.row :global(.heart:focus-visible),
+	.row.cued :global(.stars),
+	.row.cued :global(.heart) {
+		opacity: 1;
+	}
+
+	@media (hover: hover) {
+		.row:not(.cued):hover {
+			background: rgb(255 255 255 / 8%);
+		}
+
+		.row:hover :global(.stars),
+		.row:hover :global(.heart) {
+			opacity: 1;
+		}
 	}
 
 	.row.cued {
@@ -258,13 +311,17 @@
 		}
 
 		.row {
-			grid-template-columns: 28px minmax(0, 1fr) 48px;
-			gap: 10px;
+			grid-template-columns: minmax(0, 1fr) auto 44px 48px;
 			padding: 8px 10px;
 		}
 
-		.row.discs {
-			grid-template-columns: 44px minmax(0, 1fr) 48px;
+		.play {
+			grid-template-columns: 28px minmax(0, 1fr);
+			gap: 10px;
+		}
+
+		.row.discs .play {
+			grid-template-columns: 44px minmax(0, 1fr);
 		}
 
 		.gain {

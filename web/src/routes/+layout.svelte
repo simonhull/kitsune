@@ -50,6 +50,17 @@
 
 	const edit = $derived(onAlbum && stageAlbum !== null ? tagEdits.of(stageAlbum) : undefined);
 
+	/** A mark the server didn't take has already gone back: this says why it moved. */
+	const markTrouble = $derived.by(() => {
+		const failure = library.marks.failure;
+		if (failure === null) {
+			return '';
+		}
+		return failure.kind === 'stars'
+			? "Those stars couldn't be saved, so they're back as they were."
+			: "That heart couldn't be saved, so it's back as it was.";
+	});
+
 	const morphs = startMorphs();
 	setContext(morphsKey, morphs);
 	onNavigate(morphs.navigate);
@@ -130,6 +141,7 @@
 			{@render children()}
 		{/if}
 	</main>
+	<p class="visually-hidden" role="status">{markTrouble}</p>
 	<div class="ghost-layer" aria-hidden="true"></div>
 	{#if palette !== null}<Bloom {palette} />{/if}
 	{#if library.playing !== null && !onLogin}

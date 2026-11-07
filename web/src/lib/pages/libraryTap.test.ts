@@ -17,13 +17,15 @@ function album(id: string, ...tracks: string[]): Album {
 			durationMs: 1000,
 			format: 'FLAC',
 			genres: [],
-			etag: track
+			etag: track,
+			hearted: false
 		})),
 		durationMs: 1000,
 		formats: [],
 		addedAt: '2026-01-01T00:00:00Z',
 		genres: [],
-		etag: id
+		etag: id,
+		hearted: false
 	};
 }
 

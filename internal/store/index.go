@@ -26,6 +26,7 @@ type IndexArtist struct {
 	ID       string // The artist's ULID.
 	Name     string
 	SortName string
+	Hearted  bool // By the person the index was read for. Never on a group with no ID.
 	Albums   []IndexAlbum
 }
 
@@ -37,6 +38,7 @@ type IndexAlbum struct {
 	Artist      string
 	Year        int // 0 is unknown.
 	Compilation bool
+	Hearted     bool   // By the person the index was read for.
 	Cover       *Cover // Nil when the album has no cover.
 	Tracks      []IndexTrack
 }
@@ -48,6 +50,7 @@ type IndexTrack struct {
 	Artists         []string
 	DiscNo, TrackNo int // 0 is unknown.
 	Duration        time.Duration
+	Marks           Marks // The marks of the person the index was read for.
 }
 
 // indexRows is what the index's queries read, all from one snapshot.
@@ -55,21 +58,24 @@ type indexRows struct {
 	albums  []sqlcdb.ListIndexAlbumsRow
 	tracks  []sqlcdb.ListIndexTracksRow
 	artists []sqlcdb.ListIndexTrackArtistsRow
+	marks   libraryMarks
 }
 
 // LibraryIndex returns every album with a live track, once, under its first
-// owner, with those tracks. An album with no owner a reader shows sits under the
-// artist it displays. One read transaction covers it, so a scan can't split it.
-func (s *Store) LibraryIndex(ctx context.Context) (LibraryIndex, error) {
-	rows, err := s.indexRows(ctx)
+// owner, with those tracks and the user's marks on all three. An album with no
+// owner a reader shows sits under the artist it displays. One read transaction
+// covers it, so a scan or a heart can't split it.
+func (s *Store) LibraryIndex(ctx context.Context, userID int64) (LibraryIndex, error) {
+	rows, err := s.indexRows(ctx, userID)
 	if err != nil {
 		return LibraryIndex{}, fmt.Errorf("library index: %w", err)
 	}
 	return LibraryIndex{Artists: orderIndex(indexGroups(&rows))}, nil
 }
 
-// indexRows runs the index's three queries on one read connection.
-func (s *Store) indexRows(ctx context.Context) (indexRows, error) {
+// indexRows runs the index's queries, the user's marks included, on one read
+// connection.
+func (s *Store) indexRows(ctx context.Context, userID int64) (indexRows, error) {
 	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return indexRows{}, fmt.Errorf("begin: %w", err)
@@ -85,6 +91,9 @@ func (s *Store) indexRows(ctx context.Context) (indexRows, error) {
 	}
 	if rows.artists, err = q.ListIndexTrackArtists(ctx); err != nil {
 		return indexRows{}, fmt.Errorf("track artists: %w", err)
+	}
+	if rows.marks, err = readLibraryMarks(ctx, q, userID); err != nil {
+		return indexRows{}, err
 	}
 	return rows, nil
 }
@@ -103,6 +112,7 @@ func indexGroups(rows *indexRows) []IndexArtist {
 		tracks[t.AlbumID] = append(tracks[t.AlbumID], IndexTrack{
 			ID: t.Ulid, Title: t.Title, Artists: names[t.ID], DiscNo: intOr0(t.DiscNo), TrackNo: intOr0(t.TrackNo),
 			Duration: time.Duration(t.DurationMs) * time.Millisecond,
+			Marks:    Marks{Hearted: rows.marks.tracks[t.Ulid], Stars: rows.marks.stars[t.Ulid]},
 		})
 	}
 	groups := make([]IndexArtist, 0, len(rows.albums))
@@ -110,6 +120,7 @@ func indexGroups(rows *indexRows) []IndexArtist {
 	for i := range rows.albums {
 		r := &rows.albums[i]
 		head := indexHeading(r)
+		head.Hearted = head.ID != "" && rows.marks.artists[head.ID]
 		key := cmp.Or(head.ID, "name:"+head.Name)
 		at, ok := byKey[key]
 		if !ok {
@@ -119,7 +130,7 @@ func indexGroups(rows *indexRows) []IndexArtist {
 		}
 		groups[at].Albums = append(groups[at].Albums, IndexAlbum{
 			ID: r.Ulid, Title: r.Name, SortName: r.SortName, Artist: r.Artist, Year: intOr0(r.Year),
-			Compilation: r.Compilation != 0, Tracks: tracks[r.ID],
+			Compilation: r.Compilation != 0, Hearted: rows.marks.albums[r.Ulid], Tracks: tracks[r.ID],
 			Cover: cover(r.ArtworkHash, r.ArtworkWidth, r.ArtworkHeight, r.ArtworkAccent, r.ArtworkGround),
 		})
 	}

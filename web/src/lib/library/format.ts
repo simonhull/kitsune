@@ -103,21 +103,38 @@ export function albumFacts(entry: AlbumEntry, album: Album): string {
 }
 
 /** The line over the Library page: the letter you're at, and how much there is. */
-export function libraryLine(letter: string, artists: number, songs: number): string {
-	return `${letter} · ${plural(artists, 'ARTIST', 'ARTISTS')} · ${plural(songs, 'SONG', 'SONGS')}`;
+export function libraryLine(
+	letter: string,
+	artists: number,
+	songs: number,
+	of: number = songs
+): string {
+	return `${letter} · ${plural(artists, 'ARTIST', 'ARTISTS')} · ${partOf(songs, of, 'SONG', 'SONGS', ' OF ')}`;
 }
 
-/** What an artist has in the Library, under its name. */
-export function artistHoldings(albums: readonly { tracks: readonly unknown[] }[]): string {
+/** Counts `shown` of `total`, or just the total when a filter hides none of them. */
+function partOf(shown: number, total: number, one: string, many: string, of: string): string {
+	return shown === total
+		? plural(total, one, many)
+		: `${shown.toLocaleString('en-US')}${of}${plural(total, one, many)}`;
+}
+
+/** What an artist has in the Library, under its name, and how much of it a filter shows. */
+export function artistHoldings(
+	albums: readonly { tracks: readonly unknown[] }[],
+	shown?: { albums: number; songs: number }
+): string {
 	const songs = albums.reduce((sum, { tracks }) => sum + tracks.length, 0);
-	return `${plural(albums.length, 'ALBUM', 'ALBUMS')} · ${plural(songs, 'SONG', 'SONGS')}`;
+	const { albums: albumsShown = albums.length, songs: songsShown = songs } = shown ?? {};
+	return `${partOf(albumsShown, albums.length, 'ALBUM', 'ALBUMS', ' OF ')} · ${partOf(songsShown, songs, 'SONG', 'SONGS', ' OF ')}`;
 }
 
-/** An album's line in the Library. A missing year drops its segment. */
-export function albumHoldings(year: number | undefined, songs: number): string {
-	return [...(year === undefined ? [] : [String(year)]), plural(songs, 'song', 'songs')].join(
-		' · '
-	);
+/** An album's line in the Library: a missing year drops its segment, and a filter says what it hides. */
+export function albumHoldings(year: number | undefined, songs: number, of: number = songs): string {
+	return [
+		...(year === undefined ? [] : [String(year)]),
+		partOf(songs, of, 'song', 'songs', ' of ')
+	].join(' · ');
 }
 
 /** How many artists a list holds. */

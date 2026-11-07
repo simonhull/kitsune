@@ -72,6 +72,10 @@ export interface Track {
 	genres: string[];
 	/** Changes when the file does. It isn't the stream's ETag. */
 	etag: string;
+	/** Whether the caller has hearted it. {@link Library.marks} holds what's current. */
+	hearted: boolean;
+	/** The caller's rating, 1 to 5. Absent when unrated. */
+	stars?: number;
 }
 
 export interface Album extends AlbumEntry {
@@ -86,6 +90,8 @@ export interface Album extends AlbumEntry {
 	genres: string[];
 	/** Sent back as `If-Match` to edit this album. */
 	etag: string;
+	/** Whether the caller has hearted it. {@link Library.marks} holds what's current. */
+	hearted: boolean;
 }
 
 /** Everything `GET /albums/{id}/tags` names. Four of them can be read but not edited yet. */
@@ -212,6 +218,10 @@ export interface LibraryTrack {
 	artists: string[];
 	discNo?: number;
 	trackNo?: number;
+	/** Whether the caller has hearted it. {@link Library.marks} holds what's current. */
+	hearted: boolean;
+	/** The caller's rating, 1 to 5. Absent when unrated. */
+	stars?: number;
 }
 
 export interface LibraryAlbum {
@@ -221,6 +231,8 @@ export interface LibraryAlbum {
 	compilation: boolean;
 	year?: number;
 	artwork?: Artwork;
+	/** Whether the caller has hearted it. */
+	hearted: boolean;
 	tracks: LibraryTrack[];
 }
 
@@ -230,6 +242,8 @@ export interface LibraryArtist {
 	name: string;
 	/** Who it files under, which decides its letter. */
 	sortName: string;
+	/** Whether the caller has hearted it. Always false without an `id`. */
+	hearted: boolean;
 	albums: LibraryAlbum[];
 }
 
@@ -324,6 +338,9 @@ export interface ScanResult {
 
 export type AlbumSort = 'added' | 'name';
 
+/** What a heart can be on, as the API names it. */
+export type MarkKind = 'tracks' | 'albums' | 'artists';
+
 /** One listen that counted, as `POST /me/plays` takes it. */
 export interface PlayReport {
 	trackId: string;
@@ -342,6 +359,10 @@ export interface LibrarySource {
 	sessionUser(): Promise<User>;
 	/** Rejects with {@link ServerError} or {@link UnauthorizedError}, and goes nowhere either. */
 	reportPlay(play: PlayReport): Promise<void>;
+	/** Hearts an item, or takes the heart off. Rejects with {@link ServerError}: 404 for an unknown ID. */
+	setHeart(kind: MarkKind, id: string, on: boolean): Promise<void>;
+	/** Rates a track 1 to 5, or clears it with null. Rejects as {@link LibrarySource.setHeart} does. */
+	setStars(trackId: string, stars: number | null): Promise<void>;
 	/** Rejects with {@link LoginError} when the session wasn't granted. */
 	login(name: string, password: string): Promise<User>;
 	facts(): Promise<LibraryFacts>;

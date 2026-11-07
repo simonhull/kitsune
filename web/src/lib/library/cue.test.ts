@@ -10,7 +10,8 @@ function tracks(count: number): Track[] {
 		durationMs: 1000,
 		format: 'MP3',
 		genres: [],
-		etag: ''
+		etag: '',
+		hearted: false
 	}));
 }
 
@@ -27,7 +28,8 @@ function album(count: number): Album {
 		formats: ['MP3'],
 		addedAt: '2026-10-12T18:00:00Z',
 		genres: [],
-		etag: ''
+		etag: '',
+		hearted: false
 	};
 }
 

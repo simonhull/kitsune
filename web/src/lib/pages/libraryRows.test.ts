@@ -7,6 +7,7 @@ import type {
 } from '#lib/library/source.ts';
 import {
 	artistAt,
+	keepFor,
 	layOut,
 	letterOf,
 	letterTarget,
@@ -35,16 +36,17 @@ function song(id: string, discNo?: number): LibraryTrack {
 		title: id,
 		durationMs: 1000,
 		artists: [],
+		hearted: false,
 		...(discNo === undefined ? {} : { discNo })
 	};
 }
 
 function album(id: string, tracks: LibraryTrack[]): LibraryAlbum {
-	return { id, title: id, artist: 'x', compilation: false, tracks };
+	return { id, title: id, artist: 'x', compilation: false, hearted: false, tracks };
 }
 
 function artist(name: string, albums: LibraryAlbum[]): LibraryArtist {
-	return { id: name, name, sortName: name, albums };
+	return { id: name, name, sortName: name, hearted: false, albums };
 }
 
 const index: LibraryIndex = {
@@ -201,6 +203,11 @@ describe('windowAt', () => {
 		const mounted = { first: 0, last: layout.rows.length - 1 };
 		expect(windowAt(layout, 0, 100, mounted)).toBe(mounted);
 	});
+
+	it('lets go of rows a shorter list no longer has', () => {
+		const shorter = layOut({ artists: index.artists.slice(0, 1) }, metrics);
+		expect(windowAt(shorter, 0, 100, { first: 0, last: 10 })).toEqual({ first: 0, last: 3 });
+	});
 });
 
 describe('letterOf', () => {
@@ -262,5 +269,117 @@ describe('railHere', () => {
 	it('lights the letter before it on a rail that skips', () => {
 		expect(railHere(['#', ...'ADGJLNPRTVXZ'], 'M')).toBe('L');
 		expect(railHere(['#', ...'ADGJLNPRTVXZ'], '#')).toBe('#');
+	});
+});
+
+/** Marks for the filter tests: hearts by kind and ID, and stars by track. */
+function marks(hearts: string[], stars: Record<string, number> = {}) {
+	return {
+		hearted: (kind: string, id: string) => hearts.includes(`${kind}/${id}`),
+		stars: (id: string): number | null => stars[id] ?? null
+	};
+}
+
+/** What a layout shows: each artist, with each album's songs. */
+function shown(index: LibraryIndex, keep: ReturnType<typeof keepFor>) {
+	const layout = layOut(index, metrics, keep);
+	return layout.artists.map(({ artist }) => ({
+		[artist.name]: layout.albums
+			.filter(({ artistIndex }) => layout.artists.at(artistIndex)?.artist === artist)
+			.map(({ album, firstRow, lastRow }) =>
+				layout.rows
+					.slice(firstRow, lastRow + 1)
+					.flatMap((row) => (row.kind === 'song' ? [album.tracks.at(row.trackIndex)?.id] : []))
+			)
+	}));
+}
+
+describe('the Hearted filter', () => {
+	it('shows only hearted songs, under their album and artist', () => {
+		const keep = keepFor('hearted', marks(['tracks/b', 'tracks/h']));
+		expect(shown(index, keep)).toEqual([{ Abba: [['b']] }, { Cher: [['h']] }]);
+	});
+
+	it('shows every song of a hearted album', () => {
+		const keep = keepFor('hearted', marks(['albums/a1', 'tracks/i']));
+		expect(shown(index, keep)).toEqual([{ Abba: [['a', 'b', 'c']] }, { Cher: [['i']] }]);
+	});
+
+	it('shows every album of a hearted artist', () => {
+		const keep = keepFor('hearted', marks(['artists/Abba']));
+		expect(shown(index, keep)).toEqual([{ Abba: [['a', 'b', 'c'], ['d']] }]);
+	});
+
+	it('takes no heart from a group with nobody to link to', () => {
+		const various = { ...artist('Various', [album('v', [song('v1')])]), id: undefined };
+		const keep = keepFor('hearted', marks(['artists/undefined', 'artists/Various']));
+		expect(layOut({ artists: [various] }, metrics, keep).artists).toEqual([]);
+	});
+
+	it('knows nothing of stars', () => {
+		expect(shown(index, keepFor('hearted', marks([], { a: 5 })))).toEqual([]);
+	});
+});
+
+describe('the 4 and up filter', () => {
+	it('shows songs rated 4 or 5, under their album and artist', () => {
+		const keep = keepFor('rated', marks([], { a: 4, b: 3, d: 5, g: 1 }));
+		expect(shown(index, keep)).toEqual([{ Abba: [['a'], ['d']] }]);
+	});
+
+	it("never shows an unrated song because its neighbors were good: album means don't count", () => {
+		const keep = keepFor('rated', marks(['albums/c1', 'artists/Cher'], { g: 5, h: 5 }));
+		expect(shown(index, keep)).toEqual([{ Cher: [['g', 'h']] }]);
+	});
+
+	it('knows nothing of hearts', () => {
+		expect(shown(index, keepFor('rated', marks(['tracks/a', 'artists/Abba'])))).toEqual([]);
+	});
+});
+
+describe('a filtered layout', () => {
+	const keep = keepFor('hearted', marks(['tracks/b', 'tracks/c', 'tracks/h']));
+	const layout = layOut(index, metrics, keep);
+
+	it('lays out everything with no filter', () => {
+		expect(keepFor('everything', marks(['tracks/a']))).toBeUndefined();
+		expect(layOut(index, metrics, undefined)).toEqual(layOut(index, metrics));
+	});
+
+	it('keeps each row on its track in the album, whatever is hidden before it', () => {
+		const first = layout.albums.at(0);
+		const rows = layout.rows.slice(first?.firstRow, (first?.lastRow ?? 0) + 1);
+		expect(rows.map((row) => (row.kind === 'song' ? row.trackIndex : -1))).toEqual([1, 2]);
+	});
+
+	it('counts what it shows of each album and artist, and of the library', () => {
+		expect(layout.albums.map(({ shown: songs, album }) => [songs, album.tracks.length])).toEqual([
+			[2, 3],
+			[1, 3]
+		]);
+		expect(layout.artists.map(({ albums, songs }) => [albums, songs])).toEqual([
+			[1, 2],
+			[1, 1]
+		]);
+		expect([layout.songs, layout.totalSongs]).toEqual([3, 9]);
+	});
+
+	it('remembers where each artist stands in the whole library', () => {
+		expect(layout.artists.map(({ source }) => source)).toEqual([0, 2]);
+		expect(layout.albums.map(({ artistIndex }) => artistIndex)).toEqual([0, 1]);
+	});
+
+	it('gives a letter only to an artist it shows', () => {
+		expect([...layout.letters]).toEqual([
+			['A', 0],
+			['C', 1]
+		]);
+		expect(letterTarget(layout, 'B')).toBe(1);
+	});
+
+	it('lays out nothing when nothing is kept', () => {
+		const none = layOut(index, metrics, keepFor('rated', marks([])));
+		expect(none).toMatchObject({ rows: [], albums: [], artists: [], height: 0, songs: 0 });
+		expect(none.totalSongs).toBe(9);
 	});
 });

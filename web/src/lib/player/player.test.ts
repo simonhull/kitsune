@@ -20,6 +20,7 @@ function track(index: number, extra: Partial<Track> = {}): Track {
 		format: 'FLAC',
 		genres: [],
 		etag: '',
+		hearted: false,
 		...extra
 	};
 }
@@ -37,7 +38,8 @@ function album(count: number, id = 'a', extra: Partial<Track> = {}): Album {
 		formats: ['FLAC'],
 		addedAt: '2026-10-12T18:00:00Z',
 		genres: [],
-		etag: ''
+		etag: '',
+		hearted: false
 	};
 }
 

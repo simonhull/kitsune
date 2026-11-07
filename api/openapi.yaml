@@ -133,6 +133,118 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           $ref: "#/components/responses/Problem"
+  /me/hearts/{kind}/{id}:
+    put:
+      operationId: putHeart
+      summary: Heart a track, album or artist for the caller.
+      description: >-
+        Hearting what is already hearted changes nothing and answers the same,
+        so a client can retry. A track missing from disk still takes a heart. A
+        heart is the caller's own: nobody else sees it.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - $ref: "#/components/parameters/HeartKind"
+        - $ref: "#/components/parameters/ItemID"
+      responses:
+        "204":
+          description: Done.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteHeart
+      summary: Take the caller's heart off a track, album or artist.
+      description: >-
+        Answers the same whether or not there was a heart, so a client can
+        retry. Only an item that isn't in the library is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - $ref: "#/components/parameters/HeartKind"
+        - $ref: "#/components/parameters/ItemID"
+      responses:
+        "204":
+          description: Done.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /me/ratings/tracks/{id}:
+    put:
+      operationId: putRating
+      summary: Rate a track for the caller.
+      description: >-
+        Gives the track the caller's stars, in place of any it had. An album's
+        rating isn't stored: a client works it out from its tracks.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - $ref: "#/components/parameters/ItemID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Rating" }
+      responses:
+        "204":
+          description: Done.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteRating
+      summary: Clear the caller's rating of a track.
+      description: >-
+        Answers the same whether or not the track was rated, so a client can
+        retry.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - $ref: "#/components/parameters/ItemID"
+      responses:
+        "204":
+          description: Done.
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
   /artwork/{hash}:
     get:
       operationId: getArtwork
@@ -497,8 +609,9 @@ paths:
         those not under a letter from A to Z first, and each artist's albums
         newest first. An album appears once, under its first owner. An album with
         no owner a reader shows, such as a compilation, groups under the artist
-        it displays, in a group with no `id`. The response is gzipped when
-        `Accept-Encoding` allows it.
+        it displays, in a group with no `id`. Artists, albums and tracks carry
+        the caller's own hearts, and tracks the caller's stars. The response is
+        gzipped when `Accept-Encoding` allows it.
       responses:
         "200":
           description: Every artist with an album, its albums and their tracks.
@@ -686,6 +799,18 @@ components:
         Must be `1` on cookie-authenticated requests that change state, so a
         cross-site form cannot forge them.
       schema: { type: string, enum: ["1"] }
+    HeartKind:
+      name: kind
+      in: path
+      required: true
+      description: What the heart is on.
+      schema: { type: string, enum: [tracks, albums, artists] }
+    ItemID:
+      name: id
+      in: path
+      required: true
+      description: The item's ID.
+      schema: { type: string }
   responses:
     Problem:
       description: An RFC 9457 problem.
@@ -768,6 +893,12 @@ components:
           minLength: 1
           maxLength: 64
           description: The client's own ID for this listen.
+    Rating:
+      type: object
+      additionalProperties: false
+      required: [stars]
+      properties:
+        stars: { type: integer, minimum: 1, maximum: 5 }
     LoginRequest:
       type: object
       additionalProperties: false
@@ -848,7 +979,7 @@ components:
     Track:
       type: object
       additionalProperties: false
-      required: [id, title, artists, durationMs, format, genres, etag]
+      required: [id, title, artists, durationMs, format, genres, etag, hearted]
       properties:
         id: { type: string }
         title: { type: string }
@@ -871,11 +1002,19 @@ components:
         etag:
           type: string
           description: Changes when the file does. Not the stream's ETag.
+        hearted:
+          type: boolean
+          description: Whether the caller has hearted it.
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: The caller's rating. Absent when the caller hasn't rated it.
     TrackDetail:
       description: A track's properties, repeated (allOf does not mix with additionalProperties false), plus its album.
       type: object
       additionalProperties: false
-      required: [id, title, artists, durationMs, format, genres, etag, albumId, albumEtag]
+      required: [id, title, artists, durationMs, format, genres, etag, hearted, albumId, albumEtag]
       properties:
         id: { type: string }
         title: { type: string }
@@ -898,6 +1037,14 @@ components:
         etag:
           type: string
           description: Changes when the file does. Not the stream's ETag.
+        hearted:
+          type: boolean
+          description: Whether the caller has hearted it.
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: The caller's rating. Absent when the caller hasn't rated it.
         albumId: { type: string }
         albumEtag:
           type: string
@@ -1047,7 +1194,7 @@ components:
       description: An album entry's properties, repeated (allOf does not mix with additionalProperties false), plus its tracks.
       type: object
       additionalProperties: false
-      required: [id, title, sortName, artist, artists, trackCount, compilation, tracks, durationMs, formats, addedAt, genres, displayGenres, etag]
+      required: [id, title, sortName, artist, artists, trackCount, compilation, tracks, durationMs, formats, addedAt, genres, displayGenres, etag, hearted]
       properties:
         id: { type: string }
         title: { type: string }
@@ -1084,6 +1231,9 @@ components:
         etag:
           type: string
           description: The `If-Match` value for `POST /albums/{id}/edits`.
+        hearted:
+          type: boolean
+          description: Whether the caller has hearted it.
     ArtistEntry:
       type: object
       additionalProperties: false
@@ -1148,11 +1298,14 @@ components:
     LibraryArtist:
       type: object
       additionalProperties: false
-      required: [name, sortName, albums]
+      required: [name, sortName, hearted, albums]
       properties:
         id:
           type: string
           description: Absent for a group with no owner a reader shows, such as Various Artists.
+        hearted:
+          type: boolean
+          description: Whether the caller has hearted the artist. Always false for a group with no `id`.
         name: { type: string }
         sortName:
           type: string
@@ -1163,12 +1316,15 @@ components:
     LibraryAlbum:
       type: object
       additionalProperties: false
-      required: [id, title, artist, compilation, tracks]
+      required: [id, title, artist, compilation, hearted, tracks]
       properties:
         id: { type: string }
         title: { type: string }
         artist: { type: string }
         compilation: { type: boolean }
+        hearted:
+          type: boolean
+          description: Whether the caller has hearted it.
         year: { type: integer }
         artwork: { $ref: "#/components/schemas/Artwork" }
         tracks:
@@ -1177,7 +1333,7 @@ components:
     LibraryTrack:
       type: object
       additionalProperties: false
-      required: [id, title, durationMs, artists]
+      required: [id, title, durationMs, artists, hearted]
       properties:
         id: { type: string }
         title: { type: string }
@@ -1187,6 +1343,14 @@ components:
           items: { type: string }
         discNo: { type: integer }
         trackNo: { type: integer }
+        hearted:
+          type: boolean
+          description: Whether the caller has hearted it.
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: The caller's rating. Absent when the caller hasn't rated it.
     SearchResults:
       type: object
       additionalProperties: false

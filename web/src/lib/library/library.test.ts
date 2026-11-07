@@ -22,7 +22,16 @@ function source(overrides: Partial<LibrarySource> = {}): LibrarySource {
 }
 
 function track(id: string): Track {
-	return { id, title: id, artists: [], durationMs: 100_000, format: 'FLAC', genres: [], etag: '' };
+	return {
+		id,
+		title: id,
+		artists: [],
+		durationMs: 100_000,
+		format: 'FLAC',
+		genres: [],
+		etag: '',
+		hearted: false
+	};
 }
 
 /** Nothing to report: what a library says with no scan running. */
@@ -508,14 +517,16 @@ class Scripted {
 							durationMs: 1000,
 							format: 'FLAC',
 							genres: [],
-							etag: ''
+							etag: '',
+							hearted: false
 						}
 					],
 					durationMs: 0,
 					formats: [],
 					addedAt: '',
 					genres: [],
-					etag: ''
+					etag: '',
+					hearted: false
 				}))
 		});
 	}
@@ -1360,5 +1371,36 @@ describe('loading an album twice', () => {
 		await second;
 		expect(library.album(known.id)).toBe(known);
 		expect(album).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('marks', () => {
+	it('holds what the index and album pages say, and one press shows on both', async () => {
+		const library = new Library(source(), { readyMemory: forgetful() });
+		await library.loadIndex();
+		expect(library.marks.hearted('artists', 'artist-low-tide-choir')).toBe(true);
+		expect(library.marks.hearted('albums', 'glasshouse-66')).toBe(true);
+		expect(library.marks.stars('glasshouse-66-1')).toBe(5);
+		expect(library.marks.hearted('tracks', 'glasshouse-66-2')).toBe(false);
+
+		library.marks.toggle('tracks', 'glasshouse-66-2');
+		// The album page asks after the press: what it's given mustn't undo it.
+		await library.loadAlbum('glasshouse-66');
+		expect(library.marks.hearted('tracks', 'glasshouse-66-2')).toBe(true);
+		await vi.waitFor(() => {
+			expect(library.marks.failure).toBeNull();
+		});
+
+		// A reread after it landed agrees: the server has it.
+		await library.reread('glasshouse-66');
+		expect(library.marks.hearted('tracks', 'glasshouse-66-2')).toBe(true);
+	});
+
+	it('forgets the marks of the last session', async () => {
+		const library = new Library(source(), { readyMemory: forgetful() });
+		await library.loadIndex();
+		library.reset();
+		expect(library.marks.hearted('albums', 'glasshouse-66')).toBe(false);
+		expect(library.marks.stars('glasshouse-66-1')).toBeNull();
 	});
 });

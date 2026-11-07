@@ -11,6 +11,7 @@ function track(replayGain?: ReplayGain): Track {
 		format: 'FLAC',
 		genres: [],
 		etag: '',
+		hearted: false,
 		...(replayGain === undefined ? {} : { replayGain })
 	};
 }

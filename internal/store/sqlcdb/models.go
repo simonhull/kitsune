@@ -18,6 +18,12 @@ type Album struct {
 	AddedAt     int64
 }
 
+type AlbumHeart struct {
+	UserID    int64
+	AlbumID   int64
+	HeartedAt int64
+}
+
 type Artist struct {
 	ID       int64
 	Ulid     string
@@ -25,6 +31,12 @@ type Artist struct {
 	Name     string
 	SortName string
 	Mbid     *string
+}
+
+type ArtistHeart struct {
+	UserID    int64
+	ArtistID  int64
+	HeartedAt int64
 }
 
 type Artwork struct {
@@ -103,6 +115,19 @@ type TrackArtist struct {
 	Role     string
 	Ord      int64
 	ArtistID int64
+}
+
+type TrackHeart struct {
+	UserID    int64
+	TrackID   int64
+	HeartedAt int64
+}
+
+type TrackRating struct {
+	UserID  int64
+	TrackID int64
+	Stars   int64
+	RatedAt int64
 }
 
 type TrackTag struct {

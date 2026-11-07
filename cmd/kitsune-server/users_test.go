@@ -144,7 +144,9 @@ func markUnmigrated(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	if _, err = db.ExecContext(t.Context(), "DROP TABLE plays; PRAGMA user_version = 852615662"); err != nil {
+	const back = "DROP TABLE plays; DROP TABLE track_hearts; DROP TABLE album_hearts; DROP TABLE artist_hearts; DROP TABLE track_ratings; " +
+		"PRAGMA user_version = 852615662"
+	if _, err = db.ExecContext(t.Context(), back); err != nil {
 		t.Fatal(err)
 	}
 }
