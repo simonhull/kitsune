@@ -21,6 +21,8 @@ import { createTapper } from './libraryTap.ts';
 
 /** Where the columns stack. The page's styles say the same. */
 const stackedQuery = '(max-width: 1024px)';
+/** Where song rows have columns, and a header over them. Narrower, they're two lines. */
+const columnsQuery = '(min-width: 700px)';
 
 /** How a width lays out: its row heights, and two lines on the screen. */
 interface Frame {
@@ -44,9 +46,13 @@ const wide: Frame = {
 		albumGap: 40,
 		artistGap: 72
 	},
-	top: 96,
-	line: 96
+	// Under the columns' header, which stands at 96 and is 40 tall.
+	top: 152,
+	line: 152
 };
+
+/** The header's height: in a stacked layout it's part of the artist's head. */
+const headerHeight = 40;
 
 const stacked: Frame = {
 	metrics: {
@@ -62,6 +68,15 @@ const stacked: Frame = {
 	top: 128,
 	line: 208
 };
+
+/** A stacked frame whose artist heads carry the columns' header under the name. */
+function withHeader({ metrics, top, line }: Frame): Frame {
+	return {
+		metrics: { ...metrics, artistHead: metrics.artistHead + headerHeight },
+		top,
+		line: line + headerHeight
+	};
+}
 
 /** How far up from the bottom of the screen the NEXT panel reaches, at its two lines. */
 const nextReach = 340;
@@ -97,6 +112,8 @@ interface Anchor {
  */
 class LibraryView {
 	stacked = $state(typeof matchMedia === 'undefined' ? false : matchMedia(stackedQuery).matches);
+	/** Whether rows have columns: from 700 wide. */
+	columns = $state(typeof matchMedia === 'undefined' ? true : matchMedia(columnsQuery).matches);
 	first = $state(0);
 	last = $state(-1);
 	/** The artist pinned on screen, by index. */
@@ -108,7 +125,9 @@ class LibraryView {
 	/** What the list shows. It's kept here so it's still chosen on coming back. */
 	filter = $state<LibraryFilter>('everything');
 
-	readonly frame = $derived(this.stacked ? stacked : wide);
+	readonly frame: Frame = $derived(
+		!this.stacked ? wide : this.columns ? withHeader(stacked) : stacked
+	);
 	readonly #index = $derived(library.index.kind === 'ready' ? library.index.value : noLibrary);
 	/** Moves on to look at the marks again: a filter reads them once, and a press doesn't move rows. */
 	#looked = $state(0);
@@ -163,14 +182,19 @@ class LibraryView {
 
 	/** Follows the width. Returns the cleanup. */
 	watch(): () => void {
-		const query = matchMedia(stackedQuery);
+		const queries = [matchMedia(stackedQuery), matchMedia(columnsQuery)];
 		const read = (): void => {
-			this.stacked = query.matches;
+			this.stacked = queries[0]?.matches ?? false;
+			this.columns = queries[1]?.matches ?? true;
 		};
 		read();
-		query.addEventListener('change', read);
+		for (const query of queries) {
+			query.addEventListener('change', read);
+		}
 		return () => {
-			query.removeEventListener('change', read);
+			for (const query of queries) {
+				query.removeEventListener('change', read);
+			}
 		};
 	}
 

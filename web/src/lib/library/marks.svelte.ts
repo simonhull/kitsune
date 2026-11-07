@@ -166,6 +166,12 @@ export class Marks {
 		this.#hearts[kind].want(id, !this.hearted(kind, id));
 	}
 
+	/** Hearts or unhearts, whatever it was: what a selection's heart does to each of its songs. */
+	setHeart(kind: MarkKind, id: string, on: boolean): void {
+		this.failure = null;
+		this.#hearts[kind].want(id, on);
+	}
+
 	rate(trackId: string, stars: number | null): void {
 		this.failure = null;
 		this.#stars.want(trackId, stars);

@@ -18,6 +18,7 @@ import {
 	type ArtistDetail,
 	type ArtistEntry,
 	type ArtistLink,
+	type IndexField,
 	type LastfmStatus,
 	type LibraryAlbum,
 	type LibraryArtist,
@@ -26,6 +27,8 @@ import {
 	type LibraryTrack,
 	type MarkKind,
 	type Me,
+	type PrefKey,
+	type Prefs,
 	type RawTag,
 	type ScanStatus,
 	type SearchResults,
@@ -277,6 +280,58 @@ function listed({ tracks, year, ...album }: Album): LibraryAlbum {
 			...(trackNo === undefined ? {} : { trackNo })
 		}))
 	};
+}
+
+/** When the fixtures' plays happened, counted back from: a fixed moment, so lines don't drift. */
+export const fixtureNow = Date.parse('2026-11-07T12:00:00Z');
+const dayMs = 86_400_000;
+const composersOf = ['I. Marrow', 'M. Vey', 'O. Strand'];
+
+/** What `fields` adds to a fixture track: drawn from its ID, so it's the same every time. */
+function fieldsOf(
+	album: Album,
+	track: Track,
+	fields: ReadonlySet<IndexField>
+): Partial<LibraryTrack> {
+	const seed = fnv1a(track.id);
+	const plays = seed % 7 === 0 ? 0 : seed % 53;
+	const lossy = album.id === 'tidewrack-41';
+	const out: Partial<LibraryTrack> = {};
+	if (fields.has('genre') && album.displayGenres !== undefined && album.displayGenres.length > 0) {
+		out.displayGenres = album.displayGenres;
+	}
+	if (fields.has('albumArtist') && !album.compilation) {
+		out.albumArtists = [album.artist];
+	}
+	if (fields.has('year') && album.year !== undefined && album.year !== 0) {
+		out.year = album.year;
+	}
+	if (fields.has('composer')) {
+		out.composers = [composersOf.at(seed % composersOf.length) ?? ''];
+	}
+	if (fields.has('format')) {
+		Object.assign(
+			out,
+			lossy
+				? { format: 'MP3', sampleRate: 44_100 }
+				: { format: 'FLAC', sampleRate: 44_100, bitDepth: 16 }
+		);
+	}
+	if (fields.has('format') || fields.has('bitrate')) {
+		out.bitrate = lossy ? 320 : 800 + (seed % 300);
+	}
+	if (fields.has('added')) {
+		out.addedAt = album.addedAt;
+	}
+	if (fields.has('plays') && plays > 0) {
+		out.plays = plays;
+	}
+	if (fields.has('lastPlayed') && plays > 0) {
+		out.lastPlayedAt = new Date(
+			fixtureNow - (seed % 90) * dayMs - (seed % 1000) * 60_000
+		).toISOString();
+	}
+	return out;
 }
 
 function indexFixture(): LibraryIndex {
@@ -697,6 +752,8 @@ export interface FixtureOptions {
 	lastfm?: LastfmFixture;
 	/** A first run, signed out. Absent means a server long set up, signed in. */
 	setup?: SetupFixture | undefined;
+	/** The preferences the person has already saved. */
+	prefs?: Partial<Prefs>;
 }
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
@@ -712,6 +769,9 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	const hearts = new Set(boardHearts);
 	const stars = new Map(boardStars);
 	let lastfm = lastfmStatusOf(options.lastfm ?? 'none');
+	const prefs = new Map<PrefKey, unknown>(
+		Object.entries(options.prefs ?? {}) as [PrefKey, unknown][]
+	);
 	let hasAccounts = options.setup === undefined || options.setup === 'done';
 	let signedOut = options.setup !== undefined;
 	let wrongCodes = 0;
@@ -764,7 +824,15 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		};
 	}
 
-	function markedIndex(): LibraryIndex {
+	function markedIndex(fields: readonly IndexField[] = []): LibraryIndex {
+		const asked = new Set(fields);
+		const extra = (album: LibraryAlbum, track: LibraryTrack): LibraryTrack => {
+			const full = held.get(album.id) ?? listOnly.get(album.id);
+			const source = full?.tracks.find(({ id }) => id === track.id);
+			return full === undefined || source === undefined || asked.size === 0
+				? track
+				: { ...track, ...fieldsOf(full, source, asked) };
+		};
 		return {
 			artists: indexFixture().artists.map((artist) => ({
 				...artist,
@@ -772,7 +840,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				albums: artist.albums.map((album) => ({
 					...album,
 					hearted: hearts.has(`albums/${album.id}`),
-					tracks: album.tracks.map(markedTrack)
+					tracks: album.tracks.map((track) => markedTrack(extra(album, track)))
 				}))
 			}))
 		};
@@ -909,7 +977,12 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			}),
 		nowPlaying: () => respond(() => undefined),
 		facts: () => respond(() => ({ ...counts, ...scans.facts() })),
-		libraryIndex: () => respond(markedIndex),
+		libraryIndex: (fields) => respond(() => markedIndex(fields)),
+		pref: <K extends PrefKey>(key: K) => respond(() => (prefs.get(key) ?? null) as Prefs[K] | null),
+		setPref: (key, value) =>
+			respond(() => {
+				prefs.set(key, structuredClone(value));
+			}),
 		ready: () => respond(() => true),
 		albumsPage: (sort, _cursor, limit) =>
 			respond(() => ({ albums: (sort === 'added' ? newestFirst : byName).slice(0, limit) })),

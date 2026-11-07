@@ -2,12 +2,14 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { albumStars } from '#lib/library/albumStars.ts';
-	import { albumHoldings, clock, credit, trackLabel } from '#lib/library/format.ts';
+	import { albumHoldings, trackLabel } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import type { ColumnId, ColumnsPref } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsShown from '#lib/shell/StarsShown.svelte';
+	import { cellOf, timeOf } from './columns.ts';
 	import type { AlbumBlock, Row } from './libraryRows.ts';
 
 	interface Props {
@@ -20,6 +22,12 @@
 		head: number;
 		/** The cover here is a small one, above the songs. */
 		stacked: boolean;
+		/** The columns that fit, and the grid they make. */
+		shown: readonly ColumnId[];
+		grid: string;
+		pref: ColumnsPref;
+		/** When "Yesterday" is. */
+		now: number;
 		/** The song cued, if any. */
 		cuedId: string | undefined;
 		/** Whether that song is sounding now. */
@@ -29,7 +37,21 @@
 		play: (trackId: string) => void;
 	}
 
-	let { block, top, rows, head, stacked, cuedId, sounding, trouble, play }: Props = $props();
+	let {
+		block,
+		top,
+		rows,
+		head,
+		stacked,
+		shown,
+		grid,
+		pref,
+		now,
+		cuedId,
+		sounding,
+		trouble,
+		play
+	}: Props = $props();
 
 	const album = $derived(block.album);
 	const hearted = $derived(library.marks.hearted('albums', album.id));
@@ -102,8 +124,22 @@
 				{@const track = album.tracks.at(row.trackIndex)}
 				{#if track !== undefined}
 					{@const cued = track.id === cuedId}
-					{@const others = credit(track, album.artist)}
-					<div class="row" class:cued style:top={at} style:height={`${String(row.height)}px`}>
+					{@const context = {
+						track,
+						album,
+						stars: library.marks.stars(track.id),
+						hearted: library.marks.hearted('tracks', track.id),
+						artistWhenDifferent: pref.artistWhenDifferent,
+						now
+					}}
+					<div
+						class="row"
+						class:cued
+						style:top={at}
+						style:height={`${String(row.height)}px`}
+						style:grid-template-columns={grid}
+					>
+						<span class="box"></span>
 						<button
 							type="button"
 							class="play"
@@ -114,19 +150,42 @@
 							}}
 						>
 							<span class="mono number">
-								{#if cued && sounding && !stacked}
+								{#if cued && sounding}
 									<Icon name="play" size={12} />
 								{:else}
 									{trackLabel(track, false)}
 								{/if}
 							</span>
 							<span class="name">{track.title}</span>
-							{#if others !== undefined}
-								<span class="others">{others}</span>
-							{/if}
 						</button>
-						<HeartButton kind="tracks" id={track.id} name={track.title} />
-						<span class="mono length">{clock(track.durationMs / 1000)}</span>
+						{#each shown as id (id)}
+							{@const cell = cellOf(id, context)}
+							{#if cell.look === 'stars'}
+								<span class="rate" role="group" aria-label={`Rate ${track.title}`}>
+									{#each [1, 2, 3, 4, 5] as star (star)}
+										<button
+											type="button"
+											class:on={star <= cell.stars}
+											aria-label={`Rate ${track.title} ${String(star)} of 5`}
+											aria-pressed={star <= cell.stars}
+											onclick={() => {
+												library.marks.press(track.id, star);
+											}}>★</button
+										>
+									{/each}
+								</span>
+							{:else if cell.look === 'heart'}
+								<span class="heart-cell"
+									><HeartButton kind="tracks" id={track.id} name={track.title} size={16} /></span
+								>
+							{:else}
+								<span class={['cell', cell.look]} class:end={id === 'plays' || id === 'bitrate'}
+									>{cell.text}</span
+								>
+							{/if}
+						{/each}
+						<span class="mono time">{timeOf(track)}</span>
+						<span class="more-cell"></span>
 					</div>
 				{/if}
 			{/if}
@@ -149,10 +208,10 @@
 		width: 208px;
 	}
 
-	/* Stuck under the nav while the songs beside it scroll, and gone with the last of them. */
+	/* Stuck under the header while the songs beside it scroll, and gone with the last of them. */
 	.pin {
 		position: sticky;
-		top: 96px;
+		top: var(--list-line, 152px);
 	}
 
 	.art {
@@ -241,29 +300,31 @@
 		color: var(--text-meta);
 	}
 
-	/* The song is one button, and its heart another beside it: a button can't hold a button. */
+	/* The grid is the header's: every cell sits under its label. */
 	.row {
-		--heart-on: var(--text);
-		--heart-off: var(--text-secondary);
+		--heart-on: var(--fox);
+		--heart-off: rgb(255 255 255 / 20%);
 
 		position: absolute;
 		left: 0;
 		right: 0;
-		display: flex;
+		box-sizing: border-box;
+		display: grid;
 		align-items: center;
-		padding: 0 4px 0 14px;
+		column-gap: var(--col-gap, 12px);
+		padding: 0 var(--row-pad, 14px);
 		border-bottom: 1px solid var(--edge-card);
 		font-size: var(--type-body);
-		font-weight: 600;
 	}
 
+	/* The number and the title are one target: tapping either plays the song. */
 	.play {
-		flex: 1;
+		grid-column: 2 / 4;
 		min-width: 0;
 		height: 100%;
-		display: flex;
+		display: grid;
+		grid-template-columns: subgrid;
 		align-items: center;
-		gap: 16px;
 		padding: 0;
 		border: 0;
 		background: transparent;
@@ -272,30 +333,29 @@
 		text-align: left;
 	}
 
-	/* Its own column before the time: there when hearted, on hover and on the cued row. */
-	.row :global(.heart) {
-		opacity: 0;
+	.name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-weight: 600;
 	}
 
-	.row :global(.heart.on),
-	.row :global(.heart:focus-visible),
-	.row.cued :global(.heart) {
-		opacity: 1;
+	.cell {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	@media (hover: hover) {
-		.row:hover {
-			border-radius: var(--radius-12);
-			background: rgb(255 255 255 / 8%);
-		}
-
-		.row:hover :global(.heart) {
-			opacity: 1;
-		}
+	.cell.name {
+		font-size: var(--cell-type, 14px);
+		font-weight: 400;
+		color: var(--text-secondary);
 	}
 
-	.mono {
-		flex: none;
+	.mono,
+	.cell.fact {
 		font-family: var(--font-mono);
 		font-size: var(--type-mono);
 		font-weight: 400;
@@ -303,40 +363,63 @@
 		color: var(--text-meta);
 	}
 
+	.end,
+	.time {
+		text-align: right;
+	}
+
 	.number {
-		width: 24px;
 		display: flex;
 		align-items: center;
 	}
 
-	.name {
-		flex: 0 1 auto;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	.rate {
+		display: flex;
+		font-size: var(--star-type, 13px);
+		letter-spacing: 1px;
 	}
 
-	.others {
-		flex: 0 1 40%;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 14px;
-		font-weight: 400;
-		color: var(--text-meta);
+	.rate button {
+		width: calc(var(--star-type, 13px) + 2px);
+		height: 28px;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: rgb(255 255 255 / 16%);
+		font: inherit;
+		line-height: 1;
 	}
 
-	.length {
-		width: 40px;
-		text-align: right;
+	.rate button.on {
+		color: var(--fox);
+	}
+
+	.rate button:hover,
+	.rate:hover button:has(~ button:hover) {
+		color: color-mix(in srgb, var(--fox) 70%, transparent);
+	}
+
+	.heart-cell {
+		display: flex;
+		justify-content: center;
+	}
+
+	.heart-cell :global(.heart) {
+		width: 28px;
+		height: 28px;
+	}
+
+	@media (hover: hover) {
+		.row:hover {
+			border-radius: var(--radius-12);
+			background: rgb(255 255 255 / 8%);
+		}
 	}
 
 	.row.cued,
 	.row.cued:hover {
 		--heart-on: var(--fox-ink);
-		--heart-off: var(--fox-ink);
+		--heart-off: rgb(26 15 5 / 40%);
 
 		border-radius: var(--radius-12);
 		background: var(--fox);
@@ -344,8 +427,14 @@
 	}
 
 	.cued .mono,
-	.cued .others {
+	.cued .cell,
+	.cued .cell.name,
+	.cued .rate button.on {
 		color: var(--fox-ink);
+	}
+
+	.cued .rate button {
+		color: rgb(26 15 5 / 30%);
 	}
 
 	@media (max-width: 1024px) {
@@ -377,18 +466,6 @@
 
 		.songs {
 			left: 0;
-		}
-
-		.row {
-			padding: 0 4px 0 10px;
-		}
-
-		.play {
-			gap: 12px;
-		}
-
-		.number {
-			width: 22px;
 		}
 	}
 </style>
