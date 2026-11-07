@@ -88,7 +88,7 @@ func decodeProblem(t *testing.T, rec *httptest.ResponseRecorder) api.Problem {
 func TestAPIOnlyUnderPrefix(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
-	for _, path := range []string{healthPath, "/readyz", "/artwork/" + strings.Repeat("a", 64), "/api/v1", apiPrefix + "x/healthz"} {
+	for _, path := range []string{healthPath, readyPath, "/artwork/" + strings.Repeat("a", 64), "/api/v1", apiPrefix + "x/healthz"} {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
 			resp := ts.send(t, call{method: http.MethodGet, path: path, client: plainClient(), raw: true})
