@@ -82,14 +82,15 @@ type tableSource struct {
 	indexes []string
 }
 
-// tableDDL returns the statements that made table and its indexes.
+// tableDDL returns the statements that made table and its indexes, with the
+// quotes a rename leaves on a table's name taken off.
 func tableDDL(t *testing.T, db *sql.DB, table string) tableSource {
 	t.Helper()
 	var src tableSource
 	for _, o := range schemaObjects(t, db) {
 		switch {
 		case o.kind == "table" && o.name == table:
-			src.create = o.ddl
+			src.create = normalizeDDL(o.ddl)
 		case o.kind == "index" && strings.Contains(o.ddl, " ON "+table+" "):
 			src.indexes = append(src.indexes, o.ddl)
 		}
@@ -792,5 +793,42 @@ func TestEmptyFileWithAVersionIsRefused(t *testing.T) {
 	}
 	if err := d.settle(t.Context(), shippedSteps(t)); !errors.Is(err, ErrStaleSchema) {
 		t.Fatalf("err = %v, want ErrStaleSchema", err)
+	}
+}
+
+// TestDigestNullableKeepsTracks runs 0005 over a v4 library: every track keeps
+// its id and fingerprint, every FTS row its rowid, and a track can then be
+// stored without a fingerprint.
+func TestDigestNullableKeepsTracks(t *testing.T) {
+	t.Parallel()
+	steps := shippedSteps(t)
+	at := slices.IndexFunc(steps, func(m migration) bool { return m.name == "0005_digest_nullable.sql" })
+	if at < 0 {
+		t.Fatal("0005_digest_nullable.sql is not shipped")
+	}
+	d := newScratchDB(t)
+	d.mustSettle(t, steps[:at])
+	seedLibrary(t, d.w)
+	const tracksQuery = "SELECT id, ulid, hex(audio_digest) FROM tracks ORDER BY id"
+	const ftsQuery = "SELECT rowid FROM tracks_fts ORDER BY rowid"
+	tracks, fts, facts := rawRows(t, d.w, tracksQuery), rawRows(t, d.w, ftsQuery), libraryFacts(t, d.w)
+
+	d.mustSettle(t, steps[:at+1])
+
+	if got := rawRows(t, d.w, tracksQuery); !slices.Equal(got, tracks) {
+		t.Errorf("tracks = %q, want %q", got, tracks)
+	}
+	if got := rawRows(t, d.w, ftsQuery); !slices.Equal(got, fts) {
+		t.Errorf("FTS rowids = %q, want %q", got, fts)
+	}
+	expectFacts(t, d.w, facts)
+	if got := rawRows(t, d.w, "PRAGMA foreign_key_check"); len(got) != 0 {
+		t.Errorf("foreign_key_check = %q, want none", got)
+	}
+	if _, err := d.w.ExecContext(t.Context(), "UPDATE tracks SET audio_digest = NULL WHERE id = 1"); err != nil {
+		t.Errorf("clearing a fingerprint: %v", err)
+	}
+	if _, err := d.w.ExecContext(t.Context(), "UPDATE tracks SET audio_digest = x'00' WHERE id = 2"); err == nil {
+		t.Error("a 1-byte fingerprint was stored")
 	}
 }

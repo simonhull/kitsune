@@ -91,7 +91,7 @@ func TestEditAlbumWritesEveryFileAndIndexesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	l.wantAlbumEdited()
-	if got := reread(t, filepath.Join(l.root, aFLAC)); got.Digest != before.Digest {
+	if got := reread(t, filepath.Join(l.root, aFLAC)); *got.Digest != *before.Digest {
 		t.Error("the audio digest changed")
 	}
 	wantStats(t, l.scan(Quick), &Stats{Seen: 2})

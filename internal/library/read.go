@@ -140,7 +140,7 @@ func (rd *reader) readFile(ctx context.Context, j *job) (*store.TrackWrite, erro
 	if err != nil {
 		return nil, err //nolint:wrapcheck // The message is stored as the scan issue verbatim.
 	}
-	tw := NewTrackWrite(f, &FileInfo{Root: j.Root, RelPath: j.RelPath, Size: j.Size, MTime: j.MTime, Digest: digest})
+	tw := NewTrackWrite(f, &FileInfo{Root: j.Root, RelPath: j.RelPath, Size: j.Size, MTime: j.MTime, Digest: &digest})
 	if rd.covers == nil {
 		return &tw, nil
 	}
@@ -302,9 +302,12 @@ func (w *writer) identify(ctx context.Context, tw *store.TrackWrite, j *job) err
 }
 
 // takeMissing returns the ID of the missing track tw is a move of, claiming
-// it, or 0 when there is none.
+// it, or 0 when there is none or tw has no fingerprint.
 func (w *writer) takeMissing(ctx context.Context, tw *store.TrackWrite) (int64, error) {
-	candidates, err := w.s.st.MissingByDigest(ctx, tw.Digest)
+	if tw.Digest == nil {
+		return 0, nil // Only a fingerprint can say a file moved.
+	}
+	candidates, err := w.s.st.MissingByDigest(ctx, *tw.Digest)
 	if err != nil {
 		return 0, err //nolint:wrapcheck // The store's error already says what failed.
 	}

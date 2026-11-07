@@ -55,7 +55,7 @@ func reread(t *testing.T, path string) store.TrackWrite {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewTrackWrite(f, &FileInfo{Root: filepath.Dir(path), RelPath: filepath.Base(path), Digest: digest})
+	return NewTrackWrite(f, &FileInfo{Root: filepath.Dir(path), RelPath: filepath.Base(path), Digest: &digest})
 }
 
 // rawValues returns tw's raw values for key, as the store keeps it.
@@ -162,7 +162,7 @@ func TestEditLandsInEveryOwnedKey(t *testing.T) {
 			if got.Title != newTitle || got.SortTitle != newTitle || got.TrackNo != 7 || got.DiscNo != 2 || got.Year != newYear {
 				t.Errorf("track = %q (sort %q) %d/%d, year %d", got.Title, got.SortTitle, got.TrackNo, got.DiscNo, got.Year)
 			}
-			if got.Digest != before.Digest {
+			if *got.Digest != *before.Digest {
 				t.Error("the edit changed the audio digest")
 			}
 			tt.want.check(t, &before, &got, genres)
@@ -280,7 +280,7 @@ func wantEveryField(t *testing.T, path string, before *store.TrackWrite) {
 	if got.Year != newYear || got.OriginalYear != 1977 || got.SortTitle != "Title, New" {
 		t.Errorf("year %d, original %d, sort %q", got.Year, got.OriginalYear, got.SortTitle)
 	}
-	if got.Digest != before.Digest {
+	if *got.Digest != *before.Digest {
 		t.Error("the edit changed the audio digest")
 	}
 }

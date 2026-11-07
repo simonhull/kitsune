@@ -30,7 +30,7 @@ type FileInfo struct {
 	Root, RelPath string
 	Size          int64
 	MTime         time.Time
-	Digest        [32]byte
+	Digest        *[32]byte // Nil when the file was not hashed.
 }
 
 // NewTrackWrite maps an opened file and its file facts to a store write. It

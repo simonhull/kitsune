@@ -322,7 +322,7 @@ CREATE TABLE tracks (
 	rel_path      TEXT    NOT NULL,
 	size          INTEGER NOT NULL,
 	mtime         INTEGER NOT NULL,     -- Unix ms
-	audio_digest  BLOB    NOT NULL CHECK (length(audio_digest) = 32),
+	audio_digest  BLOB    CHECK (audio_digest IS NULL OR length(audio_digest) = 32), -- NULL until the fingerprint pass reads the file
 	album_id      INTEGER NOT NULL REFERENCES albums (id),
 	format        TEXT    NOT NULL,
 	codec         TEXT    NOT NULL,
@@ -356,7 +356,7 @@ CREATE TABLE tracks (
 --   column cid=3 name=rel_path type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=4 name=size type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=5 name=mtime type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
---   column cid=6 name=audio_digest type=BLOB notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=audio_digest type=BLOB notnull=0 dflt_value=<nil> pk=0 hidden=0
 --   column cid=7 name=album_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=8 name=format type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=9 name=codec type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
@@ -406,6 +406,12 @@ CREATE INDEX tracks_missing_digest ON tracks (audio_digest) WHERE missing_since 
 CREATE INDEX tracks_missing_since ON tracks (missing_since) WHERE missing_since IS NOT NULL;
 --   key seqno=0 cid=31 name=missing_since desc=0 coll=BINARY key=1
 --   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index tracks_undigested
+CREATE INDEX tracks_undigested ON tracks (root, rel_path) WHERE audio_digest IS NULL;
+--   key seqno=0 cid=2 name=root desc=0 coll=BINARY key=1
+--   key seqno=1 cid=3 name=rel_path desc=0 coll=BINARY key=1
+--   key seqno=2 cid=-1 name=<nil> desc=0 coll=BINARY key=0
 
 -- table tracks_fts
 CREATE VIRTUAL TABLE tracks_fts USING fts5 (

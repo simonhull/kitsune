@@ -48,14 +48,25 @@ RETURNING id;
 
 -- name: UpdateTrack :execrows
 UPDATE tracks SET
-    root = ?, rel_path = ?, size = ?, mtime = ?, audio_digest = ?, album_id = ?,
-    format = ?, codec = ?, duration_ms = ?, sample_rate = ?, bit_depth = ?, channels = ?,
-    bitrate = ?, lossless = ?,
-    title = ?, sort_title = ?, track_no = ?, track_total = ?, disc_no = ?, disc_total = ?,
-    year = ?, original_year = ?,
-    compilation = ?, rg_track_gain = ?, rg_track_peak = ?, rg_album_gain = ?, rg_album_peak = ?,
-    scan_warnings = ?, missing_since = NULL
-WHERE id = ?;
+    root = sqlc.arg(root), rel_path = sqlc.arg(rel_path), size = sqlc.arg(size), mtime = sqlc.arg(mtime),
+    -- A write without a fingerprint keeps the stored one only while the file is unchanged.
+    audio_digest = CASE
+        WHEN sqlc.narg(audio_digest) IS NOT NULL THEN sqlc.narg(audio_digest)
+        WHEN tracks.size = sqlc.arg(size) AND tracks.mtime = sqlc.arg(mtime) THEN tracks.audio_digest
+    END,
+    album_id = sqlc.arg(album_id),
+    format = sqlc.arg(format), codec = sqlc.arg(codec), duration_ms = sqlc.arg(duration_ms),
+    sample_rate = sqlc.narg(sample_rate), bit_depth = sqlc.narg(bit_depth), channels = sqlc.narg(channels),
+    bitrate = sqlc.narg(bitrate), lossless = sqlc.arg(lossless),
+    title = sqlc.arg(title), sort_title = sqlc.arg(sort_title),
+    track_no = sqlc.narg(track_no), track_total = sqlc.narg(track_total),
+    disc_no = sqlc.narg(disc_no), disc_total = sqlc.narg(disc_total),
+    year = sqlc.narg(year), original_year = sqlc.narg(original_year),
+    compilation = sqlc.arg(compilation),
+    rg_track_gain = sqlc.narg(rg_track_gain), rg_track_peak = sqlc.narg(rg_track_peak),
+    rg_album_gain = sqlc.narg(rg_album_gain), rg_album_peak = sqlc.narg(rg_album_peak),
+    scan_warnings = sqlc.arg(scan_warnings), missing_since = NULL
+WHERE id = sqlc.arg(id);
 
 -- name: DeleteTrackTags :exec
 DELETE FROM track_tags WHERE track_id = ?;
@@ -97,6 +108,23 @@ SELECT id, root, rel_path
 FROM tracks
 WHERE missing_since IS NOT NULL AND audio_digest = ?
 ORDER BY id;
+
+-- name: AnyMissingWithDigest :one
+SELECT EXISTS (SELECT 1 FROM tracks WHERE missing_since IS NOT NULL AND audio_digest IS NOT NULL) AS found;
+
+-- name: Undigested :many
+SELECT id, root, rel_path, size, mtime
+FROM tracks
+WHERE audio_digest IS NULL AND missing_since IS NULL AND (root, rel_path) > (sqlc.arg(root), sqlc.arg(rel_path))
+ORDER BY root, rel_path
+LIMIT sqlc.arg(n);
+
+-- name: CountUndigested :one
+SELECT count(*) FROM tracks INDEXED BY tracks_undigested WHERE audio_digest IS NULL AND missing_since IS NULL;
+
+-- name: SetDigest :execrows
+UPDATE tracks SET audio_digest = sqlc.arg(audio_digest)
+WHERE id = sqlc.arg(id) AND size = sqlc.arg(size) AND mtime = sqlc.arg(mtime) AND missing_since IS NULL;
 
 -- name: MarkMissing :exec
 UPDATE tracks SET missing_since = ? WHERE id = ? AND missing_since IS NULL;

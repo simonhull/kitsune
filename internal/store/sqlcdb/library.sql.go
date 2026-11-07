@@ -9,6 +9,28 @@ import (
 	"context"
 )
 
+const anyMissingWithDigest = `-- name: AnyMissingWithDigest :one
+SELECT EXISTS (SELECT 1 FROM tracks WHERE missing_since IS NOT NULL AND audio_digest IS NOT NULL) AS found
+`
+
+func (q *Queries) AnyMissingWithDigest(ctx context.Context) (bool, error) {
+	row := q.queryRow(ctx, q.anyMissingWithDigestStmt, anyMissingWithDigest)
+	var found bool
+	err := row.Scan(&found)
+	return found, err
+}
+
+const countUndigested = `-- name: CountUndigested :one
+SELECT count(*) FROM tracks INDEXED BY tracks_undigested WHERE audio_digest IS NULL AND missing_since IS NULL
+`
+
+func (q *Queries) CountUndigested(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countUndigestedStmt, countUndigested)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteMissingBefore = `-- name: DeleteMissingBefore :execrows
 DELETE FROM tracks WHERE missing_since < ?
 `
@@ -347,6 +369,31 @@ func (q *Queries) PruneArtwork(ctx context.Context) ([][]byte, error) {
 	return items, nil
 }
 
+const setDigest = `-- name: SetDigest :execrows
+UPDATE tracks SET audio_digest = ?1
+WHERE id = ?2 AND size = ?3 AND mtime = ?4 AND missing_since IS NULL
+`
+
+type SetDigestParams struct {
+	AudioDigest []byte
+	ID          int64
+	Size        int64
+	Mtime       int64
+}
+
+func (q *Queries) SetDigest(ctx context.Context, arg SetDigestParams) (int64, error) {
+	result, err := q.exec(ctx, q.setDigestStmt, setDigest,
+		arg.AudioDigest,
+		arg.ID,
+		arg.Size,
+		arg.Mtime,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const trackStates = `-- name: TrackStates :many
 SELECT id, rel_path, size, mtime, missing_since IS NOT NULL AS missing
 FROM tracks
@@ -390,16 +437,78 @@ func (q *Queries) TrackStates(ctx context.Context, root string) ([]TrackStatesRo
 	return items, nil
 }
 
+const undigested = `-- name: Undigested :many
+SELECT id, root, rel_path, size, mtime
+FROM tracks
+WHERE audio_digest IS NULL AND missing_since IS NULL AND (root, rel_path) > (?1, ?2)
+ORDER BY root, rel_path
+LIMIT ?3
+`
+
+type UndigestedParams struct {
+	Root    string
+	RelPath string
+	N       int64
+}
+
+type UndigestedRow struct {
+	ID      int64
+	Root    string
+	RelPath string
+	Size    int64
+	Mtime   int64
+}
+
+func (q *Queries) Undigested(ctx context.Context, arg UndigestedParams) ([]UndigestedRow, error) {
+	rows, err := q.query(ctx, q.undigestedStmt, undigested, arg.Root, arg.RelPath, arg.N)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UndigestedRow
+	for rows.Next() {
+		var i UndigestedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Root,
+			&i.RelPath,
+			&i.Size,
+			&i.Mtime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateTrack = `-- name: UpdateTrack :execrows
 UPDATE tracks SET
-    root = ?, rel_path = ?, size = ?, mtime = ?, audio_digest = ?, album_id = ?,
-    format = ?, codec = ?, duration_ms = ?, sample_rate = ?, bit_depth = ?, channels = ?,
-    bitrate = ?, lossless = ?,
-    title = ?, sort_title = ?, track_no = ?, track_total = ?, disc_no = ?, disc_total = ?,
-    year = ?, original_year = ?,
-    compilation = ?, rg_track_gain = ?, rg_track_peak = ?, rg_album_gain = ?, rg_album_peak = ?,
-    scan_warnings = ?, missing_since = NULL
-WHERE id = ?
+    root = ?1, rel_path = ?2, size = ?3, mtime = ?4,
+    -- A write without a fingerprint keeps the stored one only while the file is unchanged.
+    audio_digest = CASE
+        WHEN ?5 IS NOT NULL THEN ?5
+        WHEN tracks.size = ?3 AND tracks.mtime = ?4 THEN tracks.audio_digest
+    END,
+    album_id = ?6,
+    format = ?7, codec = ?8, duration_ms = ?9,
+    sample_rate = ?10, bit_depth = ?11, channels = ?12,
+    bitrate = ?13, lossless = ?14,
+    title = ?15, sort_title = ?16,
+    track_no = ?17, track_total = ?18,
+    disc_no = ?19, disc_total = ?20,
+    year = ?21, original_year = ?22,
+    compilation = ?23,
+    rg_track_gain = ?24, rg_track_peak = ?25,
+    rg_album_gain = ?26, rg_album_peak = ?27,
+    scan_warnings = ?28, missing_since = NULL
+WHERE id = ?29
 `
 
 type UpdateTrackParams struct {
@@ -407,7 +516,7 @@ type UpdateTrackParams struct {
 	RelPath      string
 	Size         int64
 	Mtime        int64
-	AudioDigest  []byte
+	AudioDigest  interface{}
 	AlbumID      int64
 	Format       string
 	Codec        string
