@@ -109,7 +109,10 @@
 <style>
 	.floating {
 		position: fixed;
-		z-index: 4;
+		/* Over the player island, which it may open across on a short screen. */
+		z-index: 6;
+		max-height: calc(100dvh - 24px);
+		overflow-y: auto;
 		box-sizing: border-box;
 		padding: 8px;
 		display: flex;
