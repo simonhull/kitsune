@@ -68,7 +68,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Responses carry `api` types built field by field (`toAPIUser`); never marshal a
   `store` type, so a new store column can't leak.
 - Nothing the server writes (bodies, headers, logs) contains a password or token, except
-  login's response and `Set-Cookie`.
+  login's response and `Set-Cookie`, and the setup code's one log line (see Operations).
+- `GET /setup` and `POST /setup` are public. They make the first account, an administrator, while
+  there is none; once one exists (`users add` included) `needed` is false for good and `POST` is 409.
+  "Your network" is `isLocal` (loopback, private, link-local, `100.64.0.0/10`) on `clientIP`; from
+  outside it, `POST` needs the setup code, compared in constant time, and wrong codes count against
+  the login limiter by IP. The store inserts the first user only while `users` is empty, in one
+  statement, so a race gives one 200 and one 409.
 
 ## Store
 - `internal/store` is the only package that speaks SQL. Writes go through the
@@ -206,6 +212,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `internal/server` takes everything through `server.Config`.
 - Logs are `log/slog` JSON. Log `r.URL.Path`, never the full URL or query: OpenSubsonic
   clients send credentials in the query string.
+- `serve` starts with no accounts. It then makes a setup code (`crypto/rand`, 80 bits) and logs it
+  once, in the startup WARN line: the one secret ever written to a log, on purpose, since whoever
+  reads the log runs the server. The code lives in memory only (`server.Config.SetupCode`) and never
+  appears in a response.
 - `KITSUNE_LASTFM_URL`, read only in `cmd/`, points the server at a stand-in Last.fm (its API at
   `/2.0/`, its approval page at `/api/auth/`) for manual checks; production never sets it. Tests use
   `internal/lastfm/lastfmtest` and nothing ever talks to the real Last.fm.

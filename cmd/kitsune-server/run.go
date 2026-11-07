@@ -15,7 +15,8 @@ const usage = `Usage: kitsune-server <command> [flags]
 Commands:
   serve     run the server (-config FILE)
   config    print the configuration in effect and exit
-  users add NAME   create a user (-admin, -password-stdin, -config FILE)
+  users add NAME   create a user (-admin, -password-stdin, -config FILE);
+                   the first can also be made in a browser, on a server's first run
   version   print the version and exit
   help      print this help and exit
 

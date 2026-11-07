@@ -60,6 +60,10 @@ type Config struct {
 	// such as "https://example.com/music": Last.fm sends them back there. "" means
 	// the host each request names.
 	PublicURL string
+	// SetupCode is the code that makes the first account from outside the
+	// server's network. "" means the server started with accounts, so setup is
+	// done. It never appears in a response.
+	SetupCode string
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -87,6 +91,7 @@ type Server struct {
 	lastfm        *scrobbler.Scrobbler
 	publicURL     string
 	lastfmStates  lastfmStates
+	setup         *setupState
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -126,6 +131,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		lastfm:        cfg.Lastfm,
 		publicURL:     cfg.PublicURL,
 		lastfmStates:  lastfmStates{byUser: map[int64]pendingState{}},
+		setup:         newSetupState(cfg.SetupCode),
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
@@ -204,6 +210,8 @@ func (s *Server) routes() []route {
 		{pattern: "GET /healthz", public: true, handle: s.getHealth},
 		{pattern: "GET /readyz", public: true, handle: s.getReady},
 		{pattern: "POST /auth/login", public: true, handle: s.login},
+		{pattern: "GET /setup", public: true, handle: s.getSetup},
+		{pattern: "POST /setup", public: true, handle: s.postSetup},
 		{pattern: "POST /auth/logout", handle: s.logout},
 		{pattern: "GET /admin/library/issues", admin: true, handle: s.getIssues},
 		{pattern: "POST /admin/library/scan", admin: true, handle: s.postScan},

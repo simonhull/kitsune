@@ -96,19 +96,6 @@ func (e serveEnv) serveCLI() cliResult {
 	return cliResult{code: code, stdout: out.String(), stderr: errOut.String()}
 }
 
-func TestServeRefusesWithoutDatabase(t *testing.T) {
-	t.Parallel()
-	e := newServeEnv(t, "")
-	r := e.serveCLI()
-	want := "kitsune-server users add -config " + shellQuote(e.config) + " -admin NAME"
-	if r.code != exitFailure || !strings.Contains(r.stderr, "no users yet") || !strings.Contains(r.stderr, want) {
-		t.Errorf("result = %+v, want exit 1 and a message with %q", r, want)
-	}
-	if _, err := os.Stat(filepath.Join(e.dataDir, store.FileName)); err == nil {
-		t.Error("serve created the database")
-	}
-}
-
 func TestServeMigrates(t *testing.T) {
 	t.Parallel()
 	e := newServeEnv(t, "")
@@ -129,7 +116,7 @@ func TestServeMigrates(t *testing.T) {
 	markUnmigrated(t, path)
 
 	cfg := e.load(t)
-	a, err := openApp(t.Context(), &cfg, launch{configPath: e.config}, slog.New(slog.DiscardHandler))
+	a, err := openApp(t.Context(), &cfg, launch{}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("openApp: %v", err)
 	}
@@ -142,49 +129,6 @@ func TestServeMigrates(t *testing.T) {
 	}
 	if err = st.Close(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestServeRefusesEmptyDatabase(t *testing.T) {
-	t.Parallel()
-	e := newServeEnv(t, "")
-	if err := os.MkdirAll(e.dataDir, dataDirMode); err != nil {
-		t.Fatal(err)
-	}
-	st, err := store.Open(t.Context(), filepath.Join(e.dataDir, store.FileName), store.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = st.Close(); err != nil {
-		t.Fatal(err)
-	}
-	r := e.serveCLI()
-	want := "kitsune-server users add -config " + shellQuote(e.config) + " -admin NAME"
-	if r.code != exitFailure || !strings.Contains(r.stderr, "no users yet") || !strings.Contains(r.stderr, want) {
-		t.Errorf("result = %+v, want exit 1 and a message with %q", r, want)
-	}
-}
-
-func TestNoUsersErrorWithoutConfigFlag(t *testing.T) {
-	t.Parallel()
-	msg := (&noUsersError{}).Error()
-	if !strings.Contains(msg, "users add -admin NAME") || strings.Contains(msg, "-config") {
-		t.Errorf("message = %q, want the command without -config", msg)
-	}
-}
-
-func TestShellQuote(t *testing.T) {
-	t.Parallel()
-	tests := map[string]string{
-		"/etc/kitsune.toml":  "/etc/kitsune.toml",
-		"/tmp/my dir/s.toml": "'/tmp/my dir/s.toml'",
-		"it's":               `'it'\''s'`,
-		"":                   "''",
-	}
-	for in, want := range tests {
-		if got := shellQuote(in); got != want {
-			t.Errorf("shellQuote(%q) = %q, want %q", in, got, want)
-		}
 	}
 }
 
@@ -224,6 +168,7 @@ type runningApp struct {
 type reply struct {
 	status  int
 	cookies []string
+	body    string
 }
 
 // newApp opens an app over a config with a user simon. It does not serve.
@@ -232,7 +177,7 @@ func newApp(t *testing.T, e serveEnv) (*app, *syncBuffer) {
 	logs := &syncBuffer{}
 	log := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	cfg := e.load(t)
-	a, err := openApp(t.Context(), &cfg, launch{configPath: e.config}, log)
+	a, err := openApp(t.Context(), &cfg, launch{}, log)
 	if err != nil {
 		t.Fatalf("openApp: %v", err)
 	}
@@ -304,13 +249,14 @@ func (ra *runningApp) do(t *testing.T, method, path, body string, header http.He
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = io.Copy(io.Discard, resp.Body); err != nil {
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err = resp.Body.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return reply{status: resp.StatusCode, cookies: resp.Header.Values("Set-Cookie")}
+	return reply{status: resp.StatusCode, cookies: resp.Header.Values("Set-Cookie"), body: string(got)}
 }
 
 // login posts a login for name with the given forwarded address and path prefix.

@@ -46,6 +46,23 @@ type LoginRequest struct {
 	Cookie bool `json:"cookie,omitzero"`
 }
 
+// SetupStatus is the response to GET /setup.
+type SetupStatus struct {
+	// Needed is true while the server has no accounts, so the first is still to be made.
+	Needed bool `json:"needed"`
+	// CodeRequired is true when making it needs the setup code from the server's
+	// log, because the caller is outside the server's network.
+	CodeRequired bool `json:"codeRequired"`
+}
+
+// SetupRequest is the body of POST /setup.
+type SetupRequest struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+	// Code is the setup code from the server's log, needed only from outside its network.
+	Code string `json:"code,omitzero"`
+}
+
 // User is an account as the API shows it. It has no password-hash field.
 type User struct {
 	ID        int64     `json:"id"`

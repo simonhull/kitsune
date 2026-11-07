@@ -99,6 +99,7 @@ type testServerOptions struct {
 	StartScan     func(library.Mode) error // Nil means claim and run on the scanner.
 	Web           fs.FS                    // Nil means no web client.
 	Lastfm        *lastfmtest.Server       // Nil means Last.fm is not set up; else the sender runs against it.
+	SetupCode     string                   // "" means the server started with accounts.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -184,6 +185,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		StartScan:     o.StartScan,
 		Web:           o.Web,
 		Lastfm:        sender,
+		SetupCode:     o.SetupCode,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)
