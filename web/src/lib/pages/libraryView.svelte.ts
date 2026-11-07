@@ -36,8 +36,8 @@ const wide: Frame = {
 		// The cover, its title and its facts.
 		albumMin: 264,
 		artistHead: 0,
-		// Where the name pins, 38 down, then its three lines and its facts.
-		artistMin: 304,
+		// Where the name pins, 38 down, then its three lines and its facts, with the artist's heart.
+		artistMin: 330,
 		albumGap: 40,
 		artistGap: 72
 	},

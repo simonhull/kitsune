@@ -28,6 +28,7 @@ function track(fields: Partial<Track> = {}): Track {
 		format: 'FLAC',
 		genres: [],
 		etag: '',
+		hearted: false,
 		...fields
 	};
 }
@@ -44,7 +45,8 @@ const album: Album = {
 	formats: ['FLAC'],
 	addedAt: '2026-10-12T18:00:00Z',
 	genres: [],
-	etag: ''
+	etag: '',
+	hearted: false
 };
 
 describe('clock', () => {

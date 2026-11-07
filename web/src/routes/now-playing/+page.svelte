@@ -7,6 +7,7 @@
 	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
+	import StarButtons from '#lib/shell/StarButtons.svelte';
 	import { appliedGain } from '#lib/player/gain.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import { reserveIslandSlot } from '#lib/shell/slot.svelte.ts';
@@ -103,6 +104,9 @@
 						<strong>{playing.album.artist}</strong>
 						{#if others !== undefined}{others}{/if}
 					</span>
+					<span class="rate" data-morph-part="details"
+						><StarButtons trackId={playing.track.id} title={playing.track.title} /></span
+					>
 					{#if note !== null}<p class="note" role="status">{note}</p>{/if}
 				</div>
 				<div class="controls-slot" use:reserveIslandSlot></div>
@@ -314,6 +318,12 @@
 	.artist strong {
 		font-weight: 600;
 		color: var(--text);
+	}
+
+	/* The song's own stars, on the art: they wear the accent, and keep 44 to press. */
+	.rate {
+		display: flex;
+		margin: -8px 0 -12px;
 	}
 
 	/* In the gap under the names: a line this quiet must not push the cover anywhere. */

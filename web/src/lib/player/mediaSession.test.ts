@@ -22,7 +22,8 @@ const album: Album = {
 			durationMs: 100_000,
 			format: 'FLAC',
 			genres: [],
-			etag: ''
+			etag: '',
+			hearted: false
 		},
 		{
 			id: 't1',
@@ -31,14 +32,16 @@ const album: Album = {
 			durationMs: 200_000,
 			format: 'FLAC',
 			genres: [],
-			etag: ''
+			etag: '',
+			hearted: false
 		}
 	],
 	durationMs: 300_000,
 	formats: ['FLAC'],
 	addedAt: '2026-10-12T18:00:00Z',
 	genres: [],
-	etag: ''
+	etag: '',
+	hearted: false
 };
 
 class FakeSession {

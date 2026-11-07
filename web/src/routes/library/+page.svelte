@@ -11,6 +11,7 @@
 	import { letterOf, railHere, railLetters } from '#lib/pages/libraryRows.ts';
 	import { libraryView as view } from '#lib/pages/libraryView.svelte.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import HeartButton from '#lib/shell/HeartButton.svelte';
 
 	/** The headline's weight and tracking: the fit is worked out for exactly these. */
 	const nameWeight = 900;
@@ -148,7 +149,12 @@
 									<a href={resolve('/artists/[id]', { id })}>{name}</a>
 								{/if}
 							</h2>
-							<p class="holdings">{artistHoldings(block.artist.albums)}</p>
+							<div class="facts">
+								{#if id !== undefined}
+									<HeartButton kind="artists" {id} {name} size={18} />
+								{/if}
+								<p class="holdings">{artistHoldings(block.artist.albums)}</p>
+							</div>
 						</div>
 					</div>
 					<div class="albums">
@@ -331,8 +337,22 @@
 		color: var(--fox);
 	}
 
+	/* Amber: the artist is the frame's, not a cover's. */
+	.facts {
+		--heart-on: var(--fox);
+		--heart-off: var(--text-secondary);
+
+		margin-top: 14px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.facts :global(.heart) {
+		margin-left: -12px;
+	}
+
 	.holdings {
-		margin-top: 18px;
 		font-family: var(--font-mono);
 		font-size: var(--type-mono);
 		letter-spacing: 0.08em;
@@ -399,8 +419,10 @@
 			line-height: 0.95;
 		}
 
-		.holdings {
-			margin-top: 6px;
+		/* The head is 80 tall: the heart keeps its target, and lets it overhang the line. */
+		.facts {
+			height: 22px;
+			margin-top: 2px;
 		}
 
 		.albums {

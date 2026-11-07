@@ -5,6 +5,7 @@
 	import type { NowPlaying } from '#lib/library/cue.ts';
 	import { morph, type MorphSlot } from '#lib/morph/registry.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import HeartButton from './HeartButton.svelte';
 	import Icon from './Icon.svelte';
 	import Scrubber from './Scrubber.svelte';
 	import { islandSlot } from './slot.svelte.ts';
@@ -88,12 +89,13 @@
 					player.seek(to);
 				}}
 			/>
-			<button
-				type="button"
-				class="skip favorite"
-				aria-label="Favorite"
-				aria-pressed="false"
-				disabled><Icon name="heart-outline" size={20} /></button
+			<span class="favorite on-art"
+				><HeartButton
+					kind="tracks"
+					id={playing.track.id}
+					name={playing.track.title}
+					size={20}
+				/></span
 			>
 		{:else}
 			<a class="now" href={resolve('/now-playing')}>
@@ -115,6 +117,14 @@
 				{/key}
 			</a>
 			<span class="time compact">{clock(position)} / {clock(seconds)}</span>
+			<span class="favorite"
+				><HeartButton
+					kind="tracks"
+					id={playing.track.id}
+					name={playing.track.title}
+					size={18}
+				/></span
+			>
 			{@render transport('island', undefined, 20)}
 		{/if}
 	</div>
@@ -268,15 +278,6 @@
 		justify-content: center;
 	}
 
-	/* Only Favorite, for now: it has nothing to remember favorites with. */
-	button:disabled {
-		cursor: default;
-	}
-
-	.skip:disabled {
-		color: var(--text-label);
-	}
-
 	.skip {
 		width: var(--target);
 		height: var(--target);
@@ -296,8 +297,17 @@
 		height: 56px;
 	}
 
+	/* The shell's, so amber; on Now playing it stands on the art, and wears the accent. */
 	.favorite {
-		color: var(--accent);
+		--heart-on: var(--fox);
+		--heart-off: var(--text-secondary);
+
+		display: flex;
+	}
+
+	.favorite.on-art {
+		--heart-on: var(--accent);
+		--heart-off: var(--text);
 	}
 
 	.progress {

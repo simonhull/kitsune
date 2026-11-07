@@ -2,11 +2,15 @@
 	import Cover from '#lib/cover/Cover.svelte';
 	import { emWidth } from '#lib/library/fit.ts';
 	import { resolve } from '$app/paths';
+	import { albumStars } from '#lib/library/albumStars.ts';
 	import { albumFacts } from '#lib/library/format.ts';
+	import { library } from '#lib/library/library.svelte.ts';
 	import type { Album, AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
+	import StarsShown from '#lib/shell/StarsShown.svelte';
 	import TagFields from './TagFields.svelte';
 	import type { TagSession } from './tagEdits.svelte.ts';
 
@@ -45,6 +49,7 @@
 	const meta = $derived(album === undefined ? '' : albumFacts(album, album));
 	const playable = $derived(album !== undefined && album.tracks.length > 0);
 	const sounding = $derived(player.queue?.album.id === albumId && player.sounding);
+	const stars = $derived(album === undefined ? null : albumStars(album.tracks, library.marks));
 
 	function play(): void {
 		if (album !== undefined) {
@@ -122,8 +127,8 @@
 			</span>
 			{#if session === undefined}
 				<button type="button" class="ghost" disabled={!playable} onclick={shuffle}>Shuffle</button>
-				<button type="button" class="ghost round" aria-label="Favorite" disabled
-					><Icon name="heart-outline" /></button
+				<span class="favorite"
+					><HeartButton kind="albums" id={albumId} name={entry?.title ?? 'album'} size={18} /></span
 				>
 				{#if edit !== undefined}
 					<button
@@ -133,6 +138,16 @@
 						bind:this={editButton}
 						onclick={edit}>Edit tags</button
 					>
+				{/if}
+				{#if stars !== null}
+					<!-- Worked out from the songs, never set: so it reads, and doesn't press. -->
+					<span class="rating">
+						<span class="glyphs"><StarsShown {stars} empty="dim" /></span>
+						<span class="from" aria-hidden="true"
+							>{stars.mean} · FROM {stars.rated} OF {stars.of}
+							{stars.of === 1 ? 'SONG' : 'SONGS'}</span
+						>
+					</span>
 				{/if}
 			{/if}
 		</div>
@@ -359,10 +374,38 @@
 		cursor: default;
 	}
 
-	.round {
-		width: var(--target);
-		padding: 0;
-		border-radius: 50%;
+	/* The ghost buttons' ring, on the art: so it wears the accent. */
+	.favorite {
+		--heart-on: var(--accent);
+		--heart-off: var(--text);
+
+		display: flex;
+	}
+
+	.favorite :global(.heart) {
+		border: 1px solid var(--edge-strong);
+		background: rgb(10 9 8 / 30%);
+	}
+
+	.rating {
+		margin-left: 14px;
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+	}
+
+	.glyphs {
+		--star-empty: rgb(255 255 255 / 28%);
+
+		font-size: 18px;
+		color: var(--accent);
+	}
+
+	.from {
+		font-family: var(--font-mono);
+		font-size: var(--type-mono);
+		color: var(--text-secondary);
+		white-space: nowrap;
 	}
 
 	@media (max-width: 820px) {

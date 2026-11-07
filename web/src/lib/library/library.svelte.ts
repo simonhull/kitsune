@@ -11,6 +11,7 @@ import {
 	type FixtureEditFault
 } from './fixtures.ts';
 import { healthFixture } from './healthFixtures.ts';
+import { Marks } from './marks.svelte.ts';
 import { Outbox } from './outbox.ts';
 import { Search } from './search.svelte.ts';
 import {
@@ -175,6 +176,8 @@ export class Library {
 		return found;
 	});
 	readonly simulated: boolean;
+	/** The signed-in person's hearts and stars: what every page shows, whatever it was given. */
+	readonly marks: Marks;
 
 	readonly #source: LibrarySource;
 	readonly #pinnedAlbumId: string | undefined;
@@ -231,6 +234,7 @@ export class Library {
 		this.#readyMemory =
 			options.readyMemory ?? readyMemoryIn(() => localStorage, 'kitsune:ready-seen');
 		this.#outbox = new Outbox(options.outbox ?? (() => localStorage), this.#source);
+		this.marks = new Marks(this.#source);
 	}
 
 	/** Whether the signed-in user may run scans and see paths. */
@@ -810,6 +814,7 @@ export class Library {
 			const index = await this.#source.libraryIndex();
 			if (epoch === this.#epoch) {
 				this.#rememberIndex(index);
+				this.marks.seedIndex(index);
 				this.index = { kind: 'ready', value: index };
 			}
 		} catch (error) {
@@ -877,6 +882,7 @@ export class Library {
 		this.#unavailable.delete(id);
 		try {
 			const album = await this.#source.album(id);
+			this.marks.seedAlbum(album);
 			this.#albums.set(id, album);
 			this.#rememberNames(album.artists);
 			this.#missing.delete(id);
@@ -911,6 +917,7 @@ export class Library {
 
 	/** Puts an album everywhere it's shown, so nothing waits for a reload to catch up. */
 	#adopt(album: Album): void {
+		this.marks.seedAlbum(album);
 		this.#albums.set(album.id, album);
 		const { year, displayGenres } = album;
 		const retold = (entry: AlbumEntry): AlbumEntry =>
@@ -982,6 +989,7 @@ export class Library {
 		this.#indexEdited = false;
 		this.#artists.clear();
 		this.#artistNames.clear();
+		this.marks.reset();
 		this.search.reset();
 	}
 }

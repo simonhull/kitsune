@@ -1,9 +1,13 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
+	import { albumStars } from '#lib/library/albumStars.ts';
 	import { albumHoldings, clock, credit, trackLabel } from '#lib/library/format.ts';
+	import { library } from '#lib/library/library.svelte.ts';
 	import { morph } from '#lib/morph/registry.ts';
+	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
+	import StarsShown from '#lib/shell/StarsShown.svelte';
 	import type { AlbumBlock, Row } from './libraryRows.ts';
 
 	interface Props {
@@ -28,6 +32,8 @@
 	let { block, top, rows, head, stacked, cuedId, sounding, trouble, play }: Props = $props();
 
 	const album = $derived(block.album);
+	const hearted = $derived(library.marks.hearted('albums', album.id));
+	const stars = $derived(albumStars(album.tracks, library.marks));
 </script>
 
 <section
@@ -49,16 +55,26 @@
 				</span>
 			</a>
 			<div class="names">
-				<a
-					class="title"
-					href={resolve('/album/[id]', { id: album.id })}
-					title={album.title}
-					use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}>{album.title}</a
-				>
+				<div class="title-line">
+					<a
+						class="title"
+						href={resolve('/album/[id]', { id: album.id })}
+						title={album.title}
+						use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}>{album.title}</a
+					>
+					{#if hearted}
+						<span class="hearted" role="img" aria-label="Hearted"
+							><Icon name="heart" size={16} /></span
+						>
+					{/if}
+				</div>
 				{#if trouble}
 					<p class="facts trouble" role="status">Couldn't load this album</p>
 				{:else}
-					<p class="facts">{albumHoldings(album.year, album.tracks.length)}</p>
+					<p class="facts">
+						{albumHoldings(album.year, album.tracks.length)} ·
+						<span class="stars"><StarsShown {stars} /></span>
+					</p>
 				{/if}
 			</div>
 		</div>
@@ -80,31 +96,31 @@
 				{#if track !== undefined}
 					{@const cued = track.id === cuedId}
 					{@const others = credit(track, album.artist)}
-					<button
-						type="button"
-						class="row"
-						class:cued
-						style:top={at}
-						style:height={`${String(row.height)}px`}
-						aria-label={`Play ${track.title}`}
-						aria-current={cued ? 'true' : undefined}
-						onclick={() => {
-							play(track.id);
-						}}
-					>
-						<span class="mono number">
-							{#if cued && sounding && !stacked}
-								<Icon name="play" size={12} />
-							{:else}
-								{trackLabel(track, false)}
+					<div class="row" class:cued style:top={at} style:height={`${String(row.height)}px`}>
+						<button
+							type="button"
+							class="play"
+							aria-label={`Play ${track.title}`}
+							aria-current={cued ? 'true' : undefined}
+							onclick={() => {
+								play(track.id);
+							}}
+						>
+							<span class="mono number">
+								{#if cued && sounding && !stacked}
+									<Icon name="play" size={12} />
+								{:else}
+									{trackLabel(track, false)}
+								{/if}
+							</span>
+							<span class="name">{track.title}</span>
+							{#if others !== undefined}
+								<span class="others">{others}</span>
 							{/if}
-						</span>
-						<span class="name">{track.title}</span>
-						{#if others !== undefined}
-							<span class="others">{others}</span>
-						{/if}
+						</button>
+						<HeartButton kind="tracks" id={track.id} name={track.title} />
 						<span class="mono length">{clock(track.durationMs / 1000)}</span>
-					</button>
+					</div>
 				{/if}
 			{/if}
 		{/each}
@@ -150,6 +166,19 @@
 		min-width: 0;
 	}
 
+	.title-line {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+
+	.hearted {
+		flex: none;
+		display: flex;
+		color: var(--text);
+	}
+
 	/* As wide as the words: a flight measures the element, and an empty right side would stretch. */
 	.title {
 		display: block;
@@ -177,6 +206,10 @@
 		color: var(--text-meta);
 	}
 
+	.stars {
+		color: var(--text-secondary);
+	}
+
 	.trouble {
 		color: var(--fox);
 	}
@@ -201,26 +234,56 @@
 		color: var(--text-meta);
 	}
 
+	/* The song is one button, and its heart another beside it: a button can't hold a button. */
 	.row {
+		--heart-on: var(--text);
+		--heart-off: var(--text-secondary);
+
 		position: absolute;
 		left: 0;
 		right: 0;
 		display: flex;
 		align-items: center;
-		gap: 16px;
-		padding: 0 14px;
-		border: 0;
+		padding: 0 4px 0 14px;
 		border-bottom: 1px solid var(--edge-card);
-		background: transparent;
 		font-size: var(--type-body);
 		font-weight: 600;
+	}
+
+	.play {
+		flex: 1;
+		min-width: 0;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: inherit;
+		font: inherit;
 		text-align: left;
+	}
+
+	/* Its own column before the time: there when hearted, on hover and on the cued row. */
+	.row :global(.heart) {
+		opacity: 0;
+	}
+
+	.row :global(.heart.on),
+	.row :global(.heart:focus-visible),
+	.row.cued :global(.heart) {
+		opacity: 1;
 	}
 
 	@media (hover: hover) {
 		.row:hover {
 			border-radius: var(--radius-12);
 			background: rgb(255 255 255 / 8%);
+		}
+
+		.row:hover :global(.heart) {
+			opacity: 1;
 		}
 	}
 
@@ -259,11 +322,15 @@
 	}
 
 	.length {
-		margin-left: auto;
+		width: 40px;
+		text-align: right;
 	}
 
 	.row.cued,
 	.row.cued:hover {
+		--heart-on: var(--fox-ink);
+		--heart-off: var(--fox-ink);
+
 		border-radius: var(--radius-12);
 		background: var(--fox);
 		color: var(--fox-ink);
@@ -306,8 +373,11 @@
 		}
 
 		.row {
+			padding: 0 4px 0 10px;
+		}
+
+		.play {
 			gap: 12px;
-			padding: 0 10px;
 		}
 
 		.number {

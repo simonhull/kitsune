@@ -19,6 +19,8 @@ import {
 	type LibraryArtist,
 	type LibraryIndex,
 	type LibrarySource,
+	type LibraryTrack,
+	type MarkKind,
 	type Me,
 	type RawTag,
 	type ScanStatus,
@@ -106,7 +108,8 @@ function track(
 		trackTotal: album.trackCount,
 		discTotal: 1,
 		genres: boardTags,
-		etag: `${album.id}-${String(trackNo)}:0`
+		etag: `${album.id}-${String(trackNo)}:0`,
+		hearted: false
 	};
 }
 
@@ -152,7 +155,8 @@ function albumFrom(entry: AlbumEntry, tracks: Track[], year: number): Album {
 		formats: ['FLAC'],
 		addedAt: '2026-10-12T18:00:00Z',
 		genres: boardTags,
-		etag: `${entry.id}:0`
+		etag: `${entry.id}:0`,
+		hearted: false
 	};
 }
 
@@ -256,12 +260,14 @@ function listed({ tracks, year, ...album }: Album): LibraryAlbum {
 		title,
 		artist,
 		compilation,
+		hearted: false,
 		...(year === undefined ? {} : { year }),
 		tracks: tracks.map(({ id: track, title: name, durationMs, artists, discNo, trackNo }) => ({
 			id: track,
 			title: name,
 			durationMs,
 			artists,
+			hearted: false,
 			...(discNo === undefined ? {} : { discNo }),
 			...(trackNo === undefined ? {} : { trackNo })
 		}))
@@ -275,6 +281,7 @@ function indexFixture(): LibraryIndex {
 		const group = groups.get(owner.name) ?? {
 			...owner,
 			...(album.compilation ? {} : { id: artistLink(owner.name).id }),
+			hearted: false,
 			albums: []
 		};
 		group.albums.push(listed(album));
@@ -295,11 +302,47 @@ function indexFixture(): LibraryIndex {
 	return { artists };
 }
 
+/**
+ * Board A's marks, which every fixture source opens with: hearts of every kind, and Glasshouse
+ * rated 6 of its 10 songs to a 3.8. A few more songs elsewhere give 4 and up something to find.
+ */
+const boardHearts: readonly string[] = [
+	'artists/artist-low-tide-choir',
+	'albums/glasshouse-66',
+	'tracks/glasshouse-66-1',
+	'tracks/glasshouse-66-5',
+	'tracks/glasshouse-66-9',
+	'tracks/tidewrack-41-2',
+	'tracks/night-ferry-94-3',
+	'albums/long-way-round-63'
+];
+const boardStars: readonly (readonly [string, number])[] = [
+	['glasshouse-66-1', 5],
+	['glasshouse-66-2', 3],
+	['glasshouse-66-5', 4],
+	['glasshouse-66-6', 2],
+	['glasshouse-66-7', 5],
+	['glasshouse-66-9', 4],
+	['tidewrack-41-1', 4],
+	['tidewrack-41-4', 2],
+	['orbitals-14-2', 5],
+	['sea-sampler-31-2', 4]
+];
+
 const newestFirst = [glasshouse, paperSuns, redSignal, longSummer, tidewater, afterHours];
+
+/** An album as a list has it: no tracks, and no heart, which a list never says. */
+function listEntry(album: Album): AlbumEntry {
+	const entry: Partial<Album> = { ...album };
+	delete entry.hearted;
+	delete entry.tracks;
+	return entry as AlbumEntry;
+}
 
 const byName = [...albums.values()]
 	.filter((album) => album.id !== tinLantern.id)
-	.toSorted((a, b) => a.title.localeCompare(b.title));
+	.toSorted((a, b) => a.title.localeCompare(b.title))
+	.map(listEntry);
 
 const user: Me = {
 	id: 1,
@@ -575,6 +618,39 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	// Each source has its own: an edit is for this tab, until a reload.
 	const held = new Map(albums);
 	const heldTags = new Map<string, AlbumTags>();
+	// So are the marks, like the server's are each person's.
+	const hearts = new Set(boardHearts);
+	const stars = new Map(boardStars);
+
+	/** A track as the marks have it: a stale rating goes, as the server leaves one out. */
+	function markedTrack<T extends Track | LibraryTrack>(track: T): T {
+		const fresh = { ...track, hearted: hearts.has(`tracks/${track.id}`) };
+		delete fresh.stars;
+		const rated = stars.get(track.id);
+		return rated === undefined ? fresh : { ...fresh, stars: rated };
+	}
+
+	function marked(album: Album): Album {
+		return {
+			...album,
+			hearted: hearts.has(`albums/${album.id}`),
+			tracks: album.tracks.map(markedTrack)
+		};
+	}
+
+	function markedIndex(): LibraryIndex {
+		return {
+			artists: indexFixture().artists.map((artist) => ({
+				...artist,
+				hearted: artist.id !== undefined && hearts.has(`artists/${artist.id}`),
+				albums: artist.albums.map((album) => ({
+					...album,
+					hearted: hearts.has(`albums/${album.id}`),
+					tracks: album.tracks.map(markedTrack)
+				}))
+			}))
+		};
+	}
 
 	function tagsIn(album: Album): AlbumTags {
 		const tags = heldTags.get(album.id) ?? allTagsOf(album);
@@ -594,7 +670,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		const after = reindexed(album, { ...tags, tracks }, touched);
 		heldTags.set(album.id, { etag: after.etag, tracks });
 		held.set(album.id, after);
-		return after;
+		return marked(after);
 	}
 
 	/** Tags are for administrators, as on the server. */
@@ -650,6 +726,23 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		me: () => respond(() => signedIn),
 		sessionUser: () => respond(() => signedIn),
 		reportPlay: () => respond(() => undefined),
+		setHeart: (kind: MarkKind, id: string, on: boolean) =>
+			respond(() => {
+				const key = `${kind}/${id}`;
+				if (on) {
+					hearts.add(key);
+				} else {
+					hearts.delete(key);
+				}
+			}),
+		setStars: (trackId, rating) =>
+			respond(() => {
+				if (rating === null) {
+					stars.delete(trackId);
+				} else {
+					stars.set(trackId, rating);
+				}
+			}),
 		login: (name) =>
 			respond(() => {
 				if (name === '') {
@@ -658,7 +751,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				return signedIn;
 			}),
 		facts: () => respond(() => ({ ...counts, ...scans.facts() })),
-		libraryIndex: () => respond(indexFixture),
+		libraryIndex: () => respond(markedIndex),
 		ready: () => respond(() => true),
 		albumsPage: (sort, _cursor, limit) =>
 			respond(() => ({ albums: (sort === 'added' ? newestFirst : byName).slice(0, limit) })),
@@ -668,7 +761,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				if (album === undefined) {
 					throw new AlbumNotFoundError(id);
 				}
-				return album;
+				return marked(album);
 			}),
 		artists: () => respond(() => owners),
 		artist: (id) =>

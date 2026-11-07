@@ -35,16 +35,17 @@ function song(id: string, discNo?: number): LibraryTrack {
 		title: id,
 		durationMs: 1000,
 		artists: [],
+		hearted: false,
 		...(discNo === undefined ? {} : { discNo })
 	};
 }
 
 function album(id: string, tracks: LibraryTrack[]): LibraryAlbum {
-	return { id, title: id, artist: 'x', compilation: false, tracks };
+	return { id, title: id, artist: 'x', compilation: false, hearted: false, tracks };
 }
 
 function artist(name: string, albums: LibraryAlbum[]): LibraryArtist {
-	return { id: name, name, sortName: name, albums };
+	return { id: name, name, sortName: name, hearted: false, albums };
 }
 
 const index: LibraryIndex = {

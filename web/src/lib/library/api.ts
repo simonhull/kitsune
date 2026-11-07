@@ -18,6 +18,7 @@ import {
 	type LibraryIndex,
 	type LibrarySource,
 	type LoginFailure,
+	type MarkKind,
 	type Me,
 	type PlayReport,
 	type ScanIssues,
@@ -174,6 +175,23 @@ export function createApiSource({
 					body: JSON.stringify(play)
 				},
 				quietly
+			),
+
+		setHeart: (kind: MarkKind, id: string, on: boolean) =>
+			read<undefined>(`/me/hearts/${kind}/${encodeURIComponent(id)}`, {
+				method: on ? 'PUT' : 'DELETE'
+			}),
+
+		setStars: (trackId: string, stars: number | null) =>
+			read<undefined>(
+				`/me/ratings/tracks/${encodeURIComponent(trackId)}`,
+				stars === null
+					? { method: 'DELETE' }
+					: {
+							method: 'PUT',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ stars })
+						}
 			),
 
 		async login(name, password) {
