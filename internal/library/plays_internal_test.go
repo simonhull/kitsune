@@ -34,6 +34,7 @@ func newListener(t *testing.T) *listener {
 	l.copyTo(root, keepMP3, sampleMP3)
 	retag(t, filepath.Join(root, keepMP3), otherName)
 	l.scan(Quick)
+	l.fingerprint() // So a move can be followed.
 	u, err := l.st.CreateUser(t.Context(), store.NewUser{Name: "simon", PasswordHash: "h", Role: store.RoleUser})
 	if err != nil {
 		t.Fatal(err)

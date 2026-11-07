@@ -23,12 +23,14 @@ const (
 
 // webHandler serves the built client in files, and its page for any path the
 // client routes itself. What can't be the client is a 404, which
-// [withProblems] turns into a problem: anything under /api, a write, and a
-// file that isn't there. A stale chunk must fail, not parse a page as JavaScript.
+// [withProblems] turns into a problem: anything under /api, a write, a health
+// path at the root, and a file that isn't there. A stale chunk must fail, not
+// parse a page as JavaScript, and a health check pointed at the root must fail,
+// not pass on the client's page while the server isn't ready.
 func webHandler(files fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		isRead := r.Method == http.MethodGet || r.Method == http.MethodHead
-		if !isRead || r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+		if !isRead || isAPIPath(r.URL.Path) {
 			http.NotFound(w, r)
 			return
 		}
@@ -53,6 +55,16 @@ func webHandler(files fs.FS) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 	})
+}
+
+// isAPIPath reports whether path belongs to the API, or looks like one of its
+// health checks missing the /api/v1 prefix.
+func isAPIPath(path string) bool {
+	switch path {
+	case "/api", "/healthz", "/readyz":
+		return true
+	}
+	return strings.HasPrefix(path, "/api/")
 }
 
 // isWebFile reports whether name reads as a file and not one of the client's

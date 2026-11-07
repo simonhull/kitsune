@@ -91,7 +91,7 @@ func TestEditAlbumWritesEveryFileAndIndexesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	l.wantAlbumEdited()
-	if got := reread(t, filepath.Join(l.root, aFLAC)); got.Digest != before.Digest {
+	if got := reread(t, filepath.Join(l.root, aFLAC)); *got.Digest != *before.Digest {
 		t.Error("the audio digest changed")
 	}
 	wantStats(t, l.scan(Quick), &Stats{Seen: 2})
@@ -226,7 +226,7 @@ func TestEditOfAVanishedFileIsStale(t *testing.T) {
 func TestEditWhileBusyIsRefused(t *testing.T) {
 	t.Parallel()
 	l := newEditLib(t)
-	l.scanner.lock <- struct{}{}
+	l.scanner.lock.tryLock(heldByScan)
 	defer l.scanner.lock.unlock()
 	if err := l.editAlbum(); !errors.Is(err, ErrBusy) {
 		t.Errorf("EditAlbum = %v, want ErrBusy", err)

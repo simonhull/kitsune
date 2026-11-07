@@ -61,7 +61,7 @@ func (ts *testServer) seedIndex(tb testing.TB, albums ...indexAlbum) {
 				ULID:    fmt.Sprintf("01J%020d%03d", a.n, i),
 				Root:    "/music",
 				RelPath: fmt.Sprintf("a%d/%d.flac", a.n, i),
-				Digest:  sha256.Sum256(fmt.Appendf(nil, "%d/%d", a.n, i)),
+				Digest:  new(sha256.Sum256(fmt.Appendf(nil, "%d/%d", a.n, i))),
 				Format:  flacFormat, Codec: flacFormat,
 				Duration: time.Minute,
 				Title:    t.title, DiscNo: t.disc, TrackNo: t.trackNo,

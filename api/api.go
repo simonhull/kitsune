@@ -419,6 +419,15 @@ type LibraryFacts struct {
 	IssueCounts IssueCounts `json:"issueCounts"`
 	// Scan says where scanning stands.
 	Scan ScanStatus `json:"scan"`
+	// Fingerprints says where the background fingerprint pass stands.
+	Fingerprints FingerprintStatus `json:"fingerprints"`
+}
+
+// FingerprintStatus is the background fingerprint pass's progress: Done of the
+// Total files waiting when it began. Both are 0 while no pass runs.
+type FingerprintStatus struct {
+	Done  int `json:"done"`
+	Total int `json:"total"`
 }
 
 // IssueCounts counts what a scan had trouble with. It is all a non-administrator

@@ -75,7 +75,7 @@ func newFixture(t *testing.T) *fixture {
 		n := i + 1
 		tws[i] = store.TrackWrite{
 			ULID: trackULID(n), Root: "/music", RelPath: fmt.Sprintf("%d.flac", n),
-			Digest: sha256.Sum256(fmt.Appendf(nil, "%d", n)), Format: "flac", Codec: "flac",
+			Digest: new(sha256.Sum256(fmt.Appendf(nil, "%d", n))), Format: "flac", Codec: "flac",
 			Duration: 3 * time.Minute, Title: fmt.Sprintf("Song %d", n), TrackNo: n,
 			Artists: []store.ArtistWrite{{ULID: fmt.Sprintf("03J%023d", 1), MatchKey: "ann", Name: annName, SortName: annName}},
 			Album:   store.AlbumWrite{GroupKey: "g", ULID: fmt.Sprintf("02J%023d", 1), Name: albumName, SortName: albumName, Artist: annName},

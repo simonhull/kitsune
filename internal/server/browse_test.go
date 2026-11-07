@@ -67,7 +67,7 @@ func (a *browseAlbum) writes() []store.TrackWrite {
 			ULID:    fmt.Sprintf("01J%020d%03d", a.n, t),
 			Root:    "/music",
 			RelPath: fmt.Sprintf("a%d/%d.flac", a.n, t),
-			Digest:  sha256.Sum256(fmt.Appendf(nil, "%d/%d", a.n, t)),
+			Digest:  new(sha256.Sum256(fmt.Appendf(nil, "%d/%d", a.n, t))),
 			Format:  flacFormat, Codec: flacFormat,
 			Duration: time.Minute,
 			Title:    fmt.Sprintf("Track %d", t),

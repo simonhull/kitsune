@@ -26,7 +26,7 @@ const (
 func testInfo() *FileInfo {
 	return &FileInfo{
 		Root: rootMusic, RelPath: "Artist/Album/03 Song.flac",
-		Size: 1234, MTime: time.UnixMilli(1_700_000_000_000), Digest: [32]byte{1, 2, 3},
+		Size: 1234, MTime: time.UnixMilli(1_700_000_000_000), Digest: &[32]byte{1, 2, 3},
 	}
 }
 
@@ -62,7 +62,7 @@ func TestNewTrackWriteBasicsIdentity(t *testing.T) {
 func TestNewTrackWriteBasicsFileFacts(t *testing.T) {
 	t.Parallel()
 	tw, fi := basicsTW(), testInfo()
-	if tw.Root != fi.Root || tw.RelPath != fi.RelPath || tw.Size != fi.Size || !tw.MTime.Equal(fi.MTime) || tw.Digest != fi.Digest {
+	if tw.Root != fi.Root || tw.RelPath != fi.RelPath || tw.Size != fi.Size || !tw.MTime.Equal(fi.MTime) || *tw.Digest != *fi.Digest {
 		t.Errorf("file facts not copied: %+v", tw)
 	}
 }

@@ -30,7 +30,7 @@ func newWrite(i int) store.TrackWrite {
 		RelPath:   fmt.Sprintf("a/%d.flac", i),
 		Size:      1000 + int64(i),
 		MTime:     time.UnixMilli(1_761_000_000_000 + int64(i)).UTC().Add(456789 * time.Nanosecond),
-		Digest:    sha256.Sum256([]byte(strconv.Itoa(i))),
+		Digest:    new(sha256.Sum256([]byte(strconv.Itoa(i)))),
 		Format:    flacFormat,
 		Codec:     flacFormat,
 		Duration:  200*time.Second + 123*time.Millisecond,
@@ -276,7 +276,7 @@ func TestMissingByDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := s.MissingByDigest(t.Context(), a.Digest)
+	got, err := s.MissingByDigest(t.Context(), *a.Digest)
 	if err != nil {
 		t.Fatal(err)
 	}

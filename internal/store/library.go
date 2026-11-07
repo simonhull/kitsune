@@ -23,7 +23,10 @@ type TrackWrite struct {
 	Root, RelPath string
 	Size          int64
 	MTime         time.Time // Stored to the millisecond.
-	Digest        [32]byte
+	// Digest is the audio fingerprint, or nil when the file was not hashed. A nil
+	// Digest on an update keeps the stored one while Size and MTime are unchanged,
+	// and clears it otherwise: a fingerprint holds only for the file it was read from.
+	Digest *[32]byte
 
 	Format, Codec                           string
 	Duration                                time.Duration // Stored to the millisecond.
@@ -157,6 +160,23 @@ func nullInt(v int) *int64 {
 		return nil
 	}
 	return new(int64(v))
+}
+
+// digestBytes is a digest as a BLOB, or nil (NULL) when there is none.
+func digestBytes(d *[32]byte) []byte {
+	if d == nil {
+		return nil
+	}
+	return d[:]
+}
+
+// nullDigest is digestBytes for a parameter sqlc could not type: an untyped nil
+// is NULL to every driver.
+func nullDigest(d *[32]byte) any {
+	if d == nil {
+		return nil
+	}
+	return d[:]
 }
 
 // nullFloat returns nil for 0, which audiometa uses for "unknown".
@@ -468,7 +488,7 @@ func insertTrack(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, albumID
 		RelPath:      tw.RelPath,
 		Size:         tw.Size,
 		Mtime:        ms(tw.MTime),
-		AudioDigest:  tw.Digest[:],
+		AudioDigest:  digestBytes(tw.Digest),
 		AlbumID:      albumID,
 		Format:       tw.Format,
 		Codec:        tw.Codec,
@@ -507,7 +527,7 @@ func updateTrack(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, albumID
 		RelPath:      tw.RelPath,
 		Size:         tw.Size,
 		Mtime:        ms(tw.MTime),
-		AudioDigest:  tw.Digest[:],
+		AudioDigest:  nullDigest(tw.Digest),
 		AlbumID:      albumID,
 		Format:       tw.Format,
 		Codec:        tw.Codec,

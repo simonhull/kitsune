@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/simonhull/audiometa"
 
@@ -37,13 +38,22 @@ type result struct {
 // an unreadable file belongs to a missing track, which must not be deleted. A
 // canceled ctx ends the read with an error wrapping ctx.Err() after the
 // results already handled are written.
+//
+// Files are not fingerprinted, which would read all their audio, unless a
+// missing track has a fingerprint: then a file with no track at its path is,
+// since it may be that track moved. The survey has marked the missing tracks,
+// so the store knows. The rest wait for the pass.
 func (s *Scanner) read(ctx context.Context, jobs []job, stats *Stats) (bool, error) {
 	if len(jobs) == 0 {
 		return false, nil
 	}
+	hashNew, err := s.st.AnyMissingWithDigest(ctx)
+	if err != nil {
+		return false, err //nolint:wrapcheck // The store's error already says what failed.
+	}
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
-	rd := &reader{covers: newCovers(s.artwork, s.log)}
+	rd := &reader{covers: newCovers(s.artwork, s.log), hashNew: hashNew}
 	w := &writer{s: s, stats: stats, covers: rd.covers, claimed: claimedBy(jobs)}
 	for r := range s.startWorkers(work, jobs, rd) {
 		if w.step(ctx, work, &r) {
@@ -51,6 +61,7 @@ func (s *Scanner) read(ctx context.Context, jobs []job, stats *Stats) (bool, err
 		}
 	}
 	stats.Covers = rd.covers.count()
+	stats.Hashed = int(rd.hashed.Load())
 	return w.hold, w.finish(ctx)
 }
 
@@ -108,10 +119,12 @@ func (s *Scanner) startWorkers(work context.Context, jobs []job, rd *reader) <-c
 
 // reader reads files for the workers of one scan.
 type reader struct {
-	covers *covers // Nil leaves album art out, so an album keeps the cover it has.
+	covers  *covers // Nil leaves album art out, so an album keeps the cover it has.
+	hashNew bool    // Fingerprint the files that have no track at their path.
+	hashed  atomic.Int64
 }
 
-// readJob opens, fingerprints and maps one file. It reports false when the
+// readJob opens and maps one file, fingerprinting it when the reader says. It reports false when the
 // context ended: a canceled read must never become a scan issue.
 func (rd *reader) readJob(ctx context.Context, j *job) (result, bool) {
 	tw, err := rd.readFile(ctx, j)
@@ -126,9 +139,11 @@ func (rd *reader) readJob(ctx context.Context, j *job) (result, bool) {
 }
 
 // readFile reads the file at j into a track write, with its album's cover when
-// this file is the one to find it. Its errors are stored verbatim as the scan
-// issue's message, so they are not wrapped. Art never fails a file: only a
-// canceled ctx is returned from the art search.
+// this file is the one to find it, and its fingerprint when it is new and the
+// reader hashes new files. A file at a known path never is: its write keeps the
+// stored fingerprint if the file is unchanged, and clears it if not. Its errors
+// are stored verbatim as the scan issue's message, so they are not wrapped. Art
+// never fails a file: only a canceled ctx is returned from the art search.
 func (rd *reader) readFile(ctx context.Context, j *job) (*store.TrackWrite, error) {
 	f, err := audiometa.OpenContext(ctx, filepath.Join(j.Root, j.RelPath), audiometa.WithMaxArtworkSize(maxArtworkBytes))
 	if err != nil {
@@ -136,11 +151,16 @@ func (rd *reader) readFile(ctx context.Context, j *job) (*store.TrackWrite, erro
 	}
 	// The file was only read: a close error after a good read changes nothing.
 	defer func() { _ = f.Close() }()
-	digest, err := f.AudioDigestContext(ctx)
-	if err != nil {
-		return nil, err //nolint:wrapcheck // The message is stored as the scan issue verbatim.
+	fi := FileInfo{Root: j.Root, RelPath: j.RelPath, Size: j.Size, MTime: j.MTime}
+	if rd.hashNew && j.TrackID == 0 {
+		digest, digestErr := f.AudioDigestContext(ctx)
+		if digestErr != nil {
+			return nil, digestErr //nolint:wrapcheck // The message is stored as the scan issue verbatim.
+		}
+		rd.hashed.Add(1)
+		fi.Digest = &digest
 	}
-	tw := NewTrackWrite(f, &FileInfo{Root: j.Root, RelPath: j.RelPath, Size: j.Size, MTime: j.MTime, Digest: digest})
+	tw := NewTrackWrite(f, &fi)
 	if rd.covers == nil {
 		return &tw, nil
 	}
@@ -302,9 +322,12 @@ func (w *writer) identify(ctx context.Context, tw *store.TrackWrite, j *job) err
 }
 
 // takeMissing returns the ID of the missing track tw is a move of, claiming
-// it, or 0 when there is none.
+// it, or 0 when there is none or tw has no fingerprint.
 func (w *writer) takeMissing(ctx context.Context, tw *store.TrackWrite) (int64, error) {
-	candidates, err := w.s.st.MissingByDigest(ctx, tw.Digest)
+	if tw.Digest == nil {
+		return 0, nil // Only a fingerprint can say a file moved.
+	}
+	candidates, err := w.s.st.MissingByDigest(ctx, *tw.Digest)
 	if err != nil {
 		return 0, err //nolint:wrapcheck // The store's error already says what failed.
 	}

@@ -74,10 +74,12 @@ The web client is at the root of `server.listen`. It only runs at the root of a 
 path in `server.base_url` the server gives the API alone and says so at startup.
 
 `serve` keeps the database in step with `library.roots`: a quick scan at startup and another
-daily at `library.quick_scan`. The first scan reads all the audio to fingerprint it, which on
-a large library takes a while. Tracks appear as it goes, and `GET /api/v1/readyz` answers 503 until
-it finishes, so point health checks that restart containers at `GET /api/v1/healthz`. A moved file
-keeps its track; a vanished one is deleted after `library.missing_grace`. A root that is
+daily at `library.quick_scan`. The first scan reads tags only, so even a large library shows up
+in minutes. Tracks appear as it goes, and `GET /api/v1/readyz` answers 503 until it finishes, so
+point health checks that restart containers at `GET /api/v1/healthz`. After it, a gentle background
+pass reads each file's audio once to fingerprint it, one file at a time; `GET /api/v1/library` shows
+how far it has got. A moved file keeps its track once it has a fingerprint; one moved before the
+pass reaches it becomes a new track. A vanished one is deleted after `library.missing_grace`. A root that is
 unreadable or suddenly empty is skipped, so an unmounted disk never deletes anything.
 
 ### In a container

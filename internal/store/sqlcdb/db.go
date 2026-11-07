@@ -30,6 +30,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.albumRowIDStmt, err = db.PrepareContext(ctx, albumRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query AlbumRowID: %w", err)
 	}
+	if q.anyMissingWithDigestStmt, err = db.PrepareContext(ctx, anyMissingWithDigest); err != nil {
+		return nil, fmt.Errorf("error preparing query AnyMissingWithDigest: %w", err)
+	}
 	if q.artistRowIDStmt, err = db.PrepareContext(ctx, artistRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query ArtistRowID: %w", err)
 	}
@@ -38,6 +41,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.countScanIssuesByKindStmt, err = db.PrepareContext(ctx, countScanIssuesByKind); err != nil {
 		return nil, fmt.Errorf("error preparing query CountScanIssuesByKind: %w", err)
+	}
+	if q.countUndigestedStmt, err = db.PrepareContext(ctx, countUndigested); err != nil {
+		return nil, fmt.Errorf("error preparing query CountUndigested: %w", err)
 	}
 	if q.countUserListeningStmt, err = db.PrepareContext(ctx, countUserListening); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUserListening: %w", err)
@@ -270,6 +276,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.sessionByTokenHashStmt, err = db.PrepareContext(ctx, sessionByTokenHash); err != nil {
 		return nil, fmt.Errorf("error preparing query SessionByTokenHash: %w", err)
 	}
+	if q.setDigestStmt, err = db.PrepareContext(ctx, setDigest); err != nil {
+		return nil, fmt.Errorf("error preparing query SetDigest: %w", err)
+	}
 	if q.setLastfmStateStmt, err = db.PrepareContext(ctx, setLastfmState); err != nil {
 		return nil, fmt.Errorf("error preparing query SetLastfmState: %w", err)
 	}
@@ -284,6 +293,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.trackStatesStmt, err = db.PrepareContext(ctx, trackStates); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackStates: %w", err)
+	}
+	if q.undigestedStmt, err = db.PrepareContext(ctx, undigested); err != nil {
+		return nil, fmt.Errorf("error preparing query Undigested: %w", err)
 	}
 	if q.updateLastfmSwitchesStmt, err = db.PrepareContext(ctx, updateLastfmSwitches); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateLastfmSwitches: %w", err)
@@ -327,6 +339,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing albumRowIDStmt: %w", cerr)
 		}
 	}
+	if q.anyMissingWithDigestStmt != nil {
+		if cerr := q.anyMissingWithDigestStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing anyMissingWithDigestStmt: %w", cerr)
+		}
+	}
 	if q.artistRowIDStmt != nil {
 		if cerr := q.artistRowIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing artistRowIDStmt: %w", cerr)
@@ -340,6 +357,11 @@ func (q *Queries) Close() error {
 	if q.countScanIssuesByKindStmt != nil {
 		if cerr := q.countScanIssuesByKindStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countScanIssuesByKindStmt: %w", cerr)
+		}
+	}
+	if q.countUndigestedStmt != nil {
+		if cerr := q.countUndigestedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countUndigestedStmt: %w", cerr)
 		}
 	}
 	if q.countUserListeningStmt != nil {
@@ -727,6 +749,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing sessionByTokenHashStmt: %w", cerr)
 		}
 	}
+	if q.setDigestStmt != nil {
+		if cerr := q.setDigestStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setDigestStmt: %w", cerr)
+		}
+	}
 	if q.setLastfmStateStmt != nil {
 		if cerr := q.setLastfmStateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setLastfmStateStmt: %w", cerr)
@@ -750,6 +777,11 @@ func (q *Queries) Close() error {
 	if q.trackStatesStmt != nil {
 		if cerr := q.trackStatesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing trackStatesStmt: %w", cerr)
+		}
+	}
+	if q.undigestedStmt != nil {
+		if cerr := q.undigestedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing undigestedStmt: %w", cerr)
 		}
 	}
 	if q.updateLastfmSwitchesStmt != nil {
@@ -838,9 +870,11 @@ type Queries struct {
 	tx                         *sql.Tx
 	albumHeartedStmt           *sql.Stmt
 	albumRowIDStmt             *sql.Stmt
+	anyMissingWithDigestStmt   *sql.Stmt
 	artistRowIDStmt            *sql.Stmt
 	countLiveAlbumsStmt        *sql.Stmt
 	countScanIssuesByKindStmt  *sql.Stmt
+	countUndigestedStmt        *sql.Stmt
 	countUserListeningStmt     *sql.Stmt
 	countUsersStmt             *sql.Stmt
 	countWarnedTracksStmt      *sql.Stmt
@@ -918,11 +952,13 @@ type Queries struct {
 	recentPlaysStmt            *sql.Stmt
 	resetLastfmOutboxStmt      *sql.Stmt
 	sessionByTokenHashStmt     *sql.Stmt
+	setDigestStmt              *sql.Stmt
 	setLastfmStateStmt         *sql.Stmt
 	setPasswordHashStmt        *sql.Stmt
 	touchSessionStmt           *sql.Stmt
 	trackRowIDStmt             *sql.Stmt
 	trackStatesStmt            *sql.Stmt
+	undigestedStmt             *sql.Stmt
 	updateLastfmSwitchesStmt   *sql.Stmt
 	updateTrackStmt            *sql.Stmt
 	upsertAlbumStmt            *sql.Stmt
@@ -940,9 +976,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		tx:                         tx,
 		albumHeartedStmt:           q.albumHeartedStmt,
 		albumRowIDStmt:             q.albumRowIDStmt,
+		anyMissingWithDigestStmt:   q.anyMissingWithDigestStmt,
 		artistRowIDStmt:            q.artistRowIDStmt,
 		countLiveAlbumsStmt:        q.countLiveAlbumsStmt,
 		countScanIssuesByKindStmt:  q.countScanIssuesByKindStmt,
+		countUndigestedStmt:        q.countUndigestedStmt,
 		countUserListeningStmt:     q.countUserListeningStmt,
 		countUsersStmt:             q.countUsersStmt,
 		countWarnedTracksStmt:      q.countWarnedTracksStmt,
@@ -1020,11 +1058,13 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		recentPlaysStmt:            q.recentPlaysStmt,
 		resetLastfmOutboxStmt:      q.resetLastfmOutboxStmt,
 		sessionByTokenHashStmt:     q.sessionByTokenHashStmt,
+		setDigestStmt:              q.setDigestStmt,
 		setLastfmStateStmt:         q.setLastfmStateStmt,
 		setPasswordHashStmt:        q.setPasswordHashStmt,
 		touchSessionStmt:           q.touchSessionStmt,
 		trackRowIDStmt:             q.trackRowIDStmt,
 		trackStatesStmt:            q.trackStatesStmt,
+		undigestedStmt:             q.undigestedStmt,
 		updateLastfmSwitchesStmt:   q.updateLastfmSwitchesStmt,
 		updateTrackStmt:            q.updateTrackStmt,
 		upsertAlbumStmt:            q.upsertAlbumStmt,

@@ -837,7 +837,8 @@ paths:
       description: >-
         Counts live tracks and albums that have a live track. `scan` says where
         scanning stands, so a client can poll this while a scan runs; the
-        counts themselves move little until it ends.
+        counts themselves move little until it ends. `fingerprints` says
+        where the background fingerprint pass stands.
       responses:
         "200":
           description: The library's counts.
@@ -1701,7 +1702,7 @@ components:
     LibraryFacts:
       type: object
       additionalProperties: false
-      required: [albums, tracks, durationMs, roots, issues, issueCounts, scan]
+      required: [albums, tracks, durationMs, roots, issues, issueCounts, scan, fingerprints]
       properties:
         albums: { type: integer, format: int64 }
         tracks: { type: integer, format: int64 }
@@ -1710,6 +1711,18 @@ components:
         issues: { type: integer, format: int64, description: Files the scanner could not read. }
         issueCounts: { $ref: "#/components/schemas/IssueCounts" }
         scan: { $ref: "#/components/schemas/ScanStatus" }
+        fingerprints: { $ref: "#/components/schemas/FingerprintStatus" }
+    FingerprintStatus:
+      type: object
+      additionalProperties: false
+      description: >-
+        The background pass that fingerprints new and changed files after a scan,
+        so a moved file keeps its track. Both are 0 while no pass runs. A file
+        that moves before its fingerprint is made becomes a new track.
+      required: [done, total]
+      properties:
+        done: { type: integer, description: Files the pass has read. }
+        total: { type: integer, description: Files waiting for a fingerprint when the pass began. }
     IssueCounts:
       type: object
       additionalProperties: false

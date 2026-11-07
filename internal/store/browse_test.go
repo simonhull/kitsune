@@ -61,7 +61,7 @@ func albumTrack(n, t int, sortName string) store.TrackWrite {
 		SortName: sortName,
 		Artist:   fmt.Sprintf("Artist %d", n),
 	}
-	w.Digest = sha256.Sum256(fmt.Appendf(nil, "%d/%d", n, t))
+	w.Digest = new(sha256.Sum256(fmt.Appendf(nil, "%d/%d", n, t)))
 	return w
 }
 

@@ -68,7 +68,7 @@ func newWrite(i int) TrackWrite {
 		RelPath:   fmt.Sprintf("a/%d.flac", i),
 		Size:      1000 + int64(i),
 		MTime:     time.UnixMilli(1_761_000_000_000 + int64(i)).UTC().Add(456789 * time.Nanosecond),
-		Digest:    sha256.Sum256([]byte(strconv.Itoa(i))),
+		Digest:    new(sha256.Sum256([]byte(strconv.Itoa(i)))),
 		Format:    "flac",
 		Codec:     "flac",
 		Duration:  200*time.Second + 123*time.Millisecond,

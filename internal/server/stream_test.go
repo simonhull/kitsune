@@ -63,7 +63,7 @@ func (ss *streamServer) record(t *testing.T, id, rel, format string) {
 	t.Helper()
 	tw := store.TrackWrite{
 		ULID: id, Root: ss.root, RelPath: rel,
-		Digest: sha256.Sum256([]byte(id)),
+		Digest: new(sha256.Sum256([]byte(id))),
 		Format: format, Codec: format,
 		Duration: time.Minute, Title: rel,
 		Artists: []store.ArtistWrite{{ULID: annID, MatchKey: "ann", Name: annName, SortName: annName}},

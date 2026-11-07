@@ -164,11 +164,17 @@ func (s *Server) getLibrary(w http.ResponseWriter, r *http.Request) {
 	body := api.LibraryFacts{
 		Albums: f.Albums, Tracks: f.Tracks, DurationMs: f.Duration.Milliseconds(),
 		Roots: s.roots, Issues: f.Issues, Scan: toAPIScan(s.scanner.Progress(), isAdmin(r.Context())),
+		Fingerprints: toAPIFingerprints(s.scanner.Fingerprints()),
 		IssueCounts: api.IssueCounts{
 			Unreadable: f.Unreadable, Corrupted: f.Corrupted, Unsupported: f.Unsupported, Warnings: f.WarnedTracks,
 		},
 	}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+}
+
+// toAPIFingerprints is the fingerprint pass's progress on the wire.
+func toAPIFingerprints(p library.FingerprintProgress) api.FingerprintStatus {
+	return api.FingerprintStatus{Done: p.Done, Total: p.Total}
 }
 
 // getLibraryIndex lists every song, by artist and album. A client that goes away

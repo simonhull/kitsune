@@ -112,6 +112,9 @@ func TestWebMisses(t *testing.T) {
 		{"the API's parent", http.MethodGet, "/api"},
 		{"an escaped API path", http.MethodGet, "/api%2Fv2/albums"},
 		{"a write", http.MethodPost, "/library"},
+		{"readiness at the root", http.MethodGet, readyPath},
+		{"health at the root", http.MethodGet, healthPath},
+		{"a HEAD of readiness at the root", http.MethodHead, readyPath},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -133,9 +136,10 @@ func TestWebMisses(t *testing.T) {
 func TestWebLeavesTheAPIAlone(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t, testServerOptions{Web: webFiles()})
-	resp := ts.send(t, call{method: http.MethodGet, path: healthPath})
-	if resp.Status != http.StatusNoContent {
-		t.Errorf("status = %d, want 204", resp.Status)
+	for _, path := range []string{healthPath, readyPath} {
+		if resp := ts.send(t, call{method: http.MethodGet, path: path}); resp.Status != http.StatusNoContent {
+			t.Errorf("%s: status = %d, want 204", path, resp.Status)
+		}
 	}
 }
 
