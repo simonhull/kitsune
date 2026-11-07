@@ -63,6 +63,40 @@ func (s *Store) CreateUser(ctx context.Context, u NewUser) (User, error) {
 	}, nil
 }
 
+// CreateFirstUser adds u only while there are no users, in one statement, so
+// of two concurrent calls on an empty store exactly one succeeds. It returns
+// an error wrapping [ErrNotFirst] once any user exists.
+func (s *Store) CreateFirstUser(ctx context.Context, u NewUser) (User, error) {
+	createdAt := s.now().UnixMilli()
+	res, err := s.wq.CreateFirstUser(ctx, sqlcdb.CreateFirstUserParams{
+		Name:         u.Name,
+		PasswordHash: u.PasswordHash,
+		Role:         string(u.Role),
+		CreatedAt:    createdAt,
+	})
+	if err != nil {
+		return User{}, fmt.Errorf("create first user: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return User{}, fmt.Errorf("create first user: %w", err)
+	}
+	if n == 0 {
+		return User{}, ErrNotFirst
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return User{}, fmt.Errorf("create first user: %w", err)
+	}
+	return User{
+		ID:           id,
+		Name:         u.Name,
+		PasswordHash: u.PasswordHash,
+		Role:         u.Role,
+		CreatedAt:    time.UnixMilli(createdAt).UTC(),
+	}, nil
+}
+
 // UserByName returns the user with name, ignoring ASCII case, or an error
 // wrapping [ErrNotFound].
 func (s *Store) UserByName(ctx context.Context, name string) (User, error) {
@@ -82,7 +116,7 @@ func (s *Store) UserByName(ctx context.Context, name string) (User, error) {
 	}, nil
 }
 
-// CountUsers returns the number of users. serve refuses to start at zero.
+// CountUsers returns the number of users. At zero, serve opens first-run setup.
 func (s *Store) CountUsers(ctx context.Context) (int, error) {
 	n, err := s.rq.CountUsers(ctx)
 	if err != nil {

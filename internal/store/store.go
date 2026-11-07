@@ -27,6 +27,8 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrNameTaken means a user with that name exists, ignoring ASCII case.
 	ErrNameTaken = errors.New("name already taken")
+	// ErrNotFirst means a first user was asked for, but a user exists.
+	ErrNotFirst = errors.New("a user already exists")
 	// ErrStaleSchema means the database came from a development build older than
 	// migrations, with a schema they don't start from.
 	ErrStaleSchema = errors.New("database predates migrations and doesn't match their baseline, so it can't be upgraded; run the build that made it, or move the file aside to start over")

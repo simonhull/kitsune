@@ -114,3 +114,68 @@ func TestConcurrentCreates(t *testing.T) {
 		t.Errorf("CountUsers = %d, want %d", got, n)
 	}
 }
+
+func TestCreateFirstUser(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	got, err := s.CreateFirstUser(t.Context(), store.NewUser{Name: simon, PasswordHash: "h", Role: store.RoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := s.UserByName(t.Context(), simon)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := store.User{ID: stored.ID, Name: simon, PasswordHash: "h", Role: store.RoleAdmin, CreatedAt: fixedNow()}
+	if got != want || stored != want {
+		t.Errorf("CreateFirstUser = %+v and stored %+v, want %+v", got, stored, want)
+	}
+	_, err = s.CreateFirstUser(t.Context(), store.NewUser{Name: "other", PasswordHash: "h", Role: store.RoleAdmin})
+	if !errors.Is(err, store.ErrNotFirst) {
+		t.Errorf("second CreateFirstUser = %v, want ErrNotFirst", err)
+	}
+}
+
+func TestCreateFirstUserAfterCreateUser(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	if _, err := s.CreateUser(t.Context(), store.NewUser{Name: simon, PasswordHash: "h", Role: store.RoleUser}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.CreateFirstUser(t.Context(), store.NewUser{Name: "other", PasswordHash: "h", Role: store.RoleAdmin})
+	if !errors.Is(err, store.ErrNotFirst) {
+		t.Errorf("CreateFirstUser = %v, want ErrNotFirst", err)
+	}
+}
+
+func TestConcurrentFirstUsers(t *testing.T) {
+	t.Parallel()
+	const n = 20
+	s := openUsers(t)
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := range n {
+		wg.Go(func() {
+			_, err := s.CreateFirstUser(t.Context(), store.NewUser{Name: fmt.Sprintf("user%02d", i), PasswordHash: "h", Role: store.RoleAdmin})
+			errs <- err
+		})
+	}
+	wg.Wait()
+	close(errs)
+	made := 0
+	for err := range errs {
+		switch {
+		case err == nil:
+			made++
+		case !errors.Is(err, store.ErrNotFirst):
+			t.Error(err)
+		}
+	}
+	got, err := s.CountUsers(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if made != 1 || got != 1 {
+		t.Errorf("%d calls succeeded and CountUsers = %d, want 1 and 1", made, got)
+	}
+}

@@ -23,6 +23,8 @@ var (
 	ErrPasswordTooShort = errors.New("password too short: use at least 8 characters")
 	// ErrPasswordTooLong means the password is longer than 1024 bytes.
 	ErrPasswordTooLong = errors.New("password too long: use at most 1024 bytes")
+	// ErrSetupDone means a first administrator was asked for, but an account exists.
+	ErrSetupDone = errors.New("already set up: an account exists")
 
 	// errNegativeHashes is the tail of the error for a negative Options.MaxConcurrentHashes.
 	errNegativeHashes = errors.New("want 0 or more")
@@ -99,19 +101,34 @@ func New(st *store.Store, opts Options) (*Service, error) {
 // [ErrPasswordTooLong] or [store.ErrNameTaken], or the context's error if it
 // ends while waiting to hash. The returned user carries no password hash.
 func (s *Service) CreateUser(ctx context.Context, name, password string, role store.Role) (store.User, error) {
-	if err := ValidateName(name); err != nil {
-		return store.User{}, err
-	}
-	if err := ValidatePassword(password); err != nil {
-		return store.User{}, err
-	}
-	var hash string
-	if err := s.withSlot(ctx, func() { hash = hashPassword(s.params, password) }); err != nil {
+	hash, err := s.newUserHash(ctx, name, password)
+	if err != nil {
 		return store.User{}, err
 	}
 	u, err := s.store.CreateUser(ctx, store.NewUser{Name: name, PasswordHash: hash, Role: role})
 	if err != nil {
 		return store.User{}, fmt.Errorf("auth: create user: %w", err)
+	}
+	u.PasswordHash = ""
+	return u, nil
+}
+
+// CreateFirstAdmin validates and hashes as [Service.CreateUser] does, then
+// stores an administrator only if there are no users yet, in one write, so
+// two racing calls can't both make one. It returns an error wrapping
+// [ErrSetupDone] once any user exists, as well as CreateUser's validation
+// errors. The returned user carries no password hash.
+func (s *Service) CreateFirstAdmin(ctx context.Context, name, password string) (store.User, error) {
+	hash, err := s.newUserHash(ctx, name, password)
+	if err != nil {
+		return store.User{}, err
+	}
+	u, err := s.store.CreateFirstUser(ctx, store.NewUser{Name: name, PasswordHash: hash, Role: store.RoleAdmin})
+	if errors.Is(err, store.ErrNotFirst) {
+		return store.User{}, ErrSetupDone
+	}
+	if err != nil {
+		return store.User{}, fmt.Errorf("auth: create first admin: %w", err)
 	}
 	u.PasswordHash = ""
 	return u, nil
@@ -194,6 +211,22 @@ func (s *Service) PurgeExpiredSessions(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("auth: purge sessions: %w", err)
 	}
 	return n, nil
+}
+
+// newUserHash validates a new user's name and password and returns the
+// password's hash.
+func (s *Service) newUserHash(ctx context.Context, name, password string) (string, error) {
+	if err := ValidateName(name); err != nil {
+		return "", err
+	}
+	if err := ValidatePassword(password); err != nil {
+		return "", err
+	}
+	var hash string
+	if err := s.withSlot(ctx, func() { hash = hashPassword(s.params, password) }); err != nil {
+		return "", err
+	}
+	return hash, nil
 }
 
 // checkCredentials looks the user up and verifies the password, spending the

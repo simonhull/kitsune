@@ -7,6 +7,7 @@ package sqlcdb
 
 import (
 	"context"
+	"database/sql"
 )
 
 const countUsers = `-- name: CountUsers :one
@@ -18,6 +19,28 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const createFirstUser = `-- name: CreateFirstUser :execresult
+INSERT INTO users (name, password_hash, role, created_at)
+SELECT ?1, ?2, ?3, ?4
+WHERE NOT EXISTS (SELECT 1 FROM users)
+`
+
+type CreateFirstUserParams struct {
+	Name         string
+	PasswordHash string
+	Role         string
+	CreatedAt    int64
+}
+
+func (q *Queries) CreateFirstUser(ctx context.Context, arg CreateFirstUserParams) (sql.Result, error) {
+	return q.exec(ctx, q.createFirstUserStmt, createFirstUser,
+		arg.Name,
+		arg.PasswordHash,
+		arg.Role,
+		arg.CreatedAt,
+	)
 }
 
 const createUser = `-- name: CreateUser :one

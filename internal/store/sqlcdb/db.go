@@ -48,6 +48,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countWarnedTracksStmt, err = db.PrepareContext(ctx, countWarnedTracks); err != nil {
 		return nil, fmt.Errorf("error preparing query CountWarnedTracks: %w", err)
 	}
+	if q.createFirstUserStmt, err = db.PrepareContext(ctx, createFirstUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateFirstUser: %w", err)
+	}
 	if q.createSessionStmt, err = db.PrepareContext(ctx, createSession); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateSession: %w", err)
 	}
@@ -352,6 +355,11 @@ func (q *Queries) Close() error {
 	if q.countWarnedTracksStmt != nil {
 		if cerr := q.countWarnedTracksStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countWarnedTracksStmt: %w", cerr)
+		}
+	}
+	if q.createFirstUserStmt != nil {
+		if cerr := q.createFirstUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createFirstUserStmt: %w", cerr)
 		}
 	}
 	if q.createSessionStmt != nil {
@@ -836,6 +844,7 @@ type Queries struct {
 	countUserListeningStmt     *sql.Stmt
 	countUsersStmt             *sql.Stmt
 	countWarnedTracksStmt      *sql.Stmt
+	createFirstUserStmt        *sql.Stmt
 	createSessionStmt          *sql.Stmt
 	createUserStmt             *sql.Stmt
 	deferLastfmStmt            *sql.Stmt
@@ -937,6 +946,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countUserListeningStmt:     q.countUserListeningStmt,
 		countUsersStmt:             q.countUsersStmt,
 		countWarnedTracksStmt:      q.countWarnedTracksStmt,
+		createFirstUserStmt:        q.createFirstUserStmt,
 		createSessionStmt:          q.createSessionStmt,
 		createUserStmt:             q.createUserStmt,
 		deferLastfmStmt:            q.deferLastfmStmt,
