@@ -9,7 +9,7 @@ import (
 	"context"
 )
 
-const insertPlay = `-- name: InsertPlay :exec
+const insertPlay = `-- name: InsertPlay :execrows
 INSERT INTO plays (user_id, track_id, played_at, source, client_id)
 VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (user_id, client_id) DO NOTHING
@@ -23,15 +23,18 @@ type InsertPlayParams struct {
 	ClientID string
 }
 
-func (q *Queries) InsertPlay(ctx context.Context, arg InsertPlayParams) error {
-	_, err := q.exec(ctx, q.insertPlayStmt, insertPlay,
+func (q *Queries) InsertPlay(ctx context.Context, arg InsertPlayParams) (int64, error) {
+	result, err := q.exec(ctx, q.insertPlayStmt, insertPlay,
 		arg.UserID,
 		arg.TrackID,
 		arg.PlayedAt,
 		arg.Source,
 		arg.ClientID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const recentPlays = `-- name: RecentPlays :many

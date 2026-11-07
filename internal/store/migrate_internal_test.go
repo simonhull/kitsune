@@ -174,6 +174,26 @@ func seedLibrary(t *testing.T, db *sql.DB) {
 	if hasTable(t, db, "artist_hearts") {
 		exec("INSERT INTO artist_hearts (user_id, artist_id, hearted_at) VALUES (1, 1, 1)")
 	}
+	seedLastfm(t, db)
+}
+
+// seedLastfm writes a Last.fm account for seedLibrary's user, with a scrobble and
+// a love waiting, once the database has the tables.
+func seedLastfm(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if !hasTable(t, db, "lastfm_accounts") {
+		return
+	}
+	for _, query := range []string{
+		`INSERT INTO lastfm_accounts (user_id, name, session_key, scrobble, now_playing, loves, state, connected_at, last_sent_at)
+			VALUES (1, 'simonhull', 'sk', 1, 1, 0, 'reconnect', 1, 2)`,
+		"INSERT INTO lastfm_outbox (id, user_id, kind, track_id, at, attempts, next_at) VALUES (1, 1, 'scrobble', 1, 1, 2, 3)",
+		"INSERT INTO lastfm_outbox (id, user_id, kind, track_id, at, attempts, next_at) VALUES (2, 1, 'love', 2, 2, 0, 3)",
+	} {
+		if _, err := db.ExecContext(t.Context(), query); err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+	}
 }
 
 // hasTable reports whether the database has reached the version with table.
@@ -189,6 +209,13 @@ var markFacts = []struct{ table, query string }{ //nolint:gochecknoglobals // Re
 	{"album_hearts", "SELECT 'heart', a.ulid, u.name, h.hearted_at FROM album_hearts h JOIN albums a ON a.id = h.album_id JOIN users u ON u.id = h.user_id ORDER BY 2"},
 	{"artist_hearts", "SELECT 'heart', a.ulid, u.name, h.hearted_at FROM artist_hearts h JOIN artists a ON a.id = h.artist_id JOIN users u ON u.id = h.user_id ORDER BY 2"},
 	{"track_ratings", "SELECT 'stars', t.ulid, u.name, r.stars, r.rated_at FROM track_ratings r JOIN tracks t ON t.id = r.track_id JOIN users u ON u.id = r.user_id ORDER BY 2"},
+}
+
+// lastfmFacts lists, in public IDs, every Last.fm account and outbox item, as
+// markFacts does marks.
+var lastfmFacts = []struct{ table, query string }{ //nolint:gochecknoglobals // Read-only fixture shared by the tests below.
+	{"lastfm_accounts", "SELECT 'lastfm', u.name, a.name, a.session_key, a.scrobble, a.now_playing, a.loves, a.state, a.connected_at, a.last_sent_at FROM lastfm_accounts a JOIN users u ON u.id = a.user_id ORDER BY 2"},
+	{"lastfm_outbox", "SELECT 'outbox', o.id, u.name, o.kind, t.ulid, o.at, o.attempts, o.next_at FROM lastfm_outbox o JOIN tracks t ON t.id = o.track_id JOIN users u ON u.id = o.user_id ORDER BY 2"},
 }
 
 // rawRows returns a query's rows, each row as one line.
@@ -253,7 +280,7 @@ func libraryFacts(t *testing.T, db *sql.DB) []string {
 		facts = append(facts, rawRows(t, db, `SELECT t.ulid, u.name, p.played_at, p.source, p.client_id
 			FROM plays p JOIN tracks t ON t.id = p.track_id JOIN users u ON u.id = p.user_id ORDER BY 1`)...)
 	}
-	for _, m := range markFacts {
+	for _, m := range slices.Concat(markFacts, lastfmFacts) {
 		if hasTable(t, db, m.table) {
 			facts = append(facts, rawRows(t, db, m.query)...)
 		}

@@ -1,7 +1,7 @@
 -- name: TrackRowID :one
 SELECT id FROM tracks WHERE ulid = ?;
 
--- name: InsertPlay :exec
+-- name: InsertPlay :execrows
 INSERT INTO plays (user_id, track_id, played_at, source, client_id)
 VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (user_id, client_id) DO NOTHING;

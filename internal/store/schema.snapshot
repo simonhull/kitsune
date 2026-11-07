@@ -110,6 +110,61 @@ CREATE TABLE artwork (
 --   column cid=4 name=ground type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=5 name=source type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 
+-- table lastfm_accounts
+CREATE TABLE lastfm_accounts (
+	user_id      INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+	name         TEXT    NOT NULL, -- the Last.fm user name
+	session_key  TEXT    NOT NULL, -- as Last.fm gave it: as sensitive as a password, it never leaves the server
+	scrobble     INTEGER NOT NULL CHECK (scrobble IN (0, 1)),
+	now_playing  INTEGER NOT NULL CHECK (now_playing IN (0, 1)),
+	loves        INTEGER NOT NULL CHECK (loves IN (0, 1)),
+	state        TEXT    NOT NULL CHECK (state IN ('ok', 'reconnect')),
+	connected_at INTEGER NOT NULL,
+	last_sent_at INTEGER -- the latest send Last.fm took; NULL before the first
+) STRICT;
+--   column cid=0 name=user_id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=name type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=session_key type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=scrobble type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=now_playing type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=loves type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=state type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=connected_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=8 name=last_sent_at type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- table lastfm_outbox
+CREATE TABLE lastfm_outbox (
+	id       INTEGER PRIMARY KEY, -- the order things happened in, and are sent in
+	user_id  INTEGER NOT NULL REFERENCES lastfm_accounts (user_id) ON DELETE CASCADE,
+	kind     TEXT    NOT NULL CHECK (kind IN ('scrobble', 'love', 'unlove')),
+	track_id INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+	at       INTEGER NOT NULL, -- when the play started, or when the heart changed
+	attempts INTEGER NOT NULL, -- sends that failed for a reason that passes
+	next_at  INTEGER NOT NULL  -- not sent before; never less than an earlier row's of the same user
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=kind type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=attempts type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=next_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+--   foreign key id=1 seq=0 table=lastfm_accounts from=user_id to=user_id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index lastfm_outbox_due
+CREATE INDEX lastfm_outbox_due ON lastfm_outbox (user_id, next_at, id);
+--   key seqno=0 cid=1 name=user_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=6 name=next_at desc=0 coll=BINARY key=1
+--   key seqno=2 cid=0 name=id desc=0 coll=BINARY key=1
+--   key seqno=3 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index lastfm_outbox_track
+CREATE INDEX lastfm_outbox_track ON lastfm_outbox (track_id);
+--   key seqno=0 cid=3 name=track_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
 -- table plays
 CREATE TABLE plays (
 	user_id   INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
