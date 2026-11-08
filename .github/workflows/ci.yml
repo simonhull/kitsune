@@ -112,8 +112,6 @@ jobs:
     name: Perf
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      KITSUNE_PERF_DIR: ${{ runner.temp }}/kitsune-perf
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -127,6 +125,7 @@ jobs:
         bun-version: ${{ env.BUN_VERSION }}
     - name: Tools
       run: |
+        echo "KITSUNE_PERF_DIR=$RUNNER_TEMP/kitsune-perf" >> "$GITHUB_ENV"
         command -v ffmpeg || { sudo apt-get update && sudo apt-get install -y ffmpeg; }
         cd web && bun install --frozen-lockfile && bunx playwright install --with-deps chromium
     - name: Server
@@ -134,7 +133,9 @@ jobs:
         printf '### Server, ms\n\n| Interaction | median | p95 | Budget (p95) |\n|---|--:|--:|--:|\n' >> "$GITHUB_STEP_SUMMARY"
         go test -count=1 -run 'Speed$' -v ./internal/server
     - name: Build
+      if: ${{ !cancelled() }}
       run: sh scripts/build.sh "$KITSUNE_PERF_DIR/kitsune-server"
     - name: Browser
+      if: ${{ !cancelled() }}
       working-directory: web
       run: bunx playwright test -c perf/playwright.config.ts
