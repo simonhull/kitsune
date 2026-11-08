@@ -102,7 +102,7 @@
 	}
 
 	.changed {
-		box-shadow: inset 0 0 0 1px var(--fox-text);
+		box-shadow: inset 0 0 0 1px var(--fox-line);
 	}
 
 	.invalid {

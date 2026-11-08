@@ -311,7 +311,7 @@
 	}
 
 	.lyrics textarea.changed {
-		border-color: var(--fox-text);
+		border-color: var(--fox-line);
 	}
 
 	.lyrics .note {
@@ -342,7 +342,7 @@
 	}
 
 	.others li.changed {
-		border-bottom-color: var(--fox-text);
+		border-bottom-color: var(--fox-line);
 	}
 
 	.others li:focus-within {

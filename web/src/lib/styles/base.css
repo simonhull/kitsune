@@ -46,7 +46,7 @@ button {
 }
 
 :focus-visible {
-	outline: 2px solid var(--fox-text);
+	outline: 2px solid var(--fox-line);
 	outline-offset: 2px;
 }
 
@@ -71,4 +71,11 @@ button {
 /* A shared element under its flier: unseen, but already the real thing, so it takes the click. */
 [data-morph-hidden] {
 	opacity: 0 !important;
+}
+
+/* A change of theme: a picture of the page crossfades into the next (lib/theme). Never on load. */
+:root.theme-fading::view-transition-old(root),
+:root.theme-fading::view-transition-new(root) {
+	animation-duration: 200ms;
+	animation-timing-function: var(--curve-morph);
 }

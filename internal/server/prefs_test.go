@@ -12,6 +12,7 @@ import (
 const (
 	columnsPath = "/me/prefs/library.columns"
 	columnsBody = `{"order":["genre","artist","plays"],"artistWhenDifferent":false}`
+	themePath   = "/me/prefs/ui.theme"
 )
 
 // putPrefCall sets a preference as the holder of token.
@@ -49,11 +50,42 @@ func TestPrefsKeepTheCallersValue(t *testing.T) {
 	}
 }
 
+func TestPrefsKeepTheTheme(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	sess := ts.sessionFor(t)
+	ts.pref(t, sess.token, themePath).problem(t, http.StatusNotFound)
+	for _, theme := range []string{`"light"`, `"dark"`, `"system"`} {
+		wantNoContent(t, ts.send(t, putPrefCall(sess.token, themePath, theme)))
+		if got := ts.pref(t, sess.token, themePath); got.Status != http.StatusOK || string(got.Body) != theme {
+			t.Errorf("GET after PUT %s = %d %s", theme, got.Status, got.Body)
+		}
+	}
+	// Each key keeps its own value.
+	wantNoContent(t, ts.send(t, putPrefCall(sess.token, columnsPath, columnsBody)))
+	if got := ts.pref(t, sess.token, themePath); string(got.Body) != `"system"` {
+		t.Errorf("theme after a columns write = %s", got.Body)
+	}
+	for name, body := range map[string]string{
+		"unknown":    `"sepia"`,
+		"case":       `"Dark"`,
+		"columns":    columnsBody,
+		"not a name": `true`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := putPrefCall(sess.token, themePath, body)
+			c.invalid = name != "columns" // A columns value is valid by the contract, and not for this key.
+			ts.send(t, c).problem(t, http.StatusBadRequest)
+		})
+	}
+}
+
 func TestPrefsRefuseUnknownKeys(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
 	sess := ts.sessionFor(t)
-	for _, key := range []string{"server.roots", "library.Columns", "ui.theme"} {
+	for _, key := range []string{"server.roots", "library.Columns", "ui.Theme"} {
 		ts.pref(t, sess.token, "/me/prefs/"+key).problem(t, http.StatusNotFound)
 		ts.send(t, putPrefCall(sess.token, "/me/prefs/"+key, columnsBody)).problem(t, http.StatusNotFound)
 	}

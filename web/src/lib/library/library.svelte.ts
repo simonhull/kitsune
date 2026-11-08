@@ -1,6 +1,7 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { preload } from '#lib/cover/rungs.ts';
 import { decodesAhead, mostQueued, openingFor, throwGap } from '#lib/pages/deck.ts';
+import { theme } from '#lib/theme/theme.svelte.ts';
 import { createApiSource } from './api.ts';
 import { cueOf, retagged, type NowPlaying } from './cue.ts';
 import {
@@ -417,6 +418,17 @@ export class Library {
 		this.#session = Promise.resolve('signed-in');
 	}
 
+	/**
+	 * Takes the theme the person chose, wherever they chose it: the server's value wins over this
+	 * browser's. With none kept, or none to be had, the page stays as it is.
+	 */
+	async #adoptTheme(epoch: number): Promise<void> {
+		const chosen = await this.prefs.get('ui.theme');
+		if (chosen !== null && epoch === this.#epoch) {
+			theme.choose(chosen);
+		}
+	}
+
 	/** Loads everything the shell shows. Failures surface through {@link Library.down}. */
 	loadShell(): Promise<void> {
 		this.#shell ??= this.#loadShell().finally(() => {
@@ -432,6 +444,7 @@ export class Library {
 			this.user ??= await this.#source.me();
 			this.flushPlays();
 			void this.refreshLastfm();
+			void this.#adoptTheme(epoch);
 			const [facts, recent, first, ready] = await Promise.all([
 				this.#source.facts(),
 				this.#source.albumsPage('added', undefined, recentCount),
@@ -1087,6 +1100,7 @@ export class Library {
 		this.index = { kind: 'loading' };
 		this.indexFields = '';
 		this.prefs.reset();
+		theme.forget();
 		this.#indexedAfter = undefined;
 		this.#indexEdited = false;
 		this.#artists.clear();

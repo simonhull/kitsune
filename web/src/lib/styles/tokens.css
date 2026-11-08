@@ -1,12 +1,13 @@
 /*
  * Direction B "Immersive", copied from the B-System board. A theme is one set of values for the
  * color tokens below; every component reads tokens, never raw colors (`rawColors.test.ts`).
- * `data-theme` is set before the first paint, by `app.html`, and then by `lib/theme`.
+ * `data-theme` is set on the root before the first paint, by `app.html`, and then by `lib/theme`. An
+ * element may set it too, to show a theme inside another, as the You page's previews do.
  */
 
 /* Dark: the first look, and what a page without data-theme gets. */
 :root,
-:root[data-theme='dark'] {
+[data-theme='dark'] {
 	color-scheme: dark;
 
 	/* Frame: amber for navigation, playback, focus and system state. */
@@ -28,6 +29,8 @@
 
 	/* The fox as words, icons, carets and rings: it has to read on the ground. Fills stay --fox. */
 	--fox-text: #f28c28;
+	/* The fox as a line: focus rings, a chosen tile's ring, an underline being typed on. */
+	--fox-line: #f28c28;
 
 	/* Marks: stars and hearts that are on, and the empty ones in a list and on art. */
 	--star: #f28c28;
@@ -73,7 +76,7 @@
  * The fox stays the fill; as words it turns rust (--fox-text), since the orange is 2.2:1 on paper.
  * Shadows are warm and short, and edges are ink at low alpha.
  */
-:root[data-theme='light'] {
+[data-theme='light'] {
 	color-scheme: light;
 
 	--fox: #f28c28;
@@ -91,6 +94,7 @@
 	--text-label: #6f665d;
 
 	--fox-text: #a64b00;
+	--fox-line: #c8640a;
 
 	--star: #c8640a;
 	--star-off: rgb(22 18 14 / 16%);

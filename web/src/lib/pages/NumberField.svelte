@@ -73,7 +73,7 @@
 	}
 
 	.changed input {
-		border-bottom-color: var(--fox-text);
+		border-bottom-color: var(--fox-line);
 	}
 
 	.invalid input {

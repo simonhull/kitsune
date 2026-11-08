@@ -13,6 +13,9 @@ func TestLookup(t *testing.T) {
 	if k, err := prefs.Lookup(prefs.LibraryColumns); err != nil || k.Name() != prefs.LibraryColumns {
 		t.Errorf("Lookup(%q) = %v, %v", prefs.LibraryColumns, k.Name(), err)
 	}
+	if k, err := prefs.Lookup(prefs.UITheme); err != nil || k.Name() != prefs.UITheme {
+		t.Errorf("Lookup(%q) = %v, %v", prefs.UITheme, k.Name(), err)
+	}
 	if _, err := prefs.Lookup("server.roots"); !errors.Is(err, prefs.ErrUnknownKey) {
 		t.Errorf("Lookup(server.roots) = %v, want ErrUnknownKey", err)
 	}
@@ -70,5 +73,43 @@ func TestColumnsListsEachOnce(t *testing.T) {
 	}
 	if len(seen) != 13 {
 		t.Errorf("%d columns, want the spec's 13", len(seen))
+	}
+}
+
+func TestThemeCheck(t *testing.T) {
+	t.Parallel()
+	key, lookupErr := prefs.Lookup(prefs.UITheme)
+	if lookupErr != nil {
+		t.Fatal(lookupErr)
+	}
+	quoted := func(theme prefs.Theme) string { return `"` + string(theme) + `"` }
+	tests := []struct {
+		name, in, want string // An empty want is a refusal.
+	}{
+		{"system", quoted(prefs.ThemeSystem), quoted(prefs.ThemeSystem)},
+		{"light", quoted(prefs.ThemeLight), quoted(prefs.ThemeLight)},
+		{"dark", quoted(prefs.ThemeDark), quoted(prefs.ThemeDark)},
+		{"spaced", " " + quoted(prefs.ThemeDark) + "\n", quoted(prefs.ThemeDark)},
+		{"unknown", `"sepia"`, ""},
+		{"case", `"Light"`, ""},
+		{"empty", `""`, ""},
+		{"nothing", "null", ""},
+		{"object", `{"theme":"dark"}`, ""},
+		{"bare word", string(prefs.ThemeDark), ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := key.Check([]byte(tt.in))
+			if tt.want == "" {
+				if !errors.Is(err, prefs.ErrBadValue) {
+					t.Errorf("Check = %s, %v, want ErrBadValue", got, err)
+				}
+				return
+			}
+			if err != nil || string(got) != tt.want {
+				t.Errorf("Check = %s, %v, want %s", got, err, tt.want)
+			}
+		})
 	}
 }

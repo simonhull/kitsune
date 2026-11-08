@@ -43,14 +43,20 @@ func (k Key) Check(value []byte) ([]byte, error) {
 	return out, nil
 }
 
-// LibraryColumns is the key of the Library list's song columns.
-const LibraryColumns = "library.columns"
+// The keys there are.
+const (
+	// LibraryColumns is the key of the Library list's song columns.
+	LibraryColumns = "library.columns"
+	// UITheme is the key of the web client's theme, a [Theme].
+	UITheme = "ui.theme"
+)
 
 // keys are every preference there is, by name.
 //
 //nolint:gochecknoglobals // A read-only table of the allowed keys.
 var keys = map[string]Key{
 	LibraryColumns: {name: LibraryColumns, check: checkColumns},
+	UITheme:        {name: UITheme, check: checkTheme},
 }
 
 // Lookup returns the key named name, or an error wrapping [ErrUnknownKey].
@@ -130,6 +136,35 @@ func checkColumns(value []byte) ([]byte, error) {
 		out.Order = []Column{}
 	}
 	b, err := json.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("encode: %w", err)
+	}
+	return b, nil
+}
+
+// Theme is how the web client looks: one of its themes, or whichever the
+// system shows.
+type Theme string
+
+// The themes a person may choose.
+const (
+	ThemeSystem Theme = "system"
+	ThemeLight  Theme = "light"
+	ThemeDark   Theme = "dark"
+)
+
+var errTheme = errors.New("not system, light or dark")
+
+// checkTheme accepts a [Theme] as a JSON string.
+func checkTheme(value []byte) ([]byte, error) {
+	var theme Theme
+	if err := json.Unmarshal(value, &theme); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	if !slices.Contains([]Theme{ThemeSystem, ThemeLight, ThemeDark}, theme) {
+		return nil, fmt.Errorf("%q: %w", theme, errTheme)
+	}
+	b, err := json.Marshal(theme)
 	if err != nil {
 		return nil, fmt.Errorf("encode: %w", err)
 	}

@@ -312,7 +312,7 @@
 		border-radius: var(--radius-pill);
 		background: var(--input);
 		color: var(--text);
-		caret-color: var(--fox-text);
+		caret-color: var(--fox-line);
 		/* Under 16 px, iOS zooms the page on focus. */
 		font: 400 16px var(--font-sans);
 		transition: border-color var(--morph-fast) var(--curve-morph);
@@ -324,14 +324,14 @@
 
 	/* The field a refusal is about, as the states board marks it. */
 	input[aria-invalid='true'] {
-		border-color: var(--fox-text);
+		border-color: var(--fox-line);
 	}
 
 	/* The browser's yellow has no place here. */
 	input:-webkit-autofill {
 		-webkit-text-fill-color: var(--text);
 		box-shadow: inset 0 0 0 52px var(--input-solid);
-		caret-color: var(--fox-text);
+		caret-color: var(--fox-line);
 	}
 
 	button,

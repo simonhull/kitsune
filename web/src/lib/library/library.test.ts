@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SilentOutput } from '#lib/player/output.ts';
 import { Player } from '#lib/player/player.svelte.ts';
+import { theme } from '#lib/theme/theme.svelte.ts';
 import { createFixtureSource } from './fixtures';
 import { Library, pileSize, type ReadyMemory } from './library.svelte';
 import {
@@ -313,6 +314,23 @@ describe('Library', () => {
 		const down = new Library(source({ me: () => Promise.reject(new TypeError('offline')) }));
 		await expect(signedOut.checkSession()).resolves.toBe('signed-out');
 		await expect(down.checkSession()).resolves.toBe('down');
+	});
+
+	it('takes the theme the person chose elsewhere, and forgets it with the session', async () => {
+		const library = new Library(createFixtureSource({ prefs: { 'ui.theme': 'light' } }));
+		await library.loadShell();
+		await vi.waitFor(() => {
+			expect(theme.choice).toBe('light');
+		});
+		library.reset();
+		expect(theme.choice).toBeNull();
+	});
+
+	it('keeps the theme as it is when the person never chose one', async () => {
+		const library = new Library(source());
+		await library.loadShell();
+		await Promise.resolve();
+		expect(theme.choice).toBeNull();
 	});
 
 	it('cues the feature album once the shell has loaded', async () => {

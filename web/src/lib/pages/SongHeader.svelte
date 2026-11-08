@@ -157,7 +157,7 @@
 	}
 
 	.chip:hover {
-		border-color: var(--fox-text);
+		border-color: var(--fox-line);
 		color: var(--fox-text);
 	}
 </style>

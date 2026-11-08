@@ -200,7 +200,7 @@
 		display: flex;
 		flex-direction: column;
 		justify-content: flex-end;
-		border-bottom: 2px solid var(--fox-text);
+		border-bottom: 2px solid var(--fox-line);
 		font-size: clamp(var(--smallest), var(--fit), var(--largest));
 		font-weight: 900;
 		letter-spacing: -0.06em;
@@ -235,7 +235,7 @@
 		outline: none;
 		background: transparent;
 		color: var(--text);
-		caret-color: var(--fox-text);
+		caret-color: var(--fox-line);
 		font: inherit;
 		letter-spacing: inherit;
 		overflow: hidden;
