@@ -293,6 +293,11 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   why. Cover colors come from data, through `style:` bindings. The fox is `--fox` as a fill,
   `--fox-text` as words and `--fox-line` as a ring or underline: on light the orange itself fails.
 - An album's colors come from `paletteFor(entry, theme.current)`; each theme has its own rules.
+- One `EventSource` per signed-in client (`lib/library/live.ts`), opened by the shell and closed at
+  sign-out; `Library` applies each event. A `library` event patches the index in place
+  (`indexPatch.ts`, from `GET /library/index?albums=`), so the Library page keeps its song on screen;
+  a gap the server can't fill (`resync`, or a stream reopened after the browser gave up) reads everything
+  again. While events arrive nothing polls for scans. Nothing on the way to playback waits for any of it.
 - `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.

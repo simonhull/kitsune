@@ -1,6 +1,7 @@
 import { plural } from '#lib/library/home.ts';
 import type {
 	FolderKind,
+	FolderWatch,
 	FolderListing,
 	LibraryFacts,
 	LogLevel,
@@ -136,7 +137,12 @@ export function undone(base: Draft, draft: Draft, section: SectionId): Draft {
  * The fields after a section is saved: that section takes the server's new values, and every other
  * keeps what's being typed in it, or follows the server where nothing is.
  */
-export function afterSave(oldBase: Draft, newBase: Draft, draft: Draft, saved: SectionId): Draft {
+export function afterSave(
+	oldBase: Draft,
+	newBase: Draft,
+	draft: Draft,
+	saved: SectionId | null
+): Draft {
 	const next = { ...newBase };
 	for (const section of sections) {
 		if (section === saved) {
@@ -257,6 +263,25 @@ export function size(bytes: number): string {
 	}
 	const shown = value >= 100 || unit === 0 ? Math.round(value) : Math.round(value * 10) / 10;
 	return `${shown.toLocaleString('en-US')} ${units.at(unit) ?? 'B'}`;
+}
+
+/**
+ * How the server follows a folder for new music, under what it holds: watched, looked over every 5
+ * minutes and why, with what it would take to watch it, or not followed. Nothing before it says.
+ */
+export function watchLine(watch: FolderWatch | undefined): string {
+	switch (watch?.mode) {
+		case 'watching':
+			return 'Watching for new music';
+		case 'polling':
+			return watch.reason === 'watch-limit'
+				? 'Checking every 5 minutes · too many folders to watch: raise fs.inotify.max_user_watches, then restart'
+				: 'Checking every 5 minutes · network folder';
+		case 'off':
+			return 'Not watched: the folder is missing or empty. The next scan looks again';
+		case undefined:
+	}
+	return '';
 }
 
 /** What one library folder holds, under its path. */

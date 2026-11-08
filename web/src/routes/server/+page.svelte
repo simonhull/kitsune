@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { library, type Load } from '#lib/library/library.svelte.ts';
-	import { SettingsError, type ServerSettings } from '#lib/library/source.ts';
+	import { SettingsError, type LibraryFolder, type ServerSettings } from '#lib/library/source.ts';
 	import ScanCard from '#lib/pages/ScanCard.svelte';
 	import FolderPicker from '#lib/pages/FolderPicker.svelte';
 	import SettingsSection from '#lib/pages/SettingsSection.svelte';
@@ -19,6 +19,7 @@
 		restartNote,
 		sectionOfKey,
 		undone,
+		watchLine,
 		type Draft,
 		type SectionId
 	} from '#lib/pages/serverForm.ts';
@@ -72,6 +73,30 @@
 			load = { kind: 'unavailable' };
 		}
 	}
+
+	/**
+	 * Reads what another administrator, or the server, changed: each section follows it, unless
+	 * something is being typed in it. A section being saved waits for its own answer.
+	 */
+	async function follow(): Promise<void> {
+		try {
+			const value = await library.serverSettings();
+			const next = draftOf(value);
+			if (base !== null && draft !== null && saving === null) {
+				draft = afterSave(base, next, draft, null);
+				base = next;
+				load = { kind: 'ready', value };
+			}
+		} catch {
+			// What's on the page stands; the next change reads it again.
+		}
+	}
+
+	$effect(() => {
+		if (library.settingsHeard > 0) {
+			untrack(() => void follow());
+		}
+	});
 
 	onMount(() => {
 		void library.refreshFacts();
@@ -163,7 +188,7 @@
 		}
 	}
 
-	function folderOf(path: string): { tracks: number; bytes: number } | undefined {
+	function folderOf(path: string): LibraryFolder | undefined {
 		return settings?.folders.find((folder) => folder.path === path);
 	}
 </script>
@@ -244,6 +269,9 @@
 										base?.roots.includes(root) ?? false
 									)}
 								</span>
+								{#if base?.roots.includes(root) && watchLine(held?.watch) !== ''}
+									<span class="sub watch">{watchLine(held?.watch)}</span>
+								{/if}
 							</span>
 							<button
 								type="button"

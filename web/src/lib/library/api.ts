@@ -330,6 +330,14 @@ export function createApiSource({
 				fields.length === 0 ? '/library/index' : `/library/index?fields=${fields.join(',')}`
 			),
 
+		libraryIndexOf: (albums, fields = []) => {
+			const query = new URLSearchParams({ albums: albums.join(',') });
+			if (fields.length > 0) {
+				query.set('fields', fields.join(','));
+			}
+			return read<LibraryIndex>(`/library/index?${query.toString().replaceAll('%2C', ',')}`);
+		},
+
 		async pref(key) {
 			try {
 				return await read<Prefs[typeof key]>(`/me/prefs/${encodeURIComponent(key)}`);

@@ -13,6 +13,8 @@ export interface PrefsStore {
 	put<K extends PrefKey>(key: K, value: Prefs[K]): void;
 	/** Sends whatever is waiting, now. */
 	flush(): Promise<void>;
+	/** Whether a change to `key` waits to be saved, or is on its way: it's newer than the server's. */
+	pending(key: PrefKey): boolean;
 	/** Drops whatever is waiting: the next person mustn't save the last one's columns. */
 	reset(): void;
 }
@@ -20,17 +22,32 @@ export interface PrefsStore {
 /** Keeps preferences on the server, saving after a quiet moment. A failed save is let go. */
 export function createPrefs(server: PrefsServer, quietMs = prefsQuietMs): PrefsStore {
 	const waiting = new Map<PrefKey, Prefs[PrefKey]>();
+	/** Saves on their way, by key. */
+	const sending = new Map<PrefKey, number>();
 	let timer: ReturnType<typeof setTimeout> | undefined;
+
+	async function save(key: PrefKey, value: Prefs[PrefKey]): Promise<void> {
+		sending.set(key, (sending.get(key) ?? 0) + 1);
+		try {
+			await server.setPref(key, value);
+		} catch {
+			// A save that fails is let go: the page already shows the change, and the next one says it all.
+		} finally {
+			const left = (sending.get(key) ?? 1) - 1;
+			if (left === 0) {
+				sending.delete(key);
+			} else {
+				sending.set(key, left);
+			}
+		}
+	}
 
 	async function send(): Promise<void> {
 		clearTimeout(timer);
 		timer = undefined;
 		const batch = [...waiting];
 		waiting.clear();
-		// A save that fails is let go: the page already shows the change, and the next one says it all.
-		await Promise.all(
-			batch.map(([key, value]) => server.setPref(key, value).catch(() => undefined))
-		);
+		await Promise.all(batch.map(([key, value]) => save(key, value)));
 	}
 
 	return {
@@ -47,6 +64,7 @@ export function createPrefs(server: PrefsServer, quietMs = prefsQuietMs): PrefsS
 			timer = setTimeout(() => void send(), quietMs);
 		},
 		flush: send,
+		pending: (key) => waiting.has(key) || sending.has(key),
 		reset() {
 			clearTimeout(timer);
 			timer = undefined;

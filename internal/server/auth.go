@@ -65,6 +65,9 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			return
 		}
 		if err != nil {
+			if r.Context().Err() != nil {
+				return // The client went: an event stream closes as a page does.
+			}
 			s.internalError(w, r, "authenticate", err)
 			return
 		}

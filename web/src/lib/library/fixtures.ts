@@ -1,6 +1,7 @@
 import { changedSettings, foldersFixture, settingsFixture } from './settingsFixtures.ts';
 import { fnv1a } from '#lib/cover/cover.ts';
 import { letterOf } from '#lib/pages/libraryRows.ts';
+import { partOf } from './indexPatch.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
 	AlbumNotFoundError,
@@ -987,6 +988,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		nowPlaying: () => respond(() => undefined),
 		facts: () => respond(() => ({ ...counts, ...scans.facts() })),
 		libraryIndex: (fields) => respond(() => markedIndex(fields)),
+		libraryIndexOf: (albums, fields) => respond(() => partOf(markedIndex(fields), albums)),
 		pref: <K extends PrefKey>(key: K) => respond(() => (prefs.get(key) ?? null) as Prefs[K] | null),
 		setPref: (key, value) =>
 			respond(() => {

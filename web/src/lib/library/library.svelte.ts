@@ -14,6 +14,8 @@ import {
 	type FixtureEditFault
 } from './fixtures.ts';
 import { healthFixture } from './healthFixtures.ts';
+import { patchIndex } from './indexPatch.ts';
+import { eventsUrl, Live, type EventStream } from './live.ts';
 import { Marks } from './marks.svelte.ts';
 import { Outbox } from './outbox.ts';
 import { createPrefs, type PrefsStore } from './prefs.ts';
@@ -43,6 +45,11 @@ import {
 	type ScanMode,
 	type ScanRefusal,
 	type FolderListing,
+	type FingerprintStatus,
+	type LibraryEvent,
+	type PrefKey,
+	type Prefs,
+	type ScanStatus,
 	type ServerSettings,
 	type SettingsChange,
 	type SetupStatus
@@ -124,6 +131,16 @@ export interface LibraryOptions {
 	outbox?: () => Storage;
 	/** This library has no audio behind it: the player runs on a clock instead. */
 	simulated?: boolean;
+	/**
+	 * Opens the server's stream of events. Null means none, as for the fixtures, which have no server
+	 * to hear; left out, it's the browser's `EventSource`, where there is one.
+	 */
+	events?: (() => EventStream) | null;
+}
+
+/** The browser's event stream, or none outside a browser. */
+function browserEvents(): (() => EventStream) | null {
+	return typeof EventSource === 'undefined' ? null : () => new EventSource(eventsUrl);
 }
 
 /** What the library sees of the player, which is built on it and so can't be imported here. */
@@ -204,6 +221,8 @@ export class Library {
 	readonly prefs: PrefsStore;
 	/** What {@link Library.index} was asked for besides the songs, joined by commas. */
 	indexFields = $state('');
+	/** Moves on whenever the server says its settings changed, so an open Server page reads them. */
+	settingsHeard = $state(0);
 
 	readonly #source: LibrarySource;
 	readonly #pinnedAlbumId: string | undefined;
@@ -250,6 +269,12 @@ export class Library {
 	#followRun = 0;
 	/** Set on a deck joined part way: its first poll fills the pile without replaying it. */
 	#seeding = false;
+	/** What the server says as it happens, while someone is signed in. Null without a server. */
+	readonly #live: Live | null;
+	/** Who wants to hear of a preference changed elsewhere. */
+	readonly #prefWatchers = new SvelteMap<PrefKey, SvelteSet<(value: never) => void>>();
+	/** The index patches, one after another, so none lands on a list it wasn't read against. */
+	#patching: Promise<void> = Promise.resolve();
 
 	constructor(
 		source: LibrarySource | ((expired: () => void) => LibrarySource),
@@ -263,6 +288,47 @@ export class Library {
 		this.#outbox = new Outbox(options.outbox ?? (() => localStorage), this.#source);
 		this.marks = new Marks(this.#source);
 		this.prefs = createPrefs(this.#source);
+		const events = options.events === undefined ? browserEvents() : options.events;
+		this.#live =
+			events === null
+				? null
+				: new Live(events, {
+						library: (change) => void this.#heardLibrary(change),
+						scan: (scan) => {
+							this.#heardScan(scan);
+						},
+						fingerprints: (pass) => {
+							this.#heardPass(pass);
+						},
+						marks: (change) => {
+							this.marks.heard(change);
+						},
+						prefs: ({ key }) => void this.#heardPref(key as PrefKey),
+						lastfm: () => void this.refreshLastfm(),
+						settings: () => {
+							this.settingsHeard += 1;
+							void this.#readSettled();
+						},
+						resync: () => void this.#resync(),
+						broken: () => {
+							this.probe();
+						}
+					});
+	}
+
+	/** Whether the server's events are arriving: then nothing polls for what they say. */
+	get live(): boolean {
+		return this.#live?.connected === true;
+	}
+
+	/**
+	 * Calls `heard` with a preference's value whenever it's changed on another device, or after a gap
+	 * in the events. A change of this browser's own still waiting to be saved is newer, and wins.
+	 */
+	watchPref<K extends PrefKey>(key: K, heard: (value: Prefs[K]) => void): void {
+		const watchers = this.#prefWatchers.get(key) ?? new SvelteSet();
+		watchers.add(heard as (value: never) => void);
+		this.#prefWatchers.set(key, watchers);
 	}
 
 	/** Whether the signed-in user may run scans and see paths. */
@@ -449,6 +515,7 @@ export class Library {
 		const epoch = this.#epoch;
 		try {
 			this.user ??= await this.#source.me();
+			this.#live?.start();
 			this.flushPlays();
 			void this.refreshLastfm();
 			void this.#adoptTheme(epoch);
@@ -560,7 +627,7 @@ export class Library {
 	 * first scan its own way.
 	 */
 	#watchScan(delayMs = progressPollMs): void {
-		if (this.#progressPoll !== undefined || this.deck || this.facts === null) {
+		if (this.#progressPoll !== undefined || this.deck || this.facts === null || this.live) {
 			return;
 		}
 		const { scan, fingerprints } = this.facts;
@@ -947,8 +1014,14 @@ export class Library {
 		}
 	}
 
-	/** Reports whether a scan or an edit has finished since the index was read. */
+	/**
+	 * Reports whether a scan or an edit has finished since the index was read. While the server's
+	 * events arrive, they keep it up to date instead, and only an edit they missed counts.
+	 */
 	get indexStale(): boolean {
+		if (this.live && this.index.kind === 'ready') {
+			return this.#indexEdited;
+		}
 		return this.#indexEdited || this.facts?.scan.last?.endedAt !== this.#indexedAfter;
 	}
 
@@ -988,6 +1061,159 @@ export class Library {
 			if (epoch === this.#epoch && lost) {
 				this.index = { kind: 'unavailable' };
 			}
+		}
+	}
+
+	/** What {@link Library.index} was asked for, as fields. */
+	#fields(): IndexField[] {
+		return this.indexFields === '' ? [] : (this.indexFields.split(',') as IndexField[]);
+	}
+
+	/**
+	 * Takes in albums that changed: Home's newest and counts are read again, an album already read
+	 * is read again, and the index is patched in place, keeping its place on the screen.
+	 */
+	async #heardLibrary({ albums, all }: LibraryEvent): Promise<void> {
+		if (this.deck) {
+			return; // A first scan's deck follows the library its own way.
+		}
+		void this.#refreshHome();
+		const held = all ? [...this.#albums.keys()] : albums.filter((id) => this.#albums.has(id));
+		for (const id of held) {
+			void this.#refreshAlbum(id);
+		}
+		if (this.index.kind !== 'ready') {
+			return;
+		}
+		if (all) {
+			await this.loadIndex(this.#fields());
+			return;
+		}
+		this.#patching = this.#patching.then(() => this.#patchIndex(albums));
+		await this.#patching;
+	}
+
+	/** Reads just the albums that changed, and puts them in the index where they go. */
+	async #patchIndex(ids: readonly string[]): Promise<void> {
+		await this.#indexLoad; // A whole read under way lands first, and the patch on top of it.
+		const epoch = this.#epoch;
+		const fields = this.indexFields;
+		if (this.index.kind !== 'ready') {
+			return;
+		}
+		try {
+			const part = await this.#source.libraryIndexOf(ids, this.#fields());
+			if (epoch !== this.#epoch || this.index.kind !== 'ready' || fields !== this.indexFields) {
+				return; // A new read is coming, with what's wanted now.
+			}
+			const patched = patchIndex(this.index.value, ids, part);
+			if (patched === null) {
+				await this.loadIndex(this.#fields());
+				return;
+			}
+			for (const id of ids) {
+				this.#entries.delete(id);
+			}
+			this.#rememberIndex(part);
+			this.marks.seedIndex(part);
+			this.index = { kind: 'ready', value: patched };
+			this.#indexEdited = false;
+			this.#indexedAfter = this.facts?.scan.last?.endedAt;
+		} catch {
+			// The index stands as it was; the next change, or a resync, reads it again.
+		}
+	}
+
+	/** Reads Home's newest albums and the counts again. */
+	async #refreshHome(): Promise<void> {
+		const epoch = this.#epoch;
+		try {
+			const [facts, recent] = await Promise.all([
+				this.#source.facts(),
+				this.#source.albumsPage('added', undefined, recentCount)
+			]);
+			if (epoch === this.#epoch && !this.deck && this.facts !== null) {
+				this.#remember(recent.albums);
+				this.recent = recent.albums;
+				this.facts = facts;
+			}
+		} catch {
+			// Home stands as it is; a lost session has gone to the door.
+		}
+	}
+
+	/** Reads an album that changed, and shows it everywhere. One that's gone is gone. */
+	async #refreshAlbum(id: string): Promise<void> {
+		const epoch = this.#epoch;
+		try {
+			const album = await this.#source.album(id);
+			if (epoch === this.#epoch) {
+				this.#adopt(album);
+			}
+		} catch (error) {
+			if (epoch === this.#epoch && error instanceof AlbumNotFoundError) {
+				this.#albums.delete(id);
+				this.#missing.add(id);
+			}
+		}
+	}
+
+	/** Takes a scan's progress in, as polling would have: its end reads the counts again. */
+	#heardScan(scan: ScanStatus): void {
+		if (this.facts === null || this.deck) {
+			return;
+		}
+		const ended = this.facts.scan.state === 'running' && scan.state === 'idle';
+		this.facts = { ...this.facts, scan };
+		if (ended) {
+			void this.refreshFacts();
+		}
+	}
+
+	#heardPass(fingerprints: FingerprintStatus): void {
+		if (this.facts !== null && !this.deck) {
+			this.facts = { ...this.facts, fingerprints };
+		}
+	}
+
+	/** Reads a preference changed elsewhere, unless this browser has a newer one waiting to save. */
+	async #heardPref(key: PrefKey): Promise<void> {
+		if (this.prefs.pending(key)) {
+			return;
+		}
+		const epoch = this.#epoch;
+		if (key === 'ui.theme') {
+			await this.#adoptTheme(epoch);
+			return;
+		}
+		const watchers = this.#prefWatchers.get(key);
+		if (watchers === undefined) {
+			return;
+		}
+		const value = await this.prefs.get(key);
+		if (epoch === this.#epoch && value !== null && !this.prefs.pending(key)) {
+			for (const heard of watchers) {
+				heard(value as never);
+			}
+		}
+	}
+
+	/** The events had a gap nothing can fill: everything they'd have said is read again. */
+	async #resync(): Promise<void> {
+		if (this.user === null) {
+			return;
+		}
+		void this.#refreshHome();
+		void this.refreshLastfm();
+		for (const key of ['ui.theme', ...this.#prefWatchers.keys()] as PrefKey[]) {
+			void this.#heardPref(key);
+		}
+		for (const id of this.#albums.keys()) {
+			void this.#refreshAlbum(id);
+		}
+		this.settingsHeard += 1;
+		if (this.index.kind === 'ready') {
+			await this.loadIndex(this.#fields());
 		}
 	}
 
@@ -1071,8 +1297,11 @@ export class Library {
 		try {
 			this.#adopt(await this.#source.editAlbum(id, etag, edit));
 		} finally {
-			// A save that stops partway has still written files, so the list reads them again either way.
-			this.markIndexStale();
+			// A save that stops partway has still written files, so the list reads them again either way,
+			// unless the server's events are arriving to say what changed.
+			if (!this.live) {
+				this.markIndexStale();
+			}
 		}
 	}
 
@@ -1154,6 +1383,7 @@ export class Library {
 		this.index = { kind: 'loading' };
 		this.indexFields = '';
 		this.prefs.reset();
+		this.#live?.stop();
 		theme.forget();
 		this.#indexedAfter = undefined;
 		this.#indexEdited = false;
@@ -1184,7 +1414,8 @@ function fromQuery(): Library {
 		return new Library(createFixtureSource({ latencyMs, health, role, editFault, lastfm, setup }), {
 			pinnedAlbumId,
 			readyMemory,
-			simulated: true
+			simulated: true,
+			events: null
 		});
 	}
 	const gap = Number(query.get('gap') ?? defaultScanGap);
@@ -1198,7 +1429,8 @@ function fromQuery(): Library {
 	return new Library(source, {
 		pinnedAlbumId,
 		readyMemory: readyMemoryIn(() => sessionStorage, `${key}:ready`),
-		simulated: true
+		simulated: true,
+		events: null
 	});
 }
 
