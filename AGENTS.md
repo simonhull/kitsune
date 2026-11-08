@@ -64,8 +64,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `TestLibraryIndexWithoutFieldsIsUnchanged` holds its bytes. `albums` (what a `library` event names)
   gives just those albums in the same shape, each with `after`, the album before it in the whole order,
   which is how a client patches its copy in place; their queries are the `…Of` twins of the whole
-  ones, joined from the albums out. The index's album rows, most of its cost, are kept between
-  library writes (`albumrows.go`); a write that changes what the index shows goes through `inLibraryTx`.
+  ones, joined from the albums out. What the whole index reads of the library (albums, tracks, their
+  artists, details and tags), most of its cost, is kept between library writes (`libraryrows.go`);
+  marks, plays and shuffle rules are read every time. A write that changes what the index shows goes
+  through `inLibraryTx`, an edit's renames, merges, years and covers included.
 - Tag edits are one route, `POST /albums/{id}/edits`, and `GET /albums/{id}/tags` reads what an editor
   shows, from the files. The validator is the album's `etag` field in the body, a hash of
   `ulid:size:mtime_ms` per track, and not a response header. Clients send it back verbatim as
@@ -321,6 +323,21 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.
+
+## Speed
+- Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
+  suite (`web/perf`, Playwright) times clicks, keys and page loads in a release build against generated
+  libraries of 1,000 and 50,000 songs, 20 runs each; `internal/server`'s `*Speed` tests time the
+  stream's first byte and `GET /library/index`. Each fails past its budget, and CI's `perf` job runs
+  both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
+  they were set; on CI they are multiplied by `ciMultiplier`, which comes from CI's own numbers.
+- `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes
+  only under `$KITSUNE_PERF_DIR` (default `kitsune-perf` in the temp directory) and reuses the
+  libraries there. Each server starts on a fresh database, and nothing is timed until its first scan
+  and the fingerprint pass after it are done: the suite measures a server at rest. `KITSUNE_PERF_CHROMIUM` picks a local Chromium, `KITSUNE_PERF_LIBRARIES=1k` measures
+  one size, `KITSUNE_PERF_VERBOSE=1` prints every sample. The speed tests skip under `-race`.
+- Nothing new may wait on the play path, from a click to the `playing` event. A change on that path,
+  or to a budget, carries the suite's numbers before and after, and no change is called faster without them.
 
 ## Lint policy
 - golangci-lint runs with `default: all`. Every disabled linter in `.golangci.yml` has

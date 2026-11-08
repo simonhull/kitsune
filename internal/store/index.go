@@ -135,9 +135,10 @@ func (s *Store) LibraryIndex(ctx context.Context, userID int64, opts *IndexOptio
 }
 
 // indexRows runs the index's queries, the user's marks included, on one read
-// connection.
+// connection. What they read of the library comes from what is kept, when that
+// is what the transaction sees.
 func (s *Store) indexRows(ctx context.Context, userID int64, opts *IndexOptions) (indexRows, error) {
-	mark := s.albums.before()
+	mark := s.library.before()
 	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return indexRows{}, fmt.Errorf("begin: %w", err)
@@ -145,12 +146,15 @@ func (s *Store) indexRows(ctx context.Context, userID int64, opts *IndexOptions)
 	defer func() { _ = tx.Rollback() }() // Nothing was written: there is nothing to undo.
 	q := s.rq.WithTx(tx)
 	var rows indexRows
-	// The first read takes the snapshot, which the album rows must come after.
+	// The first read takes the snapshot, which the kept rows must come after.
 	if rows.marks, err = readLibraryMarks(ctx, q, userID); err != nil {
 		return indexRows{}, err
 	}
-	if rows.albums, err = s.albums.readAlbums(ctx, q, mark); err != nil {
-		return indexRows{}, err
+	l := &s.library
+	if rows.albums, err = read(l, &l.albums, mark, "", func() ([]sqlcdb.ListIndexAlbumsRow, error) {
+		return q.ListIndexAlbums(ctx)
+	}); err != nil {
+		return indexRows{}, fmt.Errorf("albums: %w", err)
 	}
 	if opts.Albums != nil {
 		if albumErr := readAlbumRows(ctx, q, userID, opts, &rows); albumErr != nil {
@@ -158,34 +162,47 @@ func (s *Store) indexRows(ctx context.Context, userID int64, opts *IndexOptions)
 		}
 		return rows, nil
 	}
-	if rows.tracks, err = q.ListIndexTracks(ctx); err != nil {
+	if rows.tracks, err = read(l, &l.tracks, mark, "", func() ([]sqlcdb.ListIndexTracksRow, error) {
+		return q.ListIndexTracks(ctx)
+	}); err != nil {
 		return indexRows{}, fmt.Errorf("tracks: %w", err)
 	}
-	if rows.artists, err = q.ListIndexTrackArtists(ctx); err != nil {
+	if rows.artists, err = read(l, &l.artists, mark, "", func() ([]sqlcdb.ListIndexTrackArtistsRow, error) {
+		return q.ListIndexTrackArtists(ctx)
+	}); err != nil {
 		return indexRows{}, fmt.Errorf("track artists: %w", err)
 	}
-	if optErr := readIndexOptions(ctx, q, userID, opts, &rows); optErr != nil {
+	if optErr := s.readIndexOptions(ctx, q, mark, userID, opts, &rows); optErr != nil {
 		return indexRows{}, optErr
 	}
 	return rows, nil
 }
 
 // readIndexOptions runs the queries opts asks for, and only those.
-func readIndexOptions(ctx context.Context, q *sqlcdb.Queries, userID int64, opts *IndexOptions, rows *indexRows) error {
+func (s *Store) readIndexOptions(
+	ctx context.Context, q *sqlcdb.Queries, mark writesMark, userID int64, opts *IndexOptions, rows *indexRows,
+) error {
 	var err error
+	l := &s.library
 	rows.extra = opts.any()
 	if opts.Details {
-		if rows.details, err = q.ListIndexTrackDetails(ctx); err != nil {
+		if rows.details, err = read(l, &l.details, mark, "", func() ([]sqlcdb.ListIndexTrackDetailsRow, error) {
+			return q.ListIndexTrackDetails(ctx)
+		}); err != nil {
 			return fmt.Errorf("track details: %w", err)
 		}
 	}
 	if opts.AlbumArtists {
-		if rows.albumArtists, err = q.ListIndexTrackAlbumArtists(ctx); err != nil {
+		if rows.albumArtists, err = read(l, &l.albumArtists, mark, "", func() ([]sqlcdb.ListIndexTrackAlbumArtistsRow, error) {
+			return q.ListIndexTrackAlbumArtists(ctx)
+		}); err != nil {
 			return fmt.Errorf("track album artists: %w", err)
 		}
 	}
 	if len(opts.TagKeys) > 0 {
-		if rows.tags, err = q.ListIndexTrackTags(ctx, opts.TagKeys); err != nil {
+		if rows.tags, err = read(l, &l.tags, mark, tagArgs(opts.TagKeys), func() ([]sqlcdb.ListIndexTrackTagsRow, error) {
+			return q.ListIndexTrackTags(ctx, opts.TagKeys)
+		}); err != nil {
 			return fmt.Errorf("track tags: %w", err)
 		}
 	}

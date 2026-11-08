@@ -327,9 +327,9 @@ const (
 
 // seedBench writes a library of the shape, with a genre and a composer on every
 // track, and a third of its tracks played by the user who reads it.
-func (ts *testServer) seedBench(b *testing.B, tracks, albums, artists int) string {
-	b.Helper()
-	sess := ts.sessionFor(b)
+func (ts *testServer) seedBench(tb testing.TB, tracks, albums, artists int) string {
+	tb.Helper()
+	sess := ts.sessionFor(tb)
 	tws := make([]store.TrackWrite, 0, tracks)
 	for i := range albums {
 		artist := person(i%artists+1, fmt.Sprintf("Artist %d", i%artists))
@@ -356,14 +356,14 @@ func (ts *testServer) seedBench(b *testing.B, tracks, albums, artists int) strin
 			})
 		}
 	}
-	if err := ts.Store.WriteBatch(b.Context(), &store.Batch{Tracks: tws}); err != nil {
-		b.Fatal(err)
+	if err := ts.Store.WriteBatch(tb.Context(), &store.Batch{Tracks: tws}); err != nil {
+		tb.Fatal(err)
 	}
 	for i := 0; i < len(tws); i += 3 {
-		if err := ts.Store.RecordPlay(b.Context(), &store.NewPlay{
+		if err := ts.Store.RecordPlay(tb.Context(), &store.NewPlay{
 			UserID: sess.user.ID, TrackID: tws[i].ULID, PlayedAt: ts.Clock.Now(), Source: "bench", ClientID: strconv.Itoa(i),
 		}); err != nil {
-			b.Fatal(err)
+			tb.Fatal(err)
 		}
 	}
 	return sess.token
