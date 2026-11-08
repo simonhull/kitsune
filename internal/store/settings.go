@@ -80,6 +80,27 @@ func (s *Store) SeedSetting(ctx context.Context, key string, value []byte, sourc
 	return n > 0, nil
 }
 
+// RootStat is what one library root holds now: its live tracks and their size
+// on disk.
+type RootStat struct {
+	Tracks int64
+	Bytes  int64
+}
+
+// RootStats returns what each root that has live tracks holds, by root, for the
+// Server page's folders.
+func (s *Store) RootStats(ctx context.Context) (map[string]RootStat, error) {
+	rows, err := s.rq.RootStats(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("root stats: %w", err)
+	}
+	out := make(map[string]RootStat, len(rows))
+	for _, r := range rows {
+		out[r.Root] = RootStat{Tracks: r.Tracks, Bytes: r.Bytes}
+	}
+	return out, nil
+}
+
 // DeleteSetting deletes key's row, so the next start seeds it again, and
 // reports whether there was one.
 func (s *Store) DeleteSetting(ctx context.Context, key string) (bool, error) {

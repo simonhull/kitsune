@@ -297,6 +297,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.resetLastfmOutboxStmt, err = db.PrepareContext(ctx, resetLastfmOutbox); err != nil {
 		return nil, fmt.Errorf("error preparing query ResetLastfmOutbox: %w", err)
 	}
+	if q.rootStatsStmt, err = db.PrepareContext(ctx, rootStats); err != nil {
+		return nil, fmt.Errorf("error preparing query RootStats: %w", err)
+	}
 	if q.sessionByTokenHashStmt, err = db.PrepareContext(ctx, sessionByTokenHash); err != nil {
 		return nil, fmt.Errorf("error preparing query SessionByTokenHash: %w", err)
 	}
@@ -814,6 +817,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing resetLastfmOutboxStmt: %w", cerr)
 		}
 	}
+	if q.rootStatsStmt != nil {
+		if cerr := q.rootStatsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing rootStatsStmt: %w", cerr)
+		}
+	}
 	if q.sessionByTokenHashStmt != nil {
 		if cerr := q.sessionByTokenHashStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing sessionByTokenHashStmt: %w", cerr)
@@ -1039,6 +1047,7 @@ type Queries struct {
 	pruneArtworkStmt               *sql.Stmt
 	recentPlaysStmt                *sql.Stmt
 	resetLastfmOutboxStmt          *sql.Stmt
+	rootStatsStmt                  *sql.Stmt
 	sessionByTokenHashStmt         *sql.Stmt
 	setDigestStmt                  *sql.Stmt
 	setLastfmStateStmt             *sql.Stmt
@@ -1155,6 +1164,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		pruneArtworkStmt:               q.pruneArtworkStmt,
 		recentPlaysStmt:                q.recentPlaysStmt,
 		resetLastfmOutboxStmt:          q.resetLastfmOutboxStmt,
+		rootStatsStmt:                  q.rootStatsStmt,
 		sessionByTokenHashStmt:         q.sessionByTokenHashStmt,
 		setDigestStmt:                  q.setDigestStmt,
 		setLastfmStateStmt:             q.setLastfmStateStmt,

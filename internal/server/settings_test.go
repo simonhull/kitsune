@@ -71,11 +71,11 @@ func TestSettingsReadsEveryKey(t *testing.T) {
 	if len(got.Settings) != 9 || got.Listen != testListen || got.ListenSource != api.SettingDefault || got.Version != testVersion {
 		t.Errorf("settings = %+v", got)
 	}
-	checkSecret(t, got, false, api.SettingDefault)
+	checkSecret(t, got.Settings, false, api.SettingDefault)
 	if base := got.Settings[baseURLKey]; !base.RestartRequired || base.PendingRestart {
 		t.Errorf("base_url = %+v, want restartRequired and nothing pending", base)
 	}
-	checkSetting(t, got, "log.level", `"info"`, api.SettingDefault)
+	checkSetting(t, got.Settings, "log.level", `"info"`, api.SettingDefault)
 }
 
 const (
@@ -84,18 +84,18 @@ const (
 )
 
 // checkSetting fails unless key holds the JSON value from source.
-func checkSetting(t *testing.T, got api.ServerSettings, key, value, source string) {
+func checkSetting(t *testing.T, got map[string]api.Setting, key, value, source string) {
 	t.Helper()
-	if s := got.Settings[key]; string(s.Value) != value || s.Source != source {
+	if s := got[key]; string(s.Value) != value || s.Source != source {
 		t.Errorf("%s = %s from %s, want %s from %s", key, s.Value, s.Source, value, source)
 	}
 }
 
 // checkSecret fails unless the shared secret is set or not, from source, and
 // carries no value.
-func checkSecret(t *testing.T, got api.ServerSettings, set bool, source string) {
+func checkSecret(t *testing.T, got map[string]api.Setting, set bool, source string) {
 	t.Helper()
-	s := got.Settings[secretKey]
+	s := got[secretKey]
 	if s.Set == nil || *s.Set != set || s.Value != nil || s.Source != source {
 		t.Errorf("secret = %+v, want set %v from %s and no value", s, set, source)
 	}
@@ -120,8 +120,8 @@ func TestSettingsChangeAndKeepTheSecret(t *testing.T) {
 		`{"lastfm.api_key":"abc123","lastfm.shared_secret":"`+secretValue+`","library.roots":["/srv/music/"],"server.base_url":"https://example.com"}`, false)
 	got := decodeSettings(t, r)
 	ts.noSecret(t, r)
-	checkSecret(t, got, true, api.SettingWeb)
-	checkSetting(t, got, "library.roots", `["/srv/music"]`, api.SettingWeb)
+	checkSecret(t, got.Settings, true, api.SettingWeb)
+	checkSetting(t, got.Settings, "library.roots", `["/srv/music"]`, api.SettingWeb)
 	if base := got.Settings[baseURLKey]; !base.PendingRestart {
 		t.Errorf("base_url = %+v, want it pending a restart", base)
 	}
@@ -135,7 +135,7 @@ func TestSettingsChangeAndKeepTheSecret(t *testing.T) {
 
 	// Clearing the secret leaves it unset.
 	got = decodeSettings(t, ts.patchSettings(t, sess.token, `{"lastfm.shared_secret":null}`, false))
-	checkSecret(t, got, false, api.SettingDefault)
+	checkSecret(t, got.Settings, false, api.SettingDefault)
 }
 
 func TestSettingsChangeIsAllOrNothing(t *testing.T) {
@@ -148,8 +148,8 @@ func TestSettingsChangeIsAllOrNothing(t *testing.T) {
 	}
 	ts.noSecret(t, r)
 	got := decodeSettings(t, ts.getSettings(t, sess.token))
-	checkSetting(t, got, "log.level", `"info"`, api.SettingDefault)
-	checkSecret(t, got, false, api.SettingDefault)
+	checkSetting(t, got.Settings, "log.level", `"info"`, api.SettingDefault)
+	checkSecret(t, got.Settings, false, api.SettingDefault)
 }
 
 func TestSettingsRefuseBadBodies(t *testing.T) {
@@ -171,6 +171,18 @@ func TestSettingsRefuseBadBodies(t *testing.T) {
 	h := bearer(sess.token)
 	h.Set(contentType, "text/plain")
 	ts.send(t, call{method: http.MethodPatch, path: settingsPath, body: `{}`, header: h, invalid: true}).problem(t, http.StatusBadRequest)
+}
+
+func TestSettingsSayWhatEachFolderHolds(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	sess := ts.sessionFor(t)
+	ts.seedAlbums(t, browseAlbum{n: 1, sortName: "a", tracks: 2}) // Under /music.
+	got := decodeSettings(t, ts.patchSettings(t, sess.token, `{"library.roots":["`+musicBase+`","/elsewhere"]}`, false))
+	if len(got.Folders) != 2 || got.Folders[0].Path != musicBase || got.Folders[0].Tracks != 2 ||
+		got.Folders[1] != (api.LibraryFolder{Path: "/elsewhere"}) {
+		t.Errorf("folders = %+v, want /music with its 2 songs, then /elsewhere empty", got.Folders)
+	}
 }
 
 func TestSettingsApplyNoChange(t *testing.T) {

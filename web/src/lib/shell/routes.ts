@@ -29,6 +29,7 @@ const table = {
 	'/login': { look: 'door', current: 'home', journey: 'login' },
 	'/now-playing': { look: 'gone', current: null, journey: 'now-playing' },
 	'/search': { look: 'home', current: null, journey: 'search' },
+	'/server': { look: 'home', current: null, journey: 'server' },
 	'/setup': { look: 'door', current: 'home', journey: 'login' },
 	'/you': { look: 'home', current: null, journey: 'you' }
 } as const satisfies Record<RouteId, RouteFacts>;

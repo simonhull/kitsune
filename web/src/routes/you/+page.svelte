@@ -165,7 +165,14 @@
 			<p class="mono counts" aria-live="polite">
 				{listening === null ? ' ' : countsLine(listening)}
 			</p>
-			<button type="button" class="ghost" onclick={() => void signOut()}>Sign out</button>
+			<div class="who-actions">
+				{#if library.admin}
+					<a class="ghost" href={resolve('/server')}
+						>Server settings <span class="chevron" aria-hidden="true">›</span></a
+					>
+				{/if}
+				<button type="button" class="ghost" onclick={() => void signOut()}>Sign out</button>
+			</div>
 		</div>
 
 		<section aria-labelledby="looks" class="looks" data-morph-part="panel">
@@ -232,14 +239,26 @@
 					</div>
 
 					{#if card === 'unset'}
-						<p class="body">This server has no Last.fm key yet.</p>
 						{#if library.admin}
+							<p class="body lead">This server has no Last.fm key yet.</p>
 							<p class="body meta">
-								Add <code>[lastfm]</code> with <code>api_key</code> and <code>shared_secret</code> to
-								the server’s config, then restart it.
+								Add one and everyone here can send their listening to their own Last.fm account. It
+								takes a minute: Last.fm gives the key and secret, you paste them in.
 							</p>
+							<div class="actions">
+								<a class="solid" href={resolve('/server#lastfm')}>Add a key</a>
+								<a
+									class="quiet"
+									href="https://www.last.fm/api/account/create"
+									target="_blank"
+									rel="noopener noreferrer">Get one from Last.fm ↗</a
+								>
+							</div>
 						{:else}
-							<p class="body meta">Ask an administrator to set it up.</p>
+							<p class="body lead">Not on this server yet.</p>
+							<p class="body meta">
+								Ask whoever runs it to add a Last.fm key, then connect your account here.
+							</p>
 						{/if}
 					{:else if card === 'none'}
 						<p class="body">
@@ -391,8 +410,47 @@
 		font-weight: 700;
 	}
 
-	.who .ghost {
+	.who-actions {
 		margin-top: 28px;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+	}
+
+	a.ghost,
+	a.solid,
+	a.quiet {
+		height: var(--target);
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		border-radius: var(--radius-pill);
+		font-size: 14px;
+		text-decoration: none;
+	}
+
+	a.solid {
+		height: 48px;
+		padding: 0 22px;
+	}
+
+	.quiet {
+		padding: 0 16px;
+		color: var(--text);
+		font-weight: 600;
+	}
+
+	.quiet:hover {
+		color: var(--fox-text);
+	}
+
+	.chevron {
+		color: var(--text-meta);
+	}
+
+	.body.lead {
+		color: var(--text);
+		font-size: var(--type-body);
 	}
 
 	.where-head {
@@ -496,11 +554,6 @@
 	strong {
 		color: var(--text);
 		font-weight: 600;
-	}
-
-	code {
-		font-family: var(--font-mono);
-		color: var(--text-secondary);
 	}
 
 	.retry {

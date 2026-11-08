@@ -80,6 +80,41 @@ func (q *Queries) ListSettings(ctx context.Context) ([]Setting, error) {
 	return items, nil
 }
 
+const rootStats = `-- name: RootStats :many
+SELECT root, COUNT(*) AS tracks, CAST(COALESCE(SUM(size), 0) AS INTEGER) AS bytes
+FROM tracks WHERE missing_since IS NULL GROUP BY root ORDER BY root
+`
+
+type RootStatsRow struct {
+	Root   string
+	Tracks int64
+	Bytes  int64
+}
+
+// What each library root holds now: its live tracks and their bytes.
+func (q *Queries) RootStats(ctx context.Context) ([]RootStatsRow, error) {
+	rows, err := q.query(ctx, q.rootStatsStmt, rootStats)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RootStatsRow
+	for rows.Next() {
+		var i RootStatsRow
+		if err := rows.Scan(&i.Root, &i.Tracks, &i.Bytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertSetting = `-- name: UpsertSetting :exec
 INSERT INTO settings (key, value, source, updated_at) VALUES (?, ?, ?, ?)
 ON CONFLICT (key) DO UPDATE SET value = excluded.value, source = excluded.source, updated_at = excluded.updated_at

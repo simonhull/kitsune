@@ -544,6 +544,16 @@ type ServerSettings struct {
 	ListenSource string `json:"listenSource"`
 	// Version is the server's version.
 	Version string `json:"version"`
+	// Folders are the library.roots, in order, with what each holds now.
+	Folders []LibraryFolder `json:"folders"`
+}
+
+// LibraryFolder is a library root and what it holds now: 0 and 0 until a scan
+// has read it.
+type LibraryFolder struct {
+	Path   string `json:"path"`
+	Tracks int64  `json:"tracks"`
+	Bytes  int64  `json:"bytes"`
 }
 
 // The values of Setting.Source. Every source but SettingDefault is stored.

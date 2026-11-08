@@ -18,9 +18,27 @@ import (
 const maxSettingsBody = 512 << 10
 
 // getSettings answers every server setting, a secret only as whether it is set.
-func (s *Server) getSettings(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	s.writeSettings(w, r, s.settings.Snapshot())
+}
+
+// writeSettings answers snap, with what each library folder holds.
+func (s *Server) writeSettings(w http.ResponseWriter, r *http.Request, snap *settings.Snapshot) {
+	stats, err := s.library.RootStats(r.Context())
+	if r.Context().Err() != nil {
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, "root stats", err)
+		return
+	}
+	body := s.apiSettings(snap)
+	body.Folders = make([]api.LibraryFolder, len(snap.Roots))
+	for i, root := range snap.Roots {
+		stat := stats[root]
+		body.Folders[i] = api.LibraryFolder{Path: root, Tracks: stat.Tracks, Bytes: stat.Bytes}
+	}
 	w.Header().Set("Cache-Control", "no-store")
-	body := s.apiSettings(s.settings.Snapshot())
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
 
@@ -45,9 +63,7 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.InfoContext(r.Context(), "settings changed",
 		"requestId", requestID(r.Context()), "keys", slices.Sorted(maps.Keys(values)))
-	w.Header().Set("Cache-Control", "no-store")
-	body := s.apiSettings(snap)
-	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+	s.writeSettings(w, r, snap)
 }
 
 // readSettings reads a JSON object of values by key.

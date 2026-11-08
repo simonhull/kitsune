@@ -322,7 +322,90 @@ export interface LibraryFacts {
 	issues: number;
 	issueCounts: IssueCounts;
 	scan: ScanStatus;
+	/** The background pass that fingerprints files after a scan. Both 0 while none runs; the fixtures leave it out. */
+	fingerprints?: FingerprintStatus;
 }
+
+export interface FingerprintStatus {
+	done: number;
+	total: number;
+}
+
+/** A server setting's key, as server.toml spells it. */
+export type SettingKey =
+	| 'lastfm.api_key'
+	| 'lastfm.shared_secret'
+	| 'library.roots'
+	| 'library.tag_writes'
+	| 'library.quick_scan'
+	| 'library.missing_grace'
+	| 'log.level'
+	| 'server.base_url'
+	| 'server.trusted_proxies';
+
+/** Where a setting's value came from. `default`: nothing has set it. */
+export type SettingSource = 'default' | 'web' | 'server.toml' | 'env' | 'flag';
+
+export interface Setting<T> {
+	value: T;
+	source: SettingSource;
+	/** The source for a person, such as `KITSUNE_LASTFM_API_KEY`. Absent for `default` and `web`. */
+	from?: string;
+	/** A change applies only after a restart. */
+	restartRequired?: boolean;
+	/** Changed since the server started, so waiting for one. */
+	pendingRestart?: boolean;
+}
+
+/** A write-only setting: nothing returns its value. */
+export interface SecretSetting {
+	set: boolean;
+	source: SettingSource;
+	from?: string;
+}
+
+/** A library folder and what it holds now. */
+export interface LibraryFolder {
+	path: string;
+	tracks: number;
+	bytes: number;
+}
+
+/** `GET /admin/settings`. */
+export interface ServerSettings {
+	settings: {
+		'lastfm.api_key': Setting<string>;
+		'lastfm.shared_secret': SecretSetting;
+		'library.roots': Setting<string[]>;
+		'library.tag_writes': Setting<boolean>;
+		/** HH:MM, local to the server. */
+		'library.quick_scan': Setting<string>;
+		/** A Go duration, such as `720h0m0s`. */
+		'library.missing_grace': Setting<string>;
+		'log.level': Setting<LogLevel>;
+		'server.base_url': Setting<string>;
+		'server.trusted_proxies': Setting<string[]>;
+	};
+	listen: string;
+	listenSource: 'server.toml' | 'default';
+	version: string;
+	folders: LibraryFolder[];
+}
+
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/** The settings to change. Null clears one: it takes its default, and the next start seeds it. */
+export type SettingsChange = Partial<{
+	'lastfm.api_key': string | null;
+	'lastfm.shared_secret': string | null;
+	'library.roots': string[] | null;
+	'library.tag_writes': boolean | null;
+	'library.quick_scan': string | null;
+	'library.missing_grace': string | null;
+	'log.level': LogLevel | null;
+	'server.base_url': string | null;
+	'server.trusted_proxies': string[] | null;
+}>;
 
 export interface IssueCounts {
 	/** An I/O or permission error stopped them. They are tried again every scan. */
@@ -507,6 +590,10 @@ export interface LibrarySource {
 	startScan(mode: ScanMode): Promise<ScanStatus>;
 	/** What scans had trouble with, for administrators. */
 	issues(): Promise<ScanIssues>;
+	/** Administrators only. */
+	settings(): Promise<ServerSettings>;
+	/** All of it or none: a refusal is a {@link SettingsError} naming the key. */
+	changeSettings(change: SettingsChange): Promise<ServerSettings>;
 }
 
 export class AlbumNotFoundError extends Error {
@@ -542,6 +629,20 @@ export class ServerError extends Error {
 	constructor(status: number) {
 		super(`the server answered ${String(status)}`);
 		this.status = status;
+	}
+}
+
+/** A change the server refused. `detail` names the key and why, never the value. */
+export class SettingsError extends Error {
+	override name = 'SettingsError';
+	/** The key refused, when the server named one it knows. */
+	readonly key: SettingKey | undefined;
+	readonly detail: string;
+
+	constructor(detail: string, key: SettingKey | undefined) {
+		super(detail);
+		this.detail = detail;
+		this.key = key;
 	}
 }
 

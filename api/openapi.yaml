@@ -2034,8 +2034,12 @@ components:
     ServerSettings:
       type: object
       additionalProperties: false
-      required: [settings, listen, listenSource, version]
+      required: [settings, listen, listenSource, version, folders]
       properties:
+        folders:
+          type: array
+          description: The library.roots, in order, with what each holds now.
+          items: { $ref: "#/components/schemas/LibraryFolder" }
         settings:
           type: object
           additionalProperties: false
@@ -2067,6 +2071,15 @@ components:
             server needs it before it can open its database.
         listenSource: { type: string, enum: [server.toml, default] }
         version: { type: string }
+    LibraryFolder:
+      type: object
+      additionalProperties: false
+      description: A library root and what it holds now. Both are 0 until a scan has read it.
+      required: [path, tracks, bytes]
+      properties:
+        path: { type: string }
+        tracks: { type: integer, format: int64, description: Live tracks under it. }
+        bytes: { type: integer, format: int64, description: Their size on disk. }
     SettingSource:
       type: string
       enum: [default, web, server.toml, env, flag]

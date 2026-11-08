@@ -170,6 +170,7 @@ export type RouteName =
 	| 'artist'
 	| 'health'
 	| 'library'
+	| 'server'
 	| 'you';
 
 export type ChoreographyName =

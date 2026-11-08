@@ -76,9 +76,9 @@ func decodeInto(t *testing.T, r reply, v any) {
 }
 
 // wantSetting fails unless key holds the JSON value from source.
-func wantSetting(t *testing.T, got api.ServerSettings, key, value, source string) {
+func wantSetting(t *testing.T, got map[string]api.Setting, key, value, source string) {
 	t.Helper()
-	if s := got.Settings[key]; string(s.Value) != value || s.Source != source {
+	if s := got[key]; string(s.Value) != value || s.Source != source {
 		t.Errorf("%s = %s from %s, want %s from %s", key, s.Value, s.Source, value, source)
 	}
 }
@@ -140,7 +140,7 @@ func TestSettingsSeedOnceThenTheWebWins(t *testing.T) { //nolint:paralleltest //
 		"KITSUNE_LASTFM_SHARED_SECRET": envSecret,
 	})
 	got := ra.settings(t)
-	wantSetting(t, got, quickScanKey, `"04:15"`, api.SettingEnv)
+	wantSetting(t, got.Settings, quickScanKey, `"04:15"`, api.SettingEnv)
 	if s := got.Settings[quickScanKey]; s.From != quickScanEnv {
 		t.Errorf("quick_scan from %q, want the variable", s.From)
 	}
@@ -153,7 +153,7 @@ func TestSettingsSeedOnceThenTheWebWins(t *testing.T) { //nolint:paralleltest //
 	}
 
 	again := serveApp(t, e) // A restart with the same environment.
-	wantSetting(t, again.settings(t), quickScanKey, `"05:00"`, api.SettingWeb)
+	wantSetting(t, again.settings(t).Settings, quickScanKey, `"05:00"`, api.SettingWeb)
 	if again.app.live.Snapshot().LastfmSharedSecret != webSecret {
 		t.Error("after a restart, the secret is not the web's")
 	}
@@ -332,7 +332,7 @@ func TestSettingsReset(t *testing.T) { //nolint:paralleltest // overrides authPa
 		t.Errorf("second reset = %+v", r)
 	}
 	again := serveApp(t, e) // The environment seeds it again.
-	wantSetting(t, again.settings(t), logLevelKey, `"warn"`, api.SettingEnv)
+	wantSetting(t, again.settings(t).Settings, logLevelKey, `"warn"`, api.SettingEnv)
 }
 
 func TestSettingsCLIRefusesBadCommands(t *testing.T) {

@@ -13,3 +13,8 @@ ON CONFLICT (key) DO NOTHING;
 
 -- name: DeleteSetting :execrows
 DELETE FROM settings WHERE key = ?;
+
+-- name: RootStats :many
+-- What each library root holds now: its live tracks and their bytes.
+SELECT root, COUNT(*) AS tracks, CAST(COALESCE(SUM(size), 0) AS INTEGER) AS bytes
+FROM tracks WHERE missing_since IS NULL GROUP BY root ORDER BY root;
