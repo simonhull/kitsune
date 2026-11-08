@@ -3,8 +3,10 @@ package server
 import (
 	"encoding/json/v2"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/store"
@@ -56,6 +58,31 @@ func (ts *testServer) noSecret(t *testing.T, r response) {
 	}
 	if strings.Contains(ts.Log.String(), secretValue) {
 		t.Errorf("log holds the secret: %s", ts.Log)
+	}
+}
+
+func TestSettingsSayHowEachFolderIsFollowed(t *testing.T) {
+	t.Parallel()
+	missing := filepath.Join(t.TempDir(), "unplugged")
+	ts := newTestServer(t, testServerOptions{LibraryRoot: missing, Roots: 1, Watch: true})
+	sess := ts.sessionFor(t)
+	roots, err := json.Marshal(ts.Scanner.Roots())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts.patchSettings(t, sess.token, `{"library.roots":`+string(roots)+`}`, false) // As the server's own would say.
+	want := []*api.FolderWatch{{Mode: "off", Reason: "missing"}, {Mode: "watching"}}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		got := decodeSettings(t, ts.getSettings(t, sess.token)).Folders
+		if len(got) == 2 && got[0].Watch != nil && got[1].Watch != nil &&
+			*got[0].Watch == *want[0] && *got[1].Watch == *want[1] {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("folders = %+v, want watches %+v and %+v", got, *want[0], *want[1])
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

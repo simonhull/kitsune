@@ -13,6 +13,14 @@ class ColumnsView {
 	readonly fields: IndexField[] = $derived(fieldsFor(this.pref.order));
 	#asked: Promise<void> | null = null;
 
+	constructor() {
+		// Columns chosen on another device follow here, as the theme does.
+		library.watchPref('library.columns', (saved) => {
+			this.pref = savedColumns(saved);
+			this.known = true;
+		});
+	}
+
 	/** Asks the server, once a session. */
 	load(): Promise<void> {
 		this.#asked ??= library.prefs.get('library.columns').then((saved) => {

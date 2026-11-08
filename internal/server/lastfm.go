@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -143,6 +144,7 @@ func (s *Server) patchLastfm(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	s.publishLastfm(user.ID)
 	s.getLastfm(w, r)
 }
 
@@ -155,6 +157,7 @@ func (s *Server) deleteLastfm(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	s.publishLastfm(user.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -223,6 +226,7 @@ func (s *Server) finishConnect(r *http.Request) string {
 		return lastfmFailed
 	}
 	s.lastfm.Poke() // A reconnect sends what waited.
+	s.publishLastfm(user.ID)
 	return lastfmConnected
 }
 
@@ -251,11 +255,12 @@ func (s *Server) publicBase(r *http.Request) string {
 // the caller wants that. It answers the same whatever happens.
 func (s *Server) postNowPlaying(w http.ResponseWriter, r *http.Request) {
 	var req api.NowPlaying
-	if err := readJSON(w, r, &req); err != nil || req.TrackID == "" {
-		writeProblem(w, r, http.StatusBadRequest, "request body must be a JSON object with a trackId")
+	if err := readJSON(w, r, &req); err != nil || req.TrackID == "" || len(req.ClientID) > maxPlayField {
+		writeProblem(w, r, http.StatusBadRequest, "request body must be a JSON object with a trackId, and a clientId of at most 64 bytes")
 		return
 	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
 	s.lastfm.NowPlaying(user.ID, req.TrackID)
+	s.publish(events.Listening, events.User(user.ID), &api.EventListening{TrackID: req.TrackID, ClientID: req.ClientID})
 	w.WriteHeader(http.StatusNoContent)
 }

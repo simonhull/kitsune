@@ -20,6 +20,7 @@ import (
 
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
+	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/settings"
@@ -78,6 +79,13 @@ type Config struct {
 	// DataDir and ConfigDir are Kitsune's own folders: the picker shows them and
 	// never lets them be chosen. "" means none.
 	DataDir, ConfigDir string
+	// Watcher follows the library folders; GET /admin/settings says how. Nil
+	// means none, and no folder says.
+	Watcher *library.Watcher
+	// Events is what GET /events streams, and where the handlers say what they
+	// changed. Nil means a hub of the server's own, which only its handlers
+	// publish to.
+	Events *events.Hub
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -111,6 +119,8 @@ type Server struct {
 	folderRoot    string
 	dataDir       string
 	configDir     string
+	watcher       *library.Watcher
+	events        *events.Hub
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -156,6 +166,8 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		folderRoot:    cmp.Or(cfg.FolderRoot, "/"),
 		dataDir:       cfg.DataDir,
 		configDir:     cfg.ConfigDir,
+		watcher:       cfg.Watcher,
+		events:        cfg.Events,
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
@@ -168,6 +180,9 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 	}
 	if s.editContext == nil {
 		s.editContext = context.Background()
+	}
+	if s.events == nil {
+		s.events = events.New(events.Options{})
 	}
 	if s.genres == nil {
 		s.genres = library.NewGenres(cfg.Library)
@@ -265,6 +280,7 @@ func (s *Server) routes() []route {
 		{pattern: "POST /me/lastfm/connect", handle: s.connectLastfm},
 		{pattern: "GET /lastfm/callback", public: true, handle: s.lastfmCallback},
 		{pattern: "POST /me/now-playing", handle: s.postNowPlaying},
+		{pattern: "GET /events", handle: s.getEvents},
 		{pattern: "GET /artwork/{hash}", handle: s.getArtwork},
 		{pattern: "GET /albums", handle: s.getAlbums},
 		{pattern: "GET /albums/{id}", handle: s.getAlbum},

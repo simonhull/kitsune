@@ -21,25 +21,31 @@ type heartChange func(ctx context.Context, userID int64, kind store.Kind, id str
 
 // putHeart hearts an item for the caller. Nothing in the request says whose.
 func (s *Server) putHeart(w http.ResponseWriter, r *http.Request) {
-	s.changeHeart(w, r, s.library.Heart)
+	s.changeHeart(w, r, s.library.Heart, true)
 }
 
 // deleteHeart takes the caller's heart off an item.
 func (s *Server) deleteHeart(w http.ResponseWriter, r *http.Request) {
-	s.changeHeart(w, r, s.library.Unheart)
+	s.changeHeart(w, r, s.library.Unheart, false)
 }
 
-// changeHeart applies change to the item the path names, for the caller.
-func (s *Server) changeHeart(w http.ResponseWriter, r *http.Request, change heartChange) {
-	kind, ok := heartKinds[r.PathValue("kind")]
+// changeHeart applies change, which leaves the item hearted or not, to the item
+// the path names, for the caller, and tells the caller's devices.
+func (s *Server) changeHeart(w http.ResponseWriter, r *http.Request, change heartChange, hearted bool) {
+	name := r.PathValue("kind")
+	kind, ok := heartKinds[name]
 	if !ok {
 		writeProblem(w, r, http.StatusBadRequest, "kind must be tracks, albums or artists")
 		return
 	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
-	err := change(r.Context(), user.ID, kind, r.PathValue("id"))
-	if err == nil && kind == store.KindTrack {
-		s.lastfm.Poke() // A love or unlove may be waiting.
+	id := r.PathValue("id")
+	err := change(r.Context(), user.ID, kind, id)
+	if err == nil {
+		if kind == store.KindTrack {
+			s.lastfm.Poke() // A love or unlove may be waiting.
+		}
+		s.publishMarks(user.ID, &api.EventMarks{Kind: name, ID: id, Hearted: &hearted})
 	}
 	s.answerMark(w, r, err, "no such "+kind.String(), "change heart")
 }
@@ -66,16 +72,27 @@ func (s *Server) putRating(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
-	err := s.library.Rate(r.Context(), user.ID, r.PathValue("id"), req.Stars)
+	id := r.PathValue("id")
+	err := s.library.Rate(r.Context(), user.ID, id, req.Stars)
+	if err == nil {
+		s.publishMarks(user.ID, &api.EventMarks{Kind: trackKind, ID: id, Stars: &req.Stars})
+	}
 	s.answerMark(w, r, err, "no such track", "rate")
 }
 
 // deleteRating clears the caller's rating of a track.
 func (s *Server) deleteRating(w http.ResponseWriter, r *http.Request) {
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
-	err := s.library.Unrate(r.Context(), user.ID, r.PathValue("id"))
+	id := r.PathValue("id")
+	err := s.library.Unrate(r.Context(), user.ID, id)
+	if err == nil {
+		s.publishMarks(user.ID, &api.EventMarks{Kind: trackKind, ID: id, Stars: new(0)})
+	}
 	s.answerMark(w, r, err, "no such track", "unrate")
 }
+
+// trackKind is the contract's name for tracks, in a marks event.
+const trackKind = "tracks"
 
 // answerMark answers a change to a mark. A client that went away hears nothing:
 // every change can be sent again, and it will.

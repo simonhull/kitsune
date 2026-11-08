@@ -330,14 +330,16 @@ func (s *Store) WriteBatch(ctx context.Context, b *Batch) error {
 		return fmt.Errorf("write batch: %w", err)
 	}
 	now := s.now()
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) (err error) {
+	var touched []string
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) (err error) {
+		touched = touched[:0] // The writer may retry a transaction.
 		fts, err := prepareFTS(ctx, tx)
 		if err != nil {
 			return err
 		}
 		defer func() { err = errors.Join(err, fts.close()) }()
 		for i := range b.Tracks {
-			if err = writeTrack(ctx, q, fts, &b.Tracks[i], now); err != nil {
+			if err = writeTrack(ctx, q, fts, &b.Tracks[i], now, &touched); err != nil {
 				return fmt.Errorf("track %d: %w", i, err)
 			}
 		}
@@ -351,12 +353,14 @@ func (s *Store) WriteBatch(ctx context.Context, b *Batch) error {
 	if err != nil {
 		return fmt.Errorf("write batch: %w", err)
 	}
+	s.changed.add(touched)
 	return nil
 }
 
 // trackRefs are the rows a track points at.
 type trackRefs struct {
 	albumID                   int64
+	albumULID                 string
 	artistIDs, albumArtistIDs []int64
 }
 
@@ -380,7 +384,7 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, now tim
 		}
 		artworkHash = art.Hash[:]
 	}
-	refs.albumID, err = q.UpsertAlbum(ctx, sqlcdb.UpsertAlbumParams{
+	album, err := q.UpsertAlbum(ctx, sqlcdb.UpsertAlbumParams{
 		Ulid:        tw.Album.ULID,
 		GroupKey:    tw.Album.GroupKey,
 		Name:        tw.Album.Name,
@@ -395,15 +399,27 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, now tim
 	if err != nil {
 		return refs, fmt.Errorf("upsert album: %w", err)
 	}
+	refs.albumID, refs.albumULID = album.ID, album.Ulid
 	return refs, nil
 }
 
-// writeTrack stores one track and everything that hangs off it.
-func writeTrack(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tw *TrackWrite, now time.Time) error {
+// writeTrack stores one track and everything that hangs off it, adding the
+// albums it touched to touched: its own, and the one it leaves.
+func writeTrack(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tw *TrackWrite, now time.Time, touched *[]string) error {
+	if tw.ID != 0 {
+		before, err := q.TrackAlbumULID(ctx, tw.ID)
+		switch {
+		case err == nil:
+			*touched = append(*touched, before)
+		case !errors.Is(err, sql.ErrNoRows): // No row is the update's to report.
+			return fmt.Errorf("track's album: %w", err)
+		}
+	}
 	refs, err := resolveRefs(ctx, q, tw, now)
 	if err != nil {
 		return err
 	}
+	*touched = append(*touched, refs.albumULID)
 	id, err := saveTrack(ctx, q, tw, refs.albumID, now)
 	if err != nil {
 		return err
@@ -695,9 +711,19 @@ func (s *Store) MarkMissing(ctx context.Context, trackIDs []int64, at time.Time)
 	if len(trackIDs) == 0 {
 		return nil
 	}
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+	var touched []string
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+		touched = touched[:0] // The writer may retry a transaction.
 		for _, id := range trackIDs {
-			if err := q.MarkMissing(ctx, sqlcdb.MarkMissingParams{MissingSince: new(ms(at)), ID: id}); err != nil {
+			album, err := q.TrackAlbumULID(ctx, id)
+			switch {
+			case errors.Is(err, sql.ErrNoRows):
+				continue
+			case err != nil:
+				return fmt.Errorf("track %d: %w", id, err)
+			}
+			touched = append(touched, album)
+			if err = q.MarkMissing(ctx, sqlcdb.MarkMissingParams{MissingSince: new(ms(at)), ID: id}); err != nil {
 				return fmt.Errorf("track %d: %w", id, err)
 			}
 		}
@@ -706,6 +732,7 @@ func (s *Store) MarkMissing(ctx context.Context, trackIDs []int64, at time.Time)
 	if err != nil {
 		return fmt.Errorf("mark missing: %w", err)
 	}
+	s.changed.add(touched)
 	return nil
 }
 
@@ -738,7 +765,7 @@ const ftsDeleteMissingSQL = "DELETE FROM tracks_fts WHERE rowid IN (SELECT id FR
 // it deleted.
 func (s *Store) DeleteMissingBefore(ctx context.Context, cutoff time.Time) (int64, error) {
 	var n int64
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) error {
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) error {
 		if _, ftsErr := tx.ExecContext(ctx, ftsDeleteMissingSQL, ms(cutoff)); ftsErr != nil {
 			return fmt.Errorf("delete fts rows: %w", ftsErr)
 		}
@@ -761,7 +788,7 @@ func (s *Store) DeleteMissingBefore(ctx context.Context, cutoff time.Time) (int6
 // delete their files.
 func (s *Store) PruneOrphans(ctx context.Context) (Pruned, error) {
 	var p Pruned
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
 		albums, albumsErr := q.PruneAlbums(ctx)
 		if albumsErr != nil {
 			return fmt.Errorf("albums: %w", albumsErr)

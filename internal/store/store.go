@@ -72,6 +72,8 @@ type Store struct {
 
 	names      atomic.Pointer[names] // Never nil once Open returns.
 	refreshing sync.Mutex            // Held by a rebuild of names, so an older one can't land last.
+	changed    changedAlbums         // What library writes touched, until the writer takes it.
+	albums     albumRows             // The index's album rows, kept between library writes.
 }
 
 // Options configures [Open]. The zero value is ready to use.

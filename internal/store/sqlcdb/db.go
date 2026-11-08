@@ -261,23 +261,41 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listIndexPlaysStmt, err = db.PrepareContext(ctx, listIndexPlays); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexPlays: %w", err)
 	}
+	if q.listIndexPlaysOfStmt, err = db.PrepareContext(ctx, listIndexPlaysOf); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexPlaysOf: %w", err)
+	}
 	if q.listIndexShuffleStmt, err = db.PrepareContext(ctx, listIndexShuffle); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexShuffle: %w", err)
 	}
 	if q.listIndexTrackAlbumArtistsStmt, err = db.PrepareContext(ctx, listIndexTrackAlbumArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexTrackAlbumArtists: %w", err)
 	}
+	if q.listIndexTrackAlbumArtistsOfStmt, err = db.PrepareContext(ctx, listIndexTrackAlbumArtistsOf); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexTrackAlbumArtistsOf: %w", err)
+	}
 	if q.listIndexTrackArtistsStmt, err = db.PrepareContext(ctx, listIndexTrackArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexTrackArtists: %w", err)
+	}
+	if q.listIndexTrackArtistsOfStmt, err = db.PrepareContext(ctx, listIndexTrackArtistsOf); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexTrackArtistsOf: %w", err)
 	}
 	if q.listIndexTrackDetailsStmt, err = db.PrepareContext(ctx, listIndexTrackDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexTrackDetails: %w", err)
 	}
+	if q.listIndexTrackDetailsOfStmt, err = db.PrepareContext(ctx, listIndexTrackDetailsOf); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexTrackDetailsOf: %w", err)
+	}
 	if q.listIndexTrackTagsStmt, err = db.PrepareContext(ctx, listIndexTrackTags); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexTrackTags: %w", err)
 	}
+	if q.listIndexTrackTagsOfStmt, err = db.PrepareContext(ctx, listIndexTrackTagsOf); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexTrackTagsOf: %w", err)
+	}
 	if q.listIndexTracksStmt, err = db.PrepareContext(ctx, listIndexTracks); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexTracks: %w", err)
+	}
+	if q.listIndexTracksOfStmt, err = db.PrepareContext(ctx, listIndexTracksOf); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexTracksOf: %w", err)
 	}
 	if q.listLastfmDueStmt, err = db.PrepareContext(ctx, listLastfmDue); err != nil {
 		return nil, fmt.Errorf("error preparing query ListLastfmDue: %w", err)
@@ -386,6 +404,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.trackAlbumRowStmt, err = db.PrepareContext(ctx, trackAlbumRow); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackAlbumRow: %w", err)
+	}
+	if q.trackAlbumULIDStmt, err = db.PrepareContext(ctx, trackAlbumULID); err != nil {
+		return nil, fmt.Errorf("error preparing query TrackAlbumULID: %w", err)
 	}
 	if q.trackRowIDStmt, err = db.PrepareContext(ctx, trackRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackRowID: %w", err)
@@ -829,6 +850,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listIndexPlaysStmt: %w", cerr)
 		}
 	}
+	if q.listIndexPlaysOfStmt != nil {
+		if cerr := q.listIndexPlaysOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexPlaysOfStmt: %w", cerr)
+		}
+	}
 	if q.listIndexShuffleStmt != nil {
 		if cerr := q.listIndexShuffleStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIndexShuffleStmt: %w", cerr)
@@ -839,9 +865,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listIndexTrackAlbumArtistsStmt: %w", cerr)
 		}
 	}
+	if q.listIndexTrackAlbumArtistsOfStmt != nil {
+		if cerr := q.listIndexTrackAlbumArtistsOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexTrackAlbumArtistsOfStmt: %w", cerr)
+		}
+	}
 	if q.listIndexTrackArtistsStmt != nil {
 		if cerr := q.listIndexTrackArtistsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIndexTrackArtistsStmt: %w", cerr)
+		}
+	}
+	if q.listIndexTrackArtistsOfStmt != nil {
+		if cerr := q.listIndexTrackArtistsOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexTrackArtistsOfStmt: %w", cerr)
 		}
 	}
 	if q.listIndexTrackDetailsStmt != nil {
@@ -849,14 +885,29 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listIndexTrackDetailsStmt: %w", cerr)
 		}
 	}
+	if q.listIndexTrackDetailsOfStmt != nil {
+		if cerr := q.listIndexTrackDetailsOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexTrackDetailsOfStmt: %w", cerr)
+		}
+	}
 	if q.listIndexTrackTagsStmt != nil {
 		if cerr := q.listIndexTrackTagsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIndexTrackTagsStmt: %w", cerr)
 		}
 	}
+	if q.listIndexTrackTagsOfStmt != nil {
+		if cerr := q.listIndexTrackTagsOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexTrackTagsOfStmt: %w", cerr)
+		}
+	}
 	if q.listIndexTracksStmt != nil {
 		if cerr := q.listIndexTracksStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIndexTracksStmt: %w", cerr)
+		}
+	}
+	if q.listIndexTracksOfStmt != nil {
+		if cerr := q.listIndexTracksOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexTracksOfStmt: %w", cerr)
 		}
 	}
 	if q.listLastfmDueStmt != nil {
@@ -1039,6 +1090,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing trackAlbumRowStmt: %w", cerr)
 		}
 	}
+	if q.trackAlbumULIDStmt != nil {
+		if cerr := q.trackAlbumULIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing trackAlbumULIDStmt: %w", cerr)
+		}
+	}
 	if q.trackRowIDStmt != nil {
 		if cerr := q.trackRowIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing trackRowIDStmt: %w", cerr)
@@ -1146,283 +1202,297 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                             DBTX
-	tx                             *sql.Tx
-	albumGroupKeyStmt              *sql.Stmt
-	albumHeartedStmt               *sql.Stmt
-	albumRowIDStmt                 *sql.Stmt
-	anyMissingWithDigestStmt       *sql.Stmt
-	artistRowIDStmt                *sql.Stmt
-	artistToRenameStmt             *sql.Stmt
-	countAlbumTracksStmt           *sql.Stmt
-	countLiveAlbumsStmt            *sql.Stmt
-	countScanIssuesByKindStmt      *sql.Stmt
-	countUndigestedStmt            *sql.Stmt
-	countUserListeningStmt         *sql.Stmt
-	countUsersStmt                 *sql.Stmt
-	countWarnedTracksStmt          *sql.Stmt
-	createFirstUserStmt            *sql.Stmt
-	createSessionStmt              *sql.Stmt
-	createUserStmt                 *sql.Stmt
-	deferLastfmStmt                *sql.Stmt
-	deleteAlbumHeartStmt           *sql.Stmt
-	deleteArtistHeartStmt          *sql.Stmt
-	deleteExcludedStmt             *sql.Stmt
-	deleteExpiredSessionsStmt      *sql.Stmt
-	deleteLastfmAccountStmt        *sql.Stmt
-	deleteLastfmItemStmt           *sql.Stmt
-	deleteMissingBeforeStmt        *sql.Stmt
-	deleteRunStmt                  *sql.Stmt
-	deleteScanIssueStmt            *sql.Stmt
-	deleteSessionStmt              *sql.Stmt
-	deleteSettingStmt              *sql.Stmt
-	deleteTrackArtistsStmt         *sql.Stmt
-	deleteTrackHeartStmt           *sql.Stmt
-	deleteTrackRatingStmt          *sql.Stmt
-	deleteTrackTagsStmt            *sql.Stmt
-	dropOldLastfmScrobblesStmt     *sql.Stmt
-	enqueueLastfmStmt              *sql.Stmt
-	getAlbumStmt                   *sql.Stmt
-	getArtistStmt                  *sql.Stmt
-	getLastfmAccountStmt           *sql.Stmt
-	getLastfmTrackStmt             *sql.Stmt
-	getPrefStmt                    *sql.Stmt
-	getTrackAlbumStmt              *sql.Stmt
-	getTrackFileStmt               *sql.Stmt
-	groupKeyTakenStmt              *sql.Stmt
-	insertAlbumHeartStmt           *sql.Stmt
-	insertArtistHeartStmt          *sql.Stmt
-	insertExcludedStmt             *sql.Stmt
-	insertPlayStmt                 *sql.Stmt
-	insertRunStmt                  *sql.Stmt
-	insertRunTrackStmt             *sql.Stmt
-	insertSettingIfAbsentStmt      *sql.Stmt
-	insertTrackStmt                *sql.Stmt
-	insertTrackArtistStmt          *sql.Stmt
-	insertTrackHeartStmt           *sql.Stmt
-	insertTrackTagStmt             *sql.Stmt
-	issueStatesStmt                *sql.Stmt
-	knownRootsStmt                 *sql.Stmt
-	leaveRunStmt                   *sql.Stmt
-	listAlbumCoverFilesStmt        *sql.Stmt
-	listAlbumFilesStmt             *sql.Stmt
-	listAlbumHeartedTracksStmt     *sql.Stmt
-	listAlbumHitsStmt              *sql.Stmt
-	listAlbumNamesStmt             *sql.Stmt
-	listAlbumOwnersStmt            *sql.Stmt
-	listAlbumSortArtistsStmt       *sql.Stmt
-	listAlbumTagCountsStmt         *sql.Stmt
-	listAlbumTagValuesStmt         *sql.Stmt
-	listAlbumTrackArtistsStmt      *sql.Stmt
-	listAlbumTrackRatingsStmt      *sql.Stmt
-	listAlbumTracksStmt            *sql.Stmt
-	listAlbumsByAddedStmt          *sql.Stmt
-	listAlbumsByNameStmt           *sql.Stmt
-	listArtistAlbumsStmt           *sql.Stmt
-	listArtistHitsStmt             *sql.Stmt
-	listArtistNamesStmt            *sql.Stmt
-	listExcludedOfStmt             *sql.Stmt
-	listHeartedAlbumsStmt          *sql.Stmt
-	listHeartedArtistsStmt         *sql.Stmt
-	listHeartedTracksStmt          *sql.Stmt
-	listIndexAlbumsStmt            *sql.Stmt
-	listIndexPlaysStmt             *sql.Stmt
-	listIndexShuffleStmt           *sql.Stmt
-	listIndexTrackAlbumArtistsStmt *sql.Stmt
-	listIndexTrackArtistsStmt      *sql.Stmt
-	listIndexTrackDetailsStmt      *sql.Stmt
-	listIndexTrackTagsStmt         *sql.Stmt
-	listIndexTracksStmt            *sql.Stmt
-	listLastfmDueStmt              *sql.Stmt
-	listLastfmDueUsersStmt         *sql.Stmt
-	listOwningArtistsStmt          *sql.Stmt
-	listRunsOfStmt                 *sql.Stmt
-	listScanIssuesStmt             *sql.Stmt
-	listSettingsStmt               *sql.Stmt
-	listTrackArtistNamesStmt       *sql.Stmt
-	listTrackHitArtistsStmt        *sql.Stmt
-	listTrackHitsStmt              *sql.Stmt
-	listTrackRatingsStmt           *sql.Stmt
-	listWarnedTracksStmt           *sql.Stmt
-	liveTrackFactsStmt             *sql.Stmt
-	markLastfmSentStmt             *sql.Stmt
-	markMissingStmt                *sql.Stmt
-	matchKeyTakenStmt              *sql.Stmt
-	mergeAlbumIntoStmt             *sql.Stmt
-	missingByDigestStmt            *sql.Stmt
-	moveAlbumHeartsStmt            *sql.Stmt
-	pruneAlbumsStmt                *sql.Stmt
-	pruneArtistsStmt               *sql.Stmt
-	pruneArtworkStmt               *sql.Stmt
-	recentPlaysStmt                *sql.Stmt
-	renameArtistStmt               *sql.Stmt
-	resetLastfmOutboxStmt          *sql.Stmt
-	rootStatsStmt                  *sql.Stmt
-	runExistsStmt                  *sql.Stmt
-	runOfTrackStmt                 *sql.Stmt
-	sessionByTokenHashStmt         *sql.Stmt
-	setAlbumArtworkStmt            *sql.Stmt
-	setAlbumGroupKeyStmt           *sql.Stmt
-	setDigestStmt                  *sql.Stmt
-	setLastfmStateStmt             *sql.Stmt
-	setPasswordHashStmt            *sql.Stmt
-	settleAlbumStmt                *sql.Stmt
-	touchSessionStmt               *sql.Stmt
-	trackAlbumRowStmt              *sql.Stmt
-	trackRowIDStmt                 *sql.Stmt
-	trackStatesStmt                *sql.Stmt
-	undigestedStmt                 *sql.Stmt
-	updateLastfmSwitchesStmt       *sql.Stmt
-	updateTrackStmt                *sql.Stmt
-	upsertAlbumStmt                *sql.Stmt
-	upsertArtistStmt               *sql.Stmt
-	upsertArtworkStmt              *sql.Stmt
-	upsertLastfmAccountStmt        *sql.Stmt
-	upsertPrefStmt                 *sql.Stmt
-	upsertScanIssueStmt            *sql.Stmt
-	upsertSettingStmt              *sql.Stmt
-	upsertTrackRatingStmt          *sql.Stmt
-	userByNameStmt                 *sql.Stmt
+	db                               DBTX
+	tx                               *sql.Tx
+	albumGroupKeyStmt                *sql.Stmt
+	albumHeartedStmt                 *sql.Stmt
+	albumRowIDStmt                   *sql.Stmt
+	anyMissingWithDigestStmt         *sql.Stmt
+	artistRowIDStmt                  *sql.Stmt
+	artistToRenameStmt               *sql.Stmt
+	countAlbumTracksStmt             *sql.Stmt
+	countLiveAlbumsStmt              *sql.Stmt
+	countScanIssuesByKindStmt        *sql.Stmt
+	countUndigestedStmt              *sql.Stmt
+	countUserListeningStmt           *sql.Stmt
+	countUsersStmt                   *sql.Stmt
+	countWarnedTracksStmt            *sql.Stmt
+	createFirstUserStmt              *sql.Stmt
+	createSessionStmt                *sql.Stmt
+	createUserStmt                   *sql.Stmt
+	deferLastfmStmt                  *sql.Stmt
+	deleteAlbumHeartStmt             *sql.Stmt
+	deleteArtistHeartStmt            *sql.Stmt
+	deleteExcludedStmt               *sql.Stmt
+	deleteExpiredSessionsStmt        *sql.Stmt
+	deleteLastfmAccountStmt          *sql.Stmt
+	deleteLastfmItemStmt             *sql.Stmt
+	deleteMissingBeforeStmt          *sql.Stmt
+	deleteRunStmt                    *sql.Stmt
+	deleteScanIssueStmt              *sql.Stmt
+	deleteSessionStmt                *sql.Stmt
+	deleteSettingStmt                *sql.Stmt
+	deleteTrackArtistsStmt           *sql.Stmt
+	deleteTrackHeartStmt             *sql.Stmt
+	deleteTrackRatingStmt            *sql.Stmt
+	deleteTrackTagsStmt              *sql.Stmt
+	dropOldLastfmScrobblesStmt       *sql.Stmt
+	enqueueLastfmStmt                *sql.Stmt
+	getAlbumStmt                     *sql.Stmt
+	getArtistStmt                    *sql.Stmt
+	getLastfmAccountStmt             *sql.Stmt
+	getLastfmTrackStmt               *sql.Stmt
+	getPrefStmt                      *sql.Stmt
+	getTrackAlbumStmt                *sql.Stmt
+	getTrackFileStmt                 *sql.Stmt
+	groupKeyTakenStmt                *sql.Stmt
+	insertAlbumHeartStmt             *sql.Stmt
+	insertArtistHeartStmt            *sql.Stmt
+	insertExcludedStmt               *sql.Stmt
+	insertPlayStmt                   *sql.Stmt
+	insertRunStmt                    *sql.Stmt
+	insertRunTrackStmt               *sql.Stmt
+	insertSettingIfAbsentStmt        *sql.Stmt
+	insertTrackStmt                  *sql.Stmt
+	insertTrackArtistStmt            *sql.Stmt
+	insertTrackHeartStmt             *sql.Stmt
+	insertTrackTagStmt               *sql.Stmt
+	issueStatesStmt                  *sql.Stmt
+	knownRootsStmt                   *sql.Stmt
+	leaveRunStmt                     *sql.Stmt
+	listAlbumCoverFilesStmt          *sql.Stmt
+	listAlbumFilesStmt               *sql.Stmt
+	listAlbumHeartedTracksStmt       *sql.Stmt
+	listAlbumHitsStmt                *sql.Stmt
+	listAlbumNamesStmt               *sql.Stmt
+	listAlbumOwnersStmt              *sql.Stmt
+	listAlbumSortArtistsStmt         *sql.Stmt
+	listAlbumTagCountsStmt           *sql.Stmt
+	listAlbumTagValuesStmt           *sql.Stmt
+	listAlbumTrackArtistsStmt        *sql.Stmt
+	listAlbumTrackRatingsStmt        *sql.Stmt
+	listAlbumTracksStmt              *sql.Stmt
+	listAlbumsByAddedStmt            *sql.Stmt
+	listAlbumsByNameStmt             *sql.Stmt
+	listArtistAlbumsStmt             *sql.Stmt
+	listArtistHitsStmt               *sql.Stmt
+	listArtistNamesStmt              *sql.Stmt
+	listExcludedOfStmt               *sql.Stmt
+	listHeartedAlbumsStmt            *sql.Stmt
+	listHeartedArtistsStmt           *sql.Stmt
+	listHeartedTracksStmt            *sql.Stmt
+	listIndexAlbumsStmt              *sql.Stmt
+	listIndexPlaysStmt               *sql.Stmt
+	listIndexPlaysOfStmt             *sql.Stmt
+	listIndexShuffleStmt             *sql.Stmt
+	listIndexTrackAlbumArtistsStmt   *sql.Stmt
+	listIndexTrackAlbumArtistsOfStmt *sql.Stmt
+	listIndexTrackArtistsStmt        *sql.Stmt
+	listIndexTrackArtistsOfStmt      *sql.Stmt
+	listIndexTrackDetailsStmt        *sql.Stmt
+	listIndexTrackDetailsOfStmt      *sql.Stmt
+	listIndexTrackTagsStmt           *sql.Stmt
+	listIndexTrackTagsOfStmt         *sql.Stmt
+	listIndexTracksStmt              *sql.Stmt
+	listIndexTracksOfStmt            *sql.Stmt
+	listLastfmDueStmt                *sql.Stmt
+	listLastfmDueUsersStmt           *sql.Stmt
+	listOwningArtistsStmt            *sql.Stmt
+	listRunsOfStmt                   *sql.Stmt
+	listScanIssuesStmt               *sql.Stmt
+	listSettingsStmt                 *sql.Stmt
+	listTrackArtistNamesStmt         *sql.Stmt
+	listTrackHitArtistsStmt          *sql.Stmt
+	listTrackHitsStmt                *sql.Stmt
+	listTrackRatingsStmt             *sql.Stmt
+	listWarnedTracksStmt             *sql.Stmt
+	liveTrackFactsStmt               *sql.Stmt
+	markLastfmSentStmt               *sql.Stmt
+	markMissingStmt                  *sql.Stmt
+	matchKeyTakenStmt                *sql.Stmt
+	mergeAlbumIntoStmt               *sql.Stmt
+	missingByDigestStmt              *sql.Stmt
+	moveAlbumHeartsStmt              *sql.Stmt
+	pruneAlbumsStmt                  *sql.Stmt
+	pruneArtistsStmt                 *sql.Stmt
+	pruneArtworkStmt                 *sql.Stmt
+	recentPlaysStmt                  *sql.Stmt
+	renameArtistStmt                 *sql.Stmt
+	resetLastfmOutboxStmt            *sql.Stmt
+	rootStatsStmt                    *sql.Stmt
+	runExistsStmt                    *sql.Stmt
+	runOfTrackStmt                   *sql.Stmt
+	sessionByTokenHashStmt           *sql.Stmt
+	setAlbumArtworkStmt              *sql.Stmt
+	setAlbumGroupKeyStmt             *sql.Stmt
+	setDigestStmt                    *sql.Stmt
+	setLastfmStateStmt               *sql.Stmt
+	setPasswordHashStmt              *sql.Stmt
+	settleAlbumStmt                  *sql.Stmt
+	touchSessionStmt                 *sql.Stmt
+	trackAlbumRowStmt                *sql.Stmt
+	trackAlbumULIDStmt               *sql.Stmt
+	trackRowIDStmt                   *sql.Stmt
+	trackStatesStmt                  *sql.Stmt
+	undigestedStmt                   *sql.Stmt
+	updateLastfmSwitchesStmt         *sql.Stmt
+	updateTrackStmt                  *sql.Stmt
+	upsertAlbumStmt                  *sql.Stmt
+	upsertArtistStmt                 *sql.Stmt
+	upsertArtworkStmt                *sql.Stmt
+	upsertLastfmAccountStmt          *sql.Stmt
+	upsertPrefStmt                   *sql.Stmt
+	upsertScanIssueStmt              *sql.Stmt
+	upsertSettingStmt                *sql.Stmt
+	upsertTrackRatingStmt            *sql.Stmt
+	userByNameStmt                   *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                             tx,
-		tx:                             tx,
-		albumGroupKeyStmt:              q.albumGroupKeyStmt,
-		albumHeartedStmt:               q.albumHeartedStmt,
-		albumRowIDStmt:                 q.albumRowIDStmt,
-		anyMissingWithDigestStmt:       q.anyMissingWithDigestStmt,
-		artistRowIDStmt:                q.artistRowIDStmt,
-		artistToRenameStmt:             q.artistToRenameStmt,
-		countAlbumTracksStmt:           q.countAlbumTracksStmt,
-		countLiveAlbumsStmt:            q.countLiveAlbumsStmt,
-		countScanIssuesByKindStmt:      q.countScanIssuesByKindStmt,
-		countUndigestedStmt:            q.countUndigestedStmt,
-		countUserListeningStmt:         q.countUserListeningStmt,
-		countUsersStmt:                 q.countUsersStmt,
-		countWarnedTracksStmt:          q.countWarnedTracksStmt,
-		createFirstUserStmt:            q.createFirstUserStmt,
-		createSessionStmt:              q.createSessionStmt,
-		createUserStmt:                 q.createUserStmt,
-		deferLastfmStmt:                q.deferLastfmStmt,
-		deleteAlbumHeartStmt:           q.deleteAlbumHeartStmt,
-		deleteArtistHeartStmt:          q.deleteArtistHeartStmt,
-		deleteExcludedStmt:             q.deleteExcludedStmt,
-		deleteExpiredSessionsStmt:      q.deleteExpiredSessionsStmt,
-		deleteLastfmAccountStmt:        q.deleteLastfmAccountStmt,
-		deleteLastfmItemStmt:           q.deleteLastfmItemStmt,
-		deleteMissingBeforeStmt:        q.deleteMissingBeforeStmt,
-		deleteRunStmt:                  q.deleteRunStmt,
-		deleteScanIssueStmt:            q.deleteScanIssueStmt,
-		deleteSessionStmt:              q.deleteSessionStmt,
-		deleteSettingStmt:              q.deleteSettingStmt,
-		deleteTrackArtistsStmt:         q.deleteTrackArtistsStmt,
-		deleteTrackHeartStmt:           q.deleteTrackHeartStmt,
-		deleteTrackRatingStmt:          q.deleteTrackRatingStmt,
-		deleteTrackTagsStmt:            q.deleteTrackTagsStmt,
-		dropOldLastfmScrobblesStmt:     q.dropOldLastfmScrobblesStmt,
-		enqueueLastfmStmt:              q.enqueueLastfmStmt,
-		getAlbumStmt:                   q.getAlbumStmt,
-		getArtistStmt:                  q.getArtistStmt,
-		getLastfmAccountStmt:           q.getLastfmAccountStmt,
-		getLastfmTrackStmt:             q.getLastfmTrackStmt,
-		getPrefStmt:                    q.getPrefStmt,
-		getTrackAlbumStmt:              q.getTrackAlbumStmt,
-		getTrackFileStmt:               q.getTrackFileStmt,
-		groupKeyTakenStmt:              q.groupKeyTakenStmt,
-		insertAlbumHeartStmt:           q.insertAlbumHeartStmt,
-		insertArtistHeartStmt:          q.insertArtistHeartStmt,
-		insertExcludedStmt:             q.insertExcludedStmt,
-		insertPlayStmt:                 q.insertPlayStmt,
-		insertRunStmt:                  q.insertRunStmt,
-		insertRunTrackStmt:             q.insertRunTrackStmt,
-		insertSettingIfAbsentStmt:      q.insertSettingIfAbsentStmt,
-		insertTrackStmt:                q.insertTrackStmt,
-		insertTrackArtistStmt:          q.insertTrackArtistStmt,
-		insertTrackHeartStmt:           q.insertTrackHeartStmt,
-		insertTrackTagStmt:             q.insertTrackTagStmt,
-		issueStatesStmt:                q.issueStatesStmt,
-		knownRootsStmt:                 q.knownRootsStmt,
-		leaveRunStmt:                   q.leaveRunStmt,
-		listAlbumCoverFilesStmt:        q.listAlbumCoverFilesStmt,
-		listAlbumFilesStmt:             q.listAlbumFilesStmt,
-		listAlbumHeartedTracksStmt:     q.listAlbumHeartedTracksStmt,
-		listAlbumHitsStmt:              q.listAlbumHitsStmt,
-		listAlbumNamesStmt:             q.listAlbumNamesStmt,
-		listAlbumOwnersStmt:            q.listAlbumOwnersStmt,
-		listAlbumSortArtistsStmt:       q.listAlbumSortArtistsStmt,
-		listAlbumTagCountsStmt:         q.listAlbumTagCountsStmt,
-		listAlbumTagValuesStmt:         q.listAlbumTagValuesStmt,
-		listAlbumTrackArtistsStmt:      q.listAlbumTrackArtistsStmt,
-		listAlbumTrackRatingsStmt:      q.listAlbumTrackRatingsStmt,
-		listAlbumTracksStmt:            q.listAlbumTracksStmt,
-		listAlbumsByAddedStmt:          q.listAlbumsByAddedStmt,
-		listAlbumsByNameStmt:           q.listAlbumsByNameStmt,
-		listArtistAlbumsStmt:           q.listArtistAlbumsStmt,
-		listArtistHitsStmt:             q.listArtistHitsStmt,
-		listArtistNamesStmt:            q.listArtistNamesStmt,
-		listExcludedOfStmt:             q.listExcludedOfStmt,
-		listHeartedAlbumsStmt:          q.listHeartedAlbumsStmt,
-		listHeartedArtistsStmt:         q.listHeartedArtistsStmt,
-		listHeartedTracksStmt:          q.listHeartedTracksStmt,
-		listIndexAlbumsStmt:            q.listIndexAlbumsStmt,
-		listIndexPlaysStmt:             q.listIndexPlaysStmt,
-		listIndexShuffleStmt:           q.listIndexShuffleStmt,
-		listIndexTrackAlbumArtistsStmt: q.listIndexTrackAlbumArtistsStmt,
-		listIndexTrackArtistsStmt:      q.listIndexTrackArtistsStmt,
-		listIndexTrackDetailsStmt:      q.listIndexTrackDetailsStmt,
-		listIndexTrackTagsStmt:         q.listIndexTrackTagsStmt,
-		listIndexTracksStmt:            q.listIndexTracksStmt,
-		listLastfmDueStmt:              q.listLastfmDueStmt,
-		listLastfmDueUsersStmt:         q.listLastfmDueUsersStmt,
-		listOwningArtistsStmt:          q.listOwningArtistsStmt,
-		listRunsOfStmt:                 q.listRunsOfStmt,
-		listScanIssuesStmt:             q.listScanIssuesStmt,
-		listSettingsStmt:               q.listSettingsStmt,
-		listTrackArtistNamesStmt:       q.listTrackArtistNamesStmt,
-		listTrackHitArtistsStmt:        q.listTrackHitArtistsStmt,
-		listTrackHitsStmt:              q.listTrackHitsStmt,
-		listTrackRatingsStmt:           q.listTrackRatingsStmt,
-		listWarnedTracksStmt:           q.listWarnedTracksStmt,
-		liveTrackFactsStmt:             q.liveTrackFactsStmt,
-		markLastfmSentStmt:             q.markLastfmSentStmt,
-		markMissingStmt:                q.markMissingStmt,
-		matchKeyTakenStmt:              q.matchKeyTakenStmt,
-		mergeAlbumIntoStmt:             q.mergeAlbumIntoStmt,
-		missingByDigestStmt:            q.missingByDigestStmt,
-		moveAlbumHeartsStmt:            q.moveAlbumHeartsStmt,
-		pruneAlbumsStmt:                q.pruneAlbumsStmt,
-		pruneArtistsStmt:               q.pruneArtistsStmt,
-		pruneArtworkStmt:               q.pruneArtworkStmt,
-		recentPlaysStmt:                q.recentPlaysStmt,
-		renameArtistStmt:               q.renameArtistStmt,
-		resetLastfmOutboxStmt:          q.resetLastfmOutboxStmt,
-		rootStatsStmt:                  q.rootStatsStmt,
-		runExistsStmt:                  q.runExistsStmt,
-		runOfTrackStmt:                 q.runOfTrackStmt,
-		sessionByTokenHashStmt:         q.sessionByTokenHashStmt,
-		setAlbumArtworkStmt:            q.setAlbumArtworkStmt,
-		setAlbumGroupKeyStmt:           q.setAlbumGroupKeyStmt,
-		setDigestStmt:                  q.setDigestStmt,
-		setLastfmStateStmt:             q.setLastfmStateStmt,
-		setPasswordHashStmt:            q.setPasswordHashStmt,
-		settleAlbumStmt:                q.settleAlbumStmt,
-		touchSessionStmt:               q.touchSessionStmt,
-		trackAlbumRowStmt:              q.trackAlbumRowStmt,
-		trackRowIDStmt:                 q.trackRowIDStmt,
-		trackStatesStmt:                q.trackStatesStmt,
-		undigestedStmt:                 q.undigestedStmt,
-		updateLastfmSwitchesStmt:       q.updateLastfmSwitchesStmt,
-		updateTrackStmt:                q.updateTrackStmt,
-		upsertAlbumStmt:                q.upsertAlbumStmt,
-		upsertArtistStmt:               q.upsertArtistStmt,
-		upsertArtworkStmt:              q.upsertArtworkStmt,
-		upsertLastfmAccountStmt:        q.upsertLastfmAccountStmt,
-		upsertPrefStmt:                 q.upsertPrefStmt,
-		upsertScanIssueStmt:            q.upsertScanIssueStmt,
-		upsertSettingStmt:              q.upsertSettingStmt,
-		upsertTrackRatingStmt:          q.upsertTrackRatingStmt,
-		userByNameStmt:                 q.userByNameStmt,
+		db:                               tx,
+		tx:                               tx,
+		albumGroupKeyStmt:                q.albumGroupKeyStmt,
+		albumHeartedStmt:                 q.albumHeartedStmt,
+		albumRowIDStmt:                   q.albumRowIDStmt,
+		anyMissingWithDigestStmt:         q.anyMissingWithDigestStmt,
+		artistRowIDStmt:                  q.artistRowIDStmt,
+		artistToRenameStmt:               q.artistToRenameStmt,
+		countAlbumTracksStmt:             q.countAlbumTracksStmt,
+		countLiveAlbumsStmt:              q.countLiveAlbumsStmt,
+		countScanIssuesByKindStmt:        q.countScanIssuesByKindStmt,
+		countUndigestedStmt:              q.countUndigestedStmt,
+		countUserListeningStmt:           q.countUserListeningStmt,
+		countUsersStmt:                   q.countUsersStmt,
+		countWarnedTracksStmt:            q.countWarnedTracksStmt,
+		createFirstUserStmt:              q.createFirstUserStmt,
+		createSessionStmt:                q.createSessionStmt,
+		createUserStmt:                   q.createUserStmt,
+		deferLastfmStmt:                  q.deferLastfmStmt,
+		deleteAlbumHeartStmt:             q.deleteAlbumHeartStmt,
+		deleteArtistHeartStmt:            q.deleteArtistHeartStmt,
+		deleteExcludedStmt:               q.deleteExcludedStmt,
+		deleteExpiredSessionsStmt:        q.deleteExpiredSessionsStmt,
+		deleteLastfmAccountStmt:          q.deleteLastfmAccountStmt,
+		deleteLastfmItemStmt:             q.deleteLastfmItemStmt,
+		deleteMissingBeforeStmt:          q.deleteMissingBeforeStmt,
+		deleteRunStmt:                    q.deleteRunStmt,
+		deleteScanIssueStmt:              q.deleteScanIssueStmt,
+		deleteSessionStmt:                q.deleteSessionStmt,
+		deleteSettingStmt:                q.deleteSettingStmt,
+		deleteTrackArtistsStmt:           q.deleteTrackArtistsStmt,
+		deleteTrackHeartStmt:             q.deleteTrackHeartStmt,
+		deleteTrackRatingStmt:            q.deleteTrackRatingStmt,
+		deleteTrackTagsStmt:              q.deleteTrackTagsStmt,
+		dropOldLastfmScrobblesStmt:       q.dropOldLastfmScrobblesStmt,
+		enqueueLastfmStmt:                q.enqueueLastfmStmt,
+		getAlbumStmt:                     q.getAlbumStmt,
+		getArtistStmt:                    q.getArtistStmt,
+		getLastfmAccountStmt:             q.getLastfmAccountStmt,
+		getLastfmTrackStmt:               q.getLastfmTrackStmt,
+		getPrefStmt:                      q.getPrefStmt,
+		getTrackAlbumStmt:                q.getTrackAlbumStmt,
+		getTrackFileStmt:                 q.getTrackFileStmt,
+		groupKeyTakenStmt:                q.groupKeyTakenStmt,
+		insertAlbumHeartStmt:             q.insertAlbumHeartStmt,
+		insertArtistHeartStmt:            q.insertArtistHeartStmt,
+		insertExcludedStmt:               q.insertExcludedStmt,
+		insertPlayStmt:                   q.insertPlayStmt,
+		insertRunStmt:                    q.insertRunStmt,
+		insertRunTrackStmt:               q.insertRunTrackStmt,
+		insertSettingIfAbsentStmt:        q.insertSettingIfAbsentStmt,
+		insertTrackStmt:                  q.insertTrackStmt,
+		insertTrackArtistStmt:            q.insertTrackArtistStmt,
+		insertTrackHeartStmt:             q.insertTrackHeartStmt,
+		insertTrackTagStmt:               q.insertTrackTagStmt,
+		issueStatesStmt:                  q.issueStatesStmt,
+		knownRootsStmt:                   q.knownRootsStmt,
+		leaveRunStmt:                     q.leaveRunStmt,
+		listAlbumCoverFilesStmt:          q.listAlbumCoverFilesStmt,
+		listAlbumFilesStmt:               q.listAlbumFilesStmt,
+		listAlbumHeartedTracksStmt:       q.listAlbumHeartedTracksStmt,
+		listAlbumHitsStmt:                q.listAlbumHitsStmt,
+		listAlbumNamesStmt:               q.listAlbumNamesStmt,
+		listAlbumOwnersStmt:              q.listAlbumOwnersStmt,
+		listAlbumSortArtistsStmt:         q.listAlbumSortArtistsStmt,
+		listAlbumTagCountsStmt:           q.listAlbumTagCountsStmt,
+		listAlbumTagValuesStmt:           q.listAlbumTagValuesStmt,
+		listAlbumTrackArtistsStmt:        q.listAlbumTrackArtistsStmt,
+		listAlbumTrackRatingsStmt:        q.listAlbumTrackRatingsStmt,
+		listAlbumTracksStmt:              q.listAlbumTracksStmt,
+		listAlbumsByAddedStmt:            q.listAlbumsByAddedStmt,
+		listAlbumsByNameStmt:             q.listAlbumsByNameStmt,
+		listArtistAlbumsStmt:             q.listArtistAlbumsStmt,
+		listArtistHitsStmt:               q.listArtistHitsStmt,
+		listArtistNamesStmt:              q.listArtistNamesStmt,
+		listExcludedOfStmt:               q.listExcludedOfStmt,
+		listHeartedAlbumsStmt:            q.listHeartedAlbumsStmt,
+		listHeartedArtistsStmt:           q.listHeartedArtistsStmt,
+		listHeartedTracksStmt:            q.listHeartedTracksStmt,
+		listIndexAlbumsStmt:              q.listIndexAlbumsStmt,
+		listIndexPlaysStmt:               q.listIndexPlaysStmt,
+		listIndexPlaysOfStmt:             q.listIndexPlaysOfStmt,
+		listIndexShuffleStmt:             q.listIndexShuffleStmt,
+		listIndexTrackAlbumArtistsStmt:   q.listIndexTrackAlbumArtistsStmt,
+		listIndexTrackAlbumArtistsOfStmt: q.listIndexTrackAlbumArtistsOfStmt,
+		listIndexTrackArtistsStmt:        q.listIndexTrackArtistsStmt,
+		listIndexTrackArtistsOfStmt:      q.listIndexTrackArtistsOfStmt,
+		listIndexTrackDetailsStmt:        q.listIndexTrackDetailsStmt,
+		listIndexTrackDetailsOfStmt:      q.listIndexTrackDetailsOfStmt,
+		listIndexTrackTagsStmt:           q.listIndexTrackTagsStmt,
+		listIndexTrackTagsOfStmt:         q.listIndexTrackTagsOfStmt,
+		listIndexTracksStmt:              q.listIndexTracksStmt,
+		listIndexTracksOfStmt:            q.listIndexTracksOfStmt,
+		listLastfmDueStmt:                q.listLastfmDueStmt,
+		listLastfmDueUsersStmt:           q.listLastfmDueUsersStmt,
+		listOwningArtistsStmt:            q.listOwningArtistsStmt,
+		listRunsOfStmt:                   q.listRunsOfStmt,
+		listScanIssuesStmt:               q.listScanIssuesStmt,
+		listSettingsStmt:                 q.listSettingsStmt,
+		listTrackArtistNamesStmt:         q.listTrackArtistNamesStmt,
+		listTrackHitArtistsStmt:          q.listTrackHitArtistsStmt,
+		listTrackHitsStmt:                q.listTrackHitsStmt,
+		listTrackRatingsStmt:             q.listTrackRatingsStmt,
+		listWarnedTracksStmt:             q.listWarnedTracksStmt,
+		liveTrackFactsStmt:               q.liveTrackFactsStmt,
+		markLastfmSentStmt:               q.markLastfmSentStmt,
+		markMissingStmt:                  q.markMissingStmt,
+		matchKeyTakenStmt:                q.matchKeyTakenStmt,
+		mergeAlbumIntoStmt:               q.mergeAlbumIntoStmt,
+		missingByDigestStmt:              q.missingByDigestStmt,
+		moveAlbumHeartsStmt:              q.moveAlbumHeartsStmt,
+		pruneAlbumsStmt:                  q.pruneAlbumsStmt,
+		pruneArtistsStmt:                 q.pruneArtistsStmt,
+		pruneArtworkStmt:                 q.pruneArtworkStmt,
+		recentPlaysStmt:                  q.recentPlaysStmt,
+		renameArtistStmt:                 q.renameArtistStmt,
+		resetLastfmOutboxStmt:            q.resetLastfmOutboxStmt,
+		rootStatsStmt:                    q.rootStatsStmt,
+		runExistsStmt:                    q.runExistsStmt,
+		runOfTrackStmt:                   q.runOfTrackStmt,
+		sessionByTokenHashStmt:           q.sessionByTokenHashStmt,
+		setAlbumArtworkStmt:              q.setAlbumArtworkStmt,
+		setAlbumGroupKeyStmt:             q.setAlbumGroupKeyStmt,
+		setDigestStmt:                    q.setDigestStmt,
+		setLastfmStateStmt:               q.setLastfmStateStmt,
+		setPasswordHashStmt:              q.setPasswordHashStmt,
+		settleAlbumStmt:                  q.settleAlbumStmt,
+		touchSessionStmt:                 q.touchSessionStmt,
+		trackAlbumRowStmt:                q.trackAlbumRowStmt,
+		trackAlbumULIDStmt:               q.trackAlbumULIDStmt,
+		trackRowIDStmt:                   q.trackRowIDStmt,
+		trackStatesStmt:                  q.trackStatesStmt,
+		undigestedStmt:                   q.undigestedStmt,
+		updateLastfmSwitchesStmt:         q.updateLastfmSwitchesStmt,
+		updateTrackStmt:                  q.updateTrackStmt,
+		upsertAlbumStmt:                  q.upsertAlbumStmt,
+		upsertArtistStmt:                 q.upsertArtistStmt,
+		upsertArtworkStmt:                q.upsertArtworkStmt,
+		upsertLastfmAccountStmt:          q.upsertLastfmAccountStmt,
+		upsertPrefStmt:                   q.upsertPrefStmt,
+		upsertScanIssueStmt:              q.upsertScanIssueStmt,
+		upsertSettingStmt:                q.upsertSettingStmt,
+		upsertTrackRatingStmt:            q.upsertTrackRatingStmt,
+		userByNameStmt:                   q.userByNameStmt,
 	}
 }

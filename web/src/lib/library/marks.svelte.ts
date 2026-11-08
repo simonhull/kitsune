@@ -4,7 +4,8 @@ import {
 	type Album,
 	type LibraryIndex,
 	type LibrarySource,
-	type MarkKind
+	type MarkKind,
+	type MarksEvent
 } from './source.ts';
 
 /** What the marks need of the server. */
@@ -180,6 +181,19 @@ export class Marks {
 	/** What pressing a star does: it rates, unless the song already has it, which clears it. */
 	press(trackId: string, star: number): void {
 		this.rate(trackId, this.stars(trackId) === star ? null : star);
+	}
+
+	/**
+	 * Takes in a change the person made on another device, as the server reports it. A press of this
+	 * one's still out keeps what it shows: its answer speaks for it.
+	 */
+	heard({ kind, id, hearted, stars }: MarksEvent): void {
+		if (hearted !== undefined) {
+			this.#hearts[kind].seed(id, hearted);
+		}
+		if (stars !== undefined) {
+			this.#stars.seed(id, stars === 0 ? null : stars);
+		}
 	}
 
 	seedIndex({ artists }: LibraryIndex): void {

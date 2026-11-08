@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/settings"
 )
 
@@ -33,13 +34,28 @@ func (s *Server) writeSettings(w http.ResponseWriter, r *http.Request, snap *set
 		return
 	}
 	body := s.apiSettings(snap)
+	watches := s.folderWatches()
 	body.Folders = make([]api.LibraryFolder, len(snap.Roots))
 	for i, root := range snap.Roots {
 		stat := stats[root]
-		body.Folders[i] = api.LibraryFolder{Path: root, Tracks: stat.Tracks, Bytes: stat.Bytes}
+		body.Folders[i] = api.LibraryFolder{Path: root, Tracks: stat.Tracks, Bytes: stat.Bytes, Watch: watches[root]}
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+}
+
+// folderWatches returns how the watcher follows each root, by root. A root the
+// watcher hasn't taken up yet has none.
+func (s *Server) folderWatches() map[string]*api.FolderWatch {
+	if s.watcher == nil {
+		return nil
+	}
+	modes := s.watcher.Modes()
+	out := make(map[string]*api.FolderWatch, len(modes))
+	for _, m := range modes {
+		out[m.Root] = &api.FolderWatch{Mode: m.Mode.String(), Reason: m.Reason.String(), Filesystem: m.FSType}
+	}
+	return out
 }
 
 // patchSettings changes the settings the body names, all of them or none. The
@@ -61,8 +77,9 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.log.InfoContext(r.Context(), "settings changed",
-		"requestId", requestID(r.Context()), "keys", slices.Sorted(maps.Keys(values)))
+	keys := slices.Sorted(maps.Keys(values))
+	s.log.InfoContext(r.Context(), "settings changed", "requestId", requestID(r.Context()), "keys", keys)
+	s.publish(events.Settings, events.Admins(), &api.EventSettings{Keys: keys})
 	s.writeSettings(w, r, snap)
 }
 

@@ -335,6 +335,8 @@ export interface LibraryAlbum {
 	/** Whether the caller has hearted it. */
 	hearted: boolean;
 	tracks: LibraryTrack[];
+	/** Only in an index of some albums: the album before this one in the whole index, `''` when first. */
+	after?: string;
 }
 
 export interface LibraryArtist {
@@ -423,7 +425,49 @@ export interface LibraryFolder {
 	path: string;
 	tracks: number;
 	bytes: number;
+	/** How the server follows it for new music. Absent until it has looked. */
+	watch?: FolderWatch;
 }
+
+/** How the server follows a library folder: told of every change, looking every 5 minutes, or not. */
+export interface FolderWatch {
+	mode: 'watching' | 'polling' | 'off';
+	/** Why it isn't watched: a network or FUSE filesystem, the OS's watch limit, or a missing folder. */
+	reason?: 'network' | 'watch-limit' | 'missing';
+	/** The filesystem's type, such as `cifs`, for `network`. */
+	filesystem?: string;
+}
+
+/** `library` on `GET /events`: albums added, changed or gone, or `all` when too many did to list. */
+export interface LibraryEvent {
+	albums: string[];
+	all: boolean;
+}
+
+/** `marks` on `GET /events`: a heart, with `hearted`, or a rating, with `stars` (0 for none). */
+export interface MarksEvent {
+	kind: MarkKind;
+	id: string;
+	hearted?: boolean;
+	stars?: number;
+}
+
+/** What `GET /events` carries, by event name. Each says what changed, never the thing itself. */
+export interface ServerEvents {
+	ready: Record<string, never>;
+	resync: Record<string, never>;
+	library: LibraryEvent;
+	scan: ScanStatus;
+	fingerprints: FingerprintStatus;
+	marks: MarksEvent;
+	prefs: { key: string };
+	'shuffle-rules': Record<string, never>;
+	listening: { trackId: string; clientId?: string };
+	lastfm: Record<string, never>;
+	settings: { keys: string[] };
+}
+
+export type ServerEventKind = keyof ServerEvents;
 
 /** `GET /admin/settings`. */
 export interface ServerSettings {
@@ -619,6 +663,11 @@ export interface LibrarySource {
 	facts(): Promise<LibraryFacts>;
 	/** Every song, with what `fields` asks for besides. */
 	libraryIndex(fields?: readonly IndexField[]): Promise<LibraryIndex>;
+	/**
+	 * Just these albums, in the index's shape, each with its `after`: what a `library` event asks for.
+	 * One that has no song any more isn't there.
+	 */
+	libraryIndexOf(albums: readonly string[], fields?: readonly IndexField[]): Promise<LibraryIndex>;
 	/** One of the caller's preferences, or null when it was never set. */
 	pref<K extends PrefKey>(key: K): Promise<Prefs[K] | null>;
 	/** Rejects with a {@link ServerError}: 400 for a value the server won't keep. */

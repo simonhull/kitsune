@@ -193,8 +193,8 @@ func (l *shuffleLib) indexMarks(t *testing.T, user int64) map[string]store.Shuff
 	}
 	marks := map[string]store.ShuffleMark{}
 	for _, a := range index.Artists {
-		for _, album := range a.Albums {
-			for _, tr := range album.Tracks {
+		for j := range a.Albums {
+			for _, tr := range a.Albums[j].Tracks {
 				if tr.Extra != nil && tr.Extra.Shuffle != nil {
 					marks[tr.ID] = *tr.Extra.Shuffle
 				}

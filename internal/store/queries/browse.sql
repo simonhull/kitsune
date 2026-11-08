@@ -154,6 +154,64 @@ FROM plays
 WHERE user_id = ?
 GROUP BY track_id;
 
+
+-- The same, for some albums only, by public ID: what a change to them needs.
+-- Each has the columns of its whole-library twin above, in the same order. CROSS
+-- JOIN fixes SQLite's join order from the albums out, so each reads the rows of
+-- those few albums by index; left to choose, the planner starts from a person's
+-- plays or a tag key and reads thousands.
+
+-- name: ListIndexTracksOf :many
+SELECT t.id, t.album_id, t.ulid, t.title, t.disc_no, t.track_no, t.duration_ms
+FROM albums a
+CROSS JOIN tracks t
+WHERE a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND t.missing_since IS NULL
+ORDER BY t.album_id, coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id;
+
+-- name: ListIndexTrackArtistsOf :many
+SELECT ta.track_id, ar.name
+FROM albums a
+CROSS JOIN tracks t
+CROSS JOIN track_artists ta
+CROSS JOIN artists ar
+WHERE a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND t.missing_since IS NULL
+  AND ta.track_id = t.id AND ta.role = 'artist' AND ar.id = ta.artist_id
+ORDER BY ta.track_id, ta.ord;
+
+-- name: ListIndexTrackDetailsOf :many
+SELECT t.id, t.year, t.format, t.sample_rate, t.bit_depth, t.bitrate, t.added_at
+FROM albums a
+CROSS JOIN tracks t
+WHERE a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND t.missing_since IS NULL;
+
+-- name: ListIndexTrackAlbumArtistsOf :many
+SELECT ta.track_id, ar.name
+FROM albums a
+CROSS JOIN tracks t
+CROSS JOIN track_artists ta
+CROSS JOIN artists ar
+WHERE a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND t.missing_since IS NULL
+  AND ta.track_id = t.id AND ta.role = 'album_artist' AND ar.id = ta.artist_id
+ORDER BY ta.track_id, ta.ord;
+
+-- name: ListIndexTrackTagsOf :many
+SELECT tt.track_id, tt.key, tt.value
+FROM albums a
+CROSS JOIN tracks t
+CROSS JOIN track_tags tt
+WHERE a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND t.missing_since IS NULL
+  AND tt.track_id = t.id AND tt.key IN (sqlc.slice(tag_keys))
+ORDER BY tt.track_id, tt.key, tt.ord;
+
+-- name: ListIndexPlaysOf :many
+SELECT p.track_id, count(*) AS plays, CAST(max(p.played_at) AS INTEGER) AS last_played
+FROM albums a
+CROSS JOIN tracks t
+CROSS JOIN plays p INDEXED BY plays_track -- Else plays_recent: every play of the person, per track.
+-- user_id comes first: sqlc numbers a named argument, which a slice before it would shift.
+WHERE p.user_id = sqlc.arg(user_id) AND a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND p.track_id = t.id
+GROUP BY p.track_id;
+
 -- name: CountLiveAlbums :one
 SELECT count(*) FROM albums a
 WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL);

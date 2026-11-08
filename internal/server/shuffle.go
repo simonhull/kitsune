@@ -80,6 +80,7 @@ func (s *Server) putShuffleRun(w http.ResponseWriter, r *http.Request) {
 			s.internalError(w, r, "set run", err)
 		}
 	default:
+		s.publishShuffleRules(user.ID)
 		writeBody(w, http.StatusOK, api.JSONMediaType, &api.ShuffleRun{ID: run.ID, Tracks: run.Tracks})
 	}
 }
@@ -96,6 +97,7 @@ func (s *Server) deleteShuffleRun(w http.ResponseWriter, r *http.Request) {
 			s.internalError(w, r, "delete run", err)
 		}
 	default:
+		s.publishShuffleRules(user.ID)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -125,6 +127,7 @@ func (s *Server) setExcluded(w http.ResponseWriter, r *http.Request, on bool) {
 			s.internalError(w, r, "set excluded", err)
 		}
 	default:
+		s.publishShuffleRules(user.ID)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

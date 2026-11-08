@@ -41,6 +41,7 @@ func (s *Scanner) publish(change func(*Progress)) {
 func (s *Scanner) claimed(mode Mode) func(context.Context) (Stats, error) {
 	started := s.now()
 	s.publish(func(p *Progress) { *p = Progress{Running: true, Mode: mode, StartedAt: started, Last: p.Last} })
+	s.notifyScan(true)
 	return func(ctx context.Context) (Stats, error) { return s.run(ctx, mode) }
 }
 

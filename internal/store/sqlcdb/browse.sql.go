@@ -644,6 +644,61 @@ func (q *Queries) ListIndexPlays(ctx context.Context, userID int64) ([]ListIndex
 	return items, nil
 }
 
+const listIndexPlaysOf = `-- name: ListIndexPlaysOf :many
+SELECT p.track_id, count(*) AS plays, CAST(max(p.played_at) AS INTEGER) AS last_played
+FROM albums a
+CROSS JOIN tracks t
+CROSS JOIN plays p INDEXED BY plays_track -- Else plays_recent: every play of the person, per track.
+WHERE p.user_id = ?1 AND a.ulid IN (/*SLICE:albums*/?) AND t.album_id = a.id AND p.track_id = t.id
+GROUP BY p.track_id
+`
+
+type ListIndexPlaysOfParams struct {
+	UserID int64
+	Albums []string
+}
+
+type ListIndexPlaysOfRow struct {
+	TrackID    int64
+	Plays      int64
+	LastPlayed int64
+}
+
+// user_id comes first: sqlc numbers a named argument, which a slice before it would shift.
+func (q *Queries) ListIndexPlaysOf(ctx context.Context, arg ListIndexPlaysOfParams) ([]ListIndexPlaysOfRow, error) {
+	query := listIndexPlaysOf
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.UserID)
+	if len(arg.Albums) > 0 {
+		for _, v := range arg.Albums {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:albums*/?", strings.Repeat(",?", len(arg.Albums))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
+	}
+	rows, err := q.query(ctx, nil, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexPlaysOfRow
+	for rows.Next() {
+		var i ListIndexPlaysOfRow
+		if err := rows.Scan(&i.TrackID, &i.Plays, &i.LastPlayed); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIndexTrackAlbumArtists = `-- name: ListIndexTrackAlbumArtists :many
 SELECT ta.track_id, ar.name
 FROM track_artists ta
@@ -667,6 +722,55 @@ func (q *Queries) ListIndexTrackAlbumArtists(ctx context.Context) ([]ListIndexTr
 	var items []ListIndexTrackAlbumArtistsRow
 	for rows.Next() {
 		var i ListIndexTrackAlbumArtistsRow
+		if err := rows.Scan(&i.TrackID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndexTrackAlbumArtistsOf = `-- name: ListIndexTrackAlbumArtistsOf :many
+SELECT ta.track_id, ar.name
+FROM albums a
+CROSS JOIN tracks t
+CROSS JOIN track_artists ta
+CROSS JOIN artists ar
+WHERE a.ulid IN (/*SLICE:albums*/?) AND t.album_id = a.id AND t.missing_since IS NULL
+  AND ta.track_id = t.id AND ta.role = 'album_artist' AND ar.id = ta.artist_id
+ORDER BY ta.track_id, ta.ord
+`
+
+type ListIndexTrackAlbumArtistsOfRow struct {
+	TrackID int64
+	Name    string
+}
+
+func (q *Queries) ListIndexTrackAlbumArtistsOf(ctx context.Context, albums []string) ([]ListIndexTrackAlbumArtistsOfRow, error) {
+	query := listIndexTrackAlbumArtistsOf
+	var queryParams []interface{}
+	if len(albums) > 0 {
+		for _, v := range albums {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:albums*/?", strings.Repeat(",?", len(albums))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
+	}
+	rows, err := q.query(ctx, nil, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTrackAlbumArtistsOfRow
+	for rows.Next() {
+		var i ListIndexTrackAlbumArtistsOfRow
 		if err := rows.Scan(&i.TrackID, &i.Name); err != nil {
 			return nil, err
 		}
@@ -718,6 +822,55 @@ func (q *Queries) ListIndexTrackArtists(ctx context.Context) ([]ListIndexTrackAr
 	return items, nil
 }
 
+const listIndexTrackArtistsOf = `-- name: ListIndexTrackArtistsOf :many
+SELECT ta.track_id, ar.name
+FROM albums a
+CROSS JOIN tracks t
+CROSS JOIN track_artists ta
+CROSS JOIN artists ar
+WHERE a.ulid IN (/*SLICE:albums*/?) AND t.album_id = a.id AND t.missing_since IS NULL
+  AND ta.track_id = t.id AND ta.role = 'artist' AND ar.id = ta.artist_id
+ORDER BY ta.track_id, ta.ord
+`
+
+type ListIndexTrackArtistsOfRow struct {
+	TrackID int64
+	Name    string
+}
+
+func (q *Queries) ListIndexTrackArtistsOf(ctx context.Context, albums []string) ([]ListIndexTrackArtistsOfRow, error) {
+	query := listIndexTrackArtistsOf
+	var queryParams []interface{}
+	if len(albums) > 0 {
+		for _, v := range albums {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:albums*/?", strings.Repeat(",?", len(albums))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
+	}
+	rows, err := q.query(ctx, nil, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTrackArtistsOfRow
+	for rows.Next() {
+		var i ListIndexTrackArtistsOfRow
+		if err := rows.Scan(&i.TrackID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIndexTrackDetails = `-- name: ListIndexTrackDetails :many
 
 SELECT id, year, format, sample_rate, bit_depth, bitrate, added_at
@@ -746,6 +899,64 @@ func (q *Queries) ListIndexTrackDetails(ctx context.Context) ([]ListIndexTrackDe
 	var items []ListIndexTrackDetailsRow
 	for rows.Next() {
 		var i ListIndexTrackDetailsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Year,
+			&i.Format,
+			&i.SampleRate,
+			&i.BitDepth,
+			&i.Bitrate,
+			&i.AddedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndexTrackDetailsOf = `-- name: ListIndexTrackDetailsOf :many
+SELECT t.id, t.year, t.format, t.sample_rate, t.bit_depth, t.bitrate, t.added_at
+FROM albums a
+CROSS JOIN tracks t
+WHERE a.ulid IN (/*SLICE:albums*/?) AND t.album_id = a.id AND t.missing_since IS NULL
+`
+
+type ListIndexTrackDetailsOfRow struct {
+	ID         int64
+	Year       *int64
+	Format     string
+	SampleRate *int64
+	BitDepth   *int64
+	Bitrate    *int64
+	AddedAt    int64
+}
+
+func (q *Queries) ListIndexTrackDetailsOf(ctx context.Context, albums []string) ([]ListIndexTrackDetailsOfRow, error) {
+	query := listIndexTrackDetailsOf
+	var queryParams []interface{}
+	if len(albums) > 0 {
+		for _, v := range albums {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:albums*/?", strings.Repeat(",?", len(albums))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
+	}
+	rows, err := q.query(ctx, nil, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTrackDetailsOfRow
+	for rows.Next() {
+		var i ListIndexTrackDetailsOfRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Year,
@@ -815,6 +1026,68 @@ func (q *Queries) ListIndexTrackTags(ctx context.Context, tagKeys []string) ([]L
 	return items, nil
 }
 
+const listIndexTrackTagsOf = `-- name: ListIndexTrackTagsOf :many
+SELECT tt.track_id, tt.key, tt.value
+FROM albums a
+CROSS JOIN tracks t
+CROSS JOIN track_tags tt
+WHERE a.ulid IN (/*SLICE:albums*/?) AND t.album_id = a.id AND t.missing_since IS NULL
+  AND tt.track_id = t.id AND tt.key IN (/*SLICE:tag_keys*/?)
+ORDER BY tt.track_id, tt.key, tt.ord
+`
+
+type ListIndexTrackTagsOfParams struct {
+	Albums  []string
+	TagKeys []string
+}
+
+type ListIndexTrackTagsOfRow struct {
+	TrackID int64
+	Key     string
+	Value   string
+}
+
+func (q *Queries) ListIndexTrackTagsOf(ctx context.Context, arg ListIndexTrackTagsOfParams) ([]ListIndexTrackTagsOfRow, error) {
+	query := listIndexTrackTagsOf
+	var queryParams []interface{}
+	if len(arg.Albums) > 0 {
+		for _, v := range arg.Albums {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:albums*/?", strings.Repeat(",?", len(arg.Albums))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
+	}
+	if len(arg.TagKeys) > 0 {
+		for _, v := range arg.TagKeys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:tag_keys*/?", strings.Repeat(",?", len(arg.TagKeys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:tag_keys*/?", "NULL", 1)
+	}
+	rows, err := q.query(ctx, nil, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTrackTagsOfRow
+	for rows.Next() {
+		var i ListIndexTrackTagsOfRow
+		if err := rows.Scan(&i.TrackID, &i.Key, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIndexTracks = `-- name: ListIndexTracks :many
 SELECT id, album_id, ulid, title, disc_no, track_no, duration_ms
 FROM tracks
@@ -841,6 +1114,71 @@ func (q *Queries) ListIndexTracks(ctx context.Context) ([]ListIndexTracksRow, er
 	var items []ListIndexTracksRow
 	for rows.Next() {
 		var i ListIndexTracksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AlbumID,
+			&i.Ulid,
+			&i.Title,
+			&i.DiscNo,
+			&i.TrackNo,
+			&i.DurationMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndexTracksOf = `-- name: ListIndexTracksOf :many
+
+SELECT t.id, t.album_id, t.ulid, t.title, t.disc_no, t.track_no, t.duration_ms
+FROM albums a
+CROSS JOIN tracks t
+WHERE a.ulid IN (/*SLICE:albums*/?) AND t.album_id = a.id AND t.missing_since IS NULL
+ORDER BY t.album_id, coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id
+`
+
+type ListIndexTracksOfRow struct {
+	ID         int64
+	AlbumID    int64
+	Ulid       string
+	Title      string
+	DiscNo     *int64
+	TrackNo    *int64
+	DurationMs int64
+}
+
+// The same, for some albums only, by public ID: what a change to them needs.
+// Each has the columns of its whole-library twin above, in the same order. CROSS
+// JOIN fixes SQLite's join order from the albums out, so each reads the rows of
+// those few albums by index; left to choose, the planner starts from a person's
+// plays or a tag key and reads thousands.
+func (q *Queries) ListIndexTracksOf(ctx context.Context, albums []string) ([]ListIndexTracksOfRow, error) {
+	query := listIndexTracksOf
+	var queryParams []interface{}
+	if len(albums) > 0 {
+		for _, v := range albums {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:albums*/?", strings.Repeat(",?", len(albums))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
+	}
+	rows, err := q.query(ctx, nil, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTracksOfRow
+	for rows.Next() {
+		var i ListIndexTracksOfRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.AlbumID,

@@ -394,6 +394,17 @@ func (q *Queries) SetDigest(ctx context.Context, arg SetDigestParams) (int64, er
 	return result.RowsAffected()
 }
 
+const trackAlbumULID = `-- name: TrackAlbumULID :one
+SELECT a.ulid FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.id = ?
+`
+
+func (q *Queries) TrackAlbumULID(ctx context.Context, id int64) (string, error) {
+	row := q.queryRow(ctx, q.trackAlbumULIDStmt, trackAlbumULID, id)
+	var ulid string
+	err := row.Scan(&ulid)
+	return ulid, err
+}
+
 const trackStates = `-- name: TrackStates :many
 SELECT id, rel_path, size, mtime, missing_since IS NOT NULL AS missing
 FROM tracks
@@ -592,7 +603,7 @@ ON CONFLICT (group_key) DO UPDATE SET
     year = excluded.year,
     compilation = excluded.compilation,
     artwork_hash = coalesce(excluded.artwork_hash, albums.artwork_hash)
-RETURNING id
+RETURNING id, ulid
 `
 
 type UpsertAlbumParams struct {
@@ -608,7 +619,12 @@ type UpsertAlbumParams struct {
 	AddedAt     int64
 }
 
-func (q *Queries) UpsertAlbum(ctx context.Context, arg UpsertAlbumParams) (int64, error) {
+type UpsertAlbumRow struct {
+	ID   int64
+	Ulid string
+}
+
+func (q *Queries) UpsertAlbum(ctx context.Context, arg UpsertAlbumParams) (UpsertAlbumRow, error) {
 	row := q.queryRow(ctx, q.upsertAlbumStmt, upsertAlbum,
 		arg.Ulid,
 		arg.GroupKey,
@@ -621,9 +637,9 @@ func (q *Queries) UpsertAlbum(ctx context.Context, arg UpsertAlbumParams) (int64
 		arg.ArtworkHash,
 		arg.AddedAt,
 	)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
+	var i UpsertAlbumRow
+	err := row.Scan(&i.ID, &i.Ulid)
+	return i, err
 }
 
 const upsertArtist = `-- name: UpsertArtist :one

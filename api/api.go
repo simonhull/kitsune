@@ -142,7 +142,42 @@ type LastfmConnect struct {
 
 // NowPlaying is the body of POST /me/now-playing.
 type NowPlaying struct {
-	TrackID string `json:"trackId"`
+	TrackID  string `json:"trackId"`
+	ClientID string `json:"clientId,omitempty"`
+}
+
+// EventStreamMediaType is the media type of GET /events.
+const EventStreamMediaType = "text/event-stream"
+
+// EventLibrary is a library event: albums added, changed or gone from the index.
+type EventLibrary struct {
+	Albums []string `json:"albums"`
+	All    bool     `json:"all"` // Too many to list: read the index again.
+}
+
+// EventMarks is a marks event: a heart or a rating changed. Hearted comes with
+// a heart and Stars, 0 for none, with a rating.
+type EventMarks struct {
+	Kind    string `json:"kind"` // tracks, albums or artists, as the routes name them.
+	ID      string `json:"id"`
+	Hearted *bool  `json:"hearted,omitempty"`
+	Stars   *int   `json:"stars,omitempty"`
+}
+
+// EventPrefs is a prefs event: the key of the preference that changed.
+type EventPrefs struct {
+	Key string `json:"key"`
+}
+
+// EventListening is a listening event: a device started a track.
+type EventListening struct {
+	TrackID  string `json:"trackId"`
+	ClientID string `json:"clientId,omitempty"`
+}
+
+// EventSettings is a settings event: the keys that changed, never a value.
+type EventSettings struct {
+	Keys []string `json:"keys"`
 }
 
 // Me is the response to GET /me: the [User], and what the user may do.
@@ -420,6 +455,9 @@ type LibraryAlbum struct {
 	Year        int            `json:"year,omitzero"`
 	Artwork     *Artwork       `json:"artwork,omitzero"`
 	Tracks      []LibraryTrack `json:"tracks"`
+	// After is, in an index of some albums, the album before this one in the
+	// whole index; "" when it comes first. Nil in the whole index.
+	After *string `json:"after,omitzero"`
 }
 
 // LibraryTrack is a song in the library index.
@@ -646,9 +684,17 @@ type AudioCount struct {
 // LibraryFolder is a library root and what it holds now: 0 and 0 until a scan
 // has read it.
 type LibraryFolder struct {
-	Path   string `json:"path"`
-	Tracks int64  `json:"tracks"`
-	Bytes  int64  `json:"bytes"`
+	Path   string       `json:"path"`
+	Tracks int64        `json:"tracks"`
+	Bytes  int64        `json:"bytes"`
+	Watch  *FolderWatch `json:"watch,omitempty"`
+}
+
+// FolderWatch is how the server follows a library folder for new music.
+type FolderWatch struct {
+	Mode       string `json:"mode"`                 // watching, polling or off.
+	Reason     string `json:"reason,omitempty"`     // network, watch-limit or missing.
+	Filesystem string `json:"filesystem,omitempty"` // For network: the filesystem's type.
 }
 
 // The values of Setting.Source. Every source but SettingDefault is stored.

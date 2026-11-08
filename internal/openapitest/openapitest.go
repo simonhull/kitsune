@@ -25,6 +25,7 @@ import (
 	validator "github.com/pb33f/libopenapi-validator"
 	"github.com/pb33f/libopenapi-validator/config"
 	valerrors "github.com/pb33f/libopenapi-validator/errors"
+	"github.com/pb33f/libopenapi-validator/schema_validation"
 	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
 )
 
@@ -176,6 +177,29 @@ func (c *Contract) Transport(tb testing.TB, base http.RoundTripper) *Transport {
 		}
 	})
 	return tr
+}
+
+// CheckSchema reports to tb where data, JSON, breaks the contract's component
+// schema name, strictly: the data of a server-sent event, which a response's
+// validation never reaches inside its stream.
+func (c *Contract) CheckSchema(tb testing.TB, name string, data []byte) {
+	tb.Helper()
+	proxy, ok := c.model.Components.Schemas.Get(name)
+	if !ok {
+		tb.Errorf("openapitest: the contract has no schema %s", name)
+		return
+	}
+	schema := proxy.Schema()
+	if schema == nil {
+		tb.Errorf("openapitest: schema %s doesn't build: %v", name, proxy.GetBuildError())
+		return
+	}
+	c.validating.Lock()
+	ok, errs := schema_validation.NewSchemaValidator(config.WithStrictMode(), config.WithFormatAssertions()).ValidateSchemaBytes(schema, data)
+	c.validating.Unlock()
+	if !ok {
+		tb.Errorf("openapitest: %s breaks schema %s:\n%s", data, name, describe(errs))
+	}
 }
 
 // expectInvalidKey marks a request context whose request should break the

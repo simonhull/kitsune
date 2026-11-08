@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/prefs"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -63,6 +64,7 @@ func (s *Server) putPref(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	s.publish(events.Prefs, events.User(user.ID), &api.EventPrefs{Key: key.Name()})
 	w.WriteHeader(http.StatusNoContent)
 }
 

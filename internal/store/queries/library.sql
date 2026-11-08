@@ -29,7 +29,7 @@ ON CONFLICT (group_key) DO UPDATE SET
     year = excluded.year,
     compilation = excluded.compilation,
     artwork_hash = coalesce(excluded.artwork_hash, albums.artwork_hash)
-RETURNING id;
+RETURNING id, ulid;
 
 -- name: InsertTrack :one
 INSERT INTO tracks (
@@ -126,6 +126,9 @@ SELECT count(*) FROM tracks INDEXED BY tracks_undigested WHERE audio_digest IS N
 -- name: SetDigest :execrows
 UPDATE tracks SET audio_digest = sqlc.arg(audio_digest)
 WHERE id = sqlc.arg(id) AND size = sqlc.arg(size) AND mtime = sqlc.arg(mtime) AND missing_since IS NULL;
+
+-- name: TrackAlbumULID :one
+SELECT a.ulid FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.id = ?;
 
 -- name: MarkMissing :exec
 UPDATE tracks SET missing_since = ? WHERE id = ? AND missing_since IS NULL;

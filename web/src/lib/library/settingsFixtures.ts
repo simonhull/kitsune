@@ -43,7 +43,7 @@ export function settingsFixture(lastfmConfigured: boolean): ServerSettings {
 		listen: ':4533',
 		listenSource: 'server.toml',
 		version: '2026.11.07 · 8ece8cd',
-		folders: [{ path: '/music', tracks: 7586, bytes: 140_660_000_000 }]
+		folders: [{ path: '/music', tracks: 7586, bytes: 140_660_000_000, watch: { mode: 'watching' } }]
 	};
 }
 

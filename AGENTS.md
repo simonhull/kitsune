@@ -61,7 +61,11 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   to place the scrollbar and the rail. Its order lives in `orderIndex`, and nowhere else. `fields`
   adds what the song columns show, each read by its own query only when asked for (`IndexOptions`)
   and sent through the nil-able `TrackFields`, so an index without it costs what it did;
-  `TestLibraryIndexWithoutFieldsIsUnchanged` holds its bytes.
+  `TestLibraryIndexWithoutFieldsIsUnchanged` holds its bytes. `albums` (what a `library` event names)
+  gives just those albums in the same shape, each with `after`, the album before it in the whole order,
+  which is how a client patches its copy in place; their queries are the `…Of` twins of the whole
+  ones, joined from the albums out. The index's album rows, most of its cost, are kept between
+  library writes (`albumrows.go`); a write that changes what the index shows goes through `inLibraryTx`.
 - Tag edits are one route, `POST /albums/{id}/edits`, and `GET /albums/{id}/tags` reads what an editor
   shows, from the files. The validator is the album's `etag` field in the body, a hash of
   `ulid:size:mtime_ms` per track, and not a response header. Clients send it back verbatim as
@@ -74,6 +78,12 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   there are and what each holds, and checks a value on the way in and again on the way out; the
   store keeps the text. A new key is an entry there and its schema in the contract. Server settings
   never go there.
+- `GET /events` is every client's one stream of changes (server-sent events). `internal/events` numbers
+  them, keeps 5 minutes or 10,000 for `Last-Event-ID`, and filters each by its `Audience`; past that a
+  client gets `resync`. Handlers publish only after a change succeeded (`s.publish`), and the scanner
+  through its `library.Notifier` (`server.LibraryEvents`). An event carries ids and keys, never a value
+  a route wouldn't send: a new kind gets a schema in the contract, a case in `events_test.go`, and a
+  place in `TestNoEventHoldsASecret`. The handler sets its own write deadline, since the server has none.
 - Nothing the server writes (bodies, headers, logs) contains a password or token, except
   login's response and `Set-Cookie`, and the setup code's one log line (see Operations).
 - `GET /setup` and `POST /setup` are public. They make the first account, an administrator, while
@@ -136,6 +146,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `isVarious` decides, by match key or MBID.
 - Library writes go through `WriteBatch`, one transaction per batch. The store never
   normalizes names or decides identity: callers pass match keys, group keys and ULIDs.
+  `WriteBatch` and `MarkMissing` note the albums they touch, a moved track's old one included, once
+  committed; the scanner takes them (`TakeChangedAlbums`) to say what changed.
 - FTS rows are written in the same transaction as their track and through `foldSearch`;
   a search query must fold the same way.
 - Nothing reaches `MATCH` except a `SearchQuery`, and `ParseSearch` is the only way to make one. Its
@@ -200,6 +212,16 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   divides a value, so a rule change needs a restart and no migration. Synonyms stay apart: the tag
   editor fixes those. Lists and album pages carry the result as `displayGenres`; an album's raw
   `genres` stay as tagged, for the editor.
+- The watcher (`watch.go`) follows the roots and only marks folders dirty; once they settle (10 s),
+  `Scanner.ScanDirs` reads just those folders under the claim and the lock, through the scan's read
+  path. A targeted scan marks a track missing only when its folder, or the nearest read folder above
+  it, was read and the file is gone. It never deletes or prunes, and leaves a root that looks down
+  (missing, empty, losing most of its tracks) to the full-scan rules. A running scan that walked after
+  the last change absorbs it.
+- A root the OS can't report on is polled every 5 minutes instead (`poll.go`: folder mtimes and audio
+  sizes and mtimes): one on a network or FUSE filesystem, by `/proc/self/mountinfo` (`networkFS` is
+  the one list of types), or one past the watch limit (ENOSPC on add). `GET /admin/settings` says
+  each folder's mode and why.
 - Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
   wait for the file to change.
 - One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it
@@ -271,6 +293,11 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   why. Cover colors come from data, through `style:` bindings. The fox is `--fox` as a fill,
   `--fox-text` as words and `--fox-line` as a ring or underline: on light the orange itself fails.
 - An album's colors come from `paletteFor(entry, theme.current)`; each theme has its own rules.
+- One `EventSource` per signed-in client (`lib/library/live.ts`), opened by the shell and closed at
+  sign-out; `Library` applies each event. A `library` event patches the index in place
+  (`indexPatch.ts`, from `GET /library/index?albums=`), so the Library page keeps its song on screen;
+  a gap the server can't fill (`resync`, or a stream reopened after the browser gave up) reads everything
+  again. While events arrive nothing polls for scans. Nothing on the way to playback waits for any of it.
 - `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.

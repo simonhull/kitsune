@@ -18,6 +18,9 @@ import (
 // a reader shows them.
 type LibraryIndex struct {
 	Artists []IndexArtist
+	// Partial says the index holds only the albums [IndexOptions.Albums] named,
+	// each with its After.
+	Partial bool
 }
 
 // IndexArtist is one heading of the index. ID is empty for a group with no owner
@@ -41,6 +44,9 @@ type IndexAlbum struct {
 	Hearted     bool   // By the person the index was read for.
 	Cover       *Cover // Nil when the album has no cover.
 	Tracks      []IndexTrack
+	// After is, in a partial index, the album just before this one in the whole
+	// index, by public ID; "" when it comes first.
+	After string
 }
 
 // IndexTrack is a live track in the index.
@@ -86,6 +92,9 @@ type IndexOptions struct {
 	Plays        bool     // How often the person played each track, and when last.
 	Shuffle      bool     // The person's shuffle rules on each track.
 	TagKeys      []string // Raw tags to carry the values of. The store doesn't know what they mean.
+	// Albums, by public ID, makes a partial index of only those that have a
+	// live track, each with where it goes in the whole one. Nil means every album.
+	Albums []string
 }
 
 func (o *IndexOptions) any() bool {
@@ -115,12 +124,17 @@ func (s *Store) LibraryIndex(ctx context.Context, userID int64, opts *IndexOptio
 	if err != nil {
 		return LibraryIndex{}, fmt.Errorf("library index: %w", err)
 	}
-	return LibraryIndex{Artists: orderIndex(indexGroups(&rows))}, nil
+	artists := orderIndex(indexGroups(&rows))
+	if opts.Albums == nil {
+		return LibraryIndex{Artists: artists}, nil
+	}
+	return LibraryIndex{Artists: onlyAlbums(artists, opts.Albums), Partial: true}, nil
 }
 
 // indexRows runs the index's queries, the user's marks included, on one read
 // connection.
 func (s *Store) indexRows(ctx context.Context, userID int64, opts *IndexOptions) (indexRows, error) {
+	mark := s.albums.before()
 	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return indexRows{}, fmt.Errorf("begin: %w", err)
@@ -128,17 +142,24 @@ func (s *Store) indexRows(ctx context.Context, userID int64, opts *IndexOptions)
 	defer func() { _ = tx.Rollback() }() // Nothing was written: there is nothing to undo.
 	q := s.rq.WithTx(tx)
 	var rows indexRows
-	if rows.albums, err = q.ListIndexAlbums(ctx); err != nil {
-		return indexRows{}, fmt.Errorf("albums: %w", err)
+	// The first read takes the snapshot, which the album rows must come after.
+	if rows.marks, err = readLibraryMarks(ctx, q, userID); err != nil {
+		return indexRows{}, err
+	}
+	if rows.albums, err = s.albums.readAlbums(ctx, q, mark); err != nil {
+		return indexRows{}, err
+	}
+	if opts.Albums != nil {
+		if albumErr := readAlbumRows(ctx, q, userID, opts, &rows); albumErr != nil {
+			return indexRows{}, albumErr
+		}
+		return rows, nil
 	}
 	if rows.tracks, err = q.ListIndexTracks(ctx); err != nil {
 		return indexRows{}, fmt.Errorf("tracks: %w", err)
 	}
 	if rows.artists, err = q.ListIndexTrackArtists(ctx); err != nil {
 		return indexRows{}, fmt.Errorf("track artists: %w", err)
-	}
-	if rows.marks, err = readLibraryMarks(ctx, q, userID); err != nil {
-		return indexRows{}, err
 	}
 	if optErr := readIndexOptions(ctx, q, userID, opts, &rows); optErr != nil {
 		return indexRows{}, optErr
