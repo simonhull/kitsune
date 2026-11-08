@@ -37,6 +37,8 @@ type EditProblem struct {
 
 	Changed   []string `json:"changed"`
 	Remaining []string `json:"remaining"`
+	// Album is the album whose etag was stale, on a 412 from POST /edits.
+	Album string `json:"album,omitzero"`
 }
 
 // LoginRequest is the body of POST /auth/login.
@@ -264,6 +266,32 @@ type TrackTagEdit struct {
 type AlbumEdit struct {
 	All    TagEdit        `json:"all,omitzero"`
 	Tracks []TrackTagEdit `json:"tracks,omitzero"`
+}
+
+// TracksEdit is the body of POST /edits: an edit of tracks that may lie on
+// several albums. All goes to every track Tracks names, with each one's own on
+// top, and Albums gives the etag of every album they are on.
+type TracksEdit struct {
+	Albums []AlbumETag    `json:"albums"`
+	All    TagEdit        `json:"all,omitzero"`
+	Tracks []TrackTagEdit `json:"tracks"`
+}
+
+// AlbumETag is an album's etag as an edit read it.
+type AlbumETag struct {
+	ID   string `json:"id"`
+	Etag string `json:"etag"`
+}
+
+// EditedTracks is the response to POST /edits: where each track is now.
+type EditedTracks struct {
+	Tracks []EditedTrack `json:"tracks"`
+}
+
+// EditedTrack is a track of [EditedTracks] and the album it is on.
+type EditedTrack struct {
+	ID      string `json:"id"`
+	AlbumID string `json:"albumId"`
 }
 
 // AlbumTags is the response to GET /albums/{id}/tags: what a tag editor shows.

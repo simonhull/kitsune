@@ -784,6 +784,65 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/EditFailure"
+  /edits:
+    post:
+      operationId: postEdits
+      summary: Edit the tags of tracks that may lie on several albums, in their files.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on: anything
+        else is a 403. A selection's edit: `albums` gives the `etag` of every
+        album the tracks are on, as read, and every one is compared, and every
+        file checked, before any is written. A stale one is a 412 naming it,
+        with nothing written. Then files are written album by album, in the
+        order `albums` names them, and each album's in track order. Each is
+        atomic and the edit is not, so a failure partway is reported with
+        `changed` and `remaining`: read the albums again and send the same edit
+        to finish it. Giving tracks another album or album artist moves them,
+        keeping their IDs, plays, hearts and ratings, and an album they all
+        leave for one other merges into it. A client that goes away doesn't
+        stop the edit. An edit during a scan is a 409.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TracksEdit" }
+      responses:
+        "200":
+          description: Each track and the album it is on now.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EditedTracks" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/EditFailure"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: A scan or another edit holds the library.
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "412":
+          $ref: "#/components/responses/EditFailure"
+        "422":
+          $ref: "#/components/responses/EditFailure"
+        "500":
+          $ref: "#/components/responses/EditFailure"
   /artists:
     get:
       operationId: getArtists
@@ -1298,6 +1357,9 @@ components:
           type: array
           description: Tracks that don't. The first is the one that failed.
           items: { type: string }
+        album:
+          type: string
+          description: On a 412 from `POST /edits`, the album whose `etag` is stale.
     User:
       type: object
       additionalProperties: false
@@ -1629,6 +1691,49 @@ components:
         tracks:
           type: array
           items: { $ref: "#/components/schemas/TrackTagEdit" }
+    TracksEdit:
+      description: >-
+        `all` goes to every track `tracks` names, and each track's own on top of
+        it: a field in both takes the track's value or removal. A track on none
+        of `albums` is a 422; naming an album or a track twice, or nothing to
+        change, is a 400.
+      type: object
+      additionalProperties: false
+      required: [albums, tracks]
+      properties:
+        albums:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, etag]
+            properties:
+              id: { type: string }
+              etag:
+                type: string
+                description: The album's `etag` from the last read, verbatim.
+        all: { $ref: "#/components/schemas/TagEdit" }
+        tracks:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/TrackTagEdit" }
+    EditedTracks:
+      type: object
+      additionalProperties: false
+      required: [tracks]
+      properties:
+        tracks:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, albumId]
+            properties:
+              id: { type: string }
+              albumId:
+                type: string
+                description: The album the track is on now.
     AlbumTags:
       type: object
       additionalProperties: false

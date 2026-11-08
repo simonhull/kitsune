@@ -47,6 +47,15 @@ type editFixture struct {
 // root, scans it and signs in an admin.
 func newEditFixture(t *testing.T, opts *testServerOptions, samples map[string]string) *editFixture {
 	t.Helper()
+	fx := newEditServer(t, opts, samples)
+	fx.reload(t)
+	return fx
+}
+
+// newEditServer is [newEditFixture] for a library of any number of albums: it
+// leaves album empty.
+func newEditServer(t *testing.T, opts *testServerOptions, samples map[string]string) *editFixture {
+	t.Helper()
 	root := t.TempDir()
 	for rel, sample := range samples {
 		b, err := os.ReadFile(filepath.Join("..", "library", "testdata", sample))
@@ -66,9 +75,7 @@ func newEditFixture(t *testing.T, opts *testServerOptions, samples map[string]st
 	if _, err := ts.Scanner.Scan(t.Context(), library.Quick); err != nil {
 		t.Fatal(err)
 	}
-	fx := &editFixture{testServer: ts, root: root, token: ts.tokenFor(t, store.RoleAdmin)}
-	fx.reload(t)
-	return fx
+	return &editFixture{testServer: ts, root: root, token: ts.tokenFor(t, store.RoleAdmin)}
 }
 
 func twoFLACs() map[string]string { return map[string]string{fileOne: sampleFLAC, fileTwo: sampleFLAC} }

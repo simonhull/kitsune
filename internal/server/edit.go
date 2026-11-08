@@ -6,6 +6,7 @@ import (
 	"errors"
 	"mime"
 	"net/http"
+	"slices"
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/library"
@@ -80,6 +81,58 @@ func (s *Server) postAlbumEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeAlbum(w, afterEdit(r), landed)
+}
+
+// postEdits edits the tags of tracks that may lie on several albums.
+func (s *Server) postEdits(w http.ResponseWriter, r *http.Request) {
+	if !s.scanner.TagWrites() {
+		writeProblem(w, r, http.StatusForbidden, tagWritesOffDetail)
+		return
+	}
+	var req api.TracksEdit
+	if err := readJSON(w, r, &req); err != nil {
+		writeProblem(w, r, http.StatusBadRequest, "request body must be a JSON edit of the fields this route takes")
+		return
+	}
+	edit, ok := tracksEdit(&req)
+	if !ok {
+		writeProblem(w, r, http.StatusBadRequest, "name each album once with its etag, each track once, and at least one field")
+		return
+	}
+	//nolint:contextcheck // An edit outlives its request on purpose; see Config.Context.
+	if err := s.scanner.EditTracks(s.editContext, &edit); err != nil {
+		s.editFailed(w, r, err)
+		return
+	}
+	ctx := context.WithoutCancel(r.Context())
+	body := api.EditedTracks{Tracks: make([]api.EditedTrack, len(req.Tracks))}
+	for i := range req.Tracks {
+		album, err := s.library.TrackAlbum(ctx, req.Tracks[i].ID)
+		if err != nil {
+			s.internalError(w, r, "read an edited track", err)
+			return
+		}
+		body.Tracks[i] = api.EditedTrack{ID: req.Tracks[i].ID, AlbumID: album}
+	}
+	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+}
+
+// tracksEdit returns the edit req asks for. It reports false for a request with
+// no albums or tracks, an album or track named twice or without an ID or etag, a
+// field both set and cleared, or nothing to change.
+func tracksEdit(req *api.TracksEdit) (library.TracksEdit, bool) {
+	albumEdit, ok := albumEdit(&api.AlbumEdit{All: req.All, Tracks: req.Tracks})
+	if !ok || len(req.Albums) == 0 || len(req.Tracks) == 0 {
+		return library.TracksEdit{}, false
+	}
+	edit := library.TracksEdit{All: albumEdit.All, Tracks: albumEdit.Tracks}
+	for _, a := range req.Albums {
+		if a.ID == "" || a.Etag == "" || slices.ContainsFunc(edit.Albums, func(b library.AlbumETag) bool { return b.ID == a.ID }) {
+			return library.TracksEdit{}, false
+		}
+		edit.Albums = append(edit.Albums, library.AlbumETag{ID: a.ID, ETag: a.Etag})
+	}
+	return edit, true
 }
 
 // afterEdit keeps r's values but not its cancellation: an edit that outlived its
@@ -168,6 +221,14 @@ func tagEdit(req *api.TagEdit) (library.Edit, bool) {
 func (s *Server) editFailed(w http.ResponseWriter, r *http.Request, err error) {
 	if stopped, ok := errors.AsType[*library.EditError](err); ok {
 		s.editStopped(w, r, stopped)
+		return
+	}
+	if stale, ok := errors.AsType[*library.StaleAlbumError](err); ok {
+		body := api.EditProblem{
+			Problem: newProblem(r, http.StatusPreconditionFailed, "album "+stale.Album+" changed since you read it; read it again"),
+			Changed: []string{}, Remaining: []string{}, Album: stale.Album,
+		}
+		writeBody(w, http.StatusPreconditionFailed, api.ProblemMediaType, &body)
 		return
 	}
 	switch {

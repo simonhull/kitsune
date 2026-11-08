@@ -12,7 +12,10 @@ import (
 	"github.com/simonhull/kitsune/internal/store"
 )
 
-const renamed = "Renamed"
+const (
+	renamed    = "Renamed"
+	firstAlbum = "First"
+)
 
 // errOf drops the album an edit landed on.
 func errOf(_ string, err error) error { return err }
@@ -197,7 +200,7 @@ func newPairLib(t *testing.T) *pairLib {
 	l.root = l.roots[0]
 	l.copyTo(l.root, aFLAC, sampleFLAC)
 	l.copyTo(l.root, bystander, sampleFLAC)
-	seed(t, filepath.Join(l.root, aFLAC), map[string][]string{keyAlbum: {"First"}})
+	seed(t, filepath.Join(l.root, aFLAC), map[string][]string{keyAlbum: {firstAlbum}})
 	seed(t, filepath.Join(l.root, bystander), map[string][]string{keyAlbum: {"Second"}})
 	l.opts.TagWrites = true
 	l.scanner = NewScanner(l.st, l.opts)
@@ -225,7 +228,7 @@ func TestMovingEveryTrackMergesTheAlbum(t *testing.T) {
 	if err := l.st.Heart(t.Context(), m.userID, store.KindAlbum, second.ID); err != nil {
 		t.Fatal(err)
 	}
-	edit := AlbumEdit{All: Edit{Fields: map[Field][]string{FieldAlbum: {"First"}}}}
+	edit := AlbumEdit{All: Edit{Fields: map[Field][]string{FieldAlbum: {firstAlbum}}}}
 	landed, err := l.scanner.EditAlbum(t.Context(), second.ID, second.ETag, &edit)
 	if err != nil {
 		t.Fatal(err)
