@@ -1,5 +1,6 @@
 import { newClientId } from '#lib/library/outbox.ts';
 import type { ListenEnding, ListenReport, Track } from '#lib/library/source.ts';
+import type { ShuffleRef } from './queue.ts';
 
 /** A track shorter than this never counts, however often it plays. */
 const shortestMs = 30_000;
@@ -20,8 +21,8 @@ export class Listen {
 	readonly startedAt: number;
 	/** Its own, so the server makes its start and its end one listen. */
 	readonly clientId = newClientId();
-	/** The shuffle session it plays in, if any. */
-	readonly shuffle: string | undefined;
+	/** The shuffle it plays in, if any, read as each report goes. */
+	readonly shuffle: ShuffleRef | undefined;
 	/** Set once sound came: a song that never sounded was never a listen. */
 	sounded = false;
 	readonly #needed: number;
@@ -33,7 +34,7 @@ export class Listen {
 		{ id, durationMs }: Pick<Track, 'id' | 'durationMs'>,
 		startedAt: number,
 		at = 0,
-		shuffle?: string
+		shuffle?: ShuffleRef
 	) {
 		this.trackId = id;
 		this.startedAt = startedAt;
@@ -55,7 +56,7 @@ export class Listen {
 			startedAt: new Date(this.startedAt).toISOString()
 		};
 		if (this.shuffle !== undefined) {
-			report.shuffle = this.shuffle;
+			report.shuffle = this.shuffle.id;
 		}
 		if (ended !== undefined) {
 			report.ended = ended;

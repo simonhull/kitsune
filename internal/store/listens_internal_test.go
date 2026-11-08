@@ -30,12 +30,16 @@ func TestRecordListenJoinsAStartToItsEnd(t *testing.T) {
 		listen("a", 0, UnderWay),             // a start arriving late changes nothing
 		listen("a", 99*time.Second, Completed),
 		listen("b", 800*time.Millisecond, Completed), // an end with no start
+		{UserID: 1, TrackID: firstTrack, ClientID: "c", Shuffle: "pending", StartedAt: time.UnixMilli(5000).UTC()},
+		{UserID: 1, TrackID: firstTrack, ClientID: "c", Shuffle: "S1", StartedAt: time.UnixMilli(5000).UTC(), Ended: Stopped},
+		{UserID: 1, TrackID: firstTrack, ClientID: "c", Shuffle: "S2", StartedAt: time.UnixMilli(5000).UTC(), Ended: Stopped},
 	} {
 		if err := s.RecordListen(t.Context(), l); err != nil {
 			t.Fatal(err)
 		}
 	}
-	want := []string{"a S1 5000 12000 1000 skipped", "b S1 5000 800 1000 completed"}
+	// The shuffle's ID the start had is the client's own, until the end brings the session's.
+	want := []string{"a S1 5000 12000 1000 skipped", "b S1 5000 800 1000 completed", "c S1 5000 0 1000 stopped"}
 	if got := listenRows(t, s); !slices.Equal(got, want) {
 		t.Errorf("listens = %q, want %q", got, want)
 	}

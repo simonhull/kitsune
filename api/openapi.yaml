@@ -1742,7 +1742,10 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          description: The shuffle session it plays in, from `POST /me/shuffles`. Absent outside one.
+          description: >-
+            The shuffle it plays in: the session's ID from `POST /me/shuffles`,
+            or the client's own while that is on its way, which the end then
+            replaces. Absent outside a shuffle.
         ended:
           type: string
           enum: [completed, skipped, stopped, interrupted]

@@ -8,6 +8,8 @@
 	import type { Album, AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import { shuffles } from '#lib/shuffle/session.svelte.ts';
+	import { albumSource } from '#lib/shuffle/sources.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsShown from '#lib/shell/StarsShown.svelte';
@@ -68,9 +70,19 @@
 		}
 	}
 
+	/** What Shuffle shuffles: this album, each song once, by the person's rules. */
+	const shuffleSource = $derived(album === undefined ? undefined : albumSource(album));
+	// The first song is picked as the album arrives, so a press plays at once.
+	$effect(() => {
+		if (shuffleSource !== undefined) {
+			void shuffles.prime(shuffleSource);
+		}
+	});
+
 	function shuffle(): void {
-		if (album !== undefined) {
-			player.shuffle(album);
+		if (shuffleSource !== undefined) {
+			shuffles.start(shuffleSource);
+			void shuffles.prime(shuffleSource);
 		}
 	}
 </script>

@@ -3,6 +3,8 @@ import { resolve } from '$app/paths';
 import { library } from '#lib/library/library.svelte.ts';
 import type { LibraryIndex } from '#lib/library/source.ts';
 import { player } from '#lib/player/player.svelte.ts';
+import { shuffles } from '#lib/shuffle/session.svelte.ts';
+import { selectionSource } from '#lib/shuffle/sources.ts';
 import type { Queued } from '#lib/player/queue.ts';
 import { tagEdits } from './tagEdits.svelte.ts';
 
@@ -55,6 +57,8 @@ export type MenuTarget =
 /** What can be done with songs, one or picked: the bar's actions and the ⋯ menu's. */
 export interface SongActions {
 	play(): void;
+	/** Shuffles them, each once, by the person's rules: the first plays at once. */
+	shuffle(): void;
 	playNext(): void;
 	addToQueue(): void;
 	/** Hearts them all, unless every one is hearted already: then the hearts come off. */
@@ -81,6 +85,9 @@ export function actionsFor(
 		play: queued((songs) => {
 			player.playSongs(songs);
 		}),
+		shuffle() {
+			shuffles.start(selectionSource(trackIds));
+		},
 		playNext: queued((songs) => {
 			player.playNext(songs);
 		}),

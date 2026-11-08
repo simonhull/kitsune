@@ -13,8 +13,16 @@ export interface Queue {
 	ordered: boolean;
 	/** For songs from more than one album, each song's, by track ID. Absent for one album. */
 	albums?: ReadonlyMap<string, Album>;
-	/** The shuffle session it plays, which goes on adding to it. */
-	shuffle?: string;
+	/** The shuffle it plays, which goes on adding to it. */
+	shuffle?: ShuffleRef;
+}
+
+/**
+ * A shuffle, as the queue and its listens name it. Its ID is the client's own until the server's
+ * answer gives it the session's, since the first song never waits for that.
+ */
+export interface ShuffleRef {
+	id: string;
 }
 
 /** A song to queue, with the album it's on. */
@@ -54,6 +62,12 @@ function albumsOf(queue: Queue): Map<string, Album> {
 /** Puts songs right after the one playing. The queue's own order is no longer the album's. */
 export function playingNext(queue: Queue, songs: readonly Queued[]): Queue {
 	return spliced(queue, queue.index + 1, songs);
+}
+
+/** Puts a shuffle's next songs at the end of its queue. The order is the shuffle's, as it was. */
+export function extended(queue: Queue, songs: readonly Queued[]): Queue {
+	const { ordered } = queue;
+	return { ...spliced(queue, queue.tracks.length, songs), ordered };
 }
 
 /** Puts songs at the end of the queue. */

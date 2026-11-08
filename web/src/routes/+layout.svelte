@@ -25,6 +25,8 @@
 	import { togglesOnSpace } from '#lib/player/keys.ts';
 	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import { shuffles } from '#lib/shuffle/session.svelte.ts';
+	import { shuffleSettings } from '#lib/shuffle/settings.svelte.ts';
 	import Backdrop from '#lib/shell/Backdrop.svelte';
 	import Bloom from '#lib/shell/Bloom.svelte';
 	import Nav from '#lib/shell/Nav.svelte';
@@ -108,6 +110,8 @@
 			libraryView.reset();
 			columnsView.reset();
 			selection.clear();
+			shuffles.reset();
+			shuffleSettings.reset();
 			tagEdits.reset();
 			bulkEdits.reset();
 		};

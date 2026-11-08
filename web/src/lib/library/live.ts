@@ -34,6 +34,7 @@ const kinds: readonly ServerEventKind[] = [
 	'marks',
 	'prefs',
 	'shuffle-rules',
+	'shuffle',
 	'listening',
 	'lastfm',
 	'settings'

@@ -34,6 +34,11 @@ import {
 	type Prefs,
 	type RawTag,
 	type ScanStatus,
+	type ShuffleMode,
+	type ShufflePage,
+	type ShufflePick,
+	type ShuffleScope,
+	type ShuffleWhy,
 	type SearchResults,
 	type SetupStatus,
 	type ShuffleMark,
@@ -769,6 +774,29 @@ export interface FixtureOptions {
 }
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
+/** Why a fixture song came up: its marks, and nothing learned. */
+function neutralWhy(rating: number, hearted: boolean): ShuffleWhy {
+	return {
+		stars: rating,
+		rating: 1,
+		hearted,
+		heart: 1,
+		played: false,
+		sinceDays: 0,
+		recency: 1.2,
+		memory: true,
+		earlySkips: 0,
+		skipMemory: 1,
+		starts: 0,
+		skips: 0,
+		skipRate: 1,
+		listens: 0,
+		heard: 0,
+		listen: 1,
+		flow: 1
+	};
+}
+
 export function createFixtureSource(options: FixtureOptions = {}): LibrarySource {
 	const { latencyMs = 0, health = 'idle', role = 'admin' } = options;
 	const signedIn: Me = { ...user, role, canEditTags: role === 'admin' };
@@ -784,6 +812,41 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	const runs = new Map<string, string[]>();
 	const excluded = new Set<string>();
 	let runsMade = 0;
+	/** Each shuffle's whole order, worked out at the start: the fixtures have no listening to learn from. */
+	const shuffles = new Map<string, { mode: ShuffleMode; picks: ShufflePick[] }>();
+
+	/** The songs a scope holds, with their albums. */
+	function inScope(scope: ShuffleScope): { album: Album; track: Track }[] {
+		const all = [...held.values()].flatMap((album) =>
+			album.tracks.map((track) => ({ album, track }))
+		);
+		switch (scope.kind) {
+			case 'album':
+				return all.filter(({ album }) => album.id === scope.id);
+			case 'artist':
+				return all.filter(({ album }) => album.artists.some(({ id }) => id === scope.id));
+			case 'tracks':
+				return all.filter(({ track }) => scope.tracks.includes(track.id));
+			case 'hearted':
+				return all.filter(({ track }) => hearts.has(`tracks/${track.id}`));
+			case 'rated':
+				return all.filter(({ track }) => (stars.get(track.id) ?? 0) >= 4);
+			case 'library':
+				return all;
+		}
+	}
+
+	/** A page of a fixture shuffle, from `from`. */
+	function shufflePage(id: string, from: number): ShufflePage {
+		const shuffle = shuffles.get(id);
+		if (shuffle === undefined) {
+			throw new ServerError(404);
+		}
+		const picks = shuffle.picks.slice(from, from + 50);
+		const to = from + picks.length;
+		const done = shuffle.mode === 'finite' && to >= shuffle.picks.length;
+		return { id, mode: shuffle.mode, from, to, songs: shuffle.picks.length, done, picks };
+	}
 	let lastfm = lastfmStatusOf(options.lastfm ?? 'none');
 	let settings = settingsFixture(lastfm.configured);
 	const prefs = new Map<PrefKey, unknown>(
@@ -1106,6 +1169,36 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 					.map(([id, tracks]) => ({ id, tracks: [...tracks] })),
 				excluded: trackIds.filter((id) => excluded.has(id))
 			})),
+		startShuffle: (start) =>
+			respond(() => {
+				const songs = inScope(start.scope).filter(({ track }) => !excluded.has(track.id));
+				const order = songs
+					.map((song) => ({ song, key: Math.random() }))
+					.sort((a, b) => a.key - b.key)
+					.map(({ song }) => song);
+				const lead = order.findIndex(({ track }) => track.id === start.first);
+				if (lead > 0) {
+					order.unshift(...order.splice(lead, 1));
+				}
+				const picks = order.map(({ album, track }) => ({
+					songs: [
+						{
+							id: track.id,
+							title: track.title,
+							artists: track.artists,
+							albumId: album.id,
+							album: album.title,
+							durationMs: track.durationMs,
+							artwork: album.artwork
+						}
+					],
+					why: neutralWhy(stars.get(track.id) ?? 0, hearts.has(`tracks/${track.id}`))
+				}));
+				const id = `shuffle-${String(shuffles.size + 1)}`;
+				shuffles.set(id, { mode: start.mode, picks });
+				return shufflePage(id, 0);
+			}),
+		nextShuffle: (id, after) => respond(() => shufflePage(id, after)),
 		setRun: (trackIds) =>
 			respond(() => {
 				const first = [...runs].find(([, tracks]) => tracks.includes(trackIds[0] ?? ''));

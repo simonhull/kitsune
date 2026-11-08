@@ -79,4 +79,11 @@
 		stroke: currentcolor;
 		stroke-width: 2;
 	}
+
+	/* The narrowest phones keep the three, and Shuffle beside them, on one line. */
+	@media (max-width: 400px) {
+		button {
+			padding: 0 12px;
+		}
+	}
 </style>

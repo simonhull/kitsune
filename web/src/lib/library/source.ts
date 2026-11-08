@@ -295,6 +295,71 @@ export interface ShuffleRules {
 	excluded: string[];
 }
 
+/** What a shuffle draws from: the library, a Library filter, an album, an artist, or songs named. */
+export type ShuffleScope =
+	| { kind: 'library' | 'hearted' | 'rated' }
+	| { kind: 'album' | 'artist'; id: string }
+	| { kind: 'tracks'; tracks: string[] };
+
+/** Finite plays every unit once; endless goes on, page by page. */
+export type ShuffleMode = 'finite' | 'endless';
+
+/** What `POST /me/shuffles` takes. */
+export interface ShuffleStart {
+	scope: ShuffleScope;
+	mode: ShuffleMode;
+	/** The song to lead with: the one already playing. */
+	first?: string;
+	seed?: number;
+}
+
+/** Why a pick came up: its weight's factors, each a multiplier. The client words them. */
+export interface ShuffleWhy {
+	/** The mean of its rated songs; 0 unrated. */
+	stars: number;
+	rating: number;
+	hearted: boolean;
+	heart: number;
+	/** Whether it has come up before. */
+	played: boolean;
+	sinceDays: number;
+	recency: number;
+	/** Whether skips and listen time count. */
+	memory: boolean;
+	earlySkips: number;
+	skipMemory: number;
+	starts: number;
+	skips: number;
+	skipRate: number;
+	listens: number;
+	/** How much of it those heard, on average, from 0 to 1. */
+	heard: number;
+	listen: number;
+	/** Flow's factor, 1 for none, leaning from `after`. */
+	flow: number;
+	after?: ArtistLink;
+	similarity?: number;
+}
+
+/** One pick: a song, or songs combined, in the order they play, and why it came up. */
+export interface ShufflePick {
+	songs: TrackHit[];
+	why: ShuffleWhy;
+}
+
+/** A page of a shuffle. The next is asked for after `to`. */
+export interface ShufflePage {
+	id: string;
+	mode: ShuffleMode;
+	from: number;
+	to: number;
+	/** How many songs it picks from. */
+	songs: number;
+	/** A finite shuffle has nothing after this page. */
+	done: boolean;
+	picks: ShufflePick[];
+}
+
 /** What `GET /library/index?fields=` can add to each track. */
 export type IndexField =
 	| 'albumArtist'
@@ -312,6 +377,12 @@ export type IndexField =
 export interface Prefs {
 	'library.columns': ColumnsPref;
 	'ui.theme': ThemeChoice;
+	/** How much ratings and hearts matter to shuffle, from 0 to 1. */
+	'shuffle.ratings': number;
+	/** How much the next song leans toward one that suits the last, from 0 to 1. */
+	'shuffle.flow': number;
+	/** Whether shuffle learns from skips and how much of a song is heard. */
+	'shuffle.memory': boolean;
 }
 
 export type PrefKey = keyof Prefs;
@@ -478,6 +549,7 @@ export interface ServerEvents {
 	marks: MarksEvent;
 	prefs: { key: string };
 	'shuffle-rules': Record<string, never>;
+	shuffle: { id: string; to: number };
 	listening: { trackId: string; clientId?: string };
 	lastfm: Record<string, never>;
 	settings: { keys: string[] };
@@ -726,6 +798,10 @@ export interface LibrarySource {
 	trackAlbum(trackId: string): Promise<string>;
 	/** The caller's shuffle rules touching these songs. Rejects with {@link ServerError}. */
 	shuffleRules(trackIds: readonly string[]): Promise<ShuffleRules>;
+	/** Starts a shuffle, with its first page. Rejects with {@link ServerError}: 404 for an unknown album. */
+	startShuffle(start: ShuffleStart): Promise<ShufflePage>;
+	/** A shuffle's page after a position. Rejects with {@link ServerError}: 404 for one gone. */
+	nextShuffle(id: string, after: number): Promise<ShufflePage>;
 	/** Combines songs into one run, in order. Rejects with {@link ServerError}: 404 for an unknown song. */
 	setRun(trackIds: readonly string[]): Promise<ShuffleRun>;
 	/** Undoes a run. Rejects with {@link ServerError}. */

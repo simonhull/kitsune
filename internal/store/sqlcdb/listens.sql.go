@@ -88,6 +88,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (user_id, client_id) DO UPDATE SET
     listened_ms = CASE WHEN listens.ended IS NULL
         THEN max(listens.listened_ms, excluded.listened_ms) ELSE listens.listened_ms END,
+    shuffle = CASE WHEN listens.ended IS NULL AND excluded.shuffle <> ''
+        THEN excluded.shuffle ELSE listens.shuffle END,
     ended = coalesce(listens.ended, excluded.ended)
 `
 
@@ -103,7 +105,8 @@ type UpsertListenParams struct {
 }
 
 // A start and its end are one row: the end fills in what the start couldn't
-// know, and once a listen has ended nothing changes it.
+// know, the shuffle's session ID included, and once a listen has ended nothing
+// changes it.
 func (q *Queries) UpsertListen(ctx context.Context, arg UpsertListenParams) error {
 	_, err := q.exec(ctx, q.upsertListenStmt, upsertListen,
 		arg.UserID,

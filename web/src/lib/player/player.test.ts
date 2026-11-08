@@ -1068,7 +1068,7 @@ describe('listens', () => {
 	it('names the shuffle a song plays in', async () => {
 		const { player, said } = listening();
 		const songs = album(2).tracks.map((track) => ({ album: album(2), track }));
-		player.playSongs(songs, 'S1');
+		player.playSongs(songs, { id: 'S1' });
 		await settle();
 		expect(said()).toEqual(['t0 start 0 S1']);
 	});

@@ -19,8 +19,10 @@ import {
 	rewound,
 	shuffled,
 	upcoming,
+	extended,
 	type Queue,
-	type Queued
+	type Queued,
+	type ShuffleRef
 } from './queue.ts';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused';
@@ -52,6 +54,8 @@ export class Player implements PlayerView {
 	carry: (apply: () => void) => void = (apply) => {
 		apply();
 	};
+	/** Told each time a track begins: what keeps a shuffle's queue ahead of it. */
+	began: (queue: Queue) => void = () => undefined;
 
 	readonly #library: Library;
 	readonly #create: () => AudioOutput;
@@ -138,8 +142,8 @@ export class Player implements PlayerView {
 		}
 	}
 
-	/** Plays songs picked from anywhere, in the order given; `shuffle` names the session they're from. */
-	playSongs(songs: readonly Queued[], shuffle?: string): void {
+	/** Plays songs picked from anywhere, in the order given; `shuffle` names the shuffle they start. */
+	playSongs(songs: readonly Queued[], shuffle?: ShuffleRef): void {
 		const queue = picked(songs);
 		if (queue !== null) {
 			this.#fresh();
@@ -156,6 +160,16 @@ export class Player implements PlayerView {
 			this.#ahead = null;
 			this.#show();
 		}
+	}
+
+	/** Adds a shuffle's next songs, while its queue is the one playing. Reports whether it was. */
+	extendShuffle(shuffle: ShuffleRef, songs: readonly Queued[]): boolean {
+		if (this.queue?.shuffle !== shuffle) {
+			return false;
+		}
+		this.queue = extended(this.queue, songs);
+		this.#show();
+		return true;
 	}
 
 	/** Puts songs at the end of the queue; with nothing started, plays them. */
@@ -335,6 +349,7 @@ export class Player implements PlayerView {
 		this.#reloadedAt = null;
 		this.#listen = this.#listenFromHere();
 		this.#show();
+		this.began(queue);
 		const track = currentOf(queue);
 		if (track === undefined) {
 			return;

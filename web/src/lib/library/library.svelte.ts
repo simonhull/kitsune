@@ -57,7 +57,9 @@ import {
 	type SettingsChange,
 	type SetupStatus,
 	type ListenReport,
+	type ShufflePage,
 	type ShuffleRules,
+	type ShuffleStart,
 	type TracksEdit
 } from './source.ts';
 
@@ -1388,6 +1390,16 @@ export class Library {
 				this.markIndexStale();
 			}
 		}
+	}
+
+	/** Starts a shuffle on the server, with its first page. Rejects with `ServerError`. */
+	startShuffle(start: ShuffleStart): Promise<ShufflePage> {
+		return this.#source.startShuffle(start);
+	}
+
+	/** A shuffle's page after a position. Rejects with `ServerError`. */
+	nextShuffle(id: string, after: number): Promise<ShufflePage> {
+		return this.#source.nextShuffle(id, after);
 	}
 
 	/** The caller's shuffle rules touching these songs. Rejects with `ServerError`. */

@@ -11,8 +11,12 @@
 	import { appliedGain } from '#lib/player/gain.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import { reserveIslandSlot } from '#lib/shell/slot.svelte.ts';
+	import { shuffles } from '#lib/shuffle/session.svelte.ts';
+	import UpNext from '#lib/shuffle/UpNext.svelte';
 
 	const playing = $derived(library.playing);
+	/** The shuffle playing, if one is: then Up next is its list, and says what it shuffles. */
+	const shuffle = $derived(shuffles.current?.active === true ? shuffles.current : null);
 	const lines = $derived(playing === null ? ['', ''] : balancedLines(playing.track.title));
 	const longest = $derived(Math.max(...lines.map((line) => emWidth(line, 900, -0.075)), 1));
 	const others = $derived(
@@ -53,7 +57,7 @@
 	</div>
 {:else}
 	<div class="stage">
-		<div class="column">
+		<div class="column" class:shuffling={shuffle !== null}>
 			<div class="top" data-morph-part="chrome">
 				<a
 					class="close"
@@ -62,15 +66,19 @@
 					onclick={close}><Icon name="chevron-down" size={20} /></a
 				>
 				<span class="where">
-					NOW PLAYING ·
-					<a
-						class="album-link"
-						href={resolve('/album/[id]', { id: playing.album.id })}
-						aria-label={`Go to the album ${playing.album.title}`}
-						data-sveltekit-replacestate
-						onclick={goUp}>{playing.album.title.toUpperCase()}</a
-					>
-					· {playing.index + 1} / {playing.trackCount}
+					{#if shuffle !== null}
+						NOW PLAYING · SHUFFLING {shuffle.source.label}
+					{:else}
+						NOW PLAYING ·
+						<a
+							class="album-link"
+							href={resolve('/album/[id]', { id: playing.album.id })}
+							aria-label={`Go to the album ${playing.album.title}`}
+							data-sveltekit-replacestate
+							onclick={goUp}>{playing.album.title.toUpperCase()}</a
+						>
+						· {playing.index + 1} / {playing.trackCount}
+					{/if}
 				</span>
 				<span class="chips">
 					<span class="chip">{playing.format}</span>
@@ -112,7 +120,11 @@
 				<div class="controls-slot" use:reserveIslandSlot></div>
 			</div>
 
-			{#if playing.upNext.length > 0}
+			{#if shuffle !== null}
+				<div class="up-next-slot" data-morph-part="panel">
+					<UpNext items={shuffle.upNext} mode={shuffle.source.mode} songs={shuffle.songs} />
+				</div>
+			{:else if playing.upNext.length > 0}
 				<section aria-label="Up next" class="next" data-morph-part="panel">
 					<span class="next-label">UP NEXT</span>
 					{#each playing.upNext as upcoming, index (upcoming.id)}
@@ -399,9 +411,64 @@
 		color: var(--wash);
 	}
 
+	/* A shuffle's Up next: beside the song on a wide screen, as the Why board has it, below it on a narrow one. */
+	.up-next-slot {
+		position: relative;
+		z-index: 1;
+		width: min(696px, 100%);
+		margin: 24px auto 0;
+	}
+
+	@media (min-width: 1100px) {
+		.column.shuffling {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 696px);
+			grid-template-rows: auto minmax(0, 1fr);
+			column-gap: clamp(32px, 5vw, 120px);
+		}
+
+		.shuffling .top {
+			grid-column: 1 / -1;
+		}
+
+		/* The poster title fits its own column, not the page, so it stays clear of the list. */
+		.shuffling .center {
+			container-type: inline-size;
+			min-width: 0;
+		}
+
+		.shuffling .up-next-slot {
+			grid-column: 2;
+			grid-row: 2;
+			align-self: start;
+			width: 100%;
+			max-height: calc(100dvh - 120px);
+			margin: 0;
+			padding-top: 48px;
+			overflow-y: auto;
+			scrollbar-width: thin;
+		}
+	}
+
+	@media (min-width: 2560px) {
+		.column.shuffling {
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1000px);
+		}
+	}
+
 	@media (max-width: 720px) {
 		.column {
 			padding: 16px;
+		}
+
+		/* Shuffling, the stage gives room, so the list starts on the first screen. */
+		.shuffling .art {
+			width: min(200px, 24dvh, 100%);
+		}
+
+		.up-next-slot {
+			margin: 8px -8px 0;
+			width: auto;
 		}
 
 		/* Too narrow to frame the cover, so the title stands on it, tucked in by a fixed amount. */
