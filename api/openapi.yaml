@@ -560,6 +560,53 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "403":
           $ref: "#/components/responses/Problem"
+  /events:
+    get:
+      operationId: getEvents
+      summary: Hear every change, as server-sent events.
+      description: >-
+        One stream per client, open for as long as it likes. Each event's
+        `event:` is its kind and its `data:` one line of JSON; events carry ids
+        and versions, never whole objects, and a client fetches what it needs
+        through the other routes. Who hears what: `library`
+        (`EventLibrary`), `scan` (`ScanStatus`, with the failure's reason for
+        administrators only) and `ready`/`resync` (`EventStream`) go to
+        everyone; `fingerprints` (`FingerprintStatus`) and `settings`
+        (`EventSettings`) to administrators; `marks` (`EventMarks`), `prefs`
+        (`EventPrefs`), `shuffle-rules` (`EventShuffleRules`), `listening`
+        (`EventListening`) and `lastfm` (`EventLastfm`) to the person they are
+        about, on every device. The stream opens with `ready`, whose id is
+        where it stands. Sent back as `Last-Event-ID`, an id gets what was
+        missed since, while the server still has it (5 minutes, or 10,000
+        events); otherwise the stream opens with `resync` instead, and the
+        client fetches everything again. A client too slow to keep up is
+        dropped. A comment line every 25 s keeps proxies from closing it.
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: The id of the last event taken, to resume after it.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The stream, until the client or the server ends it.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+            X-Accel-Buffering:
+              description: "`no`: a proxy must pass each event on at once."
+              schema: { type: string, const: "no" }
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /artwork/{hash}:
     get:
       operationId: getArtwork
@@ -1406,6 +1453,69 @@ components:
       required: [trackId]
       properties:
         trackId: { type: string, minLength: 1 }
+        clientId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The device playing, as plays name it. The caller's other devices hear it in `listening`.
+    EventStream:
+      type: object
+      additionalProperties: false
+      description: "`ready` or `resync`: nothing but its id."
+    EventLibrary:
+      type: object
+      additionalProperties: false
+      description: >-
+        Albums added, changed or gone from the index, by id. `all` says too
+        many changed to list: read the index again.
+      required: [albums, all]
+      properties:
+        albums: { type: array, items: { type: string } }
+        all: { type: boolean }
+    EventMarks:
+      type: object
+      additionalProperties: false
+      description: >-
+        A heart or a rating the person changed on any device. `hearted` comes
+        with a heart; `stars` with a rating, 0 for none.
+      required: [kind, id]
+      properties:
+        kind: { type: string, enum: [tracks, albums, artists] }
+        id: { type: string }
+        hearted: { type: boolean }
+        stars: { type: integer, minimum: 0, maximum: 5 }
+    EventPrefs:
+      type: object
+      additionalProperties: false
+      description: "The preference that changed; `GET /me/prefs/{key}` reads it."
+      required: [key]
+      properties:
+        key: { type: string }
+    EventShuffleRules:
+      type: object
+      additionalProperties: false
+      description: The person's shuffle rules changed.
+    EventListening:
+      type: object
+      additionalProperties: false
+      description: A device of the person's started a track.
+      required: [trackId]
+      properties:
+        trackId: { type: string }
+        clientId: { type: string }
+    EventLastfm:
+      type: object
+      additionalProperties: false
+      description: "The person's Last.fm connection or outbox changed; `GET /me/lastfm` reads it."
+    EventSettings:
+      type: object
+      additionalProperties: false
+      description: >-
+        Server settings changed, by key, never with a value; `library.roots`
+        also when a folder's watch changes. `GET /admin/settings` reads them.
+      required: [keys]
+      properties:
+        keys: { type: array, items: { type: string } }
     LoginRequest:
       type: object
       additionalProperties: false

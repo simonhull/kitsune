@@ -20,6 +20,7 @@ import (
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
+	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/lastfm/lastfmtest"
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/openapitest"
@@ -117,6 +118,7 @@ type testServer struct {
 	Store    *store.Store
 	Settings *settings.Service
 	Scanner  *library.Scanner
+	Events   *events.Hub
 }
 
 // newTestServer starts a server over a temporary store.
@@ -144,8 +146,10 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		tb.Fatalf("auth.New: %v", err)
 	}
 	roots := testRoots(tb, &o)
+	hub := events.New(events.Options{})
 	scanner := library.NewScanner(st, library.Options{
 		Roots: roots, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
+		Notify: NewLibraryEvents(hub),
 	})
 	if o.StartScan == nil {
 		var scans sync.WaitGroup
@@ -165,6 +169,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	if o.Lastfm != nil {
 		sender = scrobbler.New(st, scrobbler.Options{
 			Client: o.Lastfm.Client(), MBIDKeys: library.TrackMBIDKeys(), Logger: logger, Now: clock.Now,
+			OnChange: LastfmChanged(hub),
 		})
 		ctx, cancel := context.WithCancel(context.WithoutCancel(tb.Context()))
 		var sending sync.WaitGroup
@@ -182,6 +187,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	}
 	h := New(Config{
 		Watcher:       watcher,
+		Events:        hub,
 		Settings:      live,
 		Listen:        testListen,
 		Version:       testVersion,
@@ -204,7 +210,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)
-	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st, Scanner: scanner, Settings: live}
+	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st, Scanner: scanner, Settings: live, Events: hub}
 }
 
 // What GET /admin/settings reports of a test server.

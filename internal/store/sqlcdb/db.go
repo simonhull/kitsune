@@ -315,6 +315,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.touchSessionStmt, err = db.PrepareContext(ctx, touchSession); err != nil {
 		return nil, fmt.Errorf("error preparing query TouchSession: %w", err)
 	}
+	if q.trackAlbumULIDStmt, err = db.PrepareContext(ctx, trackAlbumULID); err != nil {
+		return nil, fmt.Errorf("error preparing query TrackAlbumULID: %w", err)
+	}
 	if q.trackRowIDStmt, err = db.PrepareContext(ctx, trackRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackRowID: %w", err)
 	}
@@ -847,6 +850,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing touchSessionStmt: %w", cerr)
 		}
 	}
+	if q.trackAlbumULIDStmt != nil {
+		if cerr := q.trackAlbumULIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing trackAlbumULIDStmt: %w", cerr)
+		}
+	}
 	if q.trackRowIDStmt != nil {
 		if cerr := q.trackRowIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing trackRowIDStmt: %w", cerr)
@@ -1053,6 +1061,7 @@ type Queries struct {
 	setLastfmStateStmt             *sql.Stmt
 	setPasswordHashStmt            *sql.Stmt
 	touchSessionStmt               *sql.Stmt
+	trackAlbumULIDStmt             *sql.Stmt
 	trackRowIDStmt                 *sql.Stmt
 	trackStatesStmt                *sql.Stmt
 	undigestedStmt                 *sql.Stmt
@@ -1170,6 +1179,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setLastfmStateStmt:             q.setLastfmStateStmt,
 		setPasswordHashStmt:            q.setPasswordHashStmt,
 		touchSessionStmt:               q.touchSessionStmt,
+		trackAlbumULIDStmt:             q.trackAlbumULIDStmt,
 		trackRowIDStmt:                 q.trackRowIDStmt,
 		trackStatesStmt:                q.trackStatesStmt,
 		undigestedStmt:                 q.undigestedStmt,

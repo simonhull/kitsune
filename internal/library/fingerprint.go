@@ -97,7 +97,11 @@ func (s *Scanner) Fingerprint(ctx context.Context) (FingerprintStats, error) {
 	}
 	start := time.Now()
 	s.fingerprints.Store(&FingerprintProgress{Total: total})
-	defer s.fingerprints.Store(&FingerprintProgress{})
+	s.notifyPass(true)
+	defer func() {
+		s.fingerprints.Store(&FingerprintProgress{})
+		s.notifyPass(true)
+	}()
 	var after store.FileKey
 	for more := true; more; {
 		if more, err = s.fingerprintBatch(ctx, &after, &stats); err != nil {
@@ -189,4 +193,5 @@ func (s *Scanner) publishPass(stats *FingerprintStats) {
 	next.Done = stats.Stored + stats.Changed + stats.Unreadable
 	next.Total = max(next.Total, next.Done)
 	s.fingerprints.Store(&next)
+	s.notifyPass(false)
 }

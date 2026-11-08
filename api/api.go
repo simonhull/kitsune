@@ -140,7 +140,42 @@ type LastfmConnect struct {
 
 // NowPlaying is the body of POST /me/now-playing.
 type NowPlaying struct {
-	TrackID string `json:"trackId"`
+	TrackID  string `json:"trackId"`
+	ClientID string `json:"clientId,omitempty"`
+}
+
+// EventStreamMediaType is the media type of GET /events.
+const EventStreamMediaType = "text/event-stream"
+
+// EventLibrary is a library event: albums added, changed or gone from the index.
+type EventLibrary struct {
+	Albums []string `json:"albums"`
+	All    bool     `json:"all"` // Too many to list: read the index again.
+}
+
+// EventMarks is a marks event: a heart or a rating changed. Hearted comes with
+// a heart and Stars, 0 for none, with a rating.
+type EventMarks struct {
+	Kind    string `json:"kind"` // tracks, albums or artists, as the routes name them.
+	ID      string `json:"id"`
+	Hearted *bool  `json:"hearted,omitempty"`
+	Stars   *int   `json:"stars,omitempty"`
+}
+
+// EventPrefs is a prefs event: the key of the preference that changed.
+type EventPrefs struct {
+	Key string `json:"key"`
+}
+
+// EventListening is a listening event: a device started a track.
+type EventListening struct {
+	TrackID  string `json:"trackId"`
+	ClientID string `json:"clientId,omitempty"`
+}
+
+// EventSettings is a settings event: the keys that changed, never a value.
+type EventSettings struct {
+	Keys []string `json:"keys"`
 }
 
 // Me is the response to GET /me: the [User], and what the user may do.

@@ -48,6 +48,10 @@ type Options struct {
 	Logger *slog.Logger
 	// Now returns the current time. Nil means [time.Now].
 	Now func() time.Time
+	// OnChange is called after a send changed what GET /me/lastfm shows a
+	// person: something was sent or dropped, the outbox is waiting out a
+	// failure, or the account needs reconnecting. Nil means nothing is told.
+	OnChange func(userID int64)
 }
 
 // Scrobbler sends the outbox to Last.fm. It is safe for concurrent use.
@@ -57,6 +61,7 @@ type Scrobbler struct {
 	mbidKeys []string
 	log      *slog.Logger
 	now      func() time.Time
+	onChange func(userID int64)
 
 	poke    chan struct{}
 	playing chan start
@@ -71,7 +76,7 @@ type start struct {
 // New returns a scrobbler for the outbox in st.
 func New(st *store.Store, opts Options) *Scrobbler {
 	s := &Scrobbler{
-		store: st, mbidKeys: opts.MBIDKeys, log: opts.Logger, now: opts.Now,
+		store: st, mbidKeys: opts.MBIDKeys, log: opts.Logger, now: opts.Now, onChange: opts.OnChange,
 		poke: make(chan struct{}, 1), playing: make(chan start, nowPlayingQueue),
 	}
 	if s.log == nil {
@@ -79,6 +84,9 @@ func New(st *store.Store, opts Options) *Scrobbler {
 	}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	if s.onChange == nil {
+		s.onChange = func(int64) {}
 	}
 	s.client.Store(opts.Client)
 	return s
@@ -221,15 +229,19 @@ func (s *Scrobbler) sendUser(ctx context.Context, client *lastfm.Client, userID 
 	if sender.drain(ctx, lastfm.MaxScrobbles, sender.scrobble, store.OutboxScrobble) {
 		sender.drain(ctx, 1, sender.love, store.OutboxLove, store.OutboxUnlove)
 	}
+	if sender.touched {
+		s.onChange(userID)
+	}
 }
 
 // userSender sends one person's items during one wake.
 type userSender struct {
-	s      *Scrobbler
-	client *lastfm.Client
-	userID int64
-	acct   *store.LastfmAccount
-	now    time.Time
+	s       *Scrobbler
+	client  *lastfm.Client
+	userID  int64
+	acct    *store.LastfmAccount
+	now     time.Time
+	touched bool // Something this wake did changes what the person sees.
 }
 
 // sendFunc sends a batch and reports what Last.fm ignored, by index.
@@ -284,6 +296,7 @@ func (u *userSender) settle(ctx context.Context, items []store.LastfmItem, ignor
 	for i := range items {
 		ids[i] = items[i].ID
 	}
+	u.touched = u.touched || ctx.Err() == nil
 	switch {
 	case err == nil:
 		return u.sent(ctx, items, ids, ignored)
@@ -328,6 +341,8 @@ func (s *Scrobbler) needsReconnect(ctx context.Context, userID int64, err error)
 	s.log.WarnContext(ctx, "last.fm rejected the session; the account needs reconnecting", "userId", userID, "err", err)
 	if stateErr := s.store.SetLastfmReconnect(ctx, userID); stateErr != nil {
 		s.warn(ctx, "last.fm: mark the account", stateErr, "userId", userID)
+	} else {
+		s.onChange(userID)
 	}
 }
 

@@ -11,15 +11,15 @@ import (
 	"time"
 )
 
-// pollLib is a library and a watcher over a fake notifier, for a bubble, with
+// pollLib is a library and a watcher over a fake fsWatcher, for a bubble, with
 // the options optsFor gives for the root.
 func pollLib(t *testing.T, optsFor func(root string) WatchOptions) (*testLib, *Watcher) {
 	t.Helper()
 	l := newTestLib(t, 1)
 	opts := optsFor(l.roots[0])
-	if opts.notify == nil {
-		n := newFakeNotifier()
-		opts.notify = func() (notifier, error) { return n, nil }
+	if opts.watcher == nil {
+		n := newFakeWatcher()
+		opts.watcher = func() (fsWatcher, error) { return n, nil }
 	}
 	w := NewWatcher(l.scanner, opts)
 	watching(t, w)
@@ -68,7 +68,7 @@ func TestWatcherPollsANetworkRoot(t *testing.T) {
 func TestWatcherPollsAtTheWatchLimit(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		n := newFakeNotifier()
+		n := newFakeWatcher()
 		n.addErr = func(path string) error {
 			if filepath.Base(path) == "deep" {
 				return syscall.ENOSPC
@@ -80,7 +80,7 @@ func TestWatcherPollsAtTheWatchLimit(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(root, "a", "deep"), dirMode); err != nil {
 			t.Fatal(err)
 		}
-		w := NewWatcher(l.scanner, WatchOptions{mounts: noMounts, notify: func() (notifier, error) { return n, nil }})
+		w := NewWatcher(l.scanner, WatchOptions{mounts: noMounts, watcher: func() (fsWatcher, error) { return n, nil }})
 		watching(t, w)
 		synctest.Wait()
 		want := []RootWatch{{Root: root, Mode: Polling, Reason: ReasonWatchLimit}}
@@ -95,7 +95,7 @@ func TestWatcherPollsWithoutANotifier(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		l, w := pollLib(t, func(string) WatchOptions {
-			return WatchOptions{mounts: noMounts, notify: func() (notifier, error) { return nil, errors.New("too many open files") }}
+			return WatchOptions{mounts: noMounts, watcher: func() (fsWatcher, error) { return nil, errors.New("too many open files") }}
 		})
 		want := []RootWatch{{Root: l.roots[0], Mode: Polling, Reason: ReasonWatchLimit}}
 		if got := w.Modes(); !slices.Equal(got, want) {
@@ -112,8 +112,8 @@ func TestPollTurnsAVanishedRootOff(t *testing.T) {
 		root := l.roots[0]
 		l.copyTo(root, "a/one.flac", sampleFLAC)
 		l.scan(Quick)
-		n := newFakeNotifier()
-		w := NewWatcher(l.scanner, WatchOptions{mounts: onNetwork(root), notify: func() (notifier, error) { return n, nil }})
+		n := newFakeWatcher()
+		w := NewWatcher(l.scanner, WatchOptions{mounts: onNetwork(root), watcher: func() (fsWatcher, error) { return n, nil }})
 		watching(t, w)
 		synctest.Wait()
 		if err := os.RemoveAll(root); err != nil {

@@ -13,9 +13,9 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// fakeNotifier is a notifier the test drives. Its channels belong to whoever
+// fakeWatcher is a fsWatcher the test drives. Its channels belong to whoever
 // makes it, so one made in a synctest bubble blocks durably.
-type fakeNotifier struct {
+type fakeWatcher struct {
 	events chan fsnotify.Event
 	errs   chan error
 	mu     sync.Mutex
@@ -23,11 +23,11 @@ type fakeNotifier struct {
 	addErr func(path string) error // Nil accepts every folder.
 }
 
-func newFakeNotifier() *fakeNotifier {
-	return &fakeNotifier{events: make(chan fsnotify.Event), errs: make(chan error)}
+func newFakeWatcher() *fakeWatcher {
+	return &fakeWatcher{events: make(chan fsnotify.Event), errs: make(chan error)}
 }
 
-func (f *fakeNotifier) Add(path string) error {
+func (f *fakeWatcher) Add(path string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.addErr != nil {
@@ -39,10 +39,10 @@ func (f *fakeNotifier) Add(path string) error {
 	return nil
 }
 
-func (*fakeNotifier) Remove(string) error             { return nil }
-func (f *fakeNotifier) Events() <-chan fsnotify.Event { return f.events }
-func (f *fakeNotifier) Errors() <-chan error          { return f.errs }
-func (*fakeNotifier) Close() error                    { return nil }
+func (*fakeWatcher) Remove(string) error             { return nil }
+func (f *fakeWatcher) Events() <-chan fsnotify.Event { return f.events }
+func (f *fakeWatcher) Errors() <-chan error          { return f.errs }
+func (*fakeWatcher) Close() error                    { return nil }
 
 // watching starts w on its own goroutine until the test ends.
 func watching(t *testing.T, w *Watcher) {
@@ -174,12 +174,12 @@ func TestWatcherFollowsTheRoots(t *testing.T) {
 	})
 }
 
-// synctestLib is a library and a watcher over a fake notifier, for a bubble.
-func synctestLib(t *testing.T) (*testLib, *fakeNotifier) {
+// synctestLib is a library and a watcher over a fake fsWatcher, for a bubble.
+func synctestLib(t *testing.T) (*testLib, *fakeWatcher) {
 	t.Helper()
 	l := newTestLib(t, 1)
-	n := newFakeNotifier()
-	w := NewWatcher(l.scanner, WatchOptions{notify: func() (notifier, error) { return n, nil }})
+	n := newFakeWatcher()
+	w := NewWatcher(l.scanner, WatchOptions{watcher: func() (fsWatcher, error) { return n, nil }})
 	watching(t, w)
 	synctest.Wait()
 	return l, n

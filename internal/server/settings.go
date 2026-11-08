@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/settings"
 )
 
@@ -76,8 +77,9 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.log.InfoContext(r.Context(), "settings changed",
-		"requestId", requestID(r.Context()), "keys", slices.Sorted(maps.Keys(values)))
+	keys := slices.Sorted(maps.Keys(values))
+	s.log.InfoContext(r.Context(), "settings changed", "requestId", requestID(r.Context()), "keys", keys)
+	s.publish(events.Settings, events.Admins(), &api.EventSettings{Keys: keys})
 	s.writeSettings(w, r, snap)
 }
 

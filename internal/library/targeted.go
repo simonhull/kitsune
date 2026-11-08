@@ -49,6 +49,7 @@ func (s *Scanner) ScanDirs(ctx context.Context, root string, dirs []string) (Sta
 		err = fmt.Errorf("targeted scan: %w", ctxErr)
 	}
 	s.logTargeted(ctx, len(dirs), &stats, err, time.Since(start))
+	s.notifyLibrary(true)
 	if stats.Read > 0 || stats.Missing > 0 {
 		s.askForPass()
 	}

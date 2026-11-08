@@ -74,6 +74,12 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   there are and what each holds, and checks a value on the way in and again on the way out; the
   store keeps the text. A new key is an entry there and its schema in the contract. Server settings
   never go there.
+- `GET /events` is every client's one stream of changes (server-sent events). `internal/events` numbers
+  them, keeps 5 minutes or 10,000 for `Last-Event-ID`, and filters each by its `Audience`; past that a
+  client gets `resync`. Handlers publish only after a change succeeded (`s.publish`), and the scanner
+  through its `library.Notifier` (`server.LibraryEvents`). An event carries ids and keys, never a value
+  a route wouldn't send: a new kind gets a schema in the contract, a case in `events_test.go`, and a
+  place in `TestNoEventHoldsASecret`. The handler sets its own write deadline, since the server has none.
 - Nothing the server writes (bodies, headers, logs) contains a password or token, except
   login's response and `Set-Cookie`, and the setup code's one log line (see Operations).
 - `GET /setup` and `POST /setup` are public. They make the first account, an administrator, while
@@ -136,6 +142,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `isVarious` decides, by match key or MBID.
 - Library writes go through `WriteBatch`, one transaction per batch. The store never
   normalizes names or decides identity: callers pass match keys, group keys and ULIDs.
+  `WriteBatch` and `MarkMissing` note the albums they touch, a moved track's old one included, once
+  committed; the scanner takes them (`TakeChangedAlbums`) to say what changed.
 - FTS rows are written in the same transaction as their track and through `foldSearch`;
   a search query must fold the same way.
 - Nothing reaches `MATCH` except a `SearchQuery`, and `ParseSearch` is the only way to make one. Its

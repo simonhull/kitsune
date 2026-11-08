@@ -24,6 +24,7 @@ import (
 	"github.com/simonhull/kitsune/internal/artwork"
 	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/config"
+	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/lastfm"
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/scrobbler"
@@ -153,6 +154,7 @@ type app struct {
 	auth     *auth.Service
 	scanner  *library.Scanner
 	watcher  *library.Watcher // Follows the roots and scans what changes.
+	events   *events.Hub      // What every client hears.
 	lastfm   *scrobbler.Scrobbler
 	scanned  atomic.Bool // Set when the first scan has ended, whatever its outcome.
 	http     *http.Server
@@ -240,7 +242,8 @@ func buildApp(ctx context.Context, cfg *config.Config, l *launch, st *store.Stor
 	if err != nil {
 		return nil, err
 	}
-	sender, err := newScrobbler(lastfmConfig(snap), l.lastfmURL, st, log)
+	hub := events.New(events.Options{})
+	sender, err := newScrobbler(lastfmConfig(snap), l.lastfmURL, st, hub, log)
 	if err != nil {
 		return nil, err
 	}
@@ -257,12 +260,12 @@ func buildApp(ctx context.Context, cfg *config.Config, l *launch, st *store.Stor
 	public := config.Server{BaseURL: snap.BaseURL}
 	a := &app{
 		log: log, store: st, auth: svc, lastfm: sender, drain: shutdownTimeout,
-		scanner:  newScanner(snap, st, covers, genres, log),
+		scanner: newScanner(snap, st, covers, genres, hub, log), events: hub,
 		basePath: public.BasePath(), dataDir: cfg.Storage.DataDir, baseURL: snap.BaseURL,
 		setupCode: setupCode, covers: covers, genres: genres,
 		live: live, level: l.level, lastfmURL: l.lastfmURL, changes: subscribe(live),
 	}
-	a.watcher = library.NewWatcher(a.scanner, library.WatchOptions{})
+	a.watcher = library.NewWatcher(a.scanner, library.WatchOptions{OnChange: server.FoldersChanged(hub)})
 	a.http = newHTTPServer(a.handler(ctx, cfg, l, &public), log)
 	if snap.BaseURL != "" && len(snap.TrustedProxies) == 0 {
 		log.Warn("base_url is set but trusted_proxies is empty; every client will share the proxy's address for login rate limits")
@@ -296,6 +299,7 @@ func (a *app) handler(ctx context.Context, cfg *config.Config, l *launch, public
 		ConfigDir:      l.configDir,
 		Version:        version(),
 		Watcher:        a.watcher,
+		Events:         a.events,
 	})
 }
 
@@ -314,7 +318,7 @@ func readGenres(ctx context.Context, st *store.Store) (*library.Genres, error) {
 }
 
 // newScanner returns the library scanner over st that snap sets up.
-func newScanner(snap *settings.Snapshot, st *store.Store, covers *artwork.Cache, genres *library.Genres, log *slog.Logger) *library.Scanner {
+func newScanner(snap *settings.Snapshot, st *store.Store, covers *artwork.Cache, genres *library.Genres, hub *events.Hub, log *slog.Logger) *library.Scanner {
 	return library.NewScanner(st, library.Options{
 		Roots:        snap.Roots,
 		MissingGrace: snap.MissingGrace,
@@ -322,17 +326,20 @@ func newScanner(snap *settings.Snapshot, st *store.Store, covers *artwork.Cache,
 		Artwork:      covers,
 		TagWrites:    snap.TagWrites,
 		Genres:       genres,
+		Notify:       server.NewLibraryEvents(hub),
 		QuickScan:    library.Daily{Hour: snap.QuickScan.Hour, Minute: snap.QuickScan.Minute},
 	})
 }
 
 // newScrobbler returns the sender for st, over the Last.fm client cfg sets up.
-func newScrobbler(cfg config.LastFM, fakeURL string, st *store.Store, log *slog.Logger) (*scrobbler.Scrobbler, error) {
+func newScrobbler(cfg config.LastFM, fakeURL string, st *store.Store, hub *events.Hub, log *slog.Logger) (*scrobbler.Scrobbler, error) {
 	client, err := lastfmClient(cfg, fakeURL, log)
 	if err != nil {
 		return nil, err
 	}
-	return scrobbler.New(st, scrobbler.Options{Client: client, MBIDKeys: library.TrackMBIDKeys(), Logger: log}), nil
+	return scrobbler.New(st, scrobbler.Options{
+		Client: client, MBIDKeys: library.TrackMBIDKeys(), Logger: log, OnChange: server.LastfmChanged(hub),
+	}), nil
 }
 
 // lastfmClient returns the Last.fm client cfg sets up, aimed at the fake at

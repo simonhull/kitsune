@@ -146,5 +146,6 @@ func (s *Scanner) exclusive(ctx context.Context, fn func() error) error {
 		return ErrBusy
 	}
 	defer s.lock.unlock()
+	defer s.notifyLibrary(true) // An edit, whole or stopped midway, may have changed albums.
 	return fn()
 }

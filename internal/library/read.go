@@ -266,6 +266,7 @@ func (w *writer) finish(ctx context.Context) error {
 func (w *writer) handle(ctx context.Context, r *result) error {
 	w.stats.Read++
 	w.s.publish(func(p *Progress) { p.Read = w.stats.Read })
+	w.s.notifyScan(false)
 	if r.issue != nil {
 		w.stats.Issues++
 		w.hold = w.hold || (r.job.Missing && r.issue.Kind == store.IssueUnreadable)
@@ -389,5 +390,6 @@ func (w *writer) flush(ctx context.Context) error {
 	clear(w.batch.Tracks)
 	clear(w.batch.Issues)
 	w.batch.Tracks, w.batch.Issues = w.batch.Tracks[:0], w.batch.Issues[:0]
+	w.s.notifyLibrary(false)
 	return nil
 }

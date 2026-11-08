@@ -109,12 +109,12 @@ type WatchOptions struct {
 	// changes. Nil means nothing is told.
 	OnChange func()
 
-	notify func() (notifier, error) // Nil means fsnotify; tests replace it.
-	mounts func() []mount           // Nil reads /proc/self/mountinfo; tests replace it.
+	watcher func() (fsWatcher, error) // Nil means fsnotify; tests replace it.
+	mounts  func() []mount            // Nil reads /proc/self/mountinfo; tests replace it.
 }
 
-// notifier is what the watcher needs of fsnotify.
-type notifier interface {
+// fsWatcher is what the watcher needs of fsnotify.
+type fsWatcher interface {
 	Add(path string) error
 	Remove(path string) error
 	Events() <-chan fsnotify.Event
@@ -122,37 +122,37 @@ type notifier interface {
 	Close() error
 }
 
-// noNotifier stands in when the OS gives no notifier at all: every root polls.
-type noNotifier struct{}
+// noWatcher stands in when the OS gives no fsWatcher at all: every root polls.
+type noWatcher struct{}
 
-func (noNotifier) Add(string) error              { return errWatchLimit }
-func (noNotifier) Remove(string) error           { return nil }
-func (noNotifier) Events() <-chan fsnotify.Event { return nil }
-func (noNotifier) Errors() <-chan error          { return nil }
-func (noNotifier) Close() error                  { return nil }
+func (noWatcher) Add(string) error              { return errWatchLimit }
+func (noWatcher) Remove(string) error           { return nil }
+func (noWatcher) Events() <-chan fsnotify.Event { return nil }
+func (noWatcher) Errors() <-chan error          { return nil }
+func (noWatcher) Close() error                  { return nil }
 
-// errWatchLimit is what noNotifier's Add says: no folder can be watched.
+// errWatchLimit is what noWatcher's Add says: no folder can be watched.
 var errWatchLimit = fmt.Errorf("no folder watcher: %w", syscall.ENOSPC)
 
 // atWatchLimit reports whether err from adding a watch means the OS's limit.
 func atWatchLimit(err error) bool { return errors.Is(err, syscall.ENOSPC) }
 
-// fsNotifier is an fsnotify watcher as a [notifier].
-type fsNotifier struct{ w *fsnotify.Watcher }
+// fsnotifyWatcher is an fsnotify watcher as a [fsWatcher].
+type fsnotifyWatcher struct{ w *fsnotify.Watcher }
 
-func newFSNotifier() (notifier, error) { //nolint:ireturn // The seam tests replace: a fake stands where fsnotify does.
+func newFSWatcher() (fsWatcher, error) { //nolint:ireturn // The seam tests replace: a fake stands where fsnotify does.
 	w, err := fsnotify.NewBufferedWatcher(eventBuffer)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // The watcher logs it and polls.
 	}
-	return fsNotifier{w: w}, nil
+	return fsnotifyWatcher{w: w}, nil
 }
 
-func (n fsNotifier) Add(path string) error         { return n.w.Add(path) }    //nolint:wrapcheck // The caller classifies it.
-func (n fsNotifier) Remove(path string) error      { return n.w.Remove(path) } //nolint:wrapcheck // As above.
-func (n fsNotifier) Events() <-chan fsnotify.Event { return n.w.Events }
-func (n fsNotifier) Errors() <-chan error          { return n.w.Errors }
-func (n fsNotifier) Close() error                  { return n.w.Close() } //nolint:wrapcheck // Logged as is.
+func (n fsnotifyWatcher) Add(path string) error         { return n.w.Add(path) }    //nolint:wrapcheck // The caller classifies it.
+func (n fsnotifyWatcher) Remove(path string) error      { return n.w.Remove(path) } //nolint:wrapcheck // As above.
+func (n fsnotifyWatcher) Events() <-chan fsnotify.Event { return n.w.Events }
+func (n fsnotifyWatcher) Errors() <-chan error          { return n.w.Errors }
+func (n fsnotifyWatcher) Close() error                  { return n.w.Close() } //nolint:wrapcheck // Logged as is.
 
 // Watcher follows the library roots and asks the scanner for a targeted scan
 // of the folders that changed. It only ever marks folders dirty: what a change
@@ -176,8 +176,8 @@ func NewWatcher(s *Scanner, opts WatchOptions) *Watcher {
 	if opts.Poll <= 0 {
 		opts.Poll = defaultPoll
 	}
-	if opts.notify == nil {
-		opts.notify = newFSNotifier
+	if opts.watcher == nil {
+		opts.watcher = newFSWatcher
 	}
 	if opts.mounts == nil {
 		opts.mounts = readMounts
@@ -205,7 +205,7 @@ type rootState struct {
 // watchLoop is the state of one Run, owned by its goroutine.
 type watchLoop struct {
 	w      *Watcher
-	n      notifier
+	n      fsWatcher
 	roots  map[string]*rootState // By configured root.
 	dirty  map[string]map[string]struct{}
 	first  time.Time // The oldest change waiting, or zero.
@@ -235,10 +235,10 @@ type scanOutcome struct {
 // Run follows the roots until ctx ends, and waits for a scan it started to
 // end. It follows root changes made with [Scanner.Configure].
 func (w *Watcher) Run(ctx context.Context) {
-	n, err := w.opts.notify()
+	n, err := w.opts.watcher()
 	if err != nil {
 		w.log.WarnContext(ctx, "the OS gives no folder watcher; checking the library folders every few minutes instead", "err", err)
-		n = noNotifier{}
+		n = noWatcher{}
 	}
 	defer func() {
 		if cerr := n.Close(); cerr != nil {
@@ -258,7 +258,7 @@ func (w *Watcher) Run(ctx context.Context) {
 }
 
 // loop handles events, settles and scans until ctx ends. Only Close closes the
-// notifier's channels, after the loop.
+// fsWatcher's channels, after the loop.
 func (l *watchLoop) loop(ctx context.Context, tick <-chan time.Time) {
 	for {
 		select {
@@ -293,7 +293,7 @@ func (l *watchLoop) ended(ctx context.Context, out scanOutcome) {
 	l.schedule()
 }
 
-// failed handles an error from the notifier. A lost event could be anything,
+// failed handles an error from the fsWatcher. A lost event could be anything,
 // so every root is scanned.
 func (l *watchLoop) failed(ctx context.Context, err error) {
 	if errors.Is(err, fsnotify.ErrEventOverflow) {

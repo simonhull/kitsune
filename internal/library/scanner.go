@@ -60,6 +60,7 @@ type Options struct {
 	Write        WriteFunc        // Nil means audiometa.WriteContext.
 	Genres       *Genres          // Refreshed after scans and edits. Nil means a private one.
 	QuickScan    Daily            // When Run scans every day.
+	Notify       Notifier         // Hears what the scanner changes. Nil hears nothing.
 }
 
 // WriteFunc saves edit to the audio file at path, as [audiometa.WriteContext] does.
@@ -97,6 +98,11 @@ type Scanner struct {
 	scanEnded chan struct{}             // Holds a token when a scan has ended, for the watcher.
 	walkedAt  atomic.Pointer[time.Time] // When the latest scan began walking every root.
 
+	notify      Notifier
+	libraryNote throttle // When the notifier last heard of changed albums.
+	scanNote    throttle // ...of a scan's progress.
+	passNote    throttle // ...of the pass's.
+
 	fingerprint  fingerprintFunc                     // Reads a file's fingerprint; tests replace it.
 	fingerprints atomic.Pointer[FingerprintProgress] // The pass's progress.
 	wantPass     chan struct{}                       // Holds a token when tracks may wait for a fingerprint.
@@ -120,6 +126,10 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 	}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	s.notify = opts.Notify
+	if s.notify == nil {
+		s.notify = noNotify{}
 	}
 	if s.genres == nil {
 		s.genres = NewGenres(st)
@@ -172,6 +182,8 @@ func (s *Scanner) run(ctx context.Context, mode Mode) (Stats, error) {
 	}
 	s.logScan(ctx, mode, &stats, err, time.Since(start))
 	s.ended(&stats, err)
+	s.notifyLibrary(true)
+	s.notifyScan(true)
 	s.askForPass()
 	signal(s.scanEnded)
 	return stats, err
@@ -207,6 +219,7 @@ func (s *Scanner) scan(ctx context.Context, mode Mode) (Stats, error) {
 	}
 	defer s.refreshNames(ctx)
 	s.publish(func(p *Progress) { p.Total = len(sv.Jobs) })
+	s.notifyScan(false)
 	defer s.refreshGenres(ctx)
 	stats := Stats{Seen: sv.Seen, SkippedRoots: sv.SkippedRoots}
 	if err = s.applySurvey(ctx, sv, &stats); err != nil {
