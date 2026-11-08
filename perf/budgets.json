@@ -20,7 +20,7 @@
 		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 0.5 },
 		"library-index": {
 			"interaction": "GET /library/index, 50k songs, default fields, gzip",
-			"p95Ms": 600
+			"p95Ms": 250
 		}
 	}
 }

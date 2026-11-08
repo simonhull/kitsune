@@ -64,8 +64,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `TestLibraryIndexWithoutFieldsIsUnchanged` holds its bytes. `albums` (what a `library` event names)
   gives just those albums in the same shape, each with `after`, the album before it in the whole order,
   which is how a client patches its copy in place; their queries are the `…Of` twins of the whole
-  ones, joined from the albums out. The index's album rows, most of its cost, are kept between
-  library writes (`albumrows.go`); a write that changes what the index shows goes through `inLibraryTx`.
+  ones, joined from the albums out. What the whole index reads of the library (albums, tracks, their
+  artists, details and tags), most of its cost, is kept between library writes (`libraryrows.go`);
+  marks, plays and shuffle rules are read every time. A write that changes what the index shows goes
+  through `inLibraryTx`, an edit's renames, merges, years and covers included.
 - Tag edits are one route, `POST /albums/{id}/edits`, and `GET /albums/{id}/tags` reads what an editor
   shows, from the files. The validator is the album's `etag` field in the body, a hash of
   `ulid:size:mtime_ms` per track, and not a response header. Clients send it back verbatim as

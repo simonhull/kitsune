@@ -51,6 +51,50 @@ func TestIndexFollowsEveryLibraryWrite(t *testing.T) {
 	want("Album Renamed")
 }
 
+// indexTrack reads the index with opts and returns its one track.
+func indexTrack(t *testing.T, s *store.Store, opts *store.IndexOptions) store.IndexTrack {
+	t.Helper()
+	index, err := s.LibraryIndex(t.Context(), 0, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(index.Artists) != 1 || len(index.Artists[0].Albums) != 1 || len(index.Artists[0].Albums[0].Tracks) != 1 {
+		t.Fatalf("index = %+v, want one track", index)
+	}
+	return index.Artists[0].Albums[0].Tracks[0]
+}
+
+// What the song columns read of the library is kept too, per question, and
+// follows a library write.
+func TestIndexTracksFollowLibraryWrites(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	w := newWrite(0)
+	w.Year = 1999
+	rock, jazz := store.Tag{Key: id3Genre, Value: genreRock}, store.Tag{Key: id3Genre, Value: "Jazz Fusion"}
+	ann := store.Tag{Key: "composer", Value: "Ann"}
+	w.Tags = []store.Tag{rock, ann}
+	writeAll(t, s, w)
+	genre := &store.IndexOptions{Details: true, TagKeys: []string{id3Genre}}
+	composer := &store.IndexOptions{TagKeys: []string{ann.Key}}
+	check := func(opts *store.IndexOptions, title string, year int, tags ...store.Tag) {
+		t.Helper()
+		got := indexTrack(t, s, opts)
+		if got.Title != title || got.Extra == nil || got.Extra.Year != year || !slices.Equal(got.Extra.Tags, tags) {
+			t.Errorf("track = %s, %+v; want %s, year %d, tags %v", got.Title, got.Extra, title, year, tags)
+		}
+	}
+	check(genre, "Title 0", 1999, rock)
+	check(genre, "Title 0", 1999, rock) // From what was kept.
+	check(composer, "Title 0", 0, ann)
+	w.ID = idOf(t, s, &w)
+	w.Title, w.Year = "Retitled", 2001
+	w.Tags = []store.Tag{jazz}
+	writeAll(t, s, w)
+	check(genre, "Retitled", 2001, jazz)
+	check(composer, "Retitled", 0)
+}
+
 // indexHead returns the index's first artist, who has an album.
 func indexHead(t *testing.T, s *store.Store) store.IndexArtist {
 	t.Helper()
