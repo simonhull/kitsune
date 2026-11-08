@@ -50,7 +50,7 @@ func newStreamServer(t *testing.T) *streamServer {
 
 // seed records a live track of the given format and returns its relative path.
 // The file itself is written by [streamServer.write].
-func (ss *streamServer) seed(t *testing.T, id, format string) string {
+func (ss *streamServer) seed(t testing.TB, id, format string) string {
 	t.Helper()
 	ss.seeds++
 	rel := fmt.Sprintf("%d.audio", ss.seeds)
@@ -59,7 +59,7 @@ func (ss *streamServer) seed(t *testing.T, id, format string) string {
 }
 
 // record writes a live track's row.
-func (ss *streamServer) record(t *testing.T, id, rel, format string) {
+func (ss *streamServer) record(t testing.TB, id, rel, format string) {
 	t.Helper()
 	tw := store.TrackWrite{
 		ULID: id, Root: ss.root, RelPath: rel,
@@ -75,7 +75,7 @@ func (ss *streamServer) record(t *testing.T, id, rel, format string) {
 }
 
 // write puts body at rel with the given modification time.
-func (ss *streamServer) write(t *testing.T, rel, body string, mtime time.Time) {
+func (ss *streamServer) write(t testing.TB, rel, body string, mtime time.Time) {
 	t.Helper()
 	path := filepath.Join(ss.root, rel)
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {

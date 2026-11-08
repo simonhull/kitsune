@@ -302,6 +302,19 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.
 
+## Speed
+- Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
+  suite (`web/perf`, Playwright) times clicks, keys and page loads in a release build against generated
+  libraries of 1,000 and 50,000 songs, 20 runs each; `internal/server`'s `*Speed` tests time the
+  stream's first byte and `GET /library/index`. Each fails past its budget, and CI's `perf` job runs
+  both on every PR, with the table in the job summary. CI multiplies budgets by `ciMultiplier`.
+- `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes
+  only under `$KITSUNE_PERF_DIR` (default `kitsune-perf` in the temp directory) and reuses the
+  libraries there. `KITSUNE_PERF_CHROMIUM` picks a local Chromium, `KITSUNE_PERF_LIBRARIES=1k` measures
+  one size, `KITSUNE_PERF_VERBOSE=1` prints every sample. The speed tests skip under `-race`.
+- Nothing new may wait on the play path, from a click to the `playing` event. A change on that path,
+  or to a budget, carries the suite's numbers before and after, and no change is called faster without them.
+
 ## Lint policy
 - golangci-lint runs with `default: all`. Every disabled linter in `.golangci.yml` has
   its reason next to it; do not add to that list without one.
