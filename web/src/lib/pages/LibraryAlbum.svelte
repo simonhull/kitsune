@@ -537,8 +537,18 @@
 		min-width: 0;
 	}
 
+	.titled .name {
+		flex: 0 1 auto;
+		min-width: min(9ch, 100%);
+	}
+
+	/* A narrow title column squeezes the marks before the title. */
 	.mark {
-		flex: none;
+		flex: 0 100 auto;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 		display: flex;
 		align-items: center;
 		gap: 5px;

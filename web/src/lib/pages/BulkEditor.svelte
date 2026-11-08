@@ -589,6 +589,14 @@
 		opacity: 0.5;
 	}
 
+	/* From 2560 the editor takes the page's step up, so a 4K screen reads like 1920. */
+	@media (min-width: 2560px) {
+		.head,
+		.bulk {
+			zoom: 1.5;
+		}
+	}
+
 	/* A phone stacks the songs over the fields. */
 	@media (max-width: 700px) {
 		.head {
