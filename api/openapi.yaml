@@ -746,7 +746,10 @@ paths:
             schema: { $ref: "#/components/schemas/AlbumEdit" }
       responses:
         "200":
-          description: The album with its new values and ETag.
+          description: >-
+            The album with its new values and ETag. An edit that moved every
+            track to another album answers with that album, whose `id` the
+            client follows: the old one is gone, merged into it.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AlbumDetail" }

@@ -73,13 +73,13 @@ func (s *Server) postAlbumEdit(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, http.StatusBadRequest, "name at least one field, and each track once")
 		return
 	}
-	id := r.PathValue("id")
 	//nolint:contextcheck // An edit outlives its request on purpose; see Config.Context.
-	if err := s.scanner.EditAlbum(s.editContext, id, ifMatch, &edit); err != nil {
+	landed, err := s.scanner.EditAlbum(s.editContext, r.PathValue("id"), ifMatch, &edit)
+	if err != nil {
 		s.editFailed(w, r, err)
 		return
 	}
-	s.writeAlbum(w, afterEdit(r), id)
+	s.writeAlbum(w, afterEdit(r), landed)
 }
 
 // afterEdit keeps r's values but not its cancellation: an edit that outlived its

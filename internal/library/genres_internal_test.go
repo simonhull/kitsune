@@ -115,7 +115,7 @@ func TestEditsAndScansRefreshGenres(t *testing.T) {
 	l := newEditLib(t)
 	want := []string{pop, rock, genreSpiritual}
 	edit := &AlbumEdit{All: Edit{Fields: map[Field][]string{FieldGenres: {popAndRock, "(12)Spiritual"}}}}
-	if err := l.scanner.EditAlbum(t.Context(), l.album.ID, l.album.ETag, edit); err != nil {
+	if _, err := l.scanner.EditAlbum(t.Context(), l.album.ID, l.album.ETag, edit); err != nil {
 		t.Fatal(err)
 	}
 	if got := l.scanner.genres.Of(l.album.ID); !slices.Equal(got, want) {

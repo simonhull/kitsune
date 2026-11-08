@@ -22,6 +22,17 @@ func (q *Queries) AlbumGroupKey(ctx context.Context, id int64) (string, error) {
 	return group_key, err
 }
 
+const countAlbumTracks = `-- name: CountAlbumTracks :one
+SELECT count(*) FROM tracks WHERE album_id = ?
+`
+
+func (q *Queries) CountAlbumTracks(ctx context.Context, albumID int64) (int64, error) {
+	row := q.queryRow(ctx, q.countAlbumTracksStmt, countAlbumTracks, albumID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const groupKeyTaken = `-- name: GroupKeyTaken :one
 SELECT EXISTS (SELECT 1 FROM albums WHERE group_key = ?)
 `
@@ -31,6 +42,41 @@ func (q *Queries) GroupKeyTaken(ctx context.Context, groupKey string) (bool, err
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const mergeAlbumInto = `-- name: MergeAlbumInto :exec
+UPDATE albums SET
+    artwork_hash = coalesce(albums.artwork_hash, (SELECT f.artwork_hash FROM albums f WHERE f.id = ?1)),
+    added_at = min(albums.added_at, (SELECT f.added_at FROM albums f WHERE f.id = ?1))
+WHERE albums.id = ?2
+`
+
+type MergeAlbumIntoParams struct {
+	FromID int64
+	IntoID int64
+}
+
+// The album a merge lands in keeps its cover, or takes the other's, and was
+// first seen when the older of the two was.
+func (q *Queries) MergeAlbumInto(ctx context.Context, arg MergeAlbumIntoParams) error {
+	_, err := q.exec(ctx, q.mergeAlbumIntoStmt, mergeAlbumInto, arg.FromID, arg.IntoID)
+	return err
+}
+
+const moveAlbumHearts = `-- name: MoveAlbumHearts :exec
+INSERT INTO album_hearts (user_id, album_id, hearted_at)
+SELECT h.user_id, ?1, h.hearted_at FROM album_hearts h WHERE h.album_id = ?2
+ON CONFLICT (user_id, album_id) DO UPDATE SET hearted_at = min(album_hearts.hearted_at, excluded.hearted_at)
+`
+
+type MoveAlbumHeartsParams struct {
+	IntoID int64
+	FromID int64
+}
+
+func (q *Queries) MoveAlbumHearts(ctx context.Context, arg MoveAlbumHeartsParams) error {
+	_, err := q.exec(ctx, q.moveAlbumHeartsStmt, moveAlbumHearts, arg.IntoID, arg.FromID)
+	return err
 }
 
 const setAlbumGroupKey = `-- name: SetAlbumGroupKey :exec
@@ -45,4 +91,15 @@ type SetAlbumGroupKeyParams struct {
 func (q *Queries) SetAlbumGroupKey(ctx context.Context, arg SetAlbumGroupKeyParams) error {
 	_, err := q.exec(ctx, q.setAlbumGroupKeyStmt, setAlbumGroupKey, arg.GroupKey, arg.ID)
 	return err
+}
+
+const trackAlbumRow = `-- name: TrackAlbumRow :one
+SELECT album_id FROM tracks WHERE id = ?
+`
+
+func (q *Queries) TrackAlbumRow(ctx context.Context, id int64) (int64, error) {
+	row := q.queryRow(ctx, q.trackAlbumRowStmt, trackAlbumRow, id)
+	var album_id int64
+	err := row.Scan(&album_id)
+	return album_id, err
 }

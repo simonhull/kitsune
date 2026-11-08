@@ -217,6 +217,28 @@ func TestRenamingAnAlbumKeepsItsURL(t *testing.T) {
 	fx.wantStoreFollowed(t, &before, &got)
 }
 
+func TestMovingATrackOutAndBackMergesItsAlbum(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+	before := fx.album
+	var kept api.AlbumDetail
+	fx.post(t, before.Etag, fx.trackBody(0, `{"album":["Split Off"]}`)).decode(t, &kept)
+	if kept.ID != before.ID || len(kept.Tracks) != 1 {
+		t.Fatalf("after moving a track the album is %s with %d tracks, want %s with 1", kept.ID, len(kept.Tracks), before.ID)
+	}
+	var split api.TrackDetail
+	fx.getJSON(t, fx.token, "/tracks/"+before.Tracks[0].ID, &split)
+	var off api.AlbumDetail
+	fx.getJSON(t, fx.token, albumsPath+"/"+split.AlbumID, &off)
+	var landed api.AlbumDetail
+	c := fx.postCall(albumsPath+"/"+off.ID+"/edits", off.Etag, `{"all":{"set":{"album":["`+before.Title+`"]}}}`)
+	fx.send(t, c).decode(t, &landed)
+	if landed.ID != before.ID || len(landed.Tracks) != 2 {
+		t.Errorf("the edit landed on %s with %d tracks, want %s with both", landed.ID, len(landed.Tracks), before.ID)
+	}
+	fx.send(t, call{method: http.MethodGet, path: albumsPath + "/" + off.ID, header: bearer(fx.token)}).problem(t, http.StatusNotFound)
+}
+
 // wantGenres checks the album and each of its tracks hold genres.
 func wantGenres(t *testing.T, album *api.AlbumDetail, genres []string) {
 	t.Helper()

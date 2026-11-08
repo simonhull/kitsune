@@ -19,6 +19,7 @@ const (
 	newYear  = 1987
 	oldSort  = "Old Sort"
 	keyDate  = "DATE"
+	keyAlbum = "ALBUM"
 	keyGenre = "GENRE"
 	rock     = "Rock"
 	pop      = "Pop"

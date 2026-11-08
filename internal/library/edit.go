@@ -108,8 +108,12 @@ func (e *AlbumEdit) forFiles(files []store.EditFile) ([]fileEdit, error) {
 // wrapping [store.ErrNotFound] for an unknown ID, [ErrStale] when ifMatch is not
 // the current ETag or a file drifted from the store, and an [*EditError] when
 // the edit was refused or stopped.
-func (s *Scanner) EditAlbum(ctx context.Context, id, ifMatch string, e *AlbumEdit) error {
-	return s.exclusive(ctx, func() error {
+//
+// It returns the ID of the album the tracks are on now: id, unless the edit moved
+// every one of them, when it is the album the first went to.
+func (s *Scanner) EditAlbum(ctx context.Context, id, ifMatch string, e *AlbumEdit) (string, error) {
+	landed := id
+	err := s.exclusive(ctx, func() error {
 		if !s.live().TagWrites {
 			return ErrTagWritesOff
 		}
@@ -124,8 +128,24 @@ func (s *Scanner) EditAlbum(ctx context.Context, id, ifMatch string, e *AlbumEdi
 		if err != nil {
 			return &EditError{Remaining: ulids(fileEdits(files)), Err: err}
 		}
-		return s.edit(ctx, edits, map[int64]int{files[0].Album: len(files)})
+		err = s.edit(ctx, edits, map[int64]int{files[0].Album: len(files)})
+		if err != nil {
+			return err
+		}
+		landed, err = s.landed(context.WithoutCancel(ctx), id, files[0].ULID)
+		return err
 	})
+	return landed, err
+}
+
+// landed returns the album the edit of album id left its tracks on: id while it
+// has any, else the album of its first track.
+func (s *Scanner) landed(ctx context.Context, id, first string) (string, error) {
+	_, _, err := s.st.AlbumEditFiles(ctx, id)
+	if !errors.Is(err, store.ErrNotFound) {
+		return id, err //nolint:wrapcheck // The store's error already says what failed.
+	}
+	return s.st.TrackAlbum(ctx, first) //nolint:wrapcheck // As above.
 }
 
 // fileEdits lists files with no edit, for reporting.
@@ -161,7 +181,8 @@ func (s *Scanner) edit(ctx context.Context, edits []fileEdit, live map[int64]int
 	// Tracks written before a failure hold the edit, and a canceled edit still counts.
 	// A rewritten file loses its fingerprint, which the pass makes again.
 	defer s.askForPass()
-	defer s.settle(ctx)
+	written := 0
+	defer func() { s.settle(ctx, edits[:written]) }()
 	for i := range edits {
 		file := edits[i].file
 		path := filepath.Join(file.Root, file.RelPath)
@@ -171,6 +192,7 @@ func (s *Scanner) edit(ctx context.Context, edits []fileEdit, live map[int64]int
 			}
 			return stopped(edits, i, err)
 		}
+		written = i + 1
 		// The file has changed, so a canceled edit still indexes it.
 		if err = s.reindex(context.WithoutCancel(ctx), file.ID, file.Root, file.RelPath); err != nil {
 			return stopped(edits, i+1, err)
@@ -218,11 +240,43 @@ func (s *Scanner) undoRekeys(ctx context.Context, undo []store.AlbumRekey) {
 }
 
 // settle brings what the store derives from its tracks up to date, once per edit
-// and with the lock held, however the edit ended: some files may have changed.
-func (s *Scanner) settle(ctx context.Context) {
+// and with the lock held, however the edit ended: written are the files that
+// changed. An album they all left merges into the one they went to, and what no
+// track uses any more goes. A failure is logged: the files and tracks are right,
+// and the next scan prunes what is left.
+func (s *Scanner) settle(ctx context.Context, written []fileEdit) {
 	ctx = context.WithoutCancel(ctx)
+	if moves := albumMoves(written); len(moves) > 0 {
+		if _, err := s.st.MergeEmptied(ctx, moves); err != nil {
+			s.log.WarnContext(ctx, "merging albums after an edit failed", "err", err)
+		}
+	}
+	if pruned, err := s.st.PruneOrphans(ctx); err != nil {
+		s.log.WarnContext(ctx, "pruning after an edit failed", "err", err)
+	} else {
+		s.deleteArtwork(ctx, pruned.Artwork)
+	}
 	s.refreshNames(ctx)
 	s.refreshGenres(ctx)
+}
+
+// albumMoves lists the tracks written from each album that a written track may
+// have left: the ones whose group key changed.
+func albumMoves(written []fileEdit) []store.AlbumMove {
+	var out []store.AlbumMove
+	for i := range written {
+		file := written[i].file
+		if written[i].after.groupKey == file.GroupKey {
+			continue
+		}
+		j := slices.IndexFunc(out, func(m store.AlbumMove) bool { return m.From == file.Album })
+		if j < 0 {
+			out = append(out, store.AlbumMove{From: file.Album})
+			j = len(out) - 1
+		}
+		out[j].Tracks = append(out[j].Tracks, file.ID)
+	}
+	return out
 }
 
 // stopped reports an edit that ended with edits[:changed] written.

@@ -39,6 +39,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.artistRowIDStmt, err = db.PrepareContext(ctx, artistRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query ArtistRowID: %w", err)
 	}
+	if q.countAlbumTracksStmt, err = db.PrepareContext(ctx, countAlbumTracks); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAlbumTracks: %w", err)
+	}
 	if q.countLiveAlbumsStmt, err = db.PrepareContext(ctx, countLiveAlbums); err != nil {
 		return nil, fmt.Errorf("error preparing query CountLiveAlbums: %w", err)
 	}
@@ -285,8 +288,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.markMissingStmt, err = db.PrepareContext(ctx, markMissing); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkMissing: %w", err)
 	}
+	if q.mergeAlbumIntoStmt, err = db.PrepareContext(ctx, mergeAlbumInto); err != nil {
+		return nil, fmt.Errorf("error preparing query MergeAlbumInto: %w", err)
+	}
 	if q.missingByDigestStmt, err = db.PrepareContext(ctx, missingByDigest); err != nil {
 		return nil, fmt.Errorf("error preparing query MissingByDigest: %w", err)
+	}
+	if q.moveAlbumHeartsStmt, err = db.PrepareContext(ctx, moveAlbumHearts); err != nil {
+		return nil, fmt.Errorf("error preparing query MoveAlbumHearts: %w", err)
 	}
 	if q.pruneAlbumsStmt, err = db.PrepareContext(ctx, pruneAlbums); err != nil {
 		return nil, fmt.Errorf("error preparing query PruneAlbums: %w", err)
@@ -323,6 +332,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.touchSessionStmt, err = db.PrepareContext(ctx, touchSession); err != nil {
 		return nil, fmt.Errorf("error preparing query TouchSession: %w", err)
+	}
+	if q.trackAlbumRowStmt, err = db.PrepareContext(ctx, trackAlbumRow); err != nil {
+		return nil, fmt.Errorf("error preparing query TrackAlbumRow: %w", err)
 	}
 	if q.trackRowIDStmt, err = db.PrepareContext(ctx, trackRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackRowID: %w", err)
@@ -394,6 +406,11 @@ func (q *Queries) Close() error {
 	if q.artistRowIDStmt != nil {
 		if cerr := q.artistRowIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing artistRowIDStmt: %w", cerr)
+		}
+	}
+	if q.countAlbumTracksStmt != nil {
+		if cerr := q.countAlbumTracksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAlbumTracksStmt: %w", cerr)
 		}
 	}
 	if q.countLiveAlbumsStmt != nil {
@@ -806,9 +823,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing markMissingStmt: %w", cerr)
 		}
 	}
+	if q.mergeAlbumIntoStmt != nil {
+		if cerr := q.mergeAlbumIntoStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing mergeAlbumIntoStmt: %w", cerr)
+		}
+	}
 	if q.missingByDigestStmt != nil {
 		if cerr := q.missingByDigestStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing missingByDigestStmt: %w", cerr)
+		}
+	}
+	if q.moveAlbumHeartsStmt != nil {
+		if cerr := q.moveAlbumHeartsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing moveAlbumHeartsStmt: %w", cerr)
 		}
 	}
 	if q.pruneAlbumsStmt != nil {
@@ -869,6 +896,11 @@ func (q *Queries) Close() error {
 	if q.touchSessionStmt != nil {
 		if cerr := q.touchSessionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing touchSessionStmt: %w", cerr)
+		}
+	}
+	if q.trackAlbumRowStmt != nil {
+		if cerr := q.trackAlbumRowStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing trackAlbumRowStmt: %w", cerr)
 		}
 	}
 	if q.trackRowIDStmt != nil {
@@ -985,6 +1017,7 @@ type Queries struct {
 	albumRowIDStmt                 *sql.Stmt
 	anyMissingWithDigestStmt       *sql.Stmt
 	artistRowIDStmt                *sql.Stmt
+	countAlbumTracksStmt           *sql.Stmt
 	countLiveAlbumsStmt            *sql.Stmt
 	countScanIssuesByKindStmt      *sql.Stmt
 	countUndigestedStmt            *sql.Stmt
@@ -1067,7 +1100,9 @@ type Queries struct {
 	liveTrackFactsStmt             *sql.Stmt
 	markLastfmSentStmt             *sql.Stmt
 	markMissingStmt                *sql.Stmt
+	mergeAlbumIntoStmt             *sql.Stmt
 	missingByDigestStmt            *sql.Stmt
+	moveAlbumHeartsStmt            *sql.Stmt
 	pruneAlbumsStmt                *sql.Stmt
 	pruneArtistsStmt               *sql.Stmt
 	pruneArtworkStmt               *sql.Stmt
@@ -1080,6 +1115,7 @@ type Queries struct {
 	setLastfmStateStmt             *sql.Stmt
 	setPasswordHashStmt            *sql.Stmt
 	touchSessionStmt               *sql.Stmt
+	trackAlbumRowStmt              *sql.Stmt
 	trackRowIDStmt                 *sql.Stmt
 	trackStatesStmt                *sql.Stmt
 	undigestedStmt                 *sql.Stmt
@@ -1105,6 +1141,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		albumRowIDStmt:                 q.albumRowIDStmt,
 		anyMissingWithDigestStmt:       q.anyMissingWithDigestStmt,
 		artistRowIDStmt:                q.artistRowIDStmt,
+		countAlbumTracksStmt:           q.countAlbumTracksStmt,
 		countLiveAlbumsStmt:            q.countLiveAlbumsStmt,
 		countScanIssuesByKindStmt:      q.countScanIssuesByKindStmt,
 		countUndigestedStmt:            q.countUndigestedStmt,
@@ -1187,7 +1224,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		liveTrackFactsStmt:             q.liveTrackFactsStmt,
 		markLastfmSentStmt:             q.markLastfmSentStmt,
 		markMissingStmt:                q.markMissingStmt,
+		mergeAlbumIntoStmt:             q.mergeAlbumIntoStmt,
 		missingByDigestStmt:            q.missingByDigestStmt,
+		moveAlbumHeartsStmt:            q.moveAlbumHeartsStmt,
 		pruneAlbumsStmt:                q.pruneAlbumsStmt,
 		pruneArtistsStmt:               q.pruneArtistsStmt,
 		pruneArtworkStmt:               q.pruneArtworkStmt,
@@ -1200,6 +1239,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setLastfmStateStmt:             q.setLastfmStateStmt,
 		setPasswordHashStmt:            q.setPasswordHashStmt,
 		touchSessionStmt:               q.touchSessionStmt,
+		trackAlbumRowStmt:              q.trackAlbumRowStmt,
 		trackRowIDStmt:                 q.trackRowIDStmt,
 		trackStatesStmt:                q.trackStatesStmt,
 		undigestedStmt:                 q.undigestedStmt,
