@@ -3,6 +3,7 @@ import { preload } from '#lib/cover/rungs.ts';
 import { decodesAhead, mostQueued, openingFor, throwGap } from '#lib/pages/deck.ts';
 import { theme } from '#lib/theme/theme.svelte.ts';
 import { createApiSource } from './api.ts';
+import { once } from './bulk.ts';
 import { cueOf, retagged, type NowPlaying } from './cue.ts';
 import {
 	createFixtureSource,
@@ -31,6 +32,7 @@ import {
 	type ArtistDetail,
 	type ArtistEntry,
 	type ArtistLink,
+	type EditedTracks,
 	type IndexField,
 	type LastfmStatus,
 	type LastfmSwitches,
@@ -45,7 +47,8 @@ import {
 	type FolderListing,
 	type ServerSettings,
 	type SettingsChange,
-	type SetupStatus
+	type SetupStatus,
+	type TracksEdit
 } from './source.ts';
 
 /** The grid's page: 60 divides evenly into every column count, so pages stack with no seam. */
@@ -210,6 +213,8 @@ export class Library {
 	readonly #entries = new SvelteMap<string, AlbumEntry>();
 	readonly #albums = new SvelteMap<string, Album>();
 	readonly #missing = new SvelteSet<string>();
+	/** Albums an edit merged away, and where their tracks went. */
+	readonly #moved = new SvelteMap<string, string>();
 	readonly #unavailable = new SvelteSet<string>();
 	/** Every album fetch still out: asking again waits for the same one. */
 	readonly #loading = new SvelteMap<string, Promise<void>>();
@@ -1069,10 +1074,57 @@ export class Library {
 	/** Saves an edit of an album's tracks, and shows it. Rejects with `EditError`. */
 	async editAlbum(id: string, etag: string, edit: AlbumEdit): Promise<void> {
 		try {
-			this.#adopt(await this.#source.editAlbum(id, etag, edit));
+			const album = await this.#source.editAlbum(id, etag, edit);
+			// An edit that moved every track answers with the album they went to: this one is gone.
+			if (album.id !== id) {
+				this.#albums.delete(id);
+				this.#missing.add(id);
+				this.#moved.set(id, album.id);
+			}
+			this.#adopt(album);
 		} finally {
 			// A save that stops partway has still written files, so the list reads them again either way.
 			this.markIndexStale();
+		}
+	}
+
+	/**
+	 * Saves an edit of songs on any albums, and shows it: every album they were on or went to is read
+	 * again. Rejects with `EditError`.
+	 */
+	async editTracks(edit: TracksEdit): Promise<EditedTracks> {
+		try {
+			const edited = await this.#source.editTracks(edit);
+			const albums = once([
+				...edit.albums.map(({ id }) => id),
+				...edited.tracks.map(({ albumId }) => albumId)
+			]);
+			await Promise.all(albums.map((id) => this.#refetch(id)));
+			return edited;
+		} finally {
+			this.markIndexStale();
+		}
+	}
+
+	/** Where an album went, when an edit moved every one of its tracks to another and it's gone. */
+	movedTo(id: string): string | undefined {
+		return this.#moved.get(id);
+	}
+
+	/** The album a song is on now. Rejects with `EditError`. */
+	trackAlbum(trackId: string): Promise<string> {
+		return this.#source.trackAlbum(trackId);
+	}
+
+	/** Reads an album that may be gone, for an edit that may have merged it away. */
+	async #refetch(id: string): Promise<void> {
+		try {
+			this.#adopt(await this.#source.album(id));
+		} catch (error) {
+			if (error instanceof AlbumNotFoundError) {
+				this.#albums.delete(id);
+				this.#missing.add(id);
+			}
 		}
 	}
 

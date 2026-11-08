@@ -1039,6 +1039,45 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				stumble(album, edit);
 				return write(album, edit);
 			}),
+		// The fixtures never move a song: each album takes its own songs' part of the edit.
+		editTracks: (edit) =>
+			respond(() => {
+				refuseAnyoneElse();
+				const albums = edit.albums.map(({ id, etag }) => {
+					const album = held.get(id);
+					if (album === undefined) {
+						throw new EditError({ kind: 'gone' });
+					}
+					if (album.etag !== etag) {
+						throw new EditError({ kind: 'stale', album: id });
+					}
+					return album;
+				});
+				const placed = edit.tracks.map(({ id }) => {
+					const album = albums.find(({ tracks }) => tracks.some((track) => track.id === id));
+					if (album === undefined) {
+						throw new EditError({ kind: 'refused', detail: '', changed: [], remaining: [id] });
+					}
+					return { id, albumId: album.id };
+				});
+				for (const album of albums) {
+					const own = edit.tracks.filter(({ id }) => album.tracks.some((track) => track.id === id));
+					write(album, {
+						tracks: own.map((track) => ({ ...track, ...layered(edit.all, track) }))
+					});
+				}
+				return { tracks: placed };
+			}),
+		trackAlbum: (trackId) =>
+			respond(() => {
+				const album = [...held.values()].find(({ tracks }) =>
+					tracks.some(({ id }) => id === trackId)
+				);
+				if (album === undefined) {
+					throw new EditError({ kind: 'gone' });
+				}
+				return album.id;
+			}),
 		// Never fetched: the fixtures play on a silent clock.
 		streamUrl: (trackId) => `fixture:${trackId}`,
 		startScan: (mode) => respond(() => scans.start(mode)),

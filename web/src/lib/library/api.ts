@@ -14,6 +14,7 @@ import {
 	type AlbumTags,
 	type ArtistDetail,
 	type ArtistEntry,
+	type EditedTracks,
 	type EditFailure,
 	type EditStopped,
 	type LastfmStatus,
@@ -35,6 +36,7 @@ import {
 	type ServerSettings,
 	type SettingKey,
 	type SetupStatus,
+	type TracksEdit,
 	type User
 } from './source.ts';
 
@@ -68,8 +70,12 @@ async function editFailureOf(response: Response): Promise<EditFailure> {
 		case 409:
 			return { kind: 'busy', retryAfterSeconds: retrySeconds(response) };
 	}
-	const stopped = (await response.json().catch(() => null)) as Partial<EditStopped> | null;
-	const { detail = '', changed, remaining } = stopped ?? {};
+	const stopped = (await response.json().catch(() => null)) as
+		(Partial<EditStopped> & { album?: string }) | null;
+	const { detail = '', changed, remaining, album } = stopped ?? {};
+	if (response.status === 412 && album !== undefined) {
+		return { kind: 'stale', album };
+	}
 	if (changed === undefined || remaining === undefined) {
 		switch (response.status) {
 			case 403:
@@ -408,6 +414,20 @@ export function createApiSource({
 				body: JSON.stringify(edit)
 			});
 			return (await response.json()) as Album;
+		},
+
+		async editTracks(edit: TracksEdit) {
+			const response = await forEdit('/edits', editFailureOf, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(edit)
+			});
+			return (await response.json()) as EditedTracks;
+		},
+
+		async trackAlbum(trackId) {
+			const response = await forEdit(`/tracks/${encodeURIComponent(trackId)}`, tagsFailureOf);
+			return ((await response.json()) as { albumId: string }).albumId;
 		},
 
 		streamUrl: (trackId) => `${base}/tracks/${encodeURIComponent(trackId)}/stream`,

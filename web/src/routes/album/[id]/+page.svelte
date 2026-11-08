@@ -1,10 +1,13 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { Album } from '#lib/library/source.ts';
 	import { whenSettled } from '#lib/morph/settled.ts';
 	import AlbumHero from '#lib/pages/AlbumHero.svelte';
+	import BulkEditor from '#lib/pages/BulkEditor.svelte';
+	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
 	import TagBar from '#lib/pages/TagBar.svelte';
 	import TagRows from '#lib/pages/TagRows.svelte';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
@@ -19,6 +22,12 @@
 	const album = $derived(library.album(id));
 	const cuedId = $derived(library.playing?.album.id === id ? library.playing.track.id : undefined);
 	const session = $derived(tagEdits.of(id));
+	/** Many tracks at once, board D: the album's own bulk edit. */
+	const bulk = $derived(
+		bulkEdits.current?.layout === 'album' && bulkEdits.current.albumIds.includes(id)
+			? bulkEdits.current
+			: null
+	);
 
 	let editButton: HTMLButtonElement | undefined = $state();
 	let eyebrow: HTMLElement | undefined = $state();
@@ -72,10 +81,51 @@
 		void leftEditor('');
 	}
 
+	/** An edit that moved every track took the album with it: follow it to where they went. */
+	async function follow(to: string | undefined): Promise<boolean> {
+		if (to === undefined || to === id) {
+			return false;
+		}
+		await goto(resolve('/album/[id]', { id: to }), { replaceState: true });
+		return true;
+	}
+
 	async function write(): Promise<void> {
 		const written = await session?.write();
 		if (written?.kind === 'done') {
-			await leftEditor('Tags written.');
+			if (!(await follow(library.movedTo(id)))) {
+				await leftEditor('Tags written.');
+			}
+		} else if (written?.kind === 'problem') {
+			await tick();
+			document.getElementById(written.field)?.focus();
+		}
+	}
+
+	/** Leaves the album page's editor for many tracks at once, every one picked. */
+	function pickTracks(): void {
+		const tracks = session?.tags?.tracks ?? [];
+		tagEdits.close(id);
+		bulkEdits.open(
+			'album',
+			tracks.map((track) => track.id),
+			new Map(tracks.map((track) => [track.id, id]))
+		);
+	}
+
+	function leaveBulk(): void {
+		bulkEdits.close();
+		void leftEditor('');
+	}
+
+	async function writeBulk(): Promise<void> {
+		const written = await bulk?.write();
+		if (written?.kind === 'done') {
+			bulkEdits.close();
+			// Merged away: the tracks are all on another album now.
+			if (!(library.failed(id) && (await follow(written.albumId)))) {
+				await leftEditor('Tags written.');
+			}
 		} else if (written?.kind === 'problem') {
 			await tick();
 			document.getElementById(written.field)?.focus();
@@ -99,7 +149,7 @@
 		<a href={resolve('/')} data-sveltekit-reset="false">Back to Home</a>
 	</div>
 {:else}
-	<div class="album" class:editing={session !== undefined}>
+	<div class="album" class:editing={session !== undefined || bulk !== null}>
 		<AlbumHero
 			albumId={id}
 			{entry}
@@ -107,24 +157,35 @@
 			edit={library.user?.canEditTags === true ? () => void openEditor() : undefined}
 			bind:editButton
 			{session}
+			picking={bulk === null
+				? undefined
+				: { picked: bulk.pickedTracks.length, of: bulk.tracks.length }}
+			many={session !== undefined && !session.dirty && session.open === null
+				? pickTracks
+				: undefined}
 			bind:eyebrow
 		/>
-		<TrackList
-			{album}
-			{cuedId}
-			sounding={player.sounding}
-			play={(index) => {
-				if (album !== undefined) {
-					player.play(album, index);
-				}
-			}}
-			gone={library.failed(id)}
-			unavailable={library.unavailable(id)}
-			retry={() => void library.loadAlbum(id)}
-			editing={session !== undefined}
-			one={session?.open != null}
-			editor={session?.tags == null ? undefined : editor}
-		/>
+		{#if bulk !== null}
+			<BulkEditor session={bulk} canWrite={library.user?.canEditTags === true} />
+			<TagBar session={bulk} what="these tracks" leave={leaveBulk} write={() => void writeBulk()} />
+		{:else}
+			<TrackList
+				{album}
+				{cuedId}
+				sounding={player.sounding}
+				play={(index) => {
+					if (album !== undefined) {
+						player.play(album, index);
+					}
+				}}
+				gone={library.failed(id)}
+				unavailable={library.unavailable(id)}
+				retry={() => void library.loadAlbum(id)}
+				editing={session !== undefined}
+				one={session?.open != null}
+				editor={session?.tags == null ? undefined : editor}
+			/>
+		{/if}
 		{#if session !== undefined}
 			<TagBar {session} open={session.open} {leave} write={() => void write()} />
 		{/if}

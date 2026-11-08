@@ -96,7 +96,7 @@ export interface Album extends AlbumEntry {
 	hearted: boolean;
 }
 
-/** Everything `GET /albums/{id}/tags` names. Four of them can be read but not edited yet. */
+/** Everything `GET /albums/{id}/tags` names. Album, artists, album artists and compilation group a track. */
 export type TagField =
 	| 'title'
 	| 'album'
@@ -173,6 +173,21 @@ export interface TagEdit {
 export interface AlbumEdit {
 	all?: TagEdit;
 	tracks?: ({ id: string } & TagEdit)[];
+}
+
+/**
+ * An edit of songs that may lie on several albums, as `POST /edits` takes it: `all` goes to every
+ * track named, each one's own on top, and `albums` gives the etag of every album they're on.
+ */
+export interface TracksEdit {
+	albums: { id: string; etag: string }[];
+	all?: TagEdit;
+	tracks: ({ id: string } & TagEdit)[];
+}
+
+/** Where each song of an edit is now: a song given another album has moved to it. */
+export interface EditedTracks {
+	tracks: { id: string; albumId: string }[];
 }
 
 /** An artist, as much as it takes to link to one. */
@@ -598,6 +613,10 @@ export interface LibrarySource {
 	albumTags(id: string): Promise<AlbumTags>;
 	/** Rejects with {@link EditError} unless the edit reached every file it named. */
 	editAlbum(id: string, etag: string, edit: AlbumEdit): Promise<Album>;
+	/** {@link LibrarySource.editAlbum} for songs on any albums. A stale album is named. */
+	editTracks(edit: TracksEdit): Promise<EditedTracks>;
+	/** The album a song is on now. Rejects with {@link EditError}: `gone` for an unknown one. */
+	trackAlbum(trackId: string): Promise<string>;
 	/** The URL a track's audio streams from. */
 	streamUrl(trackId: string): string;
 	/** Starts a scan. Rejects with a {@link ServerError}: 409 when one is running, 503 at shutdown. */
@@ -725,7 +744,7 @@ export type EditFailure =
 	/** A scan or another edit holds the library: the server said when to come back. */
 	| { kind: 'busy'; retryAfterSeconds: number }
 	/** The ETag isn't current, or a file no longer matches what the server knows. */
-	| { kind: 'stale' }
+	| { kind: 'stale'; album?: string }
 	/** A file changed under a write already running. */
 	| ({ kind: 'stale' } & EditStopped)
 	/** Not an administrator, or tag writes are off. */

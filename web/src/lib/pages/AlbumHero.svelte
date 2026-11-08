@@ -27,6 +27,10 @@
 		session: TagSession | undefined;
 		/** Where focus goes when the editor opens. */
 		eyebrow?: HTMLElement | undefined;
+		/** Many tracks at once are being edited: this many of them picked. */
+		picking?: { picked: number; of: number } | undefined;
+		/** Goes from the album page's editor to many tracks at once. */
+		many?: (() => void) | undefined;
 	}
 
 	let {
@@ -36,8 +40,13 @@
 		edit,
 		editButton = $bindable(),
 		session,
-		eyebrow = $bindable()
+		eyebrow = $bindable(),
+		picking,
+		many
 	}: Props = $props();
+
+	/** Editing of either kind: the page draws up the same way for both. */
+	const editing = $derived(session !== undefined || picking !== undefined);
 
 	const files = $derived(session?.tags?.tracks.length ?? album?.tracks.length ?? 0);
 	const fileCount = $derived(`${String(files)} ${files === 1 ? 'FILE' : 'FILES'}`);
@@ -66,12 +75,7 @@
 	}
 </script>
 
-<section
-	aria-label="Album"
-	class="hero"
-	class:editing={session !== undefined}
-	class:one={open !== null}
->
+<section aria-label="Album" class="hero" class:editing class:one={open !== null}>
 	<div
 		class="art"
 		data-morph-part="art"
@@ -80,7 +84,12 @@
 		<Cover {albumId} {entry} place="stage" />
 	</div>
 	<div class="words" data-morph-part="words">
-		{#if session === undefined}
+		{#if picking !== undefined}
+			<span class="meta ready eyebrow" tabindex="-1" bind:this={eyebrow}>
+				EDITING TAGS · {picking.picked} OF {picking.of}
+				{picking.of === 1 ? 'TRACK' : 'TRACKS'} PICKED
+			</span>
+		{:else if session === undefined}
 			<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>
 		{:else}
 			<span class="meta ready eyebrow" tabindex="-1" bind:this={eyebrow}>
@@ -100,7 +109,7 @@
 			{entry?.title ?? ''}
 		</h1>
 		<div class="actions">
-			{#if session === undefined}
+			{#if !editing}
 				<button
 					type="button"
 					class="play"
@@ -127,7 +136,10 @@
 					{/if}
 				</span>
 			</span>
-			{#if session === undefined}
+			{#if many !== undefined}
+				<button type="button" class="ghost many" onclick={many}>Many at once</button>
+			{/if}
+			{#if !editing}
 				<button type="button" class="ghost" disabled={!playable} onclick={shuffle}>Shuffle</button>
 				<span class="favorite"
 					><HeartButton kind="albums" id={albumId} name={entry?.title ?? 'album'} size={18} /></span

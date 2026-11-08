@@ -78,11 +78,8 @@ describe('tagGroups', () => {
 		expect(specs.filter(({ field }) => field === 'date')).toHaveLength(1);
 	});
 
-	it('keeps what decides an album read-only, and nothing else', () => {
+	it('lets album, artists and album artist be edited, and shows compilation only', () => {
 		expect(specs.filter(({ locked = false }) => locked).map(({ field }) => field)).toEqual([
-			'artists',
-			'album',
-			'albumArtists',
 			'compilation'
 		]);
 	});
