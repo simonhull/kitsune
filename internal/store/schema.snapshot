@@ -252,6 +252,74 @@ CREATE TABLE settings (
 --   column cid=2 name=source type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=3 name=updated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 
+-- table shuffle_excluded
+CREATE TABLE shuffle_excluded (
+	user_id     INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	track_id    INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+	excluded_at INTEGER NOT NULL,
+	PRIMARY KEY (user_id, track_id)
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=excluded_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+--   foreign key id=1 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index shuffle_excluded_track
+CREATE INDEX shuffle_excluded_track ON shuffle_excluded (track_id);
+--   key seqno=0 cid=1 name=track_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=0 name=user_id desc=0 coll=BINARY key=0
+
+-- table shuffle_run_tracks
+CREATE TABLE shuffle_run_tracks (
+	run_id   INTEGER NOT NULL,
+	user_id  INTEGER NOT NULL,
+	position INTEGER NOT NULL, -- the song's place in the run, from 0; gaps are allowed
+	track_id INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+	PRIMARY KEY (run_id, position),
+	UNIQUE (user_id, track_id), -- one run per song, per person
+	FOREIGN KEY (run_id, user_id) REFERENCES shuffle_runs (id, user_id) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=run_id type=INTEGER notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=position type=INTEGER notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=3 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=shuffle_runs from=run_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+--   foreign key id=0 seq=1 table=shuffle_runs from=user_id to=user_id on_update=NO ACTION on_delete=CASCADE match=NONE
+--   foreign key id=1 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- trigger shuffle_runs_need_two
+CREATE TRIGGER shuffle_runs_need_two AFTER DELETE ON shuffle_run_tracks
+WHEN (SELECT count(*) FROM shuffle_run_tracks WHERE run_id = OLD.run_id) < 2
+BEGIN
+	DELETE FROM shuffle_runs WHERE id = OLD.run_id;
+END;
+
+-- index shuffle_run_tracks_track
+CREATE INDEX shuffle_run_tracks_track ON shuffle_run_tracks (track_id);
+--   key seqno=0 cid=3 name=track_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=0 name=run_id desc=0 coll=BINARY key=0
+--   key seqno=2 cid=2 name=position desc=0 coll=BINARY key=0
+
+-- table shuffle_runs
+CREATE TABLE shuffle_runs (
+	id         INTEGER PRIMARY KEY,
+	ulid       TEXT    NOT NULL UNIQUE CHECK (length(ulid) = 26), -- public ID
+	user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	created_at INTEGER NOT NULL,
+	UNIQUE (id, user_id) -- what a run's songs point at, so each of them names its person
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=ulid type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=created_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index shuffle_runs_user
+CREATE INDEX shuffle_runs_user ON shuffle_runs (user_id);
+--   key seqno=0 cid=2 name=user_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
 -- table track_artists
 CREATE TABLE track_artists (
 	track_id  INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,

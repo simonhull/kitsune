@@ -80,7 +80,7 @@ export interface FieldSpec {
 	/** How many of the group's four columns it takes. */
 	span: 1 | 2;
 	kind?: 'number';
-	/** The server keeps it read-only until albums can be re-keyed. */
+	/** Shown and not edited here. */
 	locked?: boolean;
 }
 
@@ -90,9 +90,9 @@ export const tagGroups: readonly { name: string; fields: readonly FieldSpec[] }[
 		name: 'THE BASICS',
 		fields: [
 			{ field: 'title', label: 'Title', span: 2 },
-			{ field: 'artists', label: 'Artists', span: 2, locked: true },
-			{ field: 'album', label: 'Album', span: 2, locked: true },
-			{ field: 'albumArtists', label: 'Album artist', span: 2, locked: true },
+			{ field: 'artists', label: 'Artists', span: 2 },
+			{ field: 'album', label: 'Album', span: 2 },
+			{ field: 'albumArtists', label: 'Album artist', span: 2 },
 			{ field: 'track', label: 'Track', span: 1, kind: 'number' },
 			{ field: 'trackTotal', label: 'of', name: 'Track total', span: 1, kind: 'number' },
 			{ field: 'disc', label: 'Disc', span: 1, kind: 'number' },

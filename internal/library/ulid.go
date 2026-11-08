@@ -1,6 +1,7 @@
 package library
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -20,6 +21,14 @@ const (
 )
 
 var errULIDTime = errors.New("time outside the ULID range")
+
+// NewID returns a new ULID for now, for a row the library doesn't make itself,
+// such as a person's shuffle run.
+//
+// # Errors
+//
+// It fails only when the system's randomness does, or now is outside the ULID range.
+func NewID(now time.Time) (string, error) { return newULID(now, rand.Reader) }
 
 // newULID returns a ULID for t, reading its 80 random bits from entropy.
 // It returns an error if t is outside the 48-bit millisecond range or entropy

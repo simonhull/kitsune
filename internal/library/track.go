@@ -158,8 +158,8 @@ func albumArtists(t *audiometa.Tags) []store.ArtistWrite {
 }
 
 // artistWrites cleans names (trimmed; empty and repeated match keys dropped,
-// first kept) and pairs sort names and MBIDs with them. An empty sort name
-// becomes the name.
+// first kept) and pairs sort names and MBIDs with them. A name with no sort name
+// keeps an empty one, so the store keeps the sort name the artist has.
 func artistWrites(names, sorts, mbids []string) []store.ArtistWrite {
 	sorts, mbids = trimAll(sorts), trimAll(mbids)
 	type kept struct {
@@ -182,7 +182,7 @@ func artistWrites(names, sorts, mbids []string) []store.ArtistWrite {
 		out = append(out, store.ArtistWrite{
 			MatchKey: k.key,
 			Name:     k.name,
-			SortName: cmp.Or(pair(sorts, k.idx, len(names), len(keep)), k.name),
+			SortName: pair(sorts, k.idx, len(names), len(keep)),
 			MBID:     pair(mbids, k.idx, len(names), len(keep)),
 		})
 	}

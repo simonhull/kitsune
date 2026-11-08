@@ -108,6 +108,15 @@ describe('following the server', () => {
 		});
 	});
 
+	it('reads the shuffle marks again when the rules change, and only for a list showing them', async () => {
+		const { library, stream } = await heard(one);
+		stream.send('shuffle-rules', {});
+		expect(library.indexStale).toBe(false);
+		await library.loadIndex(['shuffle']);
+		stream.send('shuffle-rules', {});
+		expect(library.indexStale).toBe(true);
+	});
+
 	it('says when the settings changed, for an open Server page', async () => {
 		const { library, stream } = await heard(one);
 		const before = library.settingsHeard;

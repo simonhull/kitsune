@@ -145,8 +145,14 @@ func TestLibraryIndexOfSomeAlbumsHonorsFields(t *testing.T) {
 			body: `{"trackId":"` + track + `","playedAt":"2026-01-01T00:00:00Z","source":"test","clientId":"c"}`,
 		})
 	}
+	// A run across two albums: its places count across them, in an index of one or of both.
+	ts.send(t, call{
+		method: http.MethodPut, path: runsPath, header: jsonHeader(token),
+		body: tracksBody(fmt.Sprintf("01J%020d%03d", 3, 0), fmt.Sprintf("01J%020d%03d", 1, 0)),
+	})
+	fields := allIndexFields + ",shuffle"
 	var whole, part api.LibraryIndex
-	ts.getJSON(t, token, indexPath+allIndexFields, &whole)
+	ts.getJSON(t, token, indexPath+fields, &whole)
 	var albums []api.LibraryAlbum
 	var ids []string
 	for _, a := range whole.Artists {
@@ -155,7 +161,7 @@ func TestLibraryIndexOfSomeAlbumsHonorsFields(t *testing.T) {
 		}
 	}
 	// Two albums or more, so a parameter after the list of them can't be misnumbered.
-	ts.getJSON(t, token, indexPath+allIndexFields+"&albums="+strings.Join(ids, ","), &part)
+	ts.getJSON(t, token, indexPath+fields+"&albums="+strings.Join(ids, ","), &part)
 	var got []api.LibraryAlbum
 	for _, a := range part.Artists {
 		for _, al := range a.Albums {

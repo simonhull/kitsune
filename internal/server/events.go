@@ -147,11 +147,10 @@ func LastfmChanged(hub *events.Hub) func(userID int64) {
 	return func(userID int64) { hub.Publish(events.Lastfm, events.User(userID), emptyEvent, nil) }
 }
 
-// ShuffleRulesChanged returns what the shuffle rules' routes call once a
-// person's runs or exclusions changed: that person's devices hear it. It is the
-// hook for those routes, which plan 039 adds; nothing calls it before them.
-func ShuffleRulesChanged(hub *events.Hub) func(userID int64) {
-	return func(userID int64) { hub.Publish(events.ShuffleRules, events.User(userID), emptyEvent, nil) }
+// publishShuffleRules tells the person's devices their shuffle runs or
+// exclusions changed.
+func (s *Server) publishShuffleRules(userID int64) {
+	s.events.Publish(events.ShuffleRules, events.User(userID), emptyEvent, nil)
 }
 
 // FoldersChanged returns what the watcher calls when a folder's watch changed:

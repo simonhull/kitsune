@@ -384,6 +384,161 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           $ref: "#/components/responses/Problem"
+  /me/shuffle/rules:
+    get:
+      operationId: getShuffleRules
+      summary: Return the caller's shuffle rules touching some songs.
+      description: >-
+        Shuffle rules are the caller's own, kept on the server and never in a
+        file. A run is songs combined: they always play together in shuffle,
+        in its order. An excluded song is one shuffle never picks. Every run
+        holding one of the songs comes whole. Unknown songs are ignored.
+      parameters:
+        - name: tracks
+          in: query
+          required: true
+          description: Track IDs joined by commas, from 1 to 1000.
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            items: { type: string }
+      responses:
+        "200":
+          description: The runs and the excluded songs.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShuffleRules" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /me/shuffle/runs:
+    put:
+      operationId: putShuffleRun
+      summary: Combine songs into one of the caller's runs, in order.
+      description: >-
+        The songs become one run, in the order given. A song already in
+        another run leaves it, and a run left with fewer than two songs goes:
+        a song is in at most one run, so a cycle can't be made. The run keeps
+        the ID of the run its first song was in when that run has gone, so a
+        reorder is the same run. Fewer than two songs, or one named twice, is
+        a 400; an unknown song is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShuffleTracks" }
+      responses:
+        "200":
+          description: The run.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShuffleRun" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+  /me/shuffle/runs/{id}:
+    delete:
+      operationId: deleteShuffleRun
+      summary: Undo one of the caller's runs.
+      description: The songs stay, each on its own. Another person's run is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Undone.
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+  /me/shuffle/excluded:
+    put:
+      operationId: putShuffleExcluded
+      summary: Leave songs out of the caller's shuffle.
+      description: >-
+        Shuffle never picks them. They still play when chosen, when their album
+        plays in order, and as part of a run. Excluding one again changes
+        nothing. An unknown song is a 404, and nothing changes.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShuffleTracks" }
+      responses:
+        "204":
+          description: Left out.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteShuffleExcluded
+      summary: Let songs back into the caller's shuffle.
+      description: The undoing of `PUT`, as idempotent. An unknown song is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShuffleTracks" }
+      responses:
+        "204":
+          description: Let back in.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
   /me/lastfm:
     get:
       operationId: getLastfm
@@ -793,7 +948,10 @@ paths:
             schema: { $ref: "#/components/schemas/AlbumEdit" }
       responses:
         "200":
-          description: The album with its new values and ETag.
+          description: >-
+            The album with its new values and ETag. An edit that moved every
+            track to another album answers with that album, whose `id` the
+            client follows: the old one is gone, merged into it.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AlbumDetail" }
@@ -826,6 +984,65 @@ paths:
           $ref: "#/components/responses/EditFailure"
         "428":
           $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/EditFailure"
+  /edits:
+    post:
+      operationId: postEdits
+      summary: Edit the tags of tracks that may lie on several albums, in their files.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on: anything
+        else is a 403. A selection's edit: `albums` gives the `etag` of every
+        album the tracks are on, as read, and every one is compared, and every
+        file checked, before any is written. A stale one is a 412 naming it,
+        with nothing written. Then files are written album by album, in the
+        order `albums` names them, and each album's in track order. Each is
+        atomic and the edit is not, so a failure partway is reported with
+        `changed` and `remaining`: read the albums again and send the same edit
+        to finish it. Giving tracks another album or album artist moves them,
+        keeping their IDs, plays, hearts and ratings, and an album they all
+        leave for one other merges into it. A client that goes away doesn't
+        stop the edit. An edit during a scan is a 409.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TracksEdit" }
+      responses:
+        "200":
+          description: Each track and the album it is on now.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EditedTracks" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/EditFailure"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: A scan or another edit holds the library.
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "412":
+          $ref: "#/components/responses/EditFailure"
+        "422":
+          $ref: "#/components/responses/EditFailure"
         "500":
           $ref: "#/components/responses/EditFailure"
   /artists:
@@ -1084,15 +1301,15 @@ paths:
             (`albumArtists`), `genre` (`displayGenres`, spelled as albums'
             are), `year`, `composer` (`composers`), `format` (`format`,
             `sampleRate`, `bitDepth` and `bitrate`), `bitrate`, `added`
-            (`addedAt`), and the caller's own `plays` and `lastPlayed`
-            (`lastPlayedAt`). An unknown name is a 400.
+            (`addedAt`), and the caller's own `plays`, `lastPlayed`
+            (`lastPlayedAt`) and `shuffle` rules. An unknown name is a 400.
           style: form
           explode: false
           schema:
             type: array
             items:
               type: string
-              enum: [albumArtist, genre, year, composer, format, bitrate, added, plays, lastPlayed]
+              enum: [albumArtist, genre, year, composer, format, bitrate, added, plays, lastPlayed, shuffle]
         - name: albums
           in: query
           required: false
@@ -1356,6 +1573,9 @@ components:
           type: array
           description: Tracks that don't. The first is the one that failed.
           items: { type: string }
+        album:
+          type: string
+          description: On a 412 from `POST /edits`, the album whose `etag` is stale.
     User:
       type: object
       additionalProperties: false
@@ -1751,6 +1971,82 @@ components:
         tracks:
           type: array
           items: { $ref: "#/components/schemas/TrackTagEdit" }
+    ShuffleTracks:
+      type: object
+      additionalProperties: false
+      required: [tracks]
+      properties:
+        tracks:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string, minLength: 1 }
+    ShuffleRun:
+      type: object
+      additionalProperties: false
+      required: [id, tracks]
+      properties:
+        id: { type: string }
+        tracks:
+          type: array
+          description: Track IDs, in the order they play.
+          minItems: 2
+          items: { type: string }
+    ShuffleRules:
+      type: object
+      additionalProperties: false
+      required: [runs, excluded]
+      properties:
+        runs:
+          type: array
+          items: { $ref: "#/components/schemas/ShuffleRun" }
+        excluded:
+          type: array
+          description: The songs asked about that shuffle leaves out.
+          items: { type: string }
+    TracksEdit:
+      description: >-
+        `all` goes to every track `tracks` names, and each track's own on top of
+        it: a field in both takes the track's value or removal. A track on none
+        of `albums` is a 422; naming an album or a track twice, or nothing to
+        change, is a 400.
+      type: object
+      additionalProperties: false
+      required: [albums, tracks]
+      properties:
+        albums:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, etag]
+            properties:
+              id: { type: string }
+              etag:
+                type: string
+                description: The album's `etag` from the last read, verbatim.
+        all: { $ref: "#/components/schemas/TagEdit" }
+        tracks:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/TrackTagEdit" }
+    EditedTracks:
+      type: object
+      additionalProperties: false
+      required: [tracks]
+      properties:
+        tracks:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, albumId]
+            properties:
+              id: { type: string }
+              albumId:
+                type: string
+                description: The album the track is on now.
     AlbumTags:
       type: object
       additionalProperties: false
@@ -1782,9 +2078,10 @@ components:
       description: >-
         Values by field, the same in every format. Numbers are decimal text; a
         date is `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, and a new one replaces the
-        old one whole. A value a file can't hold is a 422. `album`, `artists`,
-        `albumArtists` and `compilation` can be read but not edited yet: they
-        decide which album a track groups into, and an edit of one is a 422.
+        old one whole. A value a file can't hold is a 422. `compilation` takes
+        `1`, and clearing it turns it off. `album`, `artists`, `albumArtists`
+        and `compilation` decide which album a track groups into: an album
+        renamed whole keeps its ID.
       type: object
       additionalProperties: false
       properties:
@@ -2079,6 +2376,21 @@ components:
           type: string
           format: date-time
           description: With `fields=lastPlayed`. The caller's last play. Absent when never played.
+        shuffle:
+          type: object
+          additionalProperties: false
+          description: >-
+            With `fields=shuffle`: the caller's shuffle rules on the track.
+            Absent when it has none.
+          properties:
+            run:
+              type: string
+              description: The run it is combined in, with `position` and `length`.
+            position: { type: integer, minimum: 1, description: Its place in the run, from 1. }
+            length: { type: integer, minimum: 2, description: How many songs the run has. }
+            excluded:
+              type: boolean
+              description: Shuffle never picks it. Absent when false.
     SearchResults:
       type: object
       additionalProperties: false

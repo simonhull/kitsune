@@ -47,6 +47,15 @@ type editFixture struct {
 // root, scans it and signs in an admin.
 func newEditFixture(t *testing.T, opts *testServerOptions, samples map[string]string) *editFixture {
 	t.Helper()
+	fx := newEditServer(t, opts, samples)
+	fx.reload(t)
+	return fx
+}
+
+// newEditServer is [newEditFixture] for a library of any number of albums: it
+// leaves album empty.
+func newEditServer(t *testing.T, opts *testServerOptions, samples map[string]string) *editFixture {
+	t.Helper()
 	root := t.TempDir()
 	for rel, sample := range samples {
 		b, err := os.ReadFile(filepath.Join("..", "library", "testdata", sample))
@@ -66,9 +75,7 @@ func newEditFixture(t *testing.T, opts *testServerOptions, samples map[string]st
 	if _, err := ts.Scanner.Scan(t.Context(), library.Quick); err != nil {
 		t.Fatal(err)
 	}
-	fx := &editFixture{testServer: ts, root: root, token: ts.tokenFor(t, store.RoleAdmin)}
-	fx.reload(t)
-	return fx
+	return &editFixture{testServer: ts, root: root, token: ts.tokenFor(t, store.RoleAdmin)}
 }
 
 func twoFLACs() map[string]string { return map[string]string{fileOne: sampleFLAC, fileTwo: sampleFLAC} }
@@ -203,6 +210,40 @@ func TestEditOfOneTrackSavesAndReturnsTheAlbum(t *testing.T) {
 		t.Errorf("the other track = %+v, want it left alone", other)
 	}
 	fx.wantStoreFollowed(t, &before, &got)
+}
+
+func TestRenamingAnAlbumKeepsItsURL(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+	before := fx.album
+	var got api.AlbumDetail
+	fx.post(t, before.Etag, `{"all":{"set":{"album":["Renamed"],"albumArtists":["Someone Else"]}}}`).decode(t, &got)
+	if got.ID != before.ID || got.Title != "Renamed" || got.Artist != "Someone Else" {
+		t.Errorf("album = %s %q by %q, want %s renamed", got.ID, got.Title, got.Artist, before.ID)
+	}
+	fx.wantStoreFollowed(t, &before, &got)
+}
+
+func TestMovingATrackOutAndBackMergesItsAlbum(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+	before := fx.album
+	var kept api.AlbumDetail
+	fx.post(t, before.Etag, fx.trackBody(0, `{"album":["Split Off"]}`)).decode(t, &kept)
+	if kept.ID != before.ID || len(kept.Tracks) != 1 {
+		t.Fatalf("after moving a track the album is %s with %d tracks, want %s with 1", kept.ID, len(kept.Tracks), before.ID)
+	}
+	var split api.TrackDetail
+	fx.getJSON(t, fx.token, "/tracks/"+before.Tracks[0].ID, &split)
+	var off api.AlbumDetail
+	fx.getJSON(t, fx.token, albumsPath+"/"+split.AlbumID, &off)
+	var landed api.AlbumDetail
+	c := fx.postCall(albumsPath+"/"+off.ID+"/edits", off.Etag, `{"all":{"set":{"album":["`+before.Title+`"]}}}`)
+	fx.send(t, c).decode(t, &landed)
+	if landed.ID != before.ID || len(landed.Tracks) != 2 {
+		t.Errorf("the edit landed on %s with %d tracks, want %s with both", landed.ID, len(landed.Tracks), before.ID)
+	}
+	fx.send(t, call{method: http.MethodGet, path: albumsPath + "/" + off.ID, header: bearer(fx.token)}).problem(t, http.StatusNotFound)
 }
 
 // wantGenres checks the album and each of its tracks hold genres.
@@ -469,13 +510,12 @@ func TestEditRefusedByTheFile(t *testing.T) {
 		{name: "two titles", samples: twoFLACs(), body: `{"all":{"set":{"title":["a","b"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a track of another album", samples: twoFLACs(), body: `{"tracks":[{"id":"` + missingID + `","set":{"title":["a"]}}]}`, want: http.StatusUnprocessableEntity},
 		{name: "clearing the title", samples: twoFLACs(), body: `{"all":{"clear":["title"]}}`, want: http.StatusUnprocessableEntity},
-		{name: "clearing an identity field", samples: twoFLACs(), body: `{"all":{"clear":["album"]}}`, want: http.StatusUnprocessableEntity},
+		{name: "a compilation flag that is not on", samples: twoFLACs(), body: `{"all":{"set":{"compilation":["0"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a lower-case tag", samples: twoFLACs(), body: rawBody("mood"), want: http.StatusUnprocessableEntity},
 		{name: "a tag a field owns", samples: twoFLACs(), body: rawBody("ALBUMARTIST"), want: http.StatusUnprocessableEntity},
 		{name: "a gain tag", samples: twoFLACs(), body: rawBody("REPLAYGAIN_TRACK_GAIN"), want: http.StatusUnprocessableEntity},
 		{name: "a false frame", samples: mp3Album, body: rawBody("APIC"), want: http.StatusUnprocessableEntity},
 		{name: "a new frame", samples: mp3Album, body: rawBody("TMED"), want: http.StatusUnprocessableEntity},
-		{name: "an identity field", samples: twoFLACs(), body: `{"all":{"set":{"album":["x"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a year MP3 can't hold", samples: mp3Album, body: `{"all":{"set":{"date":["1850"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a read-only file", samples: twoFLACs(), body: yearBody, want: http.StatusForbidden, prepare: readOnly(fileTwo)},
 	}

@@ -59,6 +59,22 @@ func readAlbumOptions(ctx context.Context, q *sqlcdb.Queries, userID int64, opts
 			return sqlcdb.ListIndexTrackTagsRow(r)
 		})
 	}
+	return readAlbumOwn(ctx, q, userID, opts, rows)
+}
+
+// readAlbumOwn reads, for a partial index, what is the person's own: their
+// shuffle rules and plays, when opts asks.
+func readAlbumOwn(ctx context.Context, q *sqlcdb.Queries, userID int64, opts *IndexOptions, rows *indexRows) error {
+	albums := opts.Albums
+	if opts.Shuffle {
+		// The person's rules whole: a run spans albums, and its places count across them. They
+		// are a person's few, not the library's many.
+		shuffle, err := q.ListIndexShuffle(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("shuffle rules: %w", err)
+		}
+		rows.shuffle = shuffle
+	}
 	if opts.Plays {
 		plays, err := q.ListIndexPlaysOf(ctx, sqlcdb.ListIndexPlaysOfParams{UserID: userID, Albums: albums})
 		if err != nil {

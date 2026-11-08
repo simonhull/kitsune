@@ -150,7 +150,7 @@ func (q *Queries) GetTrackFile(ctx context.Context, ulid string) (GetTrackFileRo
 }
 
 const listAlbumFiles = `-- name: ListAlbumFiles :many
-SELECT t.id, t.ulid, t.root, t.rel_path, t.size, t.mtime
+SELECT t.id, t.ulid, t.root, t.rel_path, t.size, t.mtime, t.album_id, a.group_key
 FROM tracks t
 JOIN albums a ON a.id = t.album_id
 WHERE a.ulid = ? AND t.missing_since IS NULL
@@ -158,12 +158,14 @@ ORDER BY coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id
 `
 
 type ListAlbumFilesRow struct {
-	ID      int64
-	Ulid    string
-	Root    string
-	RelPath string
-	Size    int64
-	Mtime   int64
+	ID       int64
+	Ulid     string
+	Root     string
+	RelPath  string
+	Size     int64
+	Mtime    int64
+	AlbumID  int64
+	GroupKey string
 }
 
 func (q *Queries) ListAlbumFiles(ctx context.Context, ulid string) ([]ListAlbumFilesRow, error) {
@@ -182,6 +184,8 @@ func (q *Queries) ListAlbumFiles(ctx context.Context, ulid string) ([]ListAlbumF
 			&i.RelPath,
 			&i.Size,
 			&i.Mtime,
+			&i.AlbumID,
+			&i.GroupKey,
 		); err != nil {
 			return nil, err
 		}

@@ -73,6 +73,15 @@ type IndexExtra struct {
 	Tags                          []Tag     // The values of IndexOptions.TagKeys, by key and then in order.
 	Plays                         int       // By the person the index was read for.
 	LastPlayed                    time.Time // Zero when never played.
+	// Shuffle is the person's rules on the track: nil when it has none.
+	Shuffle *ShuffleMark
+}
+
+// ShuffleMark is what a person's shuffle rules say of one track.
+type ShuffleMark struct {
+	Run              string // The ULID of the run it is in, or empty.
+	Position, Length int    // Its place in the run, from 1, and how many songs the run has.
+	Excluded         bool
 }
 
 // IndexOptions says what the index reads beyond what it always carries. The zero
@@ -81,6 +90,7 @@ type IndexOptions struct {
 	Details      bool     // Each track's year, format, sample rate, bit depth, bitrate and when it was added.
 	AlbumArtists bool     // Each track's album artists.
 	Plays        bool     // How often the person played each track, and when last.
+	Shuffle      bool     // The person's shuffle rules on each track.
 	TagKeys      []string // Raw tags to carry the values of. The store doesn't know what they mean.
 	// Albums, by public ID, makes a partial index of only those that have a
 	// live track, each with where it goes in the whole one. Nil means every album.
@@ -88,7 +98,7 @@ type IndexOptions struct {
 }
 
 func (o *IndexOptions) any() bool {
-	return o.Details || o.AlbumArtists || o.Plays || len(o.TagKeys) > 0
+	return o.Details || o.AlbumArtists || o.Plays || o.Shuffle || len(o.TagKeys) > 0
 }
 
 // indexRows is what the index's queries read, all from one snapshot.
@@ -102,6 +112,7 @@ type indexRows struct {
 	albumArtists []sqlcdb.ListIndexTrackAlbumArtistsRow
 	tags         []sqlcdb.ListIndexTrackTagsRow
 	plays        []sqlcdb.ListIndexPlaysRow
+	shuffle      []sqlcdb.ListIndexShuffleRow
 }
 
 // LibraryIndex returns every album with a live track, once, under its first
@@ -175,9 +186,20 @@ func readIndexOptions(ctx context.Context, q *sqlcdb.Queries, userID int64, opts
 			return fmt.Errorf("track tags: %w", err)
 		}
 	}
+	return readPersonal(ctx, q, userID, opts, rows)
+}
+
+// readPersonal runs the queries opts asks for that are about the person.
+func readPersonal(ctx context.Context, q *sqlcdb.Queries, userID int64, opts *IndexOptions, rows *indexRows) error {
+	var err error
 	if opts.Plays {
 		if rows.plays, err = q.ListIndexPlays(ctx, userID); err != nil {
 			return fmt.Errorf("plays: %w", err)
+		}
+	}
+	if opts.Shuffle {
+		if rows.shuffle, err = q.ListIndexShuffle(ctx, userID); err != nil {
+			return fmt.Errorf("shuffle rules: %w", err)
 		}
 	}
 	return nil
@@ -261,7 +283,35 @@ func indexExtras(rows *indexRows) map[int64]*IndexExtra {
 		e := of(r.TrackID)
 		e.Plays, e.LastPlayed = int(r.Plays), fromMS(r.LastPlayed)
 	}
+	addShuffleMarks(rows.shuffle, of)
 	return out
+}
+
+// addShuffleMarks puts each track's shuffle rules on its extra. A run's places
+// count from 1 in position order, whatever gaps the positions have.
+func addShuffleMarks(rows []sqlcdb.ListIndexShuffleRow, of func(int64) *IndexExtra) {
+	runs := make(map[string][]sqlcdb.ListIndexShuffleRow)
+	mark := func(id int64) *ShuffleMark {
+		e := of(id)
+		if e.Shuffle == nil {
+			e.Shuffle = &ShuffleMark{}
+		}
+		return e.Shuffle
+	}
+	for _, r := range rows {
+		if r.Excluded != 0 {
+			mark(r.TrackID).Excluded = true
+			continue
+		}
+		runs[r.Run] = append(runs[r.Run], r)
+	}
+	for run, songs := range runs {
+		slices.SortFunc(songs, func(a, b sqlcdb.ListIndexShuffleRow) int { return cmp.Compare(a.Position, b.Position) })
+		for i, song := range songs {
+			m := mark(song.TrackID)
+			m.Run, m.Position, m.Length = run, i+1, len(songs)
+		}
+	}
 }
 
 // indexHeading returns who an album files under: its first owner, or the artist

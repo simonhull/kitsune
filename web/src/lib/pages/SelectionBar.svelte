@@ -14,10 +14,17 @@
 		actions: SongActions;
 		/** A phone: Play stays, and the rest go in More. */
 		compact: boolean;
+		/** Opens bulk editing on the songs. Left out for anyone who can't. */
+		edit: (() => void) | undefined;
 		onclear: () => void;
 	}
 
-	let { count, hidden, albums, durationMs, hearted, actions, compact, onclear }: Props = $props();
+	let { count, hidden, albums, durationMs, hearted, actions, compact, edit, onclear }: Props =
+		$props();
+
+	const editLabel = $derived(
+		`Edit ${count.toLocaleString('en-US')} ${count === 1 ? 'song' : 'songs'}`
+	);
 
 	let rating = $state(false);
 	let more = $state(false);
@@ -78,10 +85,11 @@
 	{#if !compact}<span class="facts">{facts}</span>{/if}
 	<button
 		type="button"
-		class="primary"
+		class={edit === undefined ? 'primary' : 'text'}
 		onclick={() => {
 			actions.play();
-		}}><Icon name="play" size={14} />Play</button
+		}}
+		>{#if edit === undefined}<Icon name="play" size={14} />{/if}Play</button
 	>
 	{#if !compact}
 		<button
@@ -109,6 +117,9 @@
 				actions.addToQueue();
 			}}>Add to queue</button
 		>
+		{#if edit !== undefined}
+			<button type="button" class="primary" onclick={edit}>{editLabel}</button>
+		{/if}
 		{@render heartButton()}
 		<button
 			type="button"
@@ -118,9 +129,6 @@
 				rating = !rating;
 			}}>Rate</button
 		>
-		{#if actions.editTags !== undefined}
-			<button type="button" class="text" onclick={actions.editTags}>Edit tags</button>
-		{/if}
 	{/if}
 	<button type="button" class="clear" aria-label="Clear the selection" onclick={onclear}
 		><Icon name="close" size={16} /></button
@@ -158,9 +166,15 @@
 					more = false;
 				}}>{hearted ? 'Take the hearts off' : 'Heart all'}</button
 			>
-			{#if actions.editTags !== undefined}
-				<button type="button" role="menuitem" class="sheet-item" onclick={actions.editTags}
-					>Edit tags</button
+			{#if edit !== undefined}
+				<button
+					type="button"
+					role="menuitem"
+					class="sheet-item"
+					onclick={() => {
+						more = false;
+						edit();
+					}}>{editLabel}</button
 				>
 			{/if}
 			{@render stars()}

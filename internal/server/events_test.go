@@ -387,3 +387,25 @@ func TestNoEventHoldsASecret(t *testing.T) {
 		}
 	}
 }
+
+func TestEventsOfShuffleRulesGoToTheirPerson(t *testing.T) {
+	t.Parallel()
+	ts, sess := shuffleFixture(t)
+	mine := ts.openStream(t, sess.token, "")
+	other := ts.openStream(t, ts.tokenFor(t, store.RoleUser), "")
+	mine.want(events.Ready)
+	other.want(events.Ready)
+	var run api.ShuffleRun
+	ts.send(t, call{method: http.MethodPut, path: runsPath, body: tracksBody(firstTrack, secondTrack), header: jsonHeader(sess.token)}).decode(t, &run)
+	mine.want(events.ShuffleRules)
+	ts.send(t, call{method: http.MethodDelete, path: runsPath + "/" + run.ID, header: bearer(sess.token)})
+	mine.want(events.ShuffleRules)
+	for _, method := range []string{http.MethodPut, http.MethodDelete} {
+		ts.send(t, call{method: method, path: excludedPath, body: tracksBody(firstTrack), header: jsonHeader(sess.token)})
+		mine.want(events.ShuffleRules)
+	}
+	ts.send(t, call{method: http.MethodDelete, path: runsPath + "/" + run.ID, header: bearer(sess.token)}) // A 404 says nothing.
+	ts.ping()
+	mine.want(events.Library)
+	other.want(events.Library) // The other person heard none of it.
+}

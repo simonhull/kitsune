@@ -19,6 +19,7 @@ const (
 	newYear  = 1987
 	oldSort  = "Old Sort"
 	keyDate  = "DATE"
+	keyAlbum = "ALBUM"
 	keyGenre = "GENRE"
 	rock     = "Rock"
 	pop      = "Pop"
@@ -537,22 +538,60 @@ func TestCommentAndLyricsOfAnMP3AreItsFrames(t *testing.T) {
 	}
 }
 
-func TestIdentityFieldsReadButRefuseEdits(t *testing.T) {
+func TestIdentityFieldsRoundTrip(t *testing.T) {
 	t.Parallel()
-	for _, name := range []Field{FieldAlbum, FieldArtists, FieldAlbumArtists, FieldCompilation} {
-		t.Run(string(name), func(t *testing.T) {
+	for _, sample := range []string{sampleFLAC, sampleMP3, sampleMP3v23, sampleM4A} {
+		t.Run(sample, func(t *testing.T) {
 			t.Parallel()
-			path := copySample(t, sampleFLAC)
-			seed(t, path, map[string][]string{fields[1].flac[0]: {albumValue}, "ARTIST": {artistValue}, keysAlbumArtist[0]: {artistValue}, keysCompilation[0]: {"1"}})
-			if v := fieldsOf(t, path).Fields[name]; len(v) == 0 {
-				t.Errorf("%s reads empty", name)
+			path := copySample(t, sample)
+			set := Edit{Fields: map[Field][]string{
+				FieldAlbum: {albumValue}, FieldArtists: {"One", "Two"}, FieldAlbumArtists: {artistValue}, FieldCompilation: {flagOn},
+			}}
+			if err := audiometa.Write(path, set.apply); err != nil {
+				t.Fatalf("Write: %v", err)
 			}
-			edit := Edit{Fields: map[Field][]string{name: {"x"}}}
-			if err := audiometa.Write(path, edit.apply); !errors.Is(err, ErrUnsupportedEdit) {
-				t.Errorf("Write = %v, want ErrUnsupportedEdit", err)
+			if v := fieldsOf(t, path).Fields[FieldAlbum]; !slices.Equal(v, []string{albumValue}) {
+				t.Errorf("an editor reads album %q", v)
+			}
+			wantIdentity(t, path)
+			remove := Edit{Fields: map[Field][]string{FieldAlbumArtists: nil, FieldCompilation: nil}}
+			if err := audiometa.Write(path, remove.apply); err != nil {
+				t.Fatalf("clear: %v", err)
+			}
+			if got := reread(t, path); len(got.AlbumArtists) != 0 || got.Compilation {
+				t.Errorf("album artists %q, compilation %t: want both gone", artistNames(got.AlbumArtists), got.Compilation)
 			}
 		})
 	}
+}
+
+// wantIdentity checks a scan of the file at path groups it as TestIdentityFieldsRoundTrip set.
+func wantIdentity(t *testing.T, path string) {
+	t.Helper()
+	got := reread(t, path)
+	if got.Album.Name != albumValue || !slices.Equal(artistNames(got.Artists), []string{"One", "Two"}) ||
+		!slices.Equal(artistNames(got.AlbumArtists), []string{artistValue}) || !got.Compilation {
+		t.Errorf("album %q, artists %q, album artists %q, compilation %t",
+			got.Album.Name, artistNames(got.Artists), artistNames(got.AlbumArtists), got.Compilation)
+	}
+}
+
+func TestCompilationTakesOnlyOn(t *testing.T) {
+	t.Parallel()
+	path := copySample(t, sampleFLAC)
+	edit := Edit{Fields: map[Field][]string{FieldCompilation: {"0"}}}
+	if err := audiometa.Write(path, edit.apply); !errors.Is(err, ErrUnsupportedEdit) {
+		t.Errorf("Write = %v, want ErrUnsupportedEdit", err)
+	}
+}
+
+// artistNames returns the names in list, in order.
+func artistNames(list []store.ArtistWrite) []string {
+	out := make([]string, len(list))
+	for i := range list {
+		out[i] = list[i].Name
+	}
+	return out
 }
 
 func TestTimestampedLyricsAreReadOnly(t *testing.T) {

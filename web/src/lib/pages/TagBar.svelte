@@ -1,29 +1,45 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { fade } from 'svelte/transition';
-	import type { TagSession } from './tagEdits.svelte.ts';
+	import type { Report, Summary } from '#lib/library/tags.ts';
+
+	/** What the bar reads of an edit: one album's, or many songs'. */
+	interface BarSession {
+		/** Null until the files have been read. */
+		readonly tags: unknown;
+		readonly summary: Summary;
+		readonly report: Report | null;
+		readonly saving: boolean;
+		readonly blocked: boolean;
+	}
 
 	interface Props {
-		session: TagSession;
+		session: BarSession;
 		/** The track open to every tag, if any. */
 		open?: string | null;
+		/** What can't be edited, when the files can't be read. */
+		what?: string;
 		/** Drops the draft and leaves. */
 		leave: () => void;
 		/** Writes the draft. */
 		write: () => void;
 	}
 
-	let { session, open = null, leave, write }: Props = $props();
+	let { session, open = null, what = 'this album', leave, write }: Props = $props();
 
 	const summary = $derived(session.summary);
 	const report = $derived(session.report);
 	const plural = (count: number, one: string): string =>
 		`${String(count)} ${one}${count === 1 ? '' : 's'}`;
 	const changes = $derived(plural(summary.changes, 'change'));
+	/** Changes that touch no file are shuffle rules: they save, they aren't written. */
+	const rulesOnly = $derived(summary.files === 0 && summary.changes > 0);
 	const where = $derived(
-		summary.only !== null && summary.only === open
-			? 'on this track'
-			: `across ${plural(summary.files, 'file')}`
+		rulesOnly
+			? 'to your shuffle'
+			: summary.only !== null && summary.only === open
+				? 'on this track'
+				: `across ${plural(summary.files, 'file')}`
 	);
 
 	let reportBox: HTMLElement | undefined = $state();
@@ -57,7 +73,7 @@
 	<div class="bar">
 		<span class="count" aria-live="polite">
 			{#if session.tags === null}
-				{report === null ? 'Reading the files…' : "Can't edit this album"}
+				{report === null ? 'Reading the files…' : `Can't edit ${what}`}
 			{:else if summary.changes === 0}
 				No changes yet
 			{:else}
@@ -73,7 +89,8 @@
 				(summary.changes === 0 && !session.blocked)}
 			onclick={write}
 		>
-			{#if session.saving}Writing…{:else}Write to {summary.files === 1 ? 'file' : 'files'}{/if}
+			{#if session.saving}{rulesOnly ? 'Saving…' : 'Writing…'}{:else if rulesOnly}Save{:else}Write
+				to {summary.files === 1 ? 'file' : 'files'}{/if}
 		</button>
 	</div>
 </div>
