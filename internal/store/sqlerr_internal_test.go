@@ -74,20 +74,21 @@ func openFaulty(t *testing.T) (*Store, *faultyVFS) {
 	if err = settleSchema(t.Context(), w, path, newUpgrade(&Options{}, time.Now)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = w.ExecContext(t.Context(), "CREATE TABLE t (x BLOB)"); err != nil {
+	if _, err = w.ExecContext(t.Context(), "CREATE TABLE t (x BLOB UNIQUE)"); err != nil {
 		t.Fatal(err)
 	}
 	return &Store{w: w, wq: sqlcdb.New(w), now: time.Now}, fv
 }
 
-// failWrite runs a write in inTx that the disk refuses.
-func failWrite(t *testing.T) error {
+// insert runs one INSERT into t in inTx, failing the disk first if fail is set.
+func insert(t *testing.T, s *Store, fv *faultyVFS, fail bool, stmt string) error {
 	t.Helper()
-	s, fv := openFaulty(t)
 	return s.inTx(t.Context(), func(_ *sqlcdb.Queries, tx *sql.Tx) error {
-		fv.failing.Store(true)
-		_, err := tx.ExecContext(t.Context(), "INSERT INTO t VALUES (zeroblob(1 << 16))")
-		if err != nil {
+		if _, err := tx.ExecContext(t.Context(), "INSERT INTO t VALUES (x'00')"); err != nil {
+			return fmt.Errorf("first insert: %w", err)
+		}
+		fv.failing.Store(fail)
+		if _, err := tx.ExecContext(t.Context(), stmt); err != nil {
 			return fmt.Errorf("insert: %w", err)
 		}
 		return nil
@@ -96,12 +97,50 @@ func failWrite(t *testing.T) error {
 
 func TestTransactionErrorNamesExtendedCode(t *testing.T) {
 	t.Parallel()
-	err := failWrite(t)
+	s, fv := openFaulty(t)
+	err := insert(t, s, fv, true, "INSERT INTO t VALUES (zeroblob(1 << 16))")
 	if !errors.Is(err, sqlite3.IOERR_WRITE) {
 		t.Fatalf("err = %v, want IOERR_WRITE", err)
 	}
-	if !strings.Contains(err.Error(), "(IOERR_WRITE)") {
+	if !strings.HasSuffix(err.Error(), "(IOERR_WRITE)") {
 		t.Errorf("err = %q, want it to name IOERR_WRITE", err)
+	}
+}
+
+// TestRollbackSQLiteDidIsNotReported covers errors SQLite answers by rolling
+// the transaction back itself, after which ROLLBACK fails with "no transaction
+// is active": the error says what caused it, and nothing else.
+func TestRollbackSQLiteDidIsNotReported(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		fail bool
+		stmt string
+		want string
+	}{
+		{"disk", true, "INSERT INTO t VALUES (zeroblob(1 << 16))", "insert: sqlite3: disk I/O error (IOERR_WRITE)"},
+		{
+			"or rollback", false, "INSERT OR ROLLBACK INTO t VALUES (x'00')",
+			"insert: sqlite3: constraint failed: UNIQUE constraint failed: t.x (CONSTRAINT_UNIQUE)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s, fv := openFaulty(t)
+			err := insert(t, s, fv, tt.fail, tt.stmt)
+			if err == nil || err.Error() != tt.want {
+				t.Errorf("err = %q, want %q", err, tt.want)
+			}
+			fv.failing.Store(false)
+			var n int
+			if err = s.w.QueryRowContext(t.Context(), "SELECT count(*) FROM t").Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			if n != 0 {
+				t.Errorf("%d rows after the failed transaction, want 0", n)
+			}
+		})
 	}
 }
 
