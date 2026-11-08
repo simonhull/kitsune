@@ -427,6 +427,9 @@ type LibraryAlbum struct {
 	Year        int            `json:"year,omitzero"`
 	Artwork     *Artwork       `json:"artwork,omitzero"`
 	Tracks      []LibraryTrack `json:"tracks"`
+	// After is, in an index of some albums, the album before this one in the
+	// whole index; "" when it comes first. Nil in the whole index.
+	After *string `json:"after,omitzero"`
 }
 
 // LibraryTrack is a song in the library index.

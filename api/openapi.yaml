@@ -1093,6 +1093,20 @@ paths:
             items:
               type: string
               enum: [albumArtist, genre, year, composer, format, bitrate, added, plays, lastPlayed]
+        - name: albums
+          in: query
+          required: false
+          description: >-
+            Only these albums, by id, joined by commas: what a `library` event
+            names. Each that still has a song comes in the index's shape, under
+            its heading, with `after` saying where it goes; one that doesn't is
+            gone from the index. At most 500; more is a 400.
+          style: form
+          explode: false
+          schema:
+            type: array
+            maxItems: 500
+            items: { type: string }
       responses:
         "200":
           description: Every artist with an album, its albums and their tracks.
@@ -1466,8 +1480,9 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        Albums added, changed or gone from the index, by id. `all` says too
-        many changed to list: read the index again.
+        Albums added, changed or gone from the index, by id, which `GET
+        /library/index?albums=` reads. `all` says too many changed to list:
+        read the index again.
       required: [albums, all]
       properties:
         albums: { type: array, items: { type: string } }
@@ -1994,6 +2009,14 @@ components:
         tracks:
           type: array
           items: { $ref: "#/components/schemas/LibraryTrack" }
+        after:
+          type: string
+          description: >-
+            Only in an index of some `albums`: the album just before this one in
+            the whole index, `""` when it comes first. A client that has that
+            album puts this one after it: right behind it under the same
+            heading, or else first under its own heading, which follows that
+            album's.
     LibraryTrack:
       type: object
       additionalProperties: false

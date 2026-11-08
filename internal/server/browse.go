@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/library"
@@ -185,8 +186,14 @@ func (s *Server) getLibraryIndex(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, http.StatusBadRequest, "fields must name the index's fields, joined by commas")
 		return
 	}
+	albums, ok := indexAlbums(r.URL.Query())
+	if !ok {
+		writeProblem(w, r, http.StatusBadRequest, "albums must be at most 500 album ids, joined by commas")
+		return
+	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
 	opts := fields.options()
+	opts.Albums = albums
 	index, err := s.library.LibraryIndex(r.Context(), user.ID, &opts)
 	if r.Context().Err() != nil {
 		return
@@ -200,6 +207,27 @@ func (s *Server) getLibraryIndex(w http.ResponseWriter, r *http.Request) {
 	writeCompressed(w, r, &body)
 }
 
+// maxIndexAlbums is the most albums one GET /library/index?albums= asks for.
+const maxIndexAlbums = 500
+
+// indexAlbums reads the albums parameter: ids joined by commas, in one
+// parameter or several. It returns nil when there is none, which means every
+// album, and false when it names too many.
+func indexAlbums(q url.Values) ([]string, bool) {
+	if !q.Has("albums") {
+		return nil, true
+	}
+	out := []string{}
+	for _, value := range q["albums"] {
+		for id := range strings.SplitSeq(value, ",") {
+			if id != "" {
+				out = append(out, id)
+			}
+		}
+	}
+	return out, len(out) <= maxIndexAlbums
+}
+
 // toAPILibraryIndex returns the wire form of the library index, with what
 // fields asks for.
 func toAPILibraryIndex(index *store.LibraryIndex, fields *fieldWriter) api.LibraryIndex {
@@ -211,6 +239,9 @@ func toAPILibraryIndex(index *store.LibraryIndex, fields *fieldWriter) api.Libra
 		}
 		for j := range a.Albums {
 			out.Artists[i].Albums[j] = toAPILibraryAlbum(&a.Albums[j], fields)
+			if index.Partial {
+				out.Artists[i].Albums[j].After = &a.Albums[j].After
+			}
 		}
 	}
 	return out

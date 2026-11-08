@@ -334,7 +334,7 @@ func (s *Store) WriteBatch(ctx context.Context, b *Batch) error {
 	}
 	now := s.now()
 	var touched []string
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) (err error) {
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) (err error) {
 		touched = touched[:0] // The writer may retry a transaction.
 		fts, err := prepareFTS(ctx, tx)
 		if err != nil {
@@ -715,7 +715,7 @@ func (s *Store) MarkMissing(ctx context.Context, trackIDs []int64, at time.Time)
 		return nil
 	}
 	var touched []string
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
 		touched = touched[:0] // The writer may retry a transaction.
 		for _, id := range trackIDs {
 			album, err := q.TrackAlbumULID(ctx, id)
@@ -768,7 +768,7 @@ const ftsDeleteMissingSQL = "DELETE FROM tracks_fts WHERE rowid IN (SELECT id FR
 // it deleted.
 func (s *Store) DeleteMissingBefore(ctx context.Context, cutoff time.Time) (int64, error) {
 	var n int64
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) error {
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) error {
 		if _, ftsErr := tx.ExecContext(ctx, ftsDeleteMissingSQL, ms(cutoff)); ftsErr != nil {
 			return fmt.Errorf("delete fts rows: %w", ftsErr)
 		}
@@ -791,7 +791,7 @@ func (s *Store) DeleteMissingBefore(ctx context.Context, cutoff time.Time) (int6
 // delete their files.
 func (s *Store) PruneOrphans(ctx context.Context) (Pruned, error) {
 	var p Pruned
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
 		albums, albumsErr := q.PruneAlbums(ctx)
 		if albumsErr != nil {
 			return fmt.Errorf("albums: %w", albumsErr)

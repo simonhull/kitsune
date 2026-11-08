@@ -61,7 +61,11 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   to place the scrollbar and the rail. Its order lives in `orderIndex`, and nowhere else. `fields`
   adds what the song columns show, each read by its own query only when asked for (`IndexOptions`)
   and sent through the nil-able `TrackFields`, so an index without it costs what it did;
-  `TestLibraryIndexWithoutFieldsIsUnchanged` holds its bytes.
+  `TestLibraryIndexWithoutFieldsIsUnchanged` holds its bytes. `albums` (what a `library` event names)
+  gives just those albums in the same shape, each with `after`, the album before it in the whole order,
+  which is how a client patches its copy in place; their queries are the `…Of` twins of the whole
+  ones, joined from the albums out. The index's album rows, most of its cost, are kept between
+  library writes (`albumrows.go`); a write that changes what the index shows goes through `inLibraryTx`.
 - Tag edits are one route, `POST /albums/{id}/edits`, and `GET /albums/{id}/tags` reads what an editor
   shows, from the files. The validator is the album's `etag` field in the body, a hash of
   `ulid:size:mtime_ms` per track, and not a response header. Clients send it back verbatim as
