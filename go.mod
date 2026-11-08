@@ -13,6 +13,7 @@ require (
 	github.com/pb33f/libopenapi-validator v0.16.2
 	github.com/simonhull/audiometa v0.12.2
 	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20261105095718-a1058eb15227
 	golang.org/x/image v0.47.0
 	golang.org/x/term v0.47.0
 	golang.org/x/text v0.43.0
