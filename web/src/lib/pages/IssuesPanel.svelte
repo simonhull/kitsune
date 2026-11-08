@@ -6,7 +6,7 @@
 		splitPath,
 		warningLine
 	} from '#lib/library/health.ts';
-	import { library, type Load } from '#lib/library/library.svelte.ts';
+	import type { Load } from '#lib/library/library.svelte.ts';
 	import type { IssueKind, LibraryFacts, ScanIssues } from '#lib/library/source.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 
@@ -17,9 +17,13 @@
 		facts: LibraryFacts;
 		admin: boolean;
 		issues: Load<ScanIssues>;
+		/** The list was asked for again and is still behind the counts. */
+		gaveUp: boolean;
+		/** Asks for the list again. */
+		retry: () => void;
 	}
 
-	let { facts, admin, issues }: Props = $props();
+	let { facts, admin, issues, gaveUp, retry }: Props = $props();
 
 	const list = $derived(issues.kind === 'ready' ? issues.value : null);
 	const groups = $derived(issueGroups(facts.issueCounts, list?.issues ?? []));
@@ -45,7 +49,7 @@
 
 	{#each groups as group (group.kind)}
 		{@const shown = opened.has(group.kind) ? group.files : group.files.slice(0, shownAtFirst)}
-		{@const files = filesState(admin, issues.kind, group.files.length)}
+		{@const files = filesState(admin, issues.kind, group.files.length, gaveUp)}
 		<section class="group" aria-label={group.title}>
 			<div class="heading">
 				<h2>{group.title}</h2>
@@ -56,9 +60,7 @@
 			{:else if files === 'failed'}
 				<p class="files-status unavailable" role="status">
 					Couldn't load the list of files.
-					<button type="button" class="more" onclick={() => void library.loadIssues()}
-						>Try again</button
-					>
+					<button type="button" class="more" onclick={retry}>Try again</button>
 				</p>
 			{/if}
 			<p class="note">{group.note}</p>
@@ -98,8 +100,7 @@
 	{#if admin && issues.kind === 'unavailable' && groups.length === 0}
 		<p class="note unavailable" role="status">
 			The list of files couldn't be loaded.
-			<button type="button" class="more" onclick={() => void library.loadIssues()}>Try again</button
-			>
+			<button type="button" class="more" onclick={retry}>Try again</button>
 		</p>
 	{/if}
 

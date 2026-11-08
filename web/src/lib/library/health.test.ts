@@ -325,20 +325,25 @@ describe('warningLine', () => {
 
 describe('filesState', () => {
 	it('shows a loaded list, and nothing to anyone but an admin', () => {
-		expect(filesState(true, 'ready', 3)).toBe('shown');
-		expect(filesState(true, 'unavailable', 3)).toBe('shown');
-		expect(filesState(false, 'loading', 0)).toBe('hidden');
-		expect(filesState(false, 'unavailable', 0)).toBe('hidden');
+		expect(filesState(true, 'ready', 3, false)).toBe('shown');
+		expect(filesState(true, 'ready', 3, true)).toBe('shown');
+		expect(filesState(true, 'unavailable', 3, false)).toBe('shown');
+		expect(filesState(false, 'loading', 0, false)).toBe('hidden');
+		expect(filesState(false, 'unavailable', 0, true)).toBe('hidden');
 	});
 
-	it('says the files are coming while they load, or while the list is behind the counts', () => {
-		expect(filesState(true, 'loading', 0)).toBe('loading');
-		expect(filesState(true, 'ready', 0)).toBe('loading');
+	it('says the files are coming while they load, or while a list behind the counts is asked for', () => {
+		expect(filesState(true, 'loading', 0, false)).toBe('loading');
+		expect(filesState(true, 'ready', 0, false)).toBe('loading');
 	});
 
 	it('says when they could not be loaded', () => {
-		expect(filesState(true, 'unavailable', 0)).toBe('failed');
-		expect(filesState(true, 'missing', 0)).toBe('failed');
+		expect(filesState(true, 'unavailable', 0, false)).toBe('failed');
+		expect(filesState(true, 'missing', 0, false)).toBe('failed');
+	});
+
+	it('gives up on a list still behind the counts after asking again', () => {
+		expect(filesState(true, 'ready', 0, true)).toBe('failed');
 	});
 });
 

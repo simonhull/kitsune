@@ -261,16 +261,25 @@ export type FilesState = 'hidden' | 'loading' | 'failed' | 'shown';
 
 /**
  * Whether a group can show its files. A list holding none of a kind the counts have is behind
- * them, and a fresh one is on its way (see `staleFor`), so that reads as loading, not as nothing.
+ * them, and is asked for once more (see `staleFor`): that reads as loading until the answer comes,
+ * and as failed if it is still behind (`gaveUp`), rather than loading forever.
  */
-export function filesState(admin: boolean, load: Load<unknown>['kind'], files: number): FilesState {
+export function filesState(
+	admin: boolean,
+	load: Load<unknown>['kind'],
+	files: number,
+	gaveUp: boolean
+): FilesState {
 	if (!admin) {
 		return 'hidden';
 	}
 	if (files > 0) {
 		return 'shown';
 	}
-	return load === 'loading' || load === 'ready' ? 'loading' : 'failed';
+	if (load === 'loading' || (load === 'ready' && !gaveUp)) {
+		return 'loading';
+	}
+	return 'failed';
 }
 
 /**

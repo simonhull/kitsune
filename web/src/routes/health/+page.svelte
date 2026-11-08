@@ -32,17 +32,33 @@
 		}
 	});
 
-	// A scan finds files between those asks: a list behind the counts asks again, once for each count.
-	let askedFor: string | null = null;
-	$effect(() => {
+	// A scan finds files between those asks: a list behind the counts asks again, once for each
+	// count. Still behind after that answer, it gives up and offers Try again.
+	const stale = $derived.by(() => {
 		const issues = library.issues;
-		const stale =
-			admin && facts !== null && issues.kind === 'ready'
-				? staleFor(facts.issueCounts, issues.value.issues)
-				: null;
+		return admin && facts !== null && issues.kind === 'ready'
+			? staleFor(facts.issueCounts, issues.value.issues)
+			: null;
+	});
+	let askedFor: string | null = null;
+	let answeredFor = $state<string | null>(null);
+	const gaveUp = $derived(stale !== null && stale === answeredFor);
+
+	async function askAgain(key: string): Promise<void> {
+		askedFor = key;
+		answeredFor = null;
+		await library.loadIssues();
+		answeredFor = key;
+	}
+
+	function retry(): void {
+		void (stale === null ? library.loadIssues() : askAgain(stale));
+	}
+
+	$effect(() => {
 		if (stale !== null && stale !== askedFor) {
-			askedFor = stale;
-			untrack(() => void library.loadIssues());
+			const key = stale;
+			untrack(() => void askAgain(key));
 		}
 	});
 </script>
@@ -54,7 +70,7 @@
 {#if facts !== null}
 	<div class="health">
 		<ScanPanel {facts} {admin} down={library.down} {now} />
-		<IssuesPanel {facts} {admin} issues={library.issues} />
+		<IssuesPanel {facts} {admin} issues={library.issues} {gaveUp} {retry} />
 	</div>
 {/if}
 
