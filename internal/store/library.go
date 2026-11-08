@@ -198,7 +198,9 @@ func nullStr(v string) *string {
 // inTx runs fn in a writer transaction, with every sqlc query prepared on it.
 // The ncruces driver prepares, steps and finalizes every statement that has
 // arguments, so preparing once per transaction saves thousands of prepares per batch.
+// An SQLite error comes back with its extended result code named.
 func (s *Store) inTx(ctx context.Context, fn func(q *sqlcdb.Queries, tx *sql.Tx) error) (err error) {
+	defer func() { err = named(err) }() // Deferred first, so it runs after the rollback.
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)

@@ -195,8 +195,10 @@ func runBody(ctx context.Context, conn *sql.Conn, tx *sql.Tx, m *migration) erro
 }
 
 // inTransaction runs fn in a transaction and commits if it returns nil. The
-// writer's transactions are BEGIN IMMEDIATE.
+// writer's transactions are BEGIN IMMEDIATE. An SQLite error comes back with its
+// extended result code named.
 func inTransaction(ctx context.Context, conn *sql.Conn, fn func(*sql.Tx) error) (err error) {
+	defer func() { err = named(err) }() // Deferred first, so it runs after the rollback.
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)

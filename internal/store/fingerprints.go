@@ -51,7 +51,7 @@ func (s *Store) CountUndigested(ctx context.Context) (int, error) {
 func (s *Store) SetDigest(ctx context.Context, id, size int64, mtime time.Time, digest [32]byte) (bool, error) {
 	n, err := s.wq.SetDigest(ctx, sqlcdb.SetDigestParams{AudioDigest: digest[:], ID: id, Size: size, Mtime: ms(mtime)})
 	if err != nil {
-		return false, fmt.Errorf("set digest of track %d: %w", id, err)
+		return false, named(fmt.Errorf("set digest of track %d: %w", id, err))
 	}
 	return n == 1, nil
 }
