@@ -34,6 +34,7 @@ function album(count: number, id = 'a', extra: Partial<Track> = {}): Album {
 		trackCount: count,
 		compilation: false,
 		tracks: Array.from({ length: count }, (_, index) => track(index, extra)),
+		discs: [],
 		durationMs: 1000,
 		formats: ['FLAC'],
 		addedAt: '2026-10-12T18:00:00Z',
@@ -105,6 +106,23 @@ describe('Player', () => {
 		expect(player.current?.id).toBe('t1');
 		expect(output.url).toBe('t1');
 		expect(player.started).toBe(true);
+	});
+
+	it('plays one disc of an album, and nothing for a disc it lacks', async () => {
+		const { player, output } = setup();
+		const two = album(4);
+		const discs = {
+			...two,
+			tracks: two.tracks.map((track, index) => ({ ...track, discNo: index < 2 ? 1 : 2 }))
+		};
+		player.playDisc(discs, 3);
+		await settle();
+		expect(player.queue).toBeNull();
+		player.playDisc(discs, 2);
+		await settle();
+		expect(player.current?.id).toBe('t2');
+		expect(output.url).toBe('t2');
+		expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['t2', 't3']);
 	});
 
 	it('moves position with the clock', async () => {

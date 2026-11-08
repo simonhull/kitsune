@@ -9,6 +9,9 @@ import {
 	balancedLines,
 	clock,
 	credit,
+	discFacts,
+	discHeads,
+	discsOf,
 	formatLine,
 	formatOf,
 	gain,
@@ -41,6 +44,7 @@ const album: Album = {
 	trackCount: 2,
 	compilation: false,
 	tracks: [track(), track()],
+	discs: [],
 	durationMs: 1_500_000,
 	formats: ['FLAC'],
 	addedAt: '2026-10-12T18:00:00Z',
@@ -89,6 +93,55 @@ describe('isMultiDisc', () => {
 	it('counts an unset disc as disc 1', () => {
 		expect(isMultiDisc([track({ discNo: 1 }), track()])).toBe(false);
 		expect(isMultiDisc([track(), track({ discNo: 2 })])).toBe(true);
+	});
+});
+
+describe('discsOf', () => {
+	it('counts each disc, an unset one as disc 1, and names it from its first named song', () => {
+		const tracks = [
+			track({ durationMs: 60_000 }),
+			track({ discNo: 1, durationMs: 120_000, discSubtitle: 'The Electric Set' }),
+			track({ discNo: 2, durationMs: 30_000, discSubtitle: '' }),
+			track({ discNo: 2, durationMs: 30_000, discSubtitle: 'Room' }),
+			track({ discNo: 2, durationMs: 30_000, discSubtitle: 'Other' })
+		];
+		expect(discsOf(tracks)).toEqual([
+			{ no: 1, name: 'The Electric Set', songs: 2, durationMs: 180_000 },
+			{ no: 2, name: 'Room', songs: 3, durationMs: 90_000 }
+		]);
+	});
+});
+
+describe('discHeads', () => {
+	const disc = (no: number, name?: string) => ({
+		no,
+		songs: 2,
+		durationMs: 1,
+		...(name === undefined ? {} : { name })
+	});
+
+	it('heads each disc at its first track, an unset disc as disc 1', () => {
+		const tracks = [track(), track({ discNo: 1 }), track({ discNo: 2 }), track({ discNo: 2 })];
+		const heads = discHeads({ tracks, discs: [disc(1, 'A'), disc(2)] });
+		expect([...heads]).toEqual([
+			[0, disc(1, 'A')],
+			[2, disc(2)]
+		]);
+	});
+
+	it('heads nothing on one disc, even a named one', () => {
+		expect(discHeads({ tracks: [track(), track()], discs: [disc(1, 'Named')] }).size).toBe(0);
+		expect(discHeads({ tracks: [], discs: [] }).size).toBe(0);
+	});
+});
+
+describe('discFacts', () => {
+	it('counts songs and rounds to whole minutes, never under one', () => {
+		expect(discFacts({ songs: 5, durationMs: 19 * 60_000 + 20_000 })).toEqual({
+			songs: '5 SONGS',
+			length: '19 MIN'
+		});
+		expect(discFacts({ songs: 1, durationMs: 1000 })).toEqual({ songs: '1 SONG', length: '1 MIN' });
 	});
 });
 

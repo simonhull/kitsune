@@ -11,6 +11,7 @@ import {
 	holds,
 	inOrder,
 	next,
+	onDisc,
 	picked,
 	playingNext,
 	previous,
@@ -126,6 +127,15 @@ export class Player implements PlayerView {
 	play(album: Album, index = 0): void {
 		this.#fresh();
 		this.#begin(inOrder(album, index));
+	}
+
+	/** Plays one disc of an album, in order. A disc with no songs plays nothing. */
+	playDisc(album: Album, disc: number): void {
+		const queue = onDisc(album, disc);
+		if (queue.tracks.length > 0) {
+			this.#fresh();
+			this.#begin(queue);
+		}
 	}
 
 	/** Plays songs picked from anywhere, in the order given. */

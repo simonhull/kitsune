@@ -70,6 +70,8 @@ export interface Track {
 	replayGain?: ReplayGain;
 	trackTotal?: number;
 	discTotal?: number;
+	/** The disc's name, as this track is tagged. */
+	discSubtitle?: string;
 	year?: number;
 	genres: string[];
 	/** Changes when the file does. It isn't the stream's ETag. */
@@ -94,6 +96,17 @@ export interface Album extends AlbumEntry {
 	etag: string;
 	/** Whether the caller has hearted it. {@link Library.marks} holds what's current. */
 	hearted: boolean;
+	/** In disc order: one for an album on one disc. */
+	discs: Disc[];
+}
+
+/** One disc of an album, as its songs say. A song with no disc number is on disc 1. */
+export interface Disc {
+	no: number;
+	/** Its subtitle, from its first song that has one. */
+	name?: string;
+	songs: number;
+	durationMs: number;
 }
 
 /** Everything `GET /albums/{id}/tags` names. Album, artists, album artists and compilation group a track. */
@@ -107,6 +120,7 @@ export type TagField =
 	| 'trackTotal'
 	| 'disc'
 	| 'discTotal'
+	| 'discSubtitle'
 	| 'date'
 	| 'genres'
 	| 'composers'

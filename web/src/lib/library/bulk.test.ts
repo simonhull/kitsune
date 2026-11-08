@@ -57,7 +57,7 @@ const etags = new Map([
 ]);
 
 describe('board D', () => {
-	it('has its eleven fields in order', () => {
+	it('has its eleven fields in order, and the disc name beside Disc', () => {
 		expect(bulkFields.map(({ label }) => label)).toEqual([
 			'Title',
 			'Album',
@@ -68,6 +68,7 @@ describe('board D', () => {
 			'Year',
 			'Track',
 			'Disc',
+			'Disc name',
 			'Label',
 			'Comment'
 		]);

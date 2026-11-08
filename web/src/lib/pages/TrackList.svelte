@@ -4,6 +4,8 @@
 		addedOn,
 		clock,
 		credit,
+		discFacts,
+		discHeads,
 		formatLine,
 		gain,
 		isMultiDisc,
@@ -24,6 +26,8 @@
 		sounding: boolean;
 		/** Plays the album from this track. */
 		play: (index: number) => void;
+		/** Plays one disc of the album. */
+		playDisc: (disc: number) => void;
 		/** The server no longer has it, though a list still did. */
 		gone: boolean;
 		/** It couldn't be fetched this time. */
@@ -37,10 +41,25 @@
 		editor: Snippet<[Album]> | undefined;
 	}
 
-	let { album, cuedId, sounding, play, gone, unavailable, retry, editing, one, editor }: Props =
-		$props();
+	let {
+		album,
+		cuedId,
+		sounding,
+		play,
+		playDisc,
+		gone,
+		unavailable,
+		retry,
+		editing,
+		one,
+		editor
+	}: Props = $props();
 
 	const multiDisc = $derived(isMultiDisc(album?.tracks ?? []));
+	/** Each disc's heading, by its first track. Under one, a track's number starts again. */
+	const heads = $derived(discHeads(album ?? { tracks: [], discs: [] }));
+	/** Numbers say the disc only where no heading does. */
+	const discLabels = $derived(multiDisc && heads.size === 0);
 </script>
 
 <section aria-label="Tracks" class="panel" class:editing class:one data-morph-part="panel">
@@ -59,11 +78,38 @@
 				{@const others = credit(track, album.artist)}
 				{@const rg = trackGain(track)}
 				{@const cued = track.id === cuedId}
+				{@const head = heads.get(index)}
+				{#if head !== undefined}
+					{@const label = `Disc ${String(head.no)}`}
+					{@const facts = discFacts(head)}
+					<div class="disc" class:first={index === 0}>
+						<h2 class="disc-no">{label}</h2>
+						<p class="disc-about">
+							{#if head.name !== undefined}
+								<span class="disc-name">{head.name}</span>
+							{/if}
+							<span class="disc-facts"
+								><span class="disc-songs">{facts.songs} · </span>{facts.length}</span
+							>
+						</p>
+						<button
+							type="button"
+							class="disc-play"
+							aria-label={head.name === undefined ? `Play ${label}` : `Play ${label}, ${head.name}`}
+							onclick={() => {
+								playDisc(head.no);
+							}}
+						>
+							<Icon name="play" size={12} />
+							<span class="disc-play-words">Play disc</span>
+						</button>
+					</div>
+				{/if}
 				<!-- The song is one button, and its marks others beside it: a button can't hold a button. -->
 				<div
 					class="row"
 					class:cued
-					class:discs={multiDisc}
+					class:discs={discLabels}
 					class:rated={library.marks.stars(track.id) !== null}
 				>
 					<button
@@ -79,7 +125,7 @@
 							{#if cued && sounding}
 								<Icon name="play" size={16} />
 							{:else}
-								{trackLabel(track, multiDisc)}
+								{trackLabel(track, discLabels)}
 							{/if}
 						</span>
 						<span class="name">
@@ -169,6 +215,77 @@
 	@keyframes arrive {
 		from {
 			opacity: 0;
+		}
+	}
+
+	/* A disc's heading: the album's own section, with its name, its length and its own play. */
+	.disc {
+		display: flex;
+		align-items: flex-end;
+		gap: 20px;
+		padding: 40px 16px 14px;
+		margin-bottom: 4px;
+		border-bottom: 1px solid var(--edge-strong);
+	}
+
+	.disc.first {
+		padding-top: 12px;
+	}
+
+	.disc-no {
+		flex: none;
+		font-size: var(--type-section);
+		font-weight: 800;
+		letter-spacing: var(--tracking-section);
+		line-height: 1;
+	}
+
+	.disc-about {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: baseline;
+		gap: 20px;
+	}
+
+	.disc-name {
+		min-width: 0;
+		overflow: hidden;
+		padding-bottom: 2px;
+		font-size: 20px;
+		font-weight: 600;
+		color: var(--text-secondary);
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	.disc-facts {
+		flex: none;
+		margin-left: auto;
+		font-family: var(--font-mono);
+		font-size: var(--type-mono);
+		letter-spacing: 0.08em;
+		color: var(--text-meta);
+	}
+
+	.disc-play {
+		flex: none;
+		height: var(--target);
+		padding: 0 18px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		border: 1px solid var(--edge-strong);
+		border-radius: var(--radius-pill);
+		background: none;
+		color: var(--text);
+		font-size: 14px;
+		font-weight: 600;
+	}
+
+	@media (hover: hover) {
+		.disc-play:hover {
+			border-color: var(--edge-hover);
 		}
 	}
 
@@ -325,6 +442,73 @@
 		}
 
 		.gain {
+			display: none;
+		}
+
+		/* The phone's heading: the number over its name and length, and a round play to thumb. */
+		.disc {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) var(--target);
+			grid-template-areas: 'no play' 'about play';
+			align-items: center;
+			column-gap: 10px;
+			min-height: 64px;
+			padding: 18px 8px 8px 10px;
+			margin-bottom: 0;
+		}
+
+		.disc.first {
+			padding-top: 0;
+		}
+
+		.disc-no {
+			grid-area: no;
+			font-size: 22px;
+			letter-spacing: -0.03em;
+		}
+
+		.disc-about {
+			grid-area: about;
+			display: block;
+			margin-top: 2px;
+			overflow: hidden;
+			font-size: 13px;
+			color: var(--text-secondary);
+			white-space: nowrap;
+			text-overflow: ellipsis;
+		}
+
+		.disc-name {
+			padding: 0;
+			font-size: inherit;
+			font-weight: 400;
+		}
+
+		.disc-name::after {
+			content: ' · ';
+		}
+
+		.disc-facts {
+			margin: 0;
+			font-family: inherit;
+			font-size: inherit;
+			letter-spacing: 0;
+			color: inherit;
+			text-transform: lowercase;
+		}
+
+		.disc-songs {
+			display: none;
+		}
+
+		.disc-play {
+			grid-area: play;
+			width: var(--target);
+			padding: 0;
+			justify-content: center;
+		}
+
+		.disc-play-words {
 			display: none;
 		}
 	}

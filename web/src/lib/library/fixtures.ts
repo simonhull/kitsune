@@ -1,6 +1,7 @@
 import { changedSettings, foldersFixture, settingsFixture } from './settingsFixtures.ts';
 import { fnv1a } from '#lib/cover/cover.ts';
 import { letterOf } from '#lib/pages/libraryRows.ts';
+import { discsOf } from './format.ts';
 import { partOf } from './indexPatch.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
@@ -162,6 +163,7 @@ function albumFrom(entry: AlbumEntry, tracks: Track[], year: number): Album {
 		artists: entry.compilation ? [] : [artistLink(entry.artist)],
 		year,
 		tracks: tracks.map((track) => ({ ...track, year })),
+		discs: discsOf(tracks),
 		durationMs: tracks.reduce((sum, { durationMs }) => sum + durationMs, 0),
 		formats: ['FLAC'],
 		addedAt: '2026-10-12T18:00:00Z',
@@ -210,7 +212,7 @@ function twoDiscs(entry: AlbumEntry, year: number, one: Song[], two: Song[]): Al
 		id: `${each.id}-2`
 	}));
 	const tracks = [...first.tracks, ...second];
-	return { ...first, tracks, trackCount: tracks.length };
+	return { ...first, tracks, trackCount: tracks.length, discs: discsOf(tracks) };
 }
 
 const longTitle =
@@ -628,9 +630,11 @@ function reindexed(album: Album, tags: AlbumTags, touched: readonly string[]): A
 		const rest = { ...was };
 		delete rest.trackNo;
 		delete rest.discNo;
+		delete rest.discSubtitle;
 		delete rest.year;
 		const trackNo = numbered(tagged, 'track').value;
 		const discNo = numbered(tagged, 'disc').value;
+		const discSubtitle = first(tagged, 'discSubtitle');
 		const year = Number(first(tagged, 'date')?.slice(0, 4) ?? 0);
 		return [
 			{
@@ -639,6 +643,7 @@ function reindexed(album: Album, tags: AlbumTags, touched: readonly string[]): A
 				genres: tagged.fields.genres ?? [],
 				...(trackNo === undefined ? {} : { trackNo }),
 				...(discNo === undefined ? {} : { discNo }),
+				...(discSubtitle === undefined ? {} : { discSubtitle }),
 				...(year === 0 ? {} : { year }),
 				etag: touched.includes(tagged.id) ? nextEtag(was.etag) : was.etag
 			}
@@ -654,6 +659,7 @@ function reindexed(album: Album, tags: AlbumTags, touched: readonly string[]): A
 		...rest,
 		...(year === undefined ? {} : { year }),
 		tracks: ordered,
+		discs: discsOf(ordered),
 		genres: [...new Set(ordered.flatMap(({ genres }) => genres))],
 		etag: nextEtag(album.etag)
 	};

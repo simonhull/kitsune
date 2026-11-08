@@ -182,6 +182,11 @@
 						player.play(album, index);
 					}
 				}}
+				playDisc={(disc) => {
+					if (album !== undefined) {
+						player.playDisc(album, disc);
+					}
+				}}
 				gone={library.failed(id)}
 				unavailable={library.unavailable(id)}
 				retry={() => void library.loadAlbum(id)}

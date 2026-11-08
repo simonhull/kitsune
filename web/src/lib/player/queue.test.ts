@@ -7,6 +7,7 @@ import {
 	holds,
 	inOrder,
 	next,
+	onDisc,
 	picked,
 	playingNext,
 	previous,
@@ -35,6 +36,7 @@ function album(count: number): Album {
 		trackCount: count,
 		compilation: false,
 		tracks,
+		discs: [],
 		durationMs: 1000,
 		formats: ['FLAC'],
 		addedAt: '2026-10-12T18:00:00Z',
@@ -60,6 +62,20 @@ describe('a queue in order', () => {
 		expect(last === null ? null : currentOf(last)?.id).toBe('t1');
 		expect(last === null ? null : upcoming(last)).toBeUndefined();
 		expect(last === null ? 'none' : next(last)).toBeNull();
+	});
+
+	it('queues one disc in order, an unnumbered song on disc 1', () => {
+		const two = album(5);
+		const tracks = two.tracks.map((track, index) =>
+			index === 0 ? track : { ...track, discNo: index < 3 ? 1 : 2 }
+		);
+		const discs = { ...two, tracks };
+		expect(ids(onDisc(discs, 1).tracks)).toEqual(['t0', 't1', 't2']);
+		const second = onDisc(discs, 2);
+		expect(ids(second.tracks)).toEqual(['t3', 't4']);
+		expect(second.index).toBe(0);
+		expect(second.ordered).toBe(true);
+		expect(onDisc(discs, 3).tracks).toEqual([]);
 	});
 
 	it('steps back to the first track and no further', () => {

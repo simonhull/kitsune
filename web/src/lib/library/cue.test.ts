@@ -24,6 +24,7 @@ function album(count: number): Album {
 		trackCount: count,
 		compilation: false,
 		tracks: tracks(count),
+		discs: [],
 		durationMs: 1000,
 		formats: ['MP3'],
 		addedAt: '2026-10-12T18:00:00Z',
