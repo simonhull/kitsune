@@ -200,6 +200,12 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   divides a value, so a rule change needs a restart and no migration. Synonyms stay apart: the tag
   editor fixes those. Lists and album pages carry the result as `displayGenres`; an album's raw
   `genres` stay as tagged, for the editor.
+- The watcher (`watch.go`) follows the roots and only marks folders dirty; once they settle (10 s),
+  `Scanner.ScanDirs` reads just those folders under the claim and the lock, through the scan's read
+  path. A targeted scan marks a track missing only when its folder, or the nearest read folder above
+  it, was read and the file is gone. It never deletes or prunes, and leaves a root that looks down
+  (missing, empty, losing most of its tracks) to the full-scan rules. A running scan that walked after
+  the last change absorbs it.
 - Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
   wait for the file to change.
 - One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it

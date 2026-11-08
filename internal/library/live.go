@@ -50,6 +50,7 @@ func (s *Scanner) Configure(ctx context.Context, l Live) error {
 	}
 	defer s.lock.unlock()
 	s.cfg.Store(&l)
+	signal(s.rerooted)
 	return nil
 }
 
@@ -57,8 +58,5 @@ func (s *Scanner) Configure(ctx context.Context, l Live) error {
 // from now; a scan running now goes on.
 func (s *Scanner) SetDaily(d Daily) {
 	s.daily.Store(&d)
-	select {
-	case s.redaily <- struct{}{}:
-	default: // A move is already pending; it reads the latest time.
-	}
+	signal(s.redaily) // A move already pending reads the latest time.
 }

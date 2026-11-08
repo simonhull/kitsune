@@ -152,6 +152,7 @@ type app struct {
 	store    *store.Store
 	auth     *auth.Service
 	scanner  *library.Scanner
+	watcher  *library.Watcher // Follows the roots and scans what changes.
 	lastfm   *scrobbler.Scrobbler
 	scanned  atomic.Bool // Set when the first scan has ended, whatever its outcome.
 	http     *http.Server
@@ -261,6 +262,7 @@ func buildApp(ctx context.Context, cfg *config.Config, l *launch, st *store.Stor
 		setupCode: setupCode, covers: covers, genres: genres,
 		live: live, level: l.level, lastfmURL: l.lastfmURL, changes: subscribe(live),
 	}
+	a.watcher = library.NewWatcher(a.scanner, library.WatchOptions{})
 	a.http = newHTTPServer(a.handler(ctx, cfg, l, &public), log)
 	if snap.BaseURL != "" && len(snap.TrustedProxies) == 0 {
 		log.Warn("base_url is set but trusted_proxies is empty; every client will share the proxy's address for login rate limits")
@@ -431,6 +433,7 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.work.Go(func() { a.followLibrary(bgCtx) })
 	a.work.Go(func() { a.followRest(bgCtx) })
 	a.work.Go(func() { a.scanner.RunFingerprints(bgCtx) }) // Readiness never waits for it.
+	a.work.Go(func() { a.watcher.Run(bgCtx) })
 
 	served := make(chan error, 1)
 	go func() { served <- a.http.Serve(ln) }()

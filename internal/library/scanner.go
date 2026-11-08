@@ -90,9 +90,12 @@ type Scanner struct {
 	genres    *Genres
 	lock      *libraryLock // Held by a running scan or edit, or a batch of the fingerprint pass.
 	progress  atomic.Pointer[Progress]
-	cfg       atomic.Pointer[Live]  // Swapped only under the library lock.
-	daily     atomic.Pointer[Daily] // When the day's quick scan runs.
-	redaily   chan struct{}         // Holds a token when daily has moved.
+	cfg       atomic.Pointer[Live]      // Swapped only under the library lock.
+	daily     atomic.Pointer[Daily]     // When the day's quick scan runs.
+	redaily   chan struct{}             // Holds a token when daily has moved.
+	rerooted  chan struct{}             // Holds a token when the roots have changed, for the watcher.
+	scanEnded chan struct{}             // Holds a token when a scan has ended, for the watcher.
+	walkedAt  atomic.Pointer[time.Time] // When the latest scan began walking every root.
 
 	fingerprint  fingerprintFunc                     // Reads a file's fingerprint; tests replace it.
 	fingerprints atomic.Pointer[FingerprintProgress] // The pass's progress.
@@ -107,6 +110,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
 		write: opts.Write, genres: opts.Genres, claim: newLibraryLock(), lock: newLibraryLock(),
 		fingerprint: readFingerprint, wantPass: make(chan struct{}, 1), redaily: make(chan struct{}, 1),
+		rerooted: make(chan struct{}, 1), scanEnded: make(chan struct{}, 1),
 	}
 	if s.workers <= 0 {
 		s.workers = runtime.NumCPU()
@@ -169,6 +173,7 @@ func (s *Scanner) run(ctx context.Context, mode Mode) (Stats, error) {
 	s.logScan(ctx, mode, &stats, err, time.Since(start))
 	s.ended(&stats, err)
 	s.askForPass()
+	signal(s.scanEnded)
 	return stats, err
 }
 
@@ -194,6 +199,8 @@ func (s *Scanner) scan(ctx context.Context, mode Mode) (Stats, error) {
 		}
 		return Stats{}, nil
 	}
+	walked := time.Now()
+	s.walkedAt.Store(&walked)
 	sv, err := s.survey(ctx, mode)
 	if err != nil {
 		return Stats{}, fmt.Errorf("scan: survey: %w", err)
@@ -265,4 +272,19 @@ func (s *Scanner) deleteArtwork(ctx context.Context, hashes [][32]byte) {
 			s.log.WarnContext(ctx, "deleting a pruned cover failed", "err", err)
 		}
 	}
+}
+
+// signal leaves a token in ch, a channel of capacity one, unless one is
+// already waiting there: its reader looks at the latest state, not one per token.
+func signal(ch chan<- struct{}) {
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
+}
+
+// walkedSince reports whether a scan began walking every root after t.
+func (s *Scanner) walkedSince(t time.Time) bool {
+	at := s.walkedAt.Load()
+	return at != nil && at.After(t)
 }

@@ -7,6 +7,7 @@ ignore ./web/node_modules
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/ncruces/go-sqlite3 v0.36.0
 	github.com/pb33f/libopenapi v0.41.8
 	github.com/pb33f/libopenapi-validator v0.16.2
