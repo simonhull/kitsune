@@ -167,11 +167,18 @@ func (l *testLib) seedFile(root, rel string) {
 	}
 }
 
-// seedIssue stores a scan issue at root/rel with the given size and the file's mtime.
+// seedIssue stores a scan issue at root/rel with the given size and the file's
+// mtime, raised by the scanner's own reader.
 func (l *testLib) seedIssue(root, rel string, size int64, mtime time.Time) {
 	l.t.Helper()
+	l.seedIssueBy(root, rel, size, mtime, l.scanner.reader)
+}
+
+// seedIssueBy is [testLib.seedIssue] for an issue raised by another reader.
+func (l *testLib) seedIssueBy(root, rel string, size int64, mtime time.Time, reader string) {
+	l.t.Helper()
 	b := store.Batch{Issues: []store.ScanIssue{{
-		Root: root, RelPath: rel, Kind: store.IssueUnsupported, Message: "bad", Size: size, MTime: mtime,
+		Root: root, RelPath: rel, Kind: store.IssueUnsupported, Message: "bad", Size: size, MTime: mtime, Reader: reader,
 	}}}
 	if err := l.st.WriteBatch(l.t.Context(), &b); err != nil {
 		l.t.Fatal(err)

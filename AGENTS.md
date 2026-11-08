@@ -229,7 +229,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   the one list of types), or one past the watch limit (ENOSPC on add). `GET /admin/settings` says
   each folder's mode and why.
 - Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
-  wait for the file to change.
+  wait for the file to change, or for another tag reader: each such issue keeps the audiometa
+  version that judged it (`scan_issues.reader`, `Options.Reader`), and a scan reads the file again
+  once its own differs.
 - One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it
   gets `ErrBusy`; a scan that meets an edit waits. Readers never take it. The fingerprint pass holds
   it for one batch at a time (32 files or about 2 s), so an edit or a scan waits out a batch, and

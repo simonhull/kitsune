@@ -152,7 +152,7 @@ func (s *Scanner) surveyRoot(ctx context.Context, root string, mode Mode) (rootS
 			"root", root, "tracks", countTracks(states))
 		return skipped(states), nil
 	}
-	d := diffRoot(root, states, &w, mode)
+	d := diffRoot(root, states, &w, mode, s.reader)
 	r := d.rootSurvey
 	r.temps = w.temps
 	if massDisappearance(d.absent, d.live, countNew(r.jobs)) {
@@ -310,14 +310,14 @@ type diff struct {
 }
 
 // diffRoot compares the walk with the stored states.
-func diffRoot(root string, states map[string]store.FileState, w *walked, mode Mode) diff {
+func diffRoot(root string, states map[string]store.FileState, w *walked, mode Mode, reader string) diff {
 	var r rootSurvey
 	seen := make(map[string]struct{}, len(w.files))
 	for i := range w.files {
 		f := &w.files[i]
 		seen[f.rel] = struct{}{}
 		st := states[f.rel]
-		if mode == Quick && unchanged(&st, f) {
+		if mode == Quick && unchanged(&st, f, reader) {
 			continue
 		}
 		r.jobs = append(r.jobs, job{
@@ -337,9 +337,11 @@ func diffRoot(root string, states map[string]store.FileState, w *walked, mode Mo
 }
 
 // unchanged reports whether the file is what the store already knows: the
-// state is not missing, and size and mtime (to the millisecond) agree.
-func unchanged(st *store.FileState, f *seenFile) bool {
-	return !st.Missing && st.Size == f.size && st.MTime.UnixMilli() == f.mtime.UnixMilli()
+// state is not missing, size and mtime (to the millisecond) agree, and a scan
+// issue was raised by this reader, which would judge the file the same again.
+func unchanged(st *store.FileState, f *seenFile, reader string) bool {
+	return !st.Missing && st.Size == f.size && st.MTime.UnixMilli() == f.mtime.UnixMilli() &&
+		(!st.Issue || st.Reader == reader)
 }
 
 // absence is what vanished from a root.

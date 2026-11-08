@@ -97,6 +97,7 @@ type ScanIssue struct {
 	Size    int64
 	Mtime   int64
 	SeenAt  int64
+	Reader  string
 }
 
 type Session struct {
