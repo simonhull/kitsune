@@ -71,9 +71,10 @@ func TestEndlessDoesNotRepeatWithinACycle(t *testing.T) {
 	t.Parallel()
 	p := pool(t, grid(20, 5, 1), nil) // 100 units of equal weight
 	for seed := range uint64(20) {
-		got := ids(pages(NewEndless(seed, 0), p, config(), 7, 89))
+		// The cycle closes once CycleShare of the weight has played: 70 of 100 equal units.
+		got := ids(pages(NewEndless(seed, 0), p, config(), 7, 69))
 		if len(slices.Compact(slices.Sorted(slices.Values(got)))) != len(got) {
-			t.Fatalf("seed %d: a repeat within 89 of 100 equal units: %v", seed, got)
+			t.Fatalf("seed %d: a repeat within 69 of 100 equal units: %v", seed, got)
 		}
 	}
 }
@@ -117,7 +118,7 @@ func TestEndlessIsRepeatableAndResumes(t *testing.T) {
 	}
 	e := NewEndless(9, 5)
 	first := ids(pages(e, p, c, 10, 50))
-	resumed := ResumeEndless(e.State())
+	resumed := ResumeEndless(new(e.State()))
 	if resumed.Position() != 50 {
 		t.Fatalf("resumed at %d, want 50", resumed.Position())
 	}
@@ -133,12 +134,12 @@ func TestEndlessIsRepeatableAndResumes(t *testing.T) {
 func TestEndlessForgetsAfterThirtyDays(t *testing.T) {
 	t.Parallel()
 	p := pool(t, grid(10, 1, 1), nil) // ten artists, one song each
-	overlaps := func(later Config) int {
+	overlaps := func(later Config, more int) int {
 		n := 0
 		for seed := range uint64(20) {
 			e := NewEndless(seed, 0)
-			before := ids(e.Next(p, config(), 5))
-			for _, id := range ids(e.Next(p, later, 4)) {
+			before := ids(e.Next(p, config(), 4))
+			for _, id := range ids(e.Next(p, later, more)) {
 				if slices.Contains(before, id) {
 					n++
 				}
@@ -149,10 +150,10 @@ func TestEndlessForgetsAfterThirtyDays(t *testing.T) {
 	soon, late := config(), config()
 	soon.Now = now.Add(day)
 	late.Now = now.Add(NoRepeatFor)
-	if n := overlaps(soon); n != 0 {
+	if n := overlaps(soon, 3); n != 0 {
 		t.Errorf("a day later, %d units came back", n)
 	}
-	if n := overlaps(late); n == 0 {
+	if n := overlaps(late, 6); n == 0 {
 		t.Error("thirty days later, nothing came back")
 	}
 }

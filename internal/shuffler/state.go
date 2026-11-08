@@ -56,6 +56,9 @@ type endlessState struct {
 	Units   []int64   `json:"units"`
 	At      []int64   `json:"at"`
 	Weights []float64 `json:"weights"`
+	// Given and GivenAt are every unit given, at the position it last was.
+	Given   []int64  `json:"given"`
+	GivenAt []uint64 `json:"givenAt"`
 }
 
 // recent is one of the last units given, for spacing across pages.
@@ -72,6 +75,11 @@ func endlessOf(st *shuffle.EndlessState) *endlessState {
 		Units:   make([]int64, len(st.Played)),
 		At:      make([]int64, len(st.Played)),
 		Weights: make([]float64, len(st.Played)),
+		Given:   make([]int64, len(st.Last)),
+		GivenAt: make([]uint64, len(st.Last)),
+	}
+	for i, g := range st.Last {
+		out.Given[i], out.GivenAt[i] = int64(g.Unit), g.At
 	}
 	for i, r := range st.Recent {
 		out.Recent[i] = recent{Artists: r.Artists, Albums: r.Albums}
@@ -84,13 +92,17 @@ func endlessOf(st *shuffle.EndlessState) *endlessState {
 
 // resume is the endless shuffle e was taken from, at position from seed.
 func (e *endlessState) resume(seed, position uint64) (*shuffle.Endless, error) {
-	if len(e.At) != len(e.Units) || len(e.Weights) != len(e.Units) {
+	if len(e.At) != len(e.Units) || len(e.Weights) != len(e.Units) || len(e.GivenAt) != len(e.Given) {
 		return nil, fmt.Errorf("endless state: %d units, %d times, %d weights: %w", len(e.Units), len(e.At), len(e.Weights), errBadState)
 	}
 	st := shuffle.EndlessState{
 		Seed: seed, Position: position, First: shuffle.TrackID(e.First),
 		Recent: make([]shuffle.Recent, len(e.Recent)),
 		Played: make([]shuffle.Played, len(e.Units)),
+		Last:   make([]shuffle.Given, len(e.Given)),
+	}
+	for i := range e.Given {
+		st.Last[i] = shuffle.Given{Unit: shuffle.TrackID(e.Given[i]), At: e.GivenAt[i]}
 	}
 	for i, r := range e.Recent {
 		st.Recent[i] = shuffle.Recent{Artists: r.Artists, Albums: r.Albums}
@@ -98,7 +110,7 @@ func (e *endlessState) resume(seed, position uint64) (*shuffle.Endless, error) {
 	for i := range e.Units {
 		st.Played[i] = shuffle.Played{Unit: shuffle.TrackID(e.Units[i]), At: time.UnixMilli(e.At[i]), Weight: e.Weights[i]}
 	}
-	return shuffle.ResumeEndless(st), nil
+	return shuffle.ResumeEndless(&st), nil
 }
 
 // encode is the state as the store keeps it.

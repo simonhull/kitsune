@@ -58,6 +58,7 @@ func TestReport(t *testing.T) {
 	finite(t, &b, libs)
 	endless(t, &b, libs)
 	weights(t, &b, &libs[0])
+	cycles(t, &b, &libs[0])
 	flow(t, &b, &libs[0])
 	signals(t, &b)
 	explain(t, &b, &libs[0])
@@ -218,13 +219,17 @@ func hardRules(t *testing.T, lib *library, mode string, broken, banned int) {
 	}
 }
 
-// endlessPicks is how many picks an endless run of lib takes: two passes
+// passes is how many pool-sizes of picks an endless run of a small library
+// takes: the most any eligible unit may wait, a hard rule.
+const passes = 3
+
+// endlessPicks is how many picks an endless run of lib takes: three passes
 // over a small library, a few days of a large one.
 func endlessPicks(lib *library) int {
 	if len(lib.tracks) >= 10_000 {
 		return 2000
 	}
-	return 2 * len(lib.tracks)
+	return passes * len(lib.tracks)
 }
 
 // endless reports endless shuffles of every library but the tiny album.
@@ -252,7 +257,7 @@ func endless(t *testing.T, b *strings.Builder, libs []library) {
 			{"gap spread (CV, 0 is even)", num(gapSpread(ours)), num(gapSpread(naive))},
 			{"units played in the first pool-size picks", pct(int(oc.share*1000), 1000), pct(int(nc.share*1000), 1000)},
 			{"longest wait, in pool sizes", num(float64(oc.wait) / float64(size)), num(float64(nc.wait) / float64(len(lib.tracks)))},
-			{"units never played", strconv.Itoa(oc.never), strconv.Itoa(nc.never)},
+			{"units never played in 3 passes", strconv.Itoa(oc.never), strconv.Itoa(nc.never)},
 			{"runs intact", pct(or.intact, or.intact+or.broken), pct(nr.intact, nr.intact+nr.broken)},
 			{"skipped songs played, per 1000", per1000(or.banned, picks), per1000(nr.banned, picks)},
 		}
@@ -260,11 +265,15 @@ func endless(t *testing.T, b *strings.Builder, libs []library) {
 			tb.row(lib.name, r[0], r[1], r[2])
 		}
 		hardRules(t, lib, "endless", or.broken, or.banned)
+		if picks == passes*len(lib.tracks) && (oc.never > 0 || oc.wait > passes*size) {
+			t.Errorf("%s endless: %d units never played, and one waited %d picks: every unit must play within %d passes of %d",
+				lib.name, oc.never, oc.wait, passes, size)
+		}
 		if roomy(lib) && on.artists+on.albums > 0 {
 			t.Errorf("%s endless: %d artist and %d album spacing breaks in a set with room", lib.name, on.artists, on.albums)
 		}
 	}
-	tb.note("Two passes' worth of picks over each library (50k: 2,000), 50 a day, the listener hearing every song" +
+	tb.note("Three passes' worth of picks over each library (50k: 2,000), 50 a day, the listener hearing every song" +
 		" through, so recency counts. The naive shuffle plays the songs through in one random order, then another.")
 }
 
@@ -282,6 +291,47 @@ func naivePasses(lib *library, picks int, seed uint64) []shuffle.TrackID {
 		out = append(out, ids[:min(len(ids), picks-len(out))]...)
 	}
 	return out
+}
+
+// cyclePages is how many pages a day the cycle share is priced at: a heavy
+// listener's 200 songs, so a cycle closes before the 30-day window lets a
+// unit back on its own, which at a page a day is what holds instead.
+const cyclePages = 4
+
+// cycles prices the endless shuffle's cycle share: how far ratings bite
+// against how soon every unit plays, at the default settings.
+func cycles(t *testing.T, b *strings.Builder, lib *library) {
+	t.Helper()
+	tb := newTable(b, "Cycle share: fidelity against coverage ("+lib.name+")",
+		"cycle share", "5★ : 1★ plays", "distance", "played in the first pool-size", "longest wait", "never in 3 passes")
+	picks := passes * len(lib.tracks)
+	var weight [shuffle.MaxStars + 1]float64
+	var count [shuffle.MaxStars + 1]int
+	settings := shuffle.DefaultSettings()
+	units := pool(t, lib).Units()
+	for j := range units {
+		r := shuffle.Explain(&units[j], settings, now)
+		c := int(math.Round(r.Stars))
+		weight[c] += r.Rating * r.Heart
+		count[c]++
+	}
+	for _, share := range []float64{0.5, 0.6, 0.7, 0.8, 0.9} {
+		s := newSession(t, lib, settings, nil, neutral{}, 13)
+		s.c.Cycle = share
+		s.pages = cyclePages
+		seq := fromPicks(s.play(picks))
+		got := fidelity(seq, &weight, &count)
+		cov := coverage(seq, s.pool.Len())
+		mark := ""
+		if share == shuffle.CycleShare {
+			mark = " (chosen)"
+		}
+		tb.row(num(share)+mark, num(got.plays), num(got.tv), pct(int(cov.share*1000), 1000),
+			num(float64(cov.wait)/float64(s.pool.Len())), strconv.Itoa(cov.never))
+	}
+	tb.note("Three passes at ratings 0.5, four pages a day. A lower share lets played units back sooner, so weights bite" +
+		" harder (5★ : 1★ plays toward the weight ratio) at the cost of how many units a first pass" +
+		" reaches. The deadline holds the longest wait whatever the share.")
 }
 
 // weights reports how closely endless plays follow the weights, at three

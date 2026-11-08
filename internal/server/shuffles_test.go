@@ -177,9 +177,9 @@ func TestShuffleEndlessRepeatsNothingEarly(t *testing.T) {
 	t.Parallel()
 	ts, sess := shufflesFixture(t)
 	page := ts.startShuffle(t, sess.token, &api.ShuffleStart{Scope: api.ShuffleScope{Kind: scopeLibrary}, Mode: modeEndless})
-	// Nothing comes back before 90% of the weight has played.
-	if seen := slices.Sorted(slices.Values(songsOf(&page))); len(slices.Compact(seen)) != 50 {
-		t.Errorf("the first 50 picks hold %d songs, want 50", len(slices.Compact(seen)))
+	// Nothing comes back before 70% of the weight has played: 42 of 60 equal songs.
+	if seen := slices.Sorted(slices.Values(songsOf(&page)[:42])); len(slices.Compact(seen)) != 42 {
+		t.Errorf("the first 42 picks hold %d songs, want 42", len(slices.Compact(seen)))
 	}
 }
 
