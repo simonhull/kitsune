@@ -349,6 +349,8 @@ export interface LibraryAlbum {
 	/** Whether the caller has hearted it. */
 	hearted: boolean;
 	tracks: LibraryTrack[];
+	/** Only when they say what the songs don't: more than one disc, or one with a name. */
+	discs?: Disc[];
 	/** Only in an index of some albums: the album before this one in the whole index, `''` when first. */
 	after?: string;
 }

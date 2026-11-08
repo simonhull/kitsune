@@ -266,8 +266,10 @@ function ownerOf({ artist, compilation }: Album): Pick<LibraryArtist, 'name' | '
 	};
 }
 
-function listed({ tracks, year, ...album }: Album): LibraryAlbum {
+function listed({ tracks, year, discs, ...album }: Album): LibraryAlbum {
 	const { id, title, artist, compilation } = album;
+	// As the server sends them: only when they say what the songs don't.
+	const telling = discs.length > 1 || discs.some(({ name }) => name !== undefined);
 	return {
 		id,
 		title,
@@ -275,6 +277,7 @@ function listed({ tracks, year, ...album }: Album): LibraryAlbum {
 		compilation,
 		hearted: false,
 		...(year === undefined ? {} : { year }),
+		...(telling ? { discs } : {}),
 		tracks: tracks.map(({ id: track, title: name, durationMs, artists, discNo, trackNo }) => ({
 			id: track,
 			title: name,

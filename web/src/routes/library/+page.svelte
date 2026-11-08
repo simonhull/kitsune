@@ -531,6 +531,9 @@
 								play={(trackId) => {
 									view.play(album.album.id, trackId);
 								}}
+								playDisc={(disc) => {
+									view.playDisc(album.album.id, disc);
+								}}
 								{pick}
 								openMenu={openRowMenu}
 								{rowKey}

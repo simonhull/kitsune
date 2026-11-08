@@ -10,7 +10,9 @@ import type {
 /** The heights a layout is built from: everything on the page has one known before it mounts. */
 export interface RowMetrics {
 	song: number;
-	disc: number;
+	/** A disc's heading at the top of its album's songs, and one between two discs, with room above. */
+	firstDisc: number;
+	nextDisc: number;
 	/** What stands above an album's songs. Beside them, as at desktop, it's nothing. */
 	albumHead: number;
 	/** The least height of an album: its cover column can be taller than a short album's songs. */
@@ -24,7 +26,15 @@ export interface RowMetrics {
 }
 
 export type Row =
-	| { kind: 'disc'; top: number; height: number; albumIndex: number; disc: number }
+	| {
+			kind: 'disc';
+			top: number;
+			height: number;
+			albumIndex: number;
+			disc: number;
+			/** Whether it heads the album's songs on show: then it has no disc above it. */
+			first: boolean;
+	  }
 	| { kind: 'song'; top: number; height: number; albumIndex: number; trackIndex: number };
 
 export interface AlbumBlock {
@@ -186,9 +196,11 @@ function layOutAlbum(
 		}
 		const on = track.discNo ?? 1;
 		if (multiDisc && on !== disc) {
+			const first = disc === null;
+			const height = first ? metrics.firstDisc : metrics.nextDisc;
 			disc = on;
-			rows.push({ kind: 'disc', top: y, height: metrics.disc, albumIndex, disc });
-			y += metrics.disc;
+			rows.push({ kind: 'disc', top: y, height, albumIndex, disc, first });
+			y += height;
 		}
 		rows.push({ kind: 'song', top: y, height: metrics.song, albumIndex, trackIndex });
 		y += metrics.song;

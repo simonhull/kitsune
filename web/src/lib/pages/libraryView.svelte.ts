@@ -38,6 +38,11 @@ export interface Frame {
 
 /** What stands under a cover beside its songs: its title and its facts, at each step. */
 const coverNames = { columns: 56, large: 72 };
+/** A disc's heading: the first under an album's cover, and then one with room above it. */
+const discHeights = {
+	columns: { firstDisc: 36, nextDisc: 64 },
+	large: { firstDisc: 44, nextDisc: 80 }
+};
 /** A stacked album's head: its cover, and the room under it. */
 const stackedHead = 112 + 20;
 /** The columns' header, in a stacked layout part of the artist's head. */
@@ -54,7 +59,7 @@ export function frameFor(step: Step, stacked: boolean, cover: number): Frame {
 		return {
 			metrics: {
 				song: columns ? 44 : 58,
-				disc: 32,
+				...discHeights.columns,
 				albumHead: stackedHead,
 				albumMin: 0,
 				artistHead: columns ? 80 + headerHeight : 80,
@@ -70,7 +75,7 @@ export function frameFor(step: Step, stacked: boolean, cover: number): Frame {
 	return {
 		metrics: {
 			song: large ? 56 : 44,
-			disc: large ? 40 : 32,
+			...(large ? discHeights.large : discHeights.columns),
 			albumHead: 0,
 			albumMin: cover + (large ? coverNames.large : coverNames.columns),
 			artistHead: 0,
@@ -161,6 +166,9 @@ class LibraryView {
 		load: (id) => library.loadAlbum(id),
 		play: (album, index) => {
 			player.play(album, index);
+		},
+		playDisc: (album, disc) => {
+			player.playDisc(album, disc);
 		},
 		failed: (id) => {
 			this.trouble = id;
@@ -281,7 +289,13 @@ class LibraryView {
 	/** Plays a song and carries on through its album. */
 	play(albumId: string, trackId: string): void {
 		this.trouble = null;
-		this.#tap(albumId, trackId);
+		this.#tap(albumId, { track: trackId });
+	}
+
+	/** Plays one disc of an album, in order. */
+	playDisc(albumId: string, disc: number): void {
+		this.trouble = null;
+		this.#tap(albumId, { disc });
 	}
 
 	reset(): void {
