@@ -248,3 +248,56 @@ func TestMovingEveryTrackMergesTheAlbum(t *testing.T) {
 		t.Error("the merged album's heart did not move")
 	}
 }
+
+func TestAnAlbumsYearIsItsFirstTracks(t *testing.T) {
+	t.Parallel()
+	l := newEditLib(t) // a.flac sorts before bystander.flac.
+	second := l.album.Tracks[slices.IndexFunc(l.album.Tracks, func(tr store.Track) bool {
+		f, err := l.st.TrackFile(t.Context(), tr.ID)
+		return err == nil && f.RelPath == bystander
+	})].ID
+	edit := AlbumEdit{Tracks: map[string]Edit{second: {Fields: map[Field][]string{FieldDate: {"1999"}}}}}
+	if _, err := l.scanner.EditAlbum(t.Context(), l.album.ID, l.album.ETag, &edit); err != nil {
+		t.Fatal(err)
+	}
+	if after := l.albumDetail(); after.Year != l.album.Year {
+		t.Errorf("album year = %d after editing its second track, want the first's %d", after.Year, l.album.Year)
+	}
+	after := l.albumDetail()
+	if _, err := l.scanner.EditAlbum(t.Context(), after.ID, after.ETag, &AlbumEdit{All: *yearEdit()}); err != nil {
+		t.Fatal(err)
+	}
+	if got := l.albumDetail(); got.Year != newYear {
+		t.Errorf("album year = %d, want %d", got.Year, newYear)
+	}
+}
+
+func TestATrackMovedOffTakesItsCover(t *testing.T) {
+	t.Parallel()
+	l := newArtLib(t)
+	l.opts.TagWrites = true
+	l.scanner = NewScanner(l.st, l.opts)
+	root := l.roots[0]
+	l.copyTo(root, "a.flac", sampleFLAC)
+	l.copyTo(root, "b.flac", sampleFLAC)
+	sameAlbum(t, root, "a.flac", "b.flac")
+	art, otherArt := testPNG(t, red()), testPNG(t, blue())
+	numbered(t, root, "a.flac", 1, 1, art)
+	numbered(t, root, "b.flac", 1, 2, otherArt)
+	l.scan(Full)
+	page, err := l.st.Albums(t.Context(), store.SortAdded, mostRead, "")
+	if err != nil || len(page.Albums) != 1 {
+		t.Fatalf("albums = %+v, %v", page.Albums, err)
+	}
+	before, err := l.st.Album(t.Context(), page.Albums[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := before.Tracks[1].ID
+	edit := AlbumEdit{Tracks: map[string]Edit{moved: {Fields: map[Field][]string{FieldAlbum: {renamed}}}}}
+	if _, err = l.scanner.EditAlbum(t.Context(), before.ID, before.ETag, &edit); err != nil {
+		t.Fatal(err)
+	}
+	wantHash(t, l.albumOf("b.flac").hash, otherArt)
+	wantHash(t, l.albumOf("a.flac").hash, art)
+}

@@ -44,6 +44,40 @@ func (q *Queries) GroupKeyTaken(ctx context.Context, groupKey string) (bool, err
 	return exists, err
 }
 
+const listAlbumCoverFiles = `-- name: ListAlbumCoverFiles :many
+SELECT root, rel_path FROM tracks
+WHERE album_id = ? AND missing_since IS NULL
+ORDER BY coalesce(disc_no, 1), track_no IS NULL, track_no, root || '/' || rel_path
+`
+
+type ListAlbumCoverFilesRow struct {
+	Root    string
+	RelPath string
+}
+
+func (q *Queries) ListAlbumCoverFiles(ctx context.Context, albumID int64) ([]ListAlbumCoverFilesRow, error) {
+	rows, err := q.query(ctx, q.listAlbumCoverFilesStmt, listAlbumCoverFiles, albumID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumCoverFilesRow
+	for rows.Next() {
+		var i ListAlbumCoverFilesRow
+		if err := rows.Scan(&i.Root, &i.RelPath); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const mergeAlbumInto = `-- name: MergeAlbumInto :exec
 UPDATE albums SET
     artwork_hash = coalesce(albums.artwork_hash, (SELECT f.artwork_hash FROM albums f WHERE f.id = ?1)),
@@ -79,6 +113,20 @@ func (q *Queries) MoveAlbumHearts(ctx context.Context, arg MoveAlbumHeartsParams
 	return err
 }
 
+const setAlbumArtwork = `-- name: SetAlbumArtwork :exec
+UPDATE albums SET artwork_hash = ?1 WHERE id = ?2
+`
+
+type SetAlbumArtworkParams struct {
+	Hash []byte
+	ID   int64
+}
+
+func (q *Queries) SetAlbumArtwork(ctx context.Context, arg SetAlbumArtworkParams) error {
+	_, err := q.exec(ctx, q.setAlbumArtworkStmt, setAlbumArtwork, arg.Hash, arg.ID)
+	return err
+}
+
 const setAlbumGroupKey = `-- name: SetAlbumGroupKey :exec
 UPDATE albums SET group_key = ?1 WHERE id = ?2
 `
@@ -90,6 +138,30 @@ type SetAlbumGroupKeyParams struct {
 
 func (q *Queries) SetAlbumGroupKey(ctx context.Context, arg SetAlbumGroupKeyParams) error {
 	_, err := q.exec(ctx, q.setAlbumGroupKeyStmt, setAlbumGroupKey, arg.GroupKey, arg.ID)
+	return err
+}
+
+const settleAlbum = `-- name: SettleAlbum :exec
+
+UPDATE albums SET
+    year = (
+        SELECT t.year FROM tracks t WHERE t.album_id = albums.id
+        ORDER BY t.missing_since IS NOT NULL, coalesce(t.disc_no, 1), t.track_no IS NULL, t.track_no, t.root || '/' || t.rel_path
+        LIMIT 1
+    ),
+    compilation = coalesce((
+        SELECT t.compilation FROM tracks t WHERE t.album_id = albums.id
+        ORDER BY t.missing_since IS NOT NULL, coalesce(t.disc_no, 1), t.track_no IS NULL, t.track_no, t.root || '/' || t.rel_path
+        LIMIT 1
+    ), albums.compilation)
+WHERE albums.id = ?
+`
+
+// First tracks are by disc (none is the first), then track number (none comes
+// last), then path, as the scanner's covers rank them; live tracks before missing.
+// An album's year and compilation flag are its first track's.
+func (q *Queries) SettleAlbum(ctx context.Context, id int64) error {
+	_, err := q.exec(ctx, q.settleAlbumStmt, settleAlbum, id)
 	return err
 }
 

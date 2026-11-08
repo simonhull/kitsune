@@ -246,11 +246,13 @@ func (s *Scanner) undoRekeys(ctx context.Context, undo []store.AlbumRekey) {
 // and the next scan prunes what is left.
 func (s *Scanner) settle(ctx context.Context, written []fileEdit) {
 	ctx = context.WithoutCancel(ctx)
-	if moves := albumMoves(written); len(moves) > 0 {
+	moves := albumMoves(written)
+	if len(moves) > 0 {
 		if _, err := s.st.MergeEmptied(ctx, moves); err != nil {
 			s.log.WarnContext(ctx, "merging albums after an edit failed", "err", err)
 		}
 	}
+	s.settleAlbums(ctx, written, moves)
 	if pruned, err := s.st.PruneOrphans(ctx); err != nil {
 		s.log.WarnContext(ctx, "pruning after an edit failed", "err", err)
 	} else {
@@ -258,6 +260,90 @@ func (s *Scanner) settle(ctx context.Context, written []fileEdit) {
 	}
 	s.refreshNames(ctx)
 	s.refreshGenres(ctx)
+}
+
+// settleAlbums gives every album the written tracks were on or went to the
+// fields of its first track, and every album that gained or lost tracks the
+// cover the scanner would find it: tracks are reindexed one at a time and without
+// art, so neither the last one written nor the old cover decides.
+func (s *Scanner) settleAlbums(ctx context.Context, written []fileEdit, moves []store.AlbumMove) {
+	tracks := make([]int64, len(written))
+	var albums []int64
+	for i := range written {
+		tracks[i] = written[i].file.ID
+		if a := written[i].file.Album; !slices.Contains(albums, a) {
+			albums = append(albums, a)
+		}
+	}
+	now, err := s.st.TrackAlbumRows(ctx, tracks)
+	if err == nil {
+		err = s.st.SettleAlbums(ctx, unique(albums, now))
+	}
+	if err != nil {
+		s.log.WarnContext(ctx, "settling albums after an edit failed", "err", err)
+		return
+	}
+	var left, moved []int64
+	for i := range moves {
+		left = append(left, moves[i].From)
+		moved = append(moved, moves[i].Tracks...)
+	}
+	joined, err := s.st.TrackAlbumRows(ctx, moved)
+	if err != nil {
+		s.log.WarnContext(ctx, "settling covers after an edit failed", "err", err)
+		return
+	}
+	for _, album := range unique(left, joined) {
+		s.settleCover(ctx, album)
+	}
+}
+
+// unique returns the values of lists, each once, in order.
+func unique(lists ...[]int64) []int64 {
+	var out []int64
+	for _, list := range lists {
+		for _, v := range list {
+			if !slices.Contains(out, v) {
+				out = append(out, v)
+			}
+		}
+	}
+	return out
+}
+
+// settleCover gives the album the cover of its first track that has one, as a
+// scan would. With none, it keeps the one it has. Art never fails an edit: a
+// failure is logged.
+func (s *Scanner) settleCover(ctx context.Context, album int64) {
+	if s.artwork == nil {
+		return
+	}
+	files, err := s.st.AlbumCoverFiles(ctx, album)
+	if err != nil {
+		s.log.WarnContext(ctx, "finding an album's cover after an edit failed", "err", err)
+		return
+	}
+	for _, file := range files {
+		art := s.coverOf(ctx, file)
+		if art == nil {
+			continue
+		}
+		if err = s.st.SetAlbumArtwork(ctx, album, art); err != nil {
+			s.log.WarnContext(ctx, "storing an album's cover after an edit failed", "err", err)
+		}
+		return
+	}
+}
+
+// coverOf returns the cover the file offers its album, or nil.
+func (s *Scanner) coverOf(ctx context.Context, file store.CoverFile) *store.ArtworkWrite {
+	f, err := audiometa.OpenContext(ctx, filepath.Join(file.Root, file.RelPath), audiometa.WithMaxArtworkSize(maxArtworkBytes))
+	if err != nil {
+		return nil // The track was just written; the next scan reports a file gone bad.
+	}
+	defer func() { _ = f.Close() }() // Only read.
+	look := search{covers: newCovers(s.artwork, s.log), f: f, j: &job{Root: file.Root, RelPath: file.RelPath}}
+	return look.run(ctx)
 }
 
 // albumMoves lists the tracks written from each album that a written track may

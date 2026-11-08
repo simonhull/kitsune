@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
@@ -114,4 +116,86 @@ func mergeTarget(ctx context.Context, q *sqlcdb.Queries, m *AlbumMove) (int64, e
 		return 0, nil
 	}
 	return into, nil
+}
+
+// TrackAlbumRows returns the album rows of the tracks with the given rows, each
+// once, in the order the tracks first name them.
+func (s *Store) TrackAlbumRows(ctx context.Context, tracks []int64) ([]int64, error) {
+	var out []int64
+	for _, track := range tracks {
+		album, err := s.rq.TrackAlbumRow(ctx, track)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("album of track %d: %w", track, err)
+		}
+		if !slices.Contains(out, album) {
+			out = append(out, album)
+		}
+	}
+	return out, nil
+}
+
+// SettleAlbums gives each album the year and compilation flag of its first
+// track, by disc, track number and path, as covers are chosen: with the tracks
+// of an edit written one at a time, the last one written must not decide. An
+// album that is gone is skipped.
+func (s *Store) SettleAlbums(ctx context.Context, albums []int64) error {
+	if len(albums) == 0 {
+		return nil
+	}
+	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+		for _, album := range albums {
+			if err := q.SettleAlbum(ctx, album); err != nil {
+				return fmt.Errorf("album %d: %w", album, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("settle albums: %w", err)
+	}
+	return nil
+}
+
+// CoverFile is a file an album's cover may come from.
+type CoverFile struct{ Root, RelPath string }
+
+// AlbumCoverFiles returns the files of an album's live tracks, first track
+// first, as [Store.SettleAlbums] orders them.
+func (s *Store) AlbumCoverFiles(ctx context.Context, album int64) ([]CoverFile, error) {
+	rows, err := s.rq.ListAlbumCoverFiles(ctx, album)
+	if err != nil {
+		return nil, fmt.Errorf("album %d: cover files: %w", album, err)
+	}
+	out := make([]CoverFile, len(rows))
+	for i := range rows {
+		out[i] = CoverFile{Root: rows[i].Root, RelPath: rows[i].RelPath}
+	}
+	return out, nil
+}
+
+// SetAlbumArtwork makes art the album's cover.
+//
+// It returns an error wrapping [ErrInvalidWrite], and writes nothing, for art
+// that [Batch] would refuse.
+func (s *Store) SetAlbumArtwork(ctx context.Context, album int64, art *ArtworkWrite) error {
+	if err := art.validate(); err != nil {
+		return fmt.Errorf("album %d artwork: %w", album, err)
+	}
+	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+		err := q.UpsertArtwork(ctx, sqlcdb.UpsertArtworkParams{
+			Hash: art.Hash[:], Width: int64(art.Width), Height: int64(art.Height),
+			Accent: art.Accent, Ground: art.Ground, Source: string(art.Source),
+		})
+		if err != nil {
+			return fmt.Errorf("upsert artwork: %w", err)
+		}
+		return q.SetAlbumArtwork(ctx, sqlcdb.SetAlbumArtworkParams{Hash: art.Hash[:], ID: album})
+	})
+	if err != nil {
+		return fmt.Errorf("album %d artwork: %w", album, err)
+	}
+	return nil
 }

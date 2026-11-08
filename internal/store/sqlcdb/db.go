@@ -171,6 +171,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.knownRootsStmt, err = db.PrepareContext(ctx, knownRoots); err != nil {
 		return nil, fmt.Errorf("error preparing query KnownRoots: %w", err)
 	}
+	if q.listAlbumCoverFilesStmt, err = db.PrepareContext(ctx, listAlbumCoverFiles); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAlbumCoverFiles: %w", err)
+	}
 	if q.listAlbumFilesStmt, err = db.PrepareContext(ctx, listAlbumFiles); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumFiles: %w", err)
 	}
@@ -318,6 +321,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.sessionByTokenHashStmt, err = db.PrepareContext(ctx, sessionByTokenHash); err != nil {
 		return nil, fmt.Errorf("error preparing query SessionByTokenHash: %w", err)
 	}
+	if q.setAlbumArtworkStmt, err = db.PrepareContext(ctx, setAlbumArtwork); err != nil {
+		return nil, fmt.Errorf("error preparing query SetAlbumArtwork: %w", err)
+	}
 	if q.setAlbumGroupKeyStmt, err = db.PrepareContext(ctx, setAlbumGroupKey); err != nil {
 		return nil, fmt.Errorf("error preparing query SetAlbumGroupKey: %w", err)
 	}
@@ -329,6 +335,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setPasswordHashStmt, err = db.PrepareContext(ctx, setPasswordHash); err != nil {
 		return nil, fmt.Errorf("error preparing query SetPasswordHash: %w", err)
+	}
+	if q.settleAlbumStmt, err = db.PrepareContext(ctx, settleAlbum); err != nil {
+		return nil, fmt.Errorf("error preparing query SettleAlbum: %w", err)
 	}
 	if q.touchSessionStmt, err = db.PrepareContext(ctx, touchSession); err != nil {
 		return nil, fmt.Errorf("error preparing query TouchSession: %w", err)
@@ -628,6 +637,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing knownRootsStmt: %w", cerr)
 		}
 	}
+	if q.listAlbumCoverFilesStmt != nil {
+		if cerr := q.listAlbumCoverFilesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAlbumCoverFilesStmt: %w", cerr)
+		}
+	}
 	if q.listAlbumFilesStmt != nil {
 		if cerr := q.listAlbumFilesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAlbumFilesStmt: %w", cerr)
@@ -873,6 +887,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing sessionByTokenHashStmt: %w", cerr)
 		}
 	}
+	if q.setAlbumArtworkStmt != nil {
+		if cerr := q.setAlbumArtworkStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setAlbumArtworkStmt: %w", cerr)
+		}
+	}
 	if q.setAlbumGroupKeyStmt != nil {
 		if cerr := q.setAlbumGroupKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setAlbumGroupKeyStmt: %w", cerr)
@@ -891,6 +910,11 @@ func (q *Queries) Close() error {
 	if q.setPasswordHashStmt != nil {
 		if cerr := q.setPasswordHashStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setPasswordHashStmt: %w", cerr)
+		}
+	}
+	if q.settleAlbumStmt != nil {
+		if cerr := q.settleAlbumStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing settleAlbumStmt: %w", cerr)
 		}
 	}
 	if q.touchSessionStmt != nil {
@@ -1061,6 +1085,7 @@ type Queries struct {
 	insertTrackTagStmt             *sql.Stmt
 	issueStatesStmt                *sql.Stmt
 	knownRootsStmt                 *sql.Stmt
+	listAlbumCoverFilesStmt        *sql.Stmt
 	listAlbumFilesStmt             *sql.Stmt
 	listAlbumHeartedTracksStmt     *sql.Stmt
 	listAlbumHitsStmt              *sql.Stmt
@@ -1110,10 +1135,12 @@ type Queries struct {
 	resetLastfmOutboxStmt          *sql.Stmt
 	rootStatsStmt                  *sql.Stmt
 	sessionByTokenHashStmt         *sql.Stmt
+	setAlbumArtworkStmt            *sql.Stmt
 	setAlbumGroupKeyStmt           *sql.Stmt
 	setDigestStmt                  *sql.Stmt
 	setLastfmStateStmt             *sql.Stmt
 	setPasswordHashStmt            *sql.Stmt
+	settleAlbumStmt                *sql.Stmt
 	touchSessionStmt               *sql.Stmt
 	trackAlbumRowStmt              *sql.Stmt
 	trackRowIDStmt                 *sql.Stmt
@@ -1185,6 +1212,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTrackTagStmt:             q.insertTrackTagStmt,
 		issueStatesStmt:                q.issueStatesStmt,
 		knownRootsStmt:                 q.knownRootsStmt,
+		listAlbumCoverFilesStmt:        q.listAlbumCoverFilesStmt,
 		listAlbumFilesStmt:             q.listAlbumFilesStmt,
 		listAlbumHeartedTracksStmt:     q.listAlbumHeartedTracksStmt,
 		listAlbumHitsStmt:              q.listAlbumHitsStmt,
@@ -1234,10 +1262,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		resetLastfmOutboxStmt:          q.resetLastfmOutboxStmt,
 		rootStatsStmt:                  q.rootStatsStmt,
 		sessionByTokenHashStmt:         q.sessionByTokenHashStmt,
+		setAlbumArtworkStmt:            q.setAlbumArtworkStmt,
 		setAlbumGroupKeyStmt:           q.setAlbumGroupKeyStmt,
 		setDigestStmt:                  q.setDigestStmt,
 		setLastfmStateStmt:             q.setLastfmStateStmt,
 		setPasswordHashStmt:            q.setPasswordHashStmt,
+		settleAlbumStmt:                q.settleAlbumStmt,
 		touchSessionStmt:               q.touchSessionStmt,
 		trackAlbumRowStmt:              q.trackAlbumRowStmt,
 		trackRowIDStmt:                 q.trackRowIDStmt,
