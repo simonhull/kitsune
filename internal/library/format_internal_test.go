@@ -142,6 +142,39 @@ func TestRawKeysPerFormat(t *testing.T) {
 	}
 }
 
+// TestDiscSubtitleKeysPerFormat writes a disc's name under each format's own key
+// with audiometa and reads it back as a scan does, through the raw key and
+// through the candidates. Only ID3v2.4 has a frame for it.
+func TestDiscSubtitleKeysPerFormat(t *testing.T) {
+	t.Parallel()
+	const name = discOne
+	tests := []struct{ sample, key string }{
+		{sampleFLAC, keyDiscSubtitle},
+		{sampleMP3, keyTSST},
+		{sampleMP3v23, keyDiscSubtitle}, // A TXXX: audiometa writes no TSST to ID3v2.3.
+		{sampleM4A, keyDiscSubtitle},    // The freeform ----:com.apple.iTunes:DISCSUBTITLE.
+	}
+	for _, tt := range tests {
+		t.Run(tt.sample, func(t *testing.T) {
+			t.Parallel()
+			path := copySample(t, tt.sample)
+			if err := audiometa.Write(path, func(f *audiometa.File) error {
+				f.Tags.Set(tt.key, name)
+				return nil
+			}); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			got := reread(t, path)
+			if got.DiscSubtitle != name {
+				t.Errorf("DiscSubtitle = %q, want %q", got.DiscSubtitle, name)
+			}
+			if v := rawValues(&got, tt.key); !slices.Equal(v, []string{name}) {
+				t.Errorf("raw %s = %q, want %q; tags %+v", tt.key, v, name, got.Tags)
+			}
+		})
+	}
+}
+
 const (
 	rootMusic = "/music"
 	formatM4A = "M4A"

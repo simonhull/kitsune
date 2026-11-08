@@ -21,7 +21,8 @@ import {
 
 const metrics: RowMetrics = {
 	song: 44,
-	disc: 30,
+	firstDisc: 30,
+	nextDisc: 60,
 	albumHead: 0,
 	albumMin: 100,
 	artistHead: 0,
@@ -68,20 +69,20 @@ describe('layOut', () => {
 		expect(layout.albums.map(({ top, height }) => [top, height])).toEqual([
 			[0, 132],
 			[172, 100],
-			[332, 148],
-			[540, 132]
+			[332, 178],
+			[570, 132]
 		]);
 		expect(layout.artists.map(({ top, height }) => [top, height])).toEqual([
 			[0, 272],
-			[332, 148],
-			[540, 132]
+			[332, 178],
+			[570, 132]
 		]);
-		expect(layout.height).toBe(672);
+		expect(layout.height).toBe(702);
 	});
 
 	it('puts each row under its album, in order', () => {
 		expect(layout.rows.map(({ top }) => top)).toEqual([
-			0, 44, 88, 172, 332, 362, 406, 436, 540, 584, 628
+			0, 44, 88, 172, 332, 362, 406, 466, 570, 614, 658
 		]);
 		const [first, second] = layout.albums;
 		expect([first?.firstRow, first?.lastRow, second?.firstRow, second?.lastRow]).toEqual([
@@ -92,9 +93,18 @@ describe('layOut', () => {
 
 	it('gives a disc row only to an album with several discs', () => {
 		expect(layout.rows.filter(({ kind }) => kind === 'disc')).toMatchObject([
-			{ albumIndex: 2, disc: 1 },
-			{ albumIndex: 2, disc: 2 }
+			{ albumIndex: 2, disc: 1, first: true, height: 30 },
+			{ albumIndex: 2, disc: 2, first: false, height: 60 }
 		]);
+	});
+
+	it('heads a disc as the first when a filter leaves none above it', () => {
+		const kept = layOut(index, metrics, (_artist, _album, track) => track.id === 'f');
+		expect(kept.rows).toMatchObject([
+			{ kind: 'disc', disc: 2, first: true, top: 0, height: 30 },
+			{ kind: 'song', top: 30, height: 44 }
+		]);
+		expect(kept.albums.at(0)?.height).toBe(100);
 	});
 
 	it('leaves room for the heads a stacked layout has', () => {

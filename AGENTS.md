@@ -274,7 +274,7 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   only a path that could be a client route gets `index.html`. A client route must have no dot in its last
   segment. A base path serves no client, because the build's paths are fixed to the root of a host.
 - The image is `FROM scratch`: no shell, no zone files (`time/tzdata` is in the binary), no `/tmp`. Temp
-  files go beside their targets, and must keep doing so. CI runs `scripts/smoke-image.sh` against it.
+  files go beside their targets, and must keep doing so. SQLite keeps its temp storage in memory (`temp_store`) for the same reason: a big sort or table rebuild would otherwise fail with `IOERR_GETTEMPPATH`. CI runs `scripts/smoke-image.sh` against it.
 - `cmd/kitsune-server` is the only place that reads the environment, signals or flags;
   `internal/server` takes everything through `server.Config`.
 - Logs are `log/slog` JSON. Log `r.URL.Path`, never the full URL or query: OpenSubsonic

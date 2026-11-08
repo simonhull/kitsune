@@ -574,6 +574,7 @@ class Scripted {
 							hearted: false
 						}
 					],
+					discs: [],
 					durationMs: 0,
 					formats: [],
 					addedAt: '',

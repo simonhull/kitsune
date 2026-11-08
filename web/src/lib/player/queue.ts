@@ -77,6 +77,15 @@ export function inOrder(album: Album, index = 0): Queue {
 	return { album, tracks: album.tracks, index, ordered: true };
 }
 
+/**
+ * Queues one disc of an album, in the album's order. A song with no disc number is on disc 1. It
+ * is still the album's own order, a part of it, so album gain plays.
+ */
+export function onDisc(album: Album, disc: number): Queue {
+	const tracks = album.tracks.filter(({ discNo }) => (discNo ?? 1) === disc);
+	return { album, tracks, index: 0, ordered: true };
+}
+
 /** A small seeded generator (mulberry32), so a shuffle can be repeated. */
 function generator(seed: number): () => number {
 	let state = seed;

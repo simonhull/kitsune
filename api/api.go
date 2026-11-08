@@ -256,8 +256,10 @@ type Track struct {
 	ReplayGain *ReplayGain `json:"replayGain,omitzero"`
 	TrackTotal int         `json:"trackTotal,omitzero"`
 	DiscTotal  int         `json:"discTotal,omitzero"`
-	Year       int         `json:"year,omitzero"`
-	Genres     []string    `json:"genres"`
+	// DiscSubtitle is the disc's name as this track is tagged.
+	DiscSubtitle string   `json:"discSubtitle,omitzero"`
+	Year         int      `json:"year,omitzero"`
+	Genres       []string `json:"genres"`
 	// Etag changes when the file does. It is not the stream's ETag.
 	Etag string `json:"etag"`
 	// Hearted and Stars are the caller's own. Stars is absent when unrated.
@@ -369,6 +371,7 @@ type AlbumDetail struct {
 	Compilation bool         `json:"compilation"`
 	Artwork     *Artwork     `json:"artwork,omitzero"`
 	Tracks      []Track      `json:"tracks"`
+	Discs       []Disc       `json:"discs"`
 	DurationMs  int64        `json:"durationMs"`
 	Formats     []string     `json:"formats"`
 	AddedAt     time.Time    `json:"addedAt"`
@@ -455,9 +458,21 @@ type LibraryAlbum struct {
 	Year        int            `json:"year,omitzero"`
 	Artwork     *Artwork       `json:"artwork,omitzero"`
 	Tracks      []LibraryTrack `json:"tracks"`
+	// Discs are the album's discs only when they say what the tracks don't:
+	// when there is more than one, or one with a name. Otherwise nil.
+	Discs []Disc `json:"discs,omitzero"`
 	// After is, in an index of some albums, the album before this one in the
 	// whole index; "" when it comes first. Nil in the whole index.
 	After *string `json:"after,omitzero"`
+}
+
+// Disc is one disc of an album, in disc order: an album on one disc has one.
+type Disc struct {
+	No int `json:"no"` // From 1: a track with no disc number is on disc 1.
+	// Name is the disc's subtitle, from its first song that has one.
+	Name       string `json:"name,omitzero"`
+	Songs      int    `json:"songs"`
+	DurationMs int64  `json:"durationMs"`
 }
 
 // LibraryTrack is a song in the library index.

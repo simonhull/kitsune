@@ -252,6 +252,9 @@ func toAPILibraryAlbum(a *store.IndexAlbum, fields *fieldWriter) api.LibraryAlbu
 		ID: a.ID, Title: a.Title, Artist: a.Artist, Compilation: a.Compilation, Hearted: a.Hearted, Year: a.Year,
 		Artwork: toAPIArtwork(a.Cover), Tracks: make([]api.LibraryTrack, len(a.Tracks)),
 	}
+	if a.Discs != nil {
+		out.Discs = toAPIDiscs(a.Discs)
+	}
 	for i := range a.Tracks {
 		t := &a.Tracks[i]
 		out.Tracks[i] = api.LibraryTrack{
@@ -288,6 +291,15 @@ func toAPIScan(p library.Progress, admin bool) api.ScanStatus {
 	return out
 }
 
+// toAPIDiscs returns the wire form of an album's discs, never nil.
+func toAPIDiscs(discs []store.Disc) []api.Disc {
+	out := make([]api.Disc, len(discs))
+	for i, d := range discs {
+		out[i] = api.Disc{No: d.No, Name: d.Name, Songs: d.Songs, DurationMs: d.Duration.Milliseconds()}
+	}
+	return out
+}
+
 // toAPIArtwork returns the wire form of a cover, or nil for none.
 func toAPIArtwork(c *store.Cover) *api.Artwork {
 	if c == nil {
@@ -311,6 +323,7 @@ func toAPIAlbumDetail(d *store.AlbumDetail, genres map[string][]string) api.Albu
 		Compilation: d.Compilation, Artwork: toAPIArtwork(d.Cover),
 		Artists:       toAPIArtistLinks(d.Artists),
 		Tracks:        make([]api.Track, len(d.Tracks)),
+		Discs:         toAPIDiscs(d.Discs),
 		DurationMs:    d.Duration.Milliseconds(),
 		Formats:       append([]string{}, d.Formats...),
 		AddedAt:       d.AddedAt,
@@ -334,7 +347,7 @@ func toAPITrack(t *store.Track, genres []string) api.Track {
 		ID: t.ID, Title: t.Title, Artists: append([]string{}, t.Artists...),
 		DiscNo: t.DiscNo, TrackNo: t.TrackNo, DurationMs: t.Duration.Milliseconds(),
 		Format: t.Format, SampleRate: t.SampleRate, BitDepth: t.BitDepth,
-		TrackTotal: t.TrackTotal, DiscTotal: t.DiscTotal, Year: t.Year,
+		TrackTotal: t.TrackTotal, DiscTotal: t.DiscTotal, DiscSubtitle: t.DiscSubtitle, Year: t.Year,
 		Genres: append([]string{}, genres...), Etag: t.ETag,
 	}
 	if rg := t.ReplayGain; rg != (store.ReplayGain{}) {

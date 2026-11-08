@@ -157,6 +157,7 @@ type Track struct {
 	ScanWarnings string
 	AddedAt      int64
 	MissingSince *int64
+	DiscSubtitle *string
 }
 
 type TrackArtist struct {

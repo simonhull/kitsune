@@ -250,7 +250,7 @@ func TestEmptyGenresRemoveTheKey(t *testing.T) {
 func everyField() map[Field][]string {
 	return map[Field][]string{
 		FieldTitle: {newTitle}, FieldTrack: {"7"}, FieldTrackTotal: {"12"}, FieldDisc: {"2"}, FieldDiscTotal: {"3"},
-		FieldDate: {newDate}, FieldGenres: {jazz, "Blues"}, FieldComposers: {"Com One", "Com Two"},
+		FieldDiscSubtitle: {discTwo}, FieldDate: {newDate}, FieldGenres: {jazz, "Blues"}, FieldComposers: {"Com One", "Com Two"},
 		FieldConductor: {"Con One", "Con Two"}, FieldLyricist: {"Lyr One", "Lyr Two"},
 		FieldPerformers: {"Per One", "Per Two"}, FieldRemixer: {"Rem One", "Rem Two"}, FieldGrouping: {"Group"},
 		FieldLabel: {"Label One", "Label Two"}, FieldCatalogNumber: {"CAT-1", "CAT-2"}, FieldBarcode: {"123", "456"},
@@ -275,11 +275,21 @@ func fieldsOf(t *testing.T, path string) *TrackTags {
 func wantEveryField(t *testing.T, path string, before *store.TrackWrite) {
 	t.Helper()
 	got := reread(t, path)
-	if got.Title != newTitle || got.TrackNo != 7 || got.TrackTotal != 12 || got.DiscNo != 2 || got.DiscTotal != 3 {
-		t.Errorf("track = %q %d/%d, disc %d/%d", got.Title, got.TrackNo, got.TrackTotal, got.DiscNo, got.DiscTotal)
+	type seen struct {
+		title, sortTitle, discName                           string
+		trackNo, trackTotal, discNo, discTotal, year, origin int
 	}
-	if got.Year != newYear || got.OriginalYear != 1977 || got.SortTitle != "Title, New" {
-		t.Errorf("year %d, original %d, sort %q", got.Year, got.OriginalYear, got.SortTitle)
+	scanned := seen{
+		title: got.Title, sortTitle: got.SortTitle, discName: got.DiscSubtitle,
+		trackNo: got.TrackNo, trackTotal: got.TrackTotal, discNo: got.DiscNo, discTotal: got.DiscTotal,
+		year: got.Year, origin: got.OriginalYear,
+	}
+	want := seen{
+		title: newTitle, sortTitle: "Title, New", discName: discTwo,
+		trackNo: 7, trackTotal: 12, discNo: 2, discTotal: 3, year: newYear, origin: 1977,
+	}
+	if scanned != want {
+		t.Errorf("scan saw %+v, want %+v", scanned, want)
 	}
 	if *got.Digest != *before.Digest {
 		t.Error("the edit changed the audio digest")
