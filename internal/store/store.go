@@ -256,6 +256,10 @@ func dsn(path string, writer bool) string {
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeoutMS))
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "synchronous(NORMAL)")
+	// The image is FROM scratch, with no /tmp: a sort, index build or temp
+	// table too big for the cache would fail with IOERR_GETTEMPPATH. Keep
+	// them in memory; the library is small enough that this is cheap.
+	q.Add("_pragma", "temp_store(memory)")
 	if writer {
 		q.Set("_txlock", "immediate")
 	} else {
