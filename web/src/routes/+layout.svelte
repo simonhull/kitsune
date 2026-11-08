@@ -19,6 +19,7 @@
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import { libraryView } from '#lib/pages/libraryView.svelte.ts';
 	import { selection } from '#lib/pages/selection.svelte.ts';
+	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
 	import { togglesOnSpace } from '#lib/player/keys.ts';
@@ -53,6 +54,13 @@
 	const palette = $derived(stageAlbum === null ? null : paletteFor(stageEntry, theme.current));
 
 	const edit = $derived(onAlbum && stageAlbum !== null ? tagEdits.of(stageAlbum) : undefined);
+	/** Many tracks of this album at once: the page draws up as for any edit. */
+	const many = $derived(
+		onAlbum &&
+			stageAlbum !== null &&
+			bulkEdits.current?.layout === 'album' &&
+			bulkEdits.current.albumIds.includes(stageAlbum)
+	);
 
 	/** A mark the server didn't take has already gone back: this says why it moved. */
 	const markTrouble = $derived.by(() => {
@@ -101,6 +109,7 @@
 			columnsView.reset();
 			selection.clear();
 			tagEdits.reset();
+			bulkEdits.reset();
 		};
 		void Promise.all(routeIds.map((route) => preloadCode(route)));
 		const leaveSession = followMediaSession(player);
@@ -124,7 +133,9 @@
 
 <div
 	class="shell"
-	class:editing={edit !== undefined}
+	class:editing={edit !== undefined ||
+		many ||
+		(bulkEdits.current !== null && routeId === '/library')}
 	class:one={edit?.open != null}
 	style:--accent={palette?.accent}
 	style:--on-accent={palette?.onAccent}
@@ -158,7 +169,7 @@
 		<PlayerIsland
 			playing={library.playing}
 			expanded={onNowPlaying}
-			away={selection.any && routeId === '/library'}
+			away={selection.any && routeId === '/library' && bulkEdits.current === null}
 		/>
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>

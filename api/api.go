@@ -37,6 +37,8 @@ type EditProblem struct {
 
 	Changed   []string `json:"changed"`
 	Remaining []string `json:"remaining"`
+	// Album is the album whose etag was stale, on a 412 from POST /edits.
+	Album string `json:"album,omitzero"`
 }
 
 // LoginRequest is the body of POST /auth/login.
@@ -266,6 +268,32 @@ type AlbumEdit struct {
 	Tracks []TrackTagEdit `json:"tracks,omitzero"`
 }
 
+// TracksEdit is the body of POST /edits: an edit of tracks that may lie on
+// several albums. All goes to every track Tracks names, with each one's own on
+// top, and Albums gives the etag of every album they are on.
+type TracksEdit struct {
+	Albums []AlbumETag    `json:"albums"`
+	All    TagEdit        `json:"all,omitzero"`
+	Tracks []TrackTagEdit `json:"tracks"`
+}
+
+// AlbumETag is an album's etag as an edit read it.
+type AlbumETag struct {
+	ID   string `json:"id"`
+	Etag string `json:"etag"`
+}
+
+// EditedTracks is the response to POST /edits: where each track is now.
+type EditedTracks struct {
+	Tracks []EditedTrack `json:"tracks"`
+}
+
+// EditedTrack is a track of [EditedTracks] and the album it is on.
+type EditedTrack struct {
+	ID      string `json:"id"`
+	AlbumID string `json:"albumId"`
+}
+
 // AlbumTags is the response to GET /albums/{id}/tags: what a tag editor shows.
 // Etag is the album's If-Match value.
 type AlbumTags struct {
@@ -426,6 +454,35 @@ type TrackFields struct {
 	AddedAt       time.Time `json:"addedAt,omitzero"`
 	Plays         int       `json:"plays,omitzero"` // The caller's.
 	LastPlayedAt  time.Time `json:"lastPlayedAt,omitzero"`
+	// Shuffle is the caller's shuffle rules on the track, absent with none.
+	Shuffle *ShuffleMark `json:"shuffle,omitzero"`
+}
+
+// ShuffleMark is what the caller's shuffle rules say of a track: the run it
+// plays in, if any, and whether shuffle leaves it out.
+type ShuffleMark struct {
+	Run      string `json:"run,omitzero"`
+	Position int    `json:"position,omitzero"` // From 1.
+	Length   int    `json:"length,omitzero"`
+	Excluded bool   `json:"excluded,omitzero"`
+}
+
+// ShuffleRules is the response to GET /me/shuffle/rules.
+type ShuffleRules struct {
+	Runs     []ShuffleRun `json:"runs"`
+	Excluded []string     `json:"excluded"`
+}
+
+// ShuffleRun is songs that always play together in shuffle, in order.
+type ShuffleRun struct {
+	ID     string   `json:"id"`
+	Tracks []string `json:"tracks"`
+}
+
+// ShuffleTracks is the body of PUT /me/shuffle/runs and of PUT and DELETE
+// /me/shuffle/excluded.
+type ShuffleTracks struct {
+	Tracks []string `json:"tracks"`
 }
 
 // LibraryFacts is the response to GET /library.

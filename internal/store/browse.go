@@ -113,6 +113,8 @@ type EditFile struct {
 	Root, RelPath string
 	Size          int64
 	MTime         time.Time // Millisecond precision: compare with a truncated stat time.
+	Album         int64     // The album's row.
+	GroupKey      string    // The album's group key.
 }
 
 // LibraryFacts counts what the library holds. Albums and tracks are live ones.
@@ -466,7 +468,10 @@ func (s *Store) AlbumEditFiles(ctx context.Context, id string) ([]EditFile, stri
 	stamps := make([]string, len(rows))
 	for i := range rows {
 		r := &rows[i]
-		files[i] = EditFile{ID: r.ID, ULID: r.Ulid, Root: r.Root, RelPath: r.RelPath, Size: r.Size, MTime: fromMS(r.Mtime)}
+		files[i] = EditFile{
+			ID: r.ID, ULID: r.Ulid, Root: r.Root, RelPath: r.RelPath, Size: r.Size, MTime: fromMS(r.Mtime),
+			Album: r.AlbumID, GroupKey: r.GroupKey,
+		}
 		stamps[i] = stamp(r.Ulid, r.Size, r.Mtime)
 	}
 	return files, etag(stamps...), nil

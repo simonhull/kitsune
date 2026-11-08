@@ -6,7 +6,8 @@
 	import { albumStars } from '#lib/library/albumStars.ts';
 	import { albumHoldings, trackLabel } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import type { ColumnId, ColumnsPref } from '#lib/library/source.ts';
+	import type { ColumnId, ColumnsPref, ShuffleMark } from '#lib/library/source.ts';
+	import { runJoins } from '#lib/library/shuffleRules.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
@@ -219,6 +220,19 @@
 		data-morph-key={`songs:${album.id}`}
 		style:top={`${String(head)}px`}
 	>
+		{#snippet marks(mark: ShuffleMark | undefined)}
+			{#if mark?.run !== undefined}
+				<span class="mark combined">COMBINED · {mark.position} OF {mark.length}</span>
+			{/if}
+			{#if mark?.excluded === true}
+				<span class="mark excluded"
+					><svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"
+						><path d="M4 4l16 16M3 7h3.5c2 0 3.2 1 4.3 2.6M21 17h-3.5c-1.4 0-2.4-.4-3.2-1.2"
+						></path></svg
+					>EXCLUDED</span
+				>
+			{/if}
+		{/snippet}
 		{#each rows as row (row.kind === 'song' ? row.trackIndex : `disc-${String(row.disc)}`)}
 			{@const at = `${String(row.top - block.top - head)}px`}
 			{#if row.kind === 'disc'}
@@ -228,6 +242,8 @@
 			{:else}
 				{@const track = album.tracks.at(row.trackIndex)}
 				{#if track !== undefined}
+					{@const mark = track.shuffle}
+					{@const joins = runJoins(album.tracks, row.trackIndex)}
 					{@const cued = track.id === cuedId}
 					{@const picked = selection.has(track.id)}
 					{@const context = {
@@ -261,6 +277,14 @@
 						onpointercancel={holdEnd}
 						onpointerleave={holdEnd}
 					>
+						{#if mark?.run !== undefined}
+							<span
+								class="bracket"
+								class:start={!joins.up}
+								class:end={!joins.down}
+								aria-hidden="true"
+							></span>
+						{/if}
 						<span class="box">
 							<input
 								type="checkbox"
@@ -294,7 +318,9 @@
 							</span>
 							{#if phone}
 								<span class="lines">
-									<span class="name">{track.title}</span>
+									<span class="titled"
+										><span class="name">{track.title}</span>{@render marks(mark)}</span
+									>
 									<span class="line"
 										><span class="parts"
 											>{fitLine(
@@ -306,7 +332,9 @@
 									>
 								</span>
 							{:else}
-								<span class="name">{track.title}</span>
+								<span class="titled"
+									><span class="name">{track.title}</span>{@render marks(mark)}</span
+								>
 							{/if}
 						</button>
 						{#each phone ? [] : shown as id (id)}
@@ -500,6 +528,77 @@
 		color: inherit;
 		font: inherit;
 		text-align: left;
+	}
+
+	.titled {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-width: 0;
+	}
+
+	.titled .name {
+		flex: 0 1 auto;
+		min-width: min(9ch, 100%);
+	}
+
+	/* A narrow title column squeezes the marks before the title. */
+	.mark {
+		flex: 0 100 auto;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		padding: 3px 7px;
+		border-radius: var(--radius-pill);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 400;
+		letter-spacing: 0.08em;
+		line-height: 1;
+	}
+
+	.mark.combined {
+		background: color-mix(in srgb, var(--fox) 16%, transparent);
+		color: var(--fox-text);
+	}
+
+	.mark.excluded {
+		border: 1px solid var(--edge-strong);
+		color: var(--text-meta);
+	}
+
+	.mark svg {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2.4;
+		stroke-linecap: round;
+	}
+
+	/* Combined rows next to each other, in their run's order, are joined by one bracket. */
+	.bracket {
+		position: absolute;
+		left: calc(var(--row-pad, 14px) + var(--box-size, 16px) + 2px);
+		top: 0;
+		bottom: -1px;
+		width: 7px;
+		border-left: 2px solid var(--fox-line);
+		pointer-events: none;
+	}
+
+	.bracket.start {
+		top: 30%;
+		border-top: 2px solid var(--fox-line);
+		border-top-left-radius: 8px;
+	}
+
+	.bracket.end {
+		bottom: 30%;
+		border-bottom: 2px solid var(--fox-line);
+		border-bottom-left-radius: 8px;
 	}
 
 	.name {

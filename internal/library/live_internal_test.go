@@ -49,7 +49,7 @@ func TestConfigureGivesUpWithItsContext(t *testing.T) {
 func TestEditRefusedOnceTagWritesAreOff(t *testing.T) {
 	t.Parallel()
 	l := newTestLib(t, 1)
-	if err := l.scanner.EditAlbum(t.Context(), "01J00000000000000000000000", "etag", &AlbumEdit{}); !errors.Is(err, ErrTagWritesOff) {
+	if _, err := l.scanner.EditAlbum(t.Context(), "01J00000000000000000000000", "etag", &AlbumEdit{}); !errors.Is(err, ErrTagWritesOff) {
 		t.Errorf("EditAlbum = %v, want ErrTagWritesOff", err)
 	}
 }

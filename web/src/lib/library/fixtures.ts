@@ -34,6 +34,7 @@ import {
 	type ScanStatus,
 	type SearchResults,
 	type SetupStatus,
+	type ShuffleMark,
 	type TagEdit,
 	type TagField,
 	type Track,
@@ -769,6 +770,10 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	// So are the marks, like the server's are each person's.
 	const hearts = new Set(boardHearts);
 	const stars = new Map(boardStars);
+	// And the shuffle rules: runs by ID, and the songs left out.
+	const runs = new Map<string, string[]>();
+	const excluded = new Set<string>();
+	let runsMade = 0;
 	let lastfm = lastfmStatusOf(options.lastfm ?? 'none');
 	let settings = settingsFixture(lastfm.configured);
 	const prefs = new Map<PrefKey, unknown>(
@@ -826,14 +831,28 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		};
 	}
 
+	function shuffleMarkOf(trackId: string): ShuffleMark | undefined {
+		const run = [...runs].find(([, tracks]) => tracks.includes(trackId));
+		const mark: ShuffleMark = {
+			...(run === undefined
+				? {}
+				: { run: run[0], position: run[1].indexOf(trackId) + 1, length: run[1].length }),
+			...(excluded.has(trackId) ? { excluded: true } : {})
+		};
+		return Object.keys(mark).length === 0 ? undefined : mark;
+	}
+
 	function markedIndex(fields: readonly IndexField[] = []): LibraryIndex {
 		const asked = new Set(fields);
 		const extra = (album: LibraryAlbum, track: LibraryTrack): LibraryTrack => {
 			const full = held.get(album.id) ?? listOnly.get(album.id);
 			const source = full?.tracks.find(({ id }) => id === track.id);
-			return full === undefined || source === undefined || asked.size === 0
-				? track
-				: { ...track, ...fieldsOf(full, source, asked) };
+			const shown =
+				full === undefined || source === undefined || asked.size === 0
+					? track
+					: { ...track, ...fieldsOf(full, source, asked) };
+			const mark = asked.has('shuffle') ? shuffleMarkOf(track.id) : undefined;
+			return mark === undefined ? shown : { ...shown, shuffle: mark };
 		};
 		return {
 			artists: indexFixture().artists.map((artist) => ({
@@ -1038,6 +1057,85 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				}
 				stumble(album, edit);
 				return write(album, edit);
+			}),
+		// The fixtures never move a song: each album takes its own songs' part of the edit.
+		editTracks: (edit) =>
+			respond(() => {
+				refuseAnyoneElse();
+				const albums = edit.albums.map(({ id, etag }) => {
+					const album = held.get(id);
+					if (album === undefined) {
+						throw new EditError({ kind: 'gone' });
+					}
+					if (album.etag !== etag) {
+						throw new EditError({ kind: 'stale', album: id });
+					}
+					return album;
+				});
+				const placed = edit.tracks.map(({ id }) => {
+					const album = albums.find(({ tracks }) => tracks.some((track) => track.id === id));
+					if (album === undefined) {
+						throw new EditError({ kind: 'refused', detail: '', changed: [], remaining: [id] });
+					}
+					return { id, albumId: album.id };
+				});
+				for (const album of albums) {
+					const own = edit.tracks.filter(({ id }) => album.tracks.some((track) => track.id === id));
+					write(album, {
+						tracks: own.map((track) => ({ ...track, ...layered(edit.all, track) }))
+					});
+				}
+				return { tracks: placed };
+			}),
+		shuffleRules: (trackIds) =>
+			respond(() => ({
+				runs: [...runs]
+					.filter(([, tracks]) => tracks.some((id) => trackIds.includes(id)))
+					.map(([id, tracks]) => ({ id, tracks: [...tracks] })),
+				excluded: trackIds.filter((id) => excluded.has(id))
+			})),
+		setRun: (trackIds) =>
+			respond(() => {
+				const first = [...runs].find(([, tracks]) => tracks.includes(trackIds[0] ?? ''));
+				for (const [id, tracks] of runs) {
+					const left = tracks.filter((track) => !trackIds.includes(track));
+					if (left.length < 2) {
+						runs.delete(id);
+					} else {
+						runs.set(id, left);
+					}
+				}
+				runsMade += 1;
+				const id =
+					first !== undefined && !runs.has(first[0]) ? first[0] : `run-${String(runsMade)}`;
+				runs.set(id, [...trackIds]);
+				return { id, tracks: [...trackIds] };
+			}),
+		deleteRun: (id) =>
+			respond(() => {
+				if (!runs.delete(id)) {
+					throw new ServerError(404);
+				}
+			}),
+		setExcluded: (trackIds, on) =>
+			respond(() => {
+				for (const id of trackIds) {
+					if (on) {
+						excluded.add(id);
+					} else {
+						excluded.delete(id);
+					}
+				}
+			}),
+		trackAlbum: (trackId) =>
+			respond(() => {
+				const album = [...held.values()].find(({ tracks }) =>
+					tracks.some(({ id }) => id === trackId)
+				);
+				if (album === undefined) {
+					throw new EditError({ kind: 'gone' });
+				}
+				return album.id;
 			}),
 		// Never fetched: the fixtures play on a silent clock.
 		streamUrl: (trackId) => `fixture:${trackId}`,

@@ -1,9 +1,10 @@
 -- name: UpsertArtist :one
+-- A track with no sort name keeps the artist's: a new artist sorts by its name.
 INSERT INTO artists (ulid, match_key, name, sort_name, mbid)
-VALUES (?, ?, ?, ?, ?)
+VALUES (@ulid, @match_key, @name, coalesce(nullif(CAST(@sort_name AS TEXT), ''), @name), @mbid)
 ON CONFLICT (match_key) DO UPDATE SET
     name = excluded.name,
-    sort_name = excluded.sort_name,
+    sort_name = coalesce(nullif(?4, ''), artists.sort_name), -- ?4 is @sort_name: sqlc leaves names in an upsert clause unbound.
     mbid = coalesce(excluded.mbid, artists.mbid)
 RETURNING id;
 

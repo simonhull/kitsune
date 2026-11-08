@@ -25,6 +25,7 @@ const (
 	fieldAdded
 	fieldPlays
 	fieldLastPlayed
+	fieldShuffle
 )
 
 // indexFieldNames are the contract's names for the fields.
@@ -40,6 +41,7 @@ var indexFieldNames = map[string]indexFields{
 	"added":       fieldAdded,
 	"plays":       fieldPlays,
 	"lastPlayed":  fieldLastPlayed,
+	"shuffle":     fieldShuffle,
 }
 
 var errUnknownField = errors.New("unknown field")
@@ -78,6 +80,7 @@ func (f indexFields) options() store.IndexOptions {
 		Details:      f&(fieldYear|fieldFormat|fieldBitrate|fieldAdded) != 0,
 		AlbumArtists: f.has(fieldAlbumArtist),
 		Plays:        f.has(fieldPlays) || f.has(fieldLastPlayed),
+		Shuffle:      f.has(fieldShuffle),
 		TagKeys:      keys,
 	}
 }
@@ -143,6 +146,9 @@ func (w *fieldWriter) addFacts(out *api.TrackFields, t *store.IndexExtra) {
 	}
 	if f.has(fieldLastPlayed) {
 		out.LastPlayedAt = t.LastPlayed
+	}
+	if m := t.Shuffle; f.has(fieldShuffle) && m != nil {
+		out.Shuffle = &api.ShuffleMark{Run: m.Run, Position: m.Position, Length: m.Length, Excluded: m.Excluded}
 	}
 }
 

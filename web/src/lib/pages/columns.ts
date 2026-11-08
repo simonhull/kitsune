@@ -230,7 +230,10 @@ export function template(shown: readonly ColumnId[], step: Exclude<Step, 'phone'
 	].join(' ');
 }
 
-/** What the index must carry for the columns, in a fixed order, so the same columns ask the same. */
+/**
+ * What the index must carry for the columns, in a fixed order, so the same columns ask the same.
+ * The person's shuffle marks come always: every row shows them, whatever the columns.
+ */
 export function fieldsFor(order: readonly ColumnId[]): IndexField[] {
 	const wanted = new Set(order.map((id) => specOf(id).field));
 	const all: IndexField[] = [
@@ -244,7 +247,7 @@ export function fieldsFor(order: readonly ColumnId[]): IndexField[] {
 		'plays',
 		'lastPlayed'
 	];
-	return all.filter((field) => wanted.has(field));
+	return [...all.filter((field) => wanted.has(field)), 'shuffle'];
 }
 
 /** What a cell needs to say its piece. */

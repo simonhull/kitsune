@@ -628,10 +628,10 @@ func (q *Queries) UpsertAlbum(ctx context.Context, arg UpsertAlbumParams) (int64
 
 const upsertArtist = `-- name: UpsertArtist :one
 INSERT INTO artists (ulid, match_key, name, sort_name, mbid)
-VALUES (?, ?, ?, ?, ?)
+VALUES (?1, ?2, ?3, coalesce(nullif(CAST(?4 AS TEXT), ''), ?3), ?5)
 ON CONFLICT (match_key) DO UPDATE SET
     name = excluded.name,
-    sort_name = excluded.sort_name,
+    sort_name = coalesce(nullif(?4, ''), artists.sort_name), -- ?4 is @sort_name: sqlc leaves names in an upsert clause unbound.
     mbid = coalesce(excluded.mbid, artists.mbid)
 RETURNING id
 `
@@ -644,6 +644,7 @@ type UpsertArtistParams struct {
 	Mbid     *string
 }
 
+// A track with no sort name keeps the artist's: a new artist sorts by its name.
 func (q *Queries) UpsertArtist(ctx context.Context, arg UpsertArtistParams) (int64, error) {
 	row := q.queryRow(ctx, q.upsertArtistStmt, upsertArtist,
 		arg.Ulid,

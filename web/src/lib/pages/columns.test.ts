@@ -135,9 +135,19 @@ describe('template', () => {
 });
 
 describe('fieldsFor', () => {
-	it('asks for what the columns show, in a fixed order, once', () => {
-		expect(fieldsFor(defaultColumns.order)).toEqual(['genre', 'format', 'plays', 'lastPlayed']);
-		expect(fieldsFor(['bitrate', 'format', 'album', 'rating'])).toEqual(['format', 'bitrate']);
+	it('asks for what the columns show, in a fixed order, once, and the shuffle marks', () => {
+		expect(fieldsFor(defaultColumns.order)).toEqual([
+			'genre',
+			'format',
+			'plays',
+			'lastPlayed',
+			'shuffle'
+		]);
+		expect(fieldsFor(['bitrate', 'format', 'album', 'rating'])).toEqual([
+			'format',
+			'bitrate',
+			'shuffle'
+		]);
 	});
 });
 

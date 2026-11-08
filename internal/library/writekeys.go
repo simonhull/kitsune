@@ -21,8 +21,8 @@ var ErrUnsupportedEdit = errors.New("the file can't take this edit")
 // Field names an editable tag, the same in every format.
 type Field string
 
-// The fields of the table. Album, artists, album artists and compilation can be
-// read but not edited yet: they decide which album a track groups into.
+// The fields of the table. Album, artists, album artists and compilation decide
+// which album a track groups into, so editing them can move a track to another.
 const (
 	FieldTitle           Field = "title"
 	FieldAlbum           Field = "album"
@@ -111,7 +111,6 @@ type field struct {
 	dependents []string
 	// matching are copies that a change follows only while they equal the old value.
 	matching []string
-	identity bool // It decides which album a track groups into, so it can't be edited yet.
 	multi    bool // It may hold several values.
 	required bool // It can't be removed.
 	// frozen reports values a client may see but not replace.
@@ -159,23 +158,23 @@ var fields = []field{
 		dependents: []string{"TITLESORT", "TITLESORTEN", "TSOT", "sonm"},
 	},
 	{
-		name: FieldAlbum, flac: keys("ALBUM"), mp3: keys("TALB"), m4a: keys("\xA9alb"), identity: true,
+		name: FieldAlbum, flac: keys("ALBUM"), mp3: keys("TALB"), m4a: keys("\xA9alb"),
 		dependents: []string{"ALBUMSORT", "ALBUMSORTEN", "TSOA", "soal"},
 	},
 	{
 		name: FieldArtists, flac: keys("ARTIST", "ARTISTS"), mp3: keys("TPE1", "ARTISTS"), m4a: keys("\xA9ART", "ARTISTS"),
-		identity: true, multi: true,
+		multi:      true,
 		dependents: slices.Concat(keysArtistSort, keysArtistMBID, keys("ARTISTS_SORT", "ARTIST_CREDIT", "ARTISTS_CREDIT", "ARTIST CREDIT")),
 	},
 	{
-		name:     FieldAlbumArtists,
-		flac:     keys("ALBUMARTIST", "ALBUM ARTIST", "ALBUM_ARTIST", "ALBUMARTISTS", "ALBUM_ARTISTS"),
-		mp3:      keys("TPE2", "ALBUMARTIST", "ALBUM ARTIST", "ALBUM_ARTIST", "ALBUMARTISTS", "ALBUM_ARTISTS"),
-		m4a:      keys("aART"),
-		identity: true, multi: true, read: candidates(keysAlbumArtist),
+		name:  FieldAlbumArtists,
+		flac:  keys("ALBUMARTIST", "ALBUM ARTIST", "ALBUM_ARTIST", "ALBUMARTISTS", "ALBUM_ARTISTS"),
+		mp3:   keys("TPE2", "ALBUMARTIST", "ALBUM ARTIST", "ALBUM_ARTIST", "ALBUMARTISTS", "ALBUM_ARTISTS"),
+		m4a:   keys("aART"),
+		multi: true, read: candidates(keysAlbumArtist),
 		dependents: slices.Concat(keysAlbumArtistSort, keysAlbumArtistMBID, keys("ALBUMARTISTS_SORT", "ALBUMARTIST_CREDIT", "ALBUMARTISTS_CREDIT", "ALBUM ARTIST CREDIT")),
 	},
-	{name: FieldCompilation, flac: keys("COMPILATION"), mp3: keys("TCMP"), m4a: keys("cpil"), identity: true},
+	{name: FieldCompilation, flac: keys("COMPILATION"), mp3: keys("TCMP"), m4a: keys("cpil"), valid: validFlag},
 	number(FieldTrack, trackNumber, keys("TRACKNUMBER", "TRACK"), keys("TRCK"), keys("trkn")),
 	number(FieldTrackTotal, trackTotal, keys("TRACKTOTAL", "TOTALTRACKS", "TRACKC"), keys("TRCK"), keys("trkn")),
 	number(FieldDisc, discNumber, keys("DISCNUMBER", "DISC"), keys("TPOS"), keys("disk")),
@@ -273,6 +272,17 @@ func validNumber(_ family, v string) error {
 	n, err := strconv.Atoi(v)
 	if err != nil || n < minNumber || n > maxNumber {
 		return fmt.Errorf("%q is not a number from %d to %d: %w", v, minNumber, maxNumber, ErrUnsupportedEdit)
+	}
+	return nil
+}
+
+// flagOn is the one value a flag takes: clearing it is how it goes off.
+const flagOn = "1"
+
+// validFlag takes only [flagOn].
+func validFlag(_ family, v string) error {
+	if v != flagOn {
+		return fmt.Errorf("%q is not %s: %w", v, flagOn, ErrUnsupportedEdit)
 	}
 	return nil
 }
@@ -418,9 +428,6 @@ func (f *field) values(t *audiometa.Tags, fam family) []string {
 
 // check refuses values the field can't hold, whatever the file has now.
 func (f *field) check(fam family, values []string) error {
-	if f.identity {
-		return fmt.Errorf("%s can't be edited yet: %w", f.name, ErrUnsupportedEdit)
-	}
 	if f.required && len(values) == 0 {
 		return fmt.Errorf("empty %s: %w", f.name, ErrUnsupportedEdit)
 	}

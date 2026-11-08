@@ -14,7 +14,10 @@
 	import LibraryFilters from '#lib/pages/LibraryFilters.svelte';
 	import LibraryRail from '#lib/pages/LibraryRail.svelte';
 	import RowMenu from '#lib/pages/RowMenu.svelte';
+	import BulkEditor from '#lib/pages/BulkEditor.svelte';
+	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
 	import SelectionBar from '#lib/pages/SelectionBar.svelte';
+	import TagBar from '#lib/pages/TagBar.svelte';
 	import { selection } from '#lib/pages/selection.svelte.ts';
 	import {
 		actionsFor,
@@ -143,6 +146,39 @@
 		durationMs: picked.reduce((sum, id) => sum + (songs.get(id)?.track.durationMs ?? 0), 0)
 	});
 	const box = $derived(selection.boxFor(order));
+	/** Bulk editing a selection takes the page, over the list, which keeps its place beneath. */
+	const bulk = $derived(bulkEdits.current?.layout === 'selection' ? bulkEdits.current : null);
+	const canEditTags = $derived(library.user?.canEditTags === true);
+	let bulkNote = $state('');
+
+	function editPicked(): void {
+		bulkNote = '';
+		bulkEdits.open(
+			'selection',
+			picked.flatMap((id) => {
+				const song = songs.get(id);
+				return song === undefined
+					? []
+					: [{ id, albumId: song.album.id, title: song.track.title, trackNo: song.track.trackNo }];
+			}),
+			canEditTags
+		);
+	}
+
+	function leaveBulk(words = ''): void {
+		bulkEdits.close();
+		bulkNote = words;
+	}
+
+	async function writeBulk(): Promise<void> {
+		const written = await bulk?.write();
+		if (written?.kind === 'done') {
+			leaveBulk('Tags written.');
+		} else if (written?.kind === 'problem') {
+			await tick();
+			document.getElementById(written.field)?.focus();
+		}
+	}
 
 	/** The ⋯ menu, where it was opened, and on what. */
 	let rowMenu = $state<{ x: number; y: number; target: MenuTarget; actions: SongActions } | null>(
@@ -236,7 +272,13 @@
 	}
 
 	function onWindowKey(event: KeyboardEvent): void {
-		if (event.key === 'Escape' && selection.any && menu === null && rowMenu === null) {
+		if (
+			event.key === 'Escape' &&
+			selection.any &&
+			menu === null &&
+			rowMenu === null &&
+			bulk === null
+		) {
 			selection.clear();
 		}
 	}
@@ -512,7 +554,19 @@
 				onclose={closeRowMenu}
 			/>
 		{/if}
-		{#if selection.any}
+		{#if bulk !== null}
+			<div class="bulk-layer" role="region" aria-label="Editing songs">
+				<BulkEditor session={bulk} />
+				<TagBar
+					session={bulk}
+					what="these songs"
+					leave={() => {
+						leaveBulk();
+					}}
+					write={() => void writeBulk()}
+				/>
+			</div>
+		{:else if selection.any}
 			<SelectionBar
 				count={selection.size}
 				hidden={selection.size - picked.filter((id) => rowOf.has(id)).length}
@@ -521,6 +575,7 @@
 				hearted={picked.every((id) => library.marks.hearted('tracks', id))}
 				actions={pickedActions}
 				compact={!view.columns}
+				edit={editPicked}
 				onclear={() => {
 					selection.clear();
 				}}
@@ -529,7 +584,32 @@
 	{/if}
 </div>
 
+<p class="visually-hidden" role="status">{bulkNote}</p>
+
 <style>
+	.bulk-layer {
+		position: fixed;
+		inset: 0;
+		z-index: 2;
+		overflow-y: auto;
+		padding: 64px 0 240px;
+		background: var(--ground);
+		animation: rise var(--morph) var(--curve-morph) both;
+	}
+
+	@keyframes rise {
+		from {
+			opacity: 0;
+			translate: 0 16px;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.bulk-layer {
+			animation: none;
+		}
+	}
+
 	/*
 	 * One layout from a phone to 4K and beyond, never a centred column. These are its sizes; from
 	 * 2560 they take one step up together, so a 4K screen at 100% reads like 1920. --cover comes from

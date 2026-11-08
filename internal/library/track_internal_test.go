@@ -179,29 +179,29 @@ func TestNewTrackWriteArtists(t *testing.T) {
 		want    []store.ArtistWrite
 	}{
 		{"two", "", []string{"A", "B"}, nil, []store.ArtistWrite{
-			{MatchKey: "a", Name: "A", SortName: "A"}, {MatchKey: "b", Name: "B", SortName: "B"},
+			{MatchKey: "a", Name: "A"}, {MatchKey: "b", Name: "B"},
 		}},
-		{"solo fallback", soloName, nil, nil, []store.ArtistWrite{{MatchKey: "solo", Name: soloName, SortName: soloName}}},
-		{"dedupe and drop empty", "", []string{" A ", "a", ""}, nil, []store.ArtistWrite{{MatchKey: "a", Name: "A", SortName: "A"}}},
-		{"feat is one", "", []string{featName}, nil, []store.ArtistWrite{{MatchKey: "a feat. b", Name: featName, SortName: featName}}},
+		{"solo fallback", soloName, nil, nil, []store.ArtistWrite{{MatchKey: "solo", Name: soloName}}},
+		{"dedupe and drop empty", "", []string{" A ", "a", ""}, nil, []store.ArtistWrite{{MatchKey: "a", Name: "A"}}},
+		{"feat is one", "", []string{featName}, nil, []store.ArtistWrite{{MatchKey: "a feat. b", Name: featName}}},
 		{"none", "", nil, nil, nil},
 		{"sorts paired", "", []string{"A", "B"}, []raw{{keyArtistSort, []string{sortA, "B-sort"}}}, []store.ArtistWrite{
 			{MatchKey: "a", Name: "A", SortName: sortA}, {MatchKey: "b", Name: "B", SortName: "B-sort"},
 		}},
 		{"sort count mismatch", "", []string{"A", "B"}, []raw{{keyArtistSort, []string{sortA}}}, []store.ArtistWrite{
-			{MatchKey: "a", Name: "A", SortName: "A"}, {MatchKey: "b", Name: "B", SortName: "B"},
+			{MatchKey: "a", Name: "A"}, {MatchKey: "b", Name: "B"},
 		}},
 		{"one value, one name left after dropping", "", []string{" A ", "a", ""}, []raw{{keyArtistSort, []string{sortA}}}, []store.ArtistWrite{
 			{MatchKey: "a", Name: "A", SortName: sortA},
 		}},
 		{"mbid for one name", "", []string{"A"}, []raw{{keyArtistMBID, []string{"m1"}}}, []store.ArtistWrite{
-			{MatchKey: "a", Name: "A", SortName: "A", MBID: "m1"},
+			{MatchKey: "a", Name: "A", MBID: "m1"},
 		}},
 		{"mbids paired from id3 key", "", []string{"A", "B"}, []raw{{keyID3ArtistID, []string{"m1", "m2"}}}, []store.ArtistWrite{
-			{MatchKey: "a", Name: "A", SortName: "A", MBID: "m1"}, {MatchKey: "b", Name: "B", SortName: "B", MBID: "m2"},
+			{MatchKey: "a", Name: "A", MBID: "m1"}, {MatchKey: "b", Name: "B", MBID: "m2"},
 		}},
 		{"mbid one of two names stays empty", "", []string{"A", "B"}, []raw{{keyArtistMBID, []string{"m1"}}}, []store.ArtistWrite{
-			{MatchKey: "a", Name: "A", SortName: "A"}, {MatchKey: "b", Name: "B", SortName: "B"},
+			{MatchKey: "a", Name: "A"}, {MatchKey: "b", Name: "B"},
 		}},
 	}
 	for _, tt := range tests {
@@ -241,9 +241,9 @@ func TestNewTrackWriteAlbumArtists(t *testing.T) {
 		want  []store.ArtistWrite
 	}{
 		{"raw two", "", []string{"X", "Y"}, nil, []store.ArtistWrite{
-			{MatchKey: "x", Name: "X", SortName: "X"}, {MatchKey: "y", Name: "Y", SortName: "Y"},
+			{MatchKey: "x", Name: "X"}, {MatchKey: "y", Name: "Y"},
 		}},
-		{"typed only", "Z", nil, nil, []store.ArtistWrite{{MatchKey: "z", Name: "Z", SortName: "Z"}}},
+		{"typed only", "Z", nil, nil, []store.ArtistWrite{{MatchKey: "z", Name: "Z"}}},
 		{"none", "", nil, nil, nil},
 		{"raw wins over typed", "Z", []string{"X"}, []string{"X, The"}, []store.ArtistWrite{
 			{MatchKey: "x", Name: "X", SortName: "X, The"},
