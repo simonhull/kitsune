@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -52,6 +53,82 @@ func (s *Store) RekeyAlbums(ctx context.Context, rekeys []AlbumRekey) ([]AlbumRe
 		return nil, fmt.Errorf("rekey albums: %w", err)
 	}
 	return undo, nil
+}
+
+// ArtistRename renames an artist row before an edit writes, so the tracks it
+// renames the artist on land back on the row, keeping its ULID and hearts.
+type ArtistRename struct {
+	From, To       string // Match keys.
+	Name, SortName string // The new names. An empty SortName is the name.
+	MBID           string // Empty clears it: an MBID was the old name's.
+	// Links is how many links the edit renames. The row is renamed only when that
+	// is every link it has, so the artist no track still names keeps its name.
+	// Zero takes any.
+	Links int
+}
+
+// RenameArtists renames each artist the edit renames on every one of its links,
+// to a key no artist holds, in order and in one transaction. It returns the
+// renames that undo what it did, newest first.
+func (s *Store) RenameArtists(ctx context.Context, renames []ArtistRename) ([]ArtistRename, error) {
+	if len(renames) == 0 {
+		return nil, nil
+	}
+	var undo []ArtistRename
+	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+		undo = undo[:0]
+		for i := range renames {
+			back, err := renameArtist(ctx, q, &renames[i])
+			if errors.Is(err, errNoRename) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("artist %q: %w", renames[i].From, err)
+			}
+			undo = append([]ArtistRename{back}, undo...)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("rename artists: %w", err)
+	}
+	return undo, nil
+}
+
+// errNoRename means a rename does not apply: the artist is gone, keeps a link
+// the edit leaves, or its new key is another artist's.
+var errNoRename = errors.New("the rename does not apply")
+
+// renameArtist does r and returns the rename that undoes it. It returns
+// [errNoRename] when r does not apply.
+func renameArtist(ctx context.Context, q *sqlcdb.Queries, r *ArtistRename) (ArtistRename, error) {
+	row, err := q.ArtistToRename(ctx, r.From)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return ArtistRename{}, errNoRename
+	case err != nil:
+		return ArtistRename{}, err //nolint:wrapcheck // The caller names the artist.
+	case r.Links != 0 && row.Links != int64(r.Links):
+		return ArtistRename{}, errNoRename
+	}
+	taken, err := q.MatchKeyTaken(ctx, r.To)
+	if err != nil {
+		return ArtistRename{}, err //nolint:wrapcheck // The caller names the artist.
+	}
+	if taken {
+		return ArtistRename{}, errNoRename
+	}
+	err = q.RenameArtist(ctx, sqlcdb.RenameArtistParams{
+		MatchKey: r.To, Name: r.Name, SortName: cmp.Or(r.SortName, r.Name), Mbid: nullStr(r.MBID), ID: row.ID,
+	})
+	if err != nil {
+		return ArtistRename{}, err //nolint:wrapcheck // The caller names the artist.
+	}
+	back := ArtistRename{From: r.To, To: r.From, Name: row.Name, SortName: row.SortName}
+	if row.Mbid != nil {
+		back.MBID = *row.Mbid
+	}
+	return back, nil
 }
 
 // AlbumMove says which tracks an edit took off an album.

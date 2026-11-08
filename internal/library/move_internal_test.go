@@ -301,3 +301,72 @@ func TestATrackMovedOffTakesItsCover(t *testing.T) {
 	wantHash(t, l.albumOf("b.flac").hash, otherArt)
 	wantHash(t, l.albumOf("a.flac").hash, art)
 }
+
+// byArtist makes every track of l's album by name alone, and returns the album.
+func (l *editLib) byArtist(name string) store.AlbumDetail {
+	l.t.Helper()
+	album := l.albumDetail()
+	edit := AlbumEdit{All: Edit{Fields: map[Field][]string{FieldArtists: {name}, FieldAlbumArtists: nil}}}
+	if _, err := l.scanner.EditAlbum(l.t.Context(), album.ID, album.ETag, &edit); err != nil {
+		l.t.Fatal(err)
+	}
+	return l.albumDetail()
+}
+
+// owners returns the artists who own an album, by name.
+func (l *testLib) owners() map[string]string {
+	l.t.Helper()
+	artists, err := l.st.Artists(l.t.Context())
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	out := make(map[string]string, len(artists))
+	for _, a := range artists {
+		out[a.Name] = a.ID
+	}
+	return out
+}
+
+func TestRenamingAnArtistEverywhereKeepsItsRow(t *testing.T) {
+	t.Parallel()
+	l := newEditLib(t)
+	album := l.byArtist("Mara Vey")
+	before := l.owners()["Mara Vey"]
+	edit := AlbumEdit{All: Edit{Fields: map[Field][]string{FieldArtists: {"Mara Vay"}}}}
+	if _, err := l.scanner.EditAlbum(t.Context(), album.ID, album.ETag, &edit); err != nil {
+		t.Fatal(err)
+	}
+	if after := l.owners(); len(after) != 1 || after["Mara Vay"] != before {
+		t.Errorf("owners = %v, want Mara Vay alone as %s", after, before)
+	}
+}
+
+func TestRenamingAnArtistOnSomeTracksRelinksThem(t *testing.T) {
+	t.Parallel()
+	l := newEditLib(t)
+	album := l.byArtist("Mara Vey")
+	before := l.owners()["Mara Vey"]
+	moved := album.Tracks[0].ID
+	edit := AlbumEdit{Tracks: map[string]Edit{moved: {Fields: map[Field][]string{FieldArtists: {"Mara Vay"}}}}}
+	if _, err := l.scanner.EditAlbum(t.Context(), album.ID, album.ETag, &edit); err != nil {
+		t.Fatal(err)
+	}
+	after := l.owners()
+	if after["Mara Vey"] != before || after["Mara Vay"] == "" || after["Mara Vay"] == before {
+		t.Errorf("owners = %v, want Mara Vey kept as %s and Mara Vay new", after, before)
+	}
+}
+
+func TestACaseOnlyRenameUpdatesTheRow(t *testing.T) {
+	t.Parallel()
+	l := newEditLib(t)
+	album := l.byArtist("mara vey")
+	before := l.owners()["mara vey"]
+	edit := AlbumEdit{All: Edit{Fields: map[Field][]string{FieldArtists: {"Mara Vey"}}}}
+	if _, err := l.scanner.EditAlbum(t.Context(), album.ID, album.ETag, &edit); err != nil {
+		t.Fatal(err)
+	}
+	if after := l.owners(); len(after) != 1 || after["Mara Vey"] != before {
+		t.Errorf("owners = %v, want Mara Vey alone as %s", after, before)
+	}
+}

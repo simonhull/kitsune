@@ -51,5 +51,16 @@ SELECT root, rel_path FROM tracks
 WHERE album_id = ? AND missing_since IS NULL
 ORDER BY coalesce(disc_no, 1), track_no IS NULL, track_no, root || '/' || rel_path;
 
+-- name: ArtistToRename :one
+SELECT a.id, a.name, a.sort_name, a.mbid, (SELECT count(*) FROM track_artists ta WHERE ta.artist_id = a.id) AS links
+FROM artists a WHERE a.match_key = ?;
+
+-- name: MatchKeyTaken :one
+SELECT EXISTS (SELECT 1 FROM artists WHERE match_key = ?);
+
+-- name: RenameArtist :exec
+UPDATE artists SET match_key = sqlc.arg(match_key), name = sqlc.arg(name), sort_name = sqlc.arg(sort_name), mbid = sqlc.narg(mbid)
+WHERE id = sqlc.arg(id);
+
 -- name: SetAlbumArtwork :exec
 UPDATE albums SET artwork_hash = sqlc.arg(hash) WHERE id = sqlc.arg(id);

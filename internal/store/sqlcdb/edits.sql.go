@@ -22,6 +22,32 @@ func (q *Queries) AlbumGroupKey(ctx context.Context, id int64) (string, error) {
 	return group_key, err
 }
 
+const artistToRename = `-- name: ArtistToRename :one
+SELECT a.id, a.name, a.sort_name, a.mbid, (SELECT count(*) FROM track_artists ta WHERE ta.artist_id = a.id) AS links
+FROM artists a WHERE a.match_key = ?
+`
+
+type ArtistToRenameRow struct {
+	ID       int64
+	Name     string
+	SortName string
+	Mbid     *string
+	Links    int64
+}
+
+func (q *Queries) ArtistToRename(ctx context.Context, matchKey string) (ArtistToRenameRow, error) {
+	row := q.queryRow(ctx, q.artistToRenameStmt, artistToRename, matchKey)
+	var i ArtistToRenameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.SortName,
+		&i.Mbid,
+		&i.Links,
+	)
+	return i, err
+}
+
 const countAlbumTracks = `-- name: CountAlbumTracks :one
 SELECT count(*) FROM tracks WHERE album_id = ?
 `
@@ -78,6 +104,17 @@ func (q *Queries) ListAlbumCoverFiles(ctx context.Context, albumID int64) ([]Lis
 	return items, nil
 }
 
+const matchKeyTaken = `-- name: MatchKeyTaken :one
+SELECT EXISTS (SELECT 1 FROM artists WHERE match_key = ?)
+`
+
+func (q *Queries) MatchKeyTaken(ctx context.Context, matchKey string) (bool, error) {
+	row := q.queryRow(ctx, q.matchKeyTakenStmt, matchKeyTaken, matchKey)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const mergeAlbumInto = `-- name: MergeAlbumInto :exec
 UPDATE albums SET
     artwork_hash = coalesce(albums.artwork_hash, (SELECT f.artwork_hash FROM albums f WHERE f.id = ?1)),
@@ -110,6 +147,30 @@ type MoveAlbumHeartsParams struct {
 
 func (q *Queries) MoveAlbumHearts(ctx context.Context, arg MoveAlbumHeartsParams) error {
 	_, err := q.exec(ctx, q.moveAlbumHeartsStmt, moveAlbumHearts, arg.IntoID, arg.FromID)
+	return err
+}
+
+const renameArtist = `-- name: RenameArtist :exec
+UPDATE artists SET match_key = ?1, name = ?2, sort_name = ?3, mbid = ?4
+WHERE id = ?5
+`
+
+type RenameArtistParams struct {
+	MatchKey string
+	Name     string
+	SortName string
+	Mbid     *string
+	ID       int64
+}
+
+func (q *Queries) RenameArtist(ctx context.Context, arg RenameArtistParams) error {
+	_, err := q.exec(ctx, q.renameArtistStmt, renameArtist,
+		arg.MatchKey,
+		arg.Name,
+		arg.SortName,
+		arg.Mbid,
+		arg.ID,
+	)
 	return err
 }
 

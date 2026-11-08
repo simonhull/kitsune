@@ -62,9 +62,9 @@ type AlbumEdit struct {
 type fileEdit struct {
 	file *store.EditFile
 	edit Edit
-	// after is where the file's track will hang once written, which preflight
-	// works out with a dry run of the edit.
-	after placement
+	// before and after are where the file's track hangs now and will once
+	// written, which preflight works out with a dry run of the edit.
+	before, after placement
 }
 
 // placement is what decides which rows a track hangs off: its album's group
@@ -166,15 +166,13 @@ func (s *Scanner) edit(ctx context.Context, edits []fileEdit, live map[int64]int
 			return ErrStale
 		}
 		if err == nil {
-			edits[i].after, err = s.preflight(ctx, edits[i].file, &edits[i].edit)
+			err = s.preflight(ctx, &edits[i])
 		}
 		if err != nil {
 			return stopped(edits, 0, err)
 		}
 	}
-	// An album renamed whole keeps its row: re-keyed first, its tracks land back on
-	// it as they are written, and a retry after a failure finds them there.
-	undo, err := s.st.RekeyAlbums(context.WithoutCancel(ctx), rekeys(edits, live))
+	undo, err := s.moveRows(context.WithoutCancel(ctx), edits, live)
 	if err != nil {
 		return stopped(edits, 0, err)
 	}
@@ -188,7 +186,7 @@ func (s *Scanner) edit(ctx context.Context, edits []fileEdit, live map[int64]int
 		path := filepath.Join(file.Root, file.RelPath)
 		if err = s.write(ctx, path, edits[i].edit.apply); err != nil {
 			if i == 0 {
-				s.undoRekeys(ctx, undo)
+				undo()
 			}
 			return stopped(edits, i, err)
 		}
@@ -231,12 +229,76 @@ func rekeys(edits []fileEdit, live map[int64]int) []store.AlbumRekey {
 	return out
 }
 
-// undoRekeys puts back the group keys of an edit that changed no file. A failure
-// is logged: the albums keep the new keys until a full scan reads their files.
-func (s *Scanner) undoRekeys(ctx context.Context, undo []store.AlbumRekey) {
-	if _, err := s.st.RekeyAlbums(context.WithoutCancel(ctx), undo); err != nil {
-		s.log.WarnContext(ctx, "undoing an album rename failed", "err", err)
+// moveRows renames, before anything is written, the rows an edit renames whole,
+// so its tracks land back on them as they are written and a retry after a failure
+// finds them there: an album every live track of which moves to one new key, and
+// an artist every link of which moves to one new name. They keep their ULIDs,
+// first-seen times, covers and hearts. It returns what puts them back, for an edit
+// that then changes no file. A failure to put them back is logged: the rows keep
+// the new names until a full scan reads their files.
+func (s *Scanner) moveRows(ctx context.Context, edits []fileEdit, live map[int64]int) (func(), error) {
+	albums, err := s.st.RekeyAlbums(ctx, rekeys(edits, live))
+	if err != nil {
+		return nil, err //nolint:wrapcheck // The store's error already says what failed.
 	}
+	artists, err := s.st.RenameArtists(ctx, renames(edits))
+	if err != nil {
+		if _, undoErr := s.st.RekeyAlbums(ctx, albums); undoErr != nil {
+			s.log.WarnContext(ctx, "undoing an album rename failed", "err", undoErr)
+		}
+		return nil, err //nolint:wrapcheck // As above.
+	}
+	return func() {
+		_, artistErr := s.st.RenameArtists(ctx, artists)
+		_, albumErr := s.st.RekeyAlbums(ctx, albums)
+		if joined := errors.Join(artistErr, albumErr); joined != nil {
+			s.log.WarnContext(ctx, "undoing a rename failed", "err", joined)
+		}
+	}, nil
+}
+
+// renames returns the artists an edit renames on every track it touches that
+// names them: in the same place of the same role, one name becomes one other,
+// and nowhere does it stay. Whether those are all of an artist's links is the
+// store's to check, which it is given the count of.
+func renames(edits []fileEdit) []store.ArtistRename {
+	type rename struct {
+		to    store.ArtistWrite
+		links int
+		kept  bool // Some track keeps the old name, or renames it otherwise.
+	}
+	byKey := make(map[string]*rename)
+	var order []string
+	note := func(from, to *store.ArtistWrite) {
+		r, seen := byKey[from.MatchKey]
+		if !seen {
+			r = &rename{to: *to}
+			byKey[from.MatchKey] = r
+			order = append(order, from.MatchKey)
+		}
+		r.links++
+		r.kept = r.kept || to.MatchKey == from.MatchKey || to.MatchKey != r.to.MatchKey
+	}
+	for i := range edits {
+		before, after := &edits[i].before, &edits[i].after
+		for _, pair := range [][2][]store.ArtistWrite{{before.artists, after.artists}, {before.albumArtists, after.albumArtists}} {
+			old, now := pair[0], pair[1]
+			for j := range old {
+				if len(old) == len(now) {
+					note(&old[j], &now[j])
+				} else {
+					note(&old[j], &old[j]) // Gone or moved: not a rename.
+				}
+			}
+		}
+	}
+	var out []store.ArtistRename
+	for _, key := range order {
+		if r := byKey[key]; !r.kept {
+			out = append(out, store.ArtistRename{From: key, To: r.to.MatchKey, Name: r.to.Name, SortName: r.to.SortName, MBID: r.to.MBID, Links: r.links})
+		}
+	}
+	return out
 }
 
 // settle brings what the store derives from its tracks up to date, once per edit
@@ -411,28 +473,30 @@ func checkDrift(file *store.EditFile) error {
 
 // preflight does everything but the write: the target must lie under a
 // configured root, the file and its folder must be writable, and the edit must
-// go through a dry write to nowhere. It returns where the track will hang once
-// the edit is written.
-func (s *Scanner) preflight(ctx context.Context, file *store.EditFile, e *Edit) (placement, error) {
-	path, err := s.resolve(file)
+// go through a dry write to nowhere. It sets where e's track hangs now and will
+// hang once the edit is written.
+func (s *Scanner) preflight(ctx context.Context, e *fileEdit) error {
+	path, err := s.resolve(e.file)
 	if err != nil {
-		return placement{}, err
+		return err
 	}
 	if writeErr := checkWritable(path); writeErr != nil {
-		return placement{}, writeErr
+		return writeErr
 	}
 	f, err := audiometa.OpenContext(ctx, path)
 	if err != nil {
-		return placement{}, fmt.Errorf("preflight: %w", err)
+		return fmt.Errorf("preflight: %w", err)
 	}
 	defer func() { _ = f.Close() }() // Only read.
-	if applyErr := e.apply(f); applyErr != nil {
-		return placement{}, applyErr
+	e.before = placementOf(f, e.file)
+	if applyErr := e.edit.apply(f); applyErr != nil {
+		return applyErr
 	}
 	if _, err = f.WriteToContext(ctx, io.Discard); err != nil {
-		return placement{}, fmt.Errorf("preflight: %w", err)
+		return fmt.Errorf("preflight: %w", err)
 	}
-	return placementOf(f, file), nil
+	e.after = placementOf(f, e.file)
+	return nil
 }
 
 // resolve returns the real path of file, refusing a root that left the
