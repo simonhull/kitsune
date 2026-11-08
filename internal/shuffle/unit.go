@@ -60,7 +60,10 @@ type Track struct {
 // History is what a person's listening says about one song. The caller
 // counts; shuffle smooths and weighs.
 type History struct {
-	// LastPlayed is when the person last played the song; zero for never.
+	// LastPlayed is when the song last came up for the person, played or
+	// skipped; zero for never. A skip counts: on the bench, a song skipped
+	// yesterday that recency took for unheard came back sooner than one
+	// played through.
 	LastPlayed time.Time
 	// EarlySkips counts the shuffle starts the person skipped within
 	// [EarlySkip] of the start, during the last [SkipMemoryFor].
@@ -140,10 +143,9 @@ func (u *Unit) primary() (ArtistID, bool) {
 // about them. Build it with [NewPool]; it is never changed after.
 type Pool struct {
 	units     []Unit
-	unitOf    map[TrackID]int32 // a member's unit
-	solo      map[TrackID]Unit  // songs skipped in shuffle outside any run, to lead when chosen
-	artistGap []int32           // by artist index: how far apart its units must be
-	albumGap  []int32           // by album index
+	solo      map[TrackID]Unit // songs skipped in shuffle outside any run, to lead when chosen
+	artistGap []int32          // by artist index: how far apart its units must be
+	albumGap  []int32          // by album index
 }
 
 // NewPool builds the units of tracks, linked by runs. A run's songs missing
@@ -165,23 +167,18 @@ func NewPool(tracks []Track, runs []Run) (*Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Pool{
-		units:  make([]Unit, 0, len(tracks)),
-		unitOf: make(map[TrackID]int32, len(tracks)),
-		solo:   make(map[TrackID]Unit),
-	}
-	p.addRuns(tracks, runs, byID)
+	b := newBuilder(len(tracks))
+	p := &Pool{units: b.runs(tracks, runs, byID), solo: make(map[TrackID]Unit)}
 	for i := range tracks {
-		t := &tracks[i]
-		switch u := newUnit([]*Track{t}); {
+		switch t := &tracks[i]; {
 		case inRun[t.ID]:
 		case t.Skipped:
-			p.solo[t.ID] = u
+			p.solo[t.ID] = b.unit([]*Track{t})
 		default:
-			p.add(&u)
+			p.units = append(p.units, b.unit([]*Track{t}))
 		}
 	}
-	p.index()
+	p.index(b)
 	return p, nil
 }
 
@@ -222,46 +219,19 @@ func (p *Pool) Len() int { return len(p.units) }
 // Units are the pool's units.
 func (p *Pool) Units() []Unit { return slices.Clone(p.units) }
 
-// addRuns adds a unit for each run of tracks with a song not skipped in
-// shuffle.
-func (p *Pool) addRuns(tracks []Track, runs []Run, byID map[TrackID]int) {
-	members := make([]*Track, 0, 1)
-	for _, run := range runs {
-		members = members[:0]
-		for _, id := range run {
-			if i, ok := byID[id]; ok {
-				members = append(members, &tracks[i])
-			}
-		}
-		if slices.ContainsFunc(members, func(t *Track) bool { return !t.Skipped }) {
-			u := newUnit(members)
-			p.add(&u)
-		}
-	}
-}
-
-// add appends u to the pool.
-func (p *Pool) add(u *Unit) {
-	i := int32(len(p.units)) //nolint:gosec // G115: a pool holds far fewer than 2^31 units.
-	for _, id := range u.tracks {
-		p.unitOf[id] = i
-	}
-	p.units = append(p.units, *u)
-}
-
 // index gives every artist and album a dense index and works out how far
 // apart each one's units must be.
-func (p *Pool) index() {
+func (p *Pool) index(b *builder) {
 	artists := make(map[ArtistID]int32)
 	albums := make(map[AlbumID]int32)
 	var artistUnits, albumUnits []int32
 	for i := range p.units {
 		u := &p.units[i]
-		u.artist = make([]int32, len(u.artists))
+		u.artist = b.indexes(len(u.artists))
 		for j, a := range u.artists {
 			u.artist[j] = intern(artists, &artistUnits, a)
 		}
-		u.album = make([]int32, len(u.albums))
+		u.album = b.indexes(len(u.albums))
 		for j, a := range u.albums {
 			u.album[j] = intern(albums, &albumUnits, a)
 		}
@@ -286,10 +256,16 @@ func intern[K comparable](index map[K]int32, counts *[]int32, key K) int32 {
 
 // lead returns the unit holding first: its index in the pool, or -1 and the
 // unit of a song skipped in shuffle, outside any run, that the person chose
-// to start from. It returns -1 and nil when no song is first.
+// to start from. It returns -1 and nil when no song is first. It scans the
+// pool: a shuffle asks once, and a map for it would cost every pool built.
 func (p *Pool) lead(first TrackID) (int, *Unit) {
-	if i, ok := p.unitOf[first]; ok {
-		return int(i), nil
+	if first == 0 {
+		return -1, nil
+	}
+	for i := range p.units {
+		if slices.Contains(p.units[i].tracks, first) {
+			return i, nil
+		}
 	}
 	if u, ok := p.solo[first]; ok {
 		return -1, &u
@@ -297,33 +273,88 @@ func (p *Pool) lead(first TrackID) (int, *Unit) {
 	return -1, nil
 }
 
-// newUnit combines members, in play order, into a unit.
-func newUnit(members []*Track) Unit {
-	u := Unit{tracks: make([]TrackID, len(members))}
-	for i, t := range members {
-		u.tracks[i] = t.ID
-		for _, a := range t.Artists {
-			if !slices.Contains(u.artists, a) {
-				u.artists = append(u.artists, a)
+// builder makes a pool's units, their slices cut from a few large ones, so
+// a pool of 50,000 songs takes a handful of allocations, not a quarter of a
+// million.
+type builder struct {
+	tracks  []TrackID
+	artists []ArtistID
+	albums  []AlbumID
+	idx     []int32
+}
+
+// newBuilder is a builder for about n songs.
+func newBuilder(n int) *builder {
+	return &builder{
+		tracks:  make([]TrackID, 0, n),
+		artists: make([]ArtistID, 0, n+n/4), // some songs have more than one artist
+		albums:  make([]AlbumID, 0, n),
+		idx:     make([]int32, 0, 2*n+n/4),
+	}
+}
+
+// cut returns the part of *buf after from, capped so nothing appended to it
+// later can reach into what follows.
+func cut[T any](buf []T, from int) []T { return buf[from:len(buf):len(buf)] }
+
+// indexes returns n indexes to fill in.
+func (b *builder) indexes(n int) []int32 {
+	from := len(b.idx)
+	b.idx = slices.Grow(b.idx, n)[:from+n]
+	return cut(b.idx, from)
+}
+
+// runs returns, with room for the rest of tracks' units, a unit for each
+// run with a song not skipped in shuffle.
+func (b *builder) runs(tracks []Track, runs []Run, byID map[TrackID]int) []Unit {
+	units := make([]Unit, 0, len(tracks))
+	members := make([]*Track, 0, 1)
+	for _, run := range runs {
+		members = members[:0]
+		for _, id := range run {
+			if i, ok := byID[id]; ok {
+				members = append(members, &tracks[i])
 			}
 		}
-		if !slices.Contains(u.albums, t.Album) {
-			u.albums = append(u.albums, t.Album)
+		if slices.ContainsFunc(members, func(t *Track) bool { return !t.Skipped }) {
+			units = append(units, b.unit(members))
 		}
-		f := &u.facts
-		if t.Stars != Unrated {
-			f.starSum += int(t.Stars)
-			f.rated++
-		}
-		f.hearted = f.hearted || t.Hearted
-		if !t.History.LastPlayed.IsZero() {
-			f.lastPlayed = max(f.lastPlayed, t.History.LastPlayed.UnixMilli())
-		}
-		f.earlySkips = max(f.earlySkips, t.History.EarlySkips)
-		f.starts += t.History.ShuffleStarts
-		f.skips += t.History.ShuffleSkips
-		f.listens += t.History.Listens
-		f.heard += t.History.Heard
 	}
-	return u
+	return units
+}
+
+// unit combines members, in play order, into a unit.
+func (b *builder) unit(members []*Track) Unit {
+	t0, a0, al0 := len(b.tracks), len(b.artists), len(b.albums)
+	var f facts
+	for _, t := range members {
+		b.tracks = append(b.tracks, t.ID)
+		for _, a := range t.Artists {
+			if !slices.Contains(b.artists[a0:], a) {
+				b.artists = append(b.artists, a)
+			}
+		}
+		if !slices.Contains(b.albums[al0:], t.Album) {
+			b.albums = append(b.albums, t.Album)
+		}
+		f.add(t)
+	}
+	return Unit{tracks: cut(b.tracks, t0), artists: cut(b.artists, a0), albums: cut(b.albums, al0), facts: f}
+}
+
+// add counts t's signals into f.
+func (f *facts) add(t *Track) {
+	if t.Stars != Unrated {
+		f.starSum += int(t.Stars)
+		f.rated++
+	}
+	f.hearted = f.hearted || t.Hearted
+	if !t.History.LastPlayed.IsZero() {
+		f.lastPlayed = max(f.lastPlayed, t.History.LastPlayed.UnixMilli())
+	}
+	f.earlySkips = max(f.earlySkips, t.History.EarlySkips)
+	f.starts += t.History.ShuffleStarts
+	f.skips += t.History.ShuffleSkips
+	f.listens += t.History.Listens
+	f.heard += t.History.Heard
 }

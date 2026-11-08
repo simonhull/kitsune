@@ -22,8 +22,9 @@
 // [Finite] orders every unit once, for an album, playlist or selection.
 // [Endless] streams the whole library page by page. Both are weighted (heavier
 // units come sooner and more often), spaced (the same artist and album don't
-// come close together), spread (an artist with many units is spread evenly),
-// and, given a [Similarity], lean toward a next unit that suits the last one.
+// come close together) and, given a [Similarity], lean toward a next unit
+// that suits the last one. A finite order also spreads each artist's units
+// evenly through it.
 //
 // The same inputs and seed always give the same order.
 package shuffle

@@ -7,21 +7,20 @@ import (
 	"slices"
 )
 
-// The finite order's constants. The spec fixes the method; these tune it,
-// and each was chosen on the bench (internal/shuffle/bench).
+// The finite order's constants. The spec fixes the method; these tune it.
+// They were set by hand and checked on the bench (internal/shuffle/bench).
 const (
 	// finiteStream is the PCG stream a finite order draws from, so it never
 	// shares draws with an endless shuffle of the same seed.
 	finiteStream = 0x66696e697465 // "finite"
 
-	// spreadShare is the share of a set's units an artist must hold to be
-	// spread evenly. Below it, an artist's units are few enough that spacing
-	// alone keeps them apart, and the weights keep deciding their places.
-	spreadShare = 1.0 / 16
-	// spreadJitter is how far, in slots of the artist's own spacing, an
-	// evenly spread unit may stray, so an artist's units don't land on a
-	// visible beat. Spotify's dithering did the same.
+	// spreadJitter is how far, as a share of its expected wait, a spread
+	// unit may stray, so an artist's units don't land on a visible beat.
+	// Spotify's dithering did the same.
 	spreadJitter = 0.2
+	// firstWait is how many expected waits an artist's first spread unit
+	// may land within, uniformly: two keeps the race's mean wait.
+	firstWait = 2
 
 	// finiteAttempts is how many orders Finite makes of a set that the
 	// repair and polish leave with spacing breaks, keeping the one with the
@@ -35,8 +34,8 @@ const (
 
 // Finite orders every unit in p once. Heavier units tend to come sooner;
 // the same artist and album are kept apart (by [ArtistGap] and [AlbumGap],
-// scaled down when the set is too small to allow them); an artist holding a
-// large share of the set is spread evenly through it; and with a similarity,
+// scaled down when the set is too small to allow them); each artist's units
+// are spread evenly through it; and with a similarity,
 // a next unit leans toward one like the last. The unit holding first leads,
 // even a song skipped in shuffle, since the person chose it. A zero or
 // unknown first leads with nothing.
@@ -85,7 +84,7 @@ func arrange(p *Pool, c *Config, reasons []Reason, rng *rand.Rand, first TrackID
 		order[i] = int32(i)
 	}
 	slices.SortStableFunc(order, func(a, b int32) int { return cmp.Compare(keys[a], keys[b]) })
-	spread(p, order, rng)
+	spread(p, keys, reasons, order, rng)
 
 	s := c.Settings.clamped()
 	lead, solo := p.lead(first)
@@ -114,36 +113,42 @@ func arrange(p *Pool, c *Config, reasons []Reason, rng *rand.Rand, first TrackID
 	return attempt{picks: a.out, breaks: polish(p, a.out, fixed)}
 }
 
-// spread evens out the artists that hold a large share of order, the
-// dithering Spotify described in 2014. Each such artist's units, in their
-// order, take evenly spaced places from 0 to 1, with a random phase and a
-// little jitter; every other unit takes an evenly spaced place by its rank
-// among the rest; and order is sorted by place. The weights still decide
-// which of an artist's units come first, and the order of the rest.
-func spread(p *Pool, order []int32, rng *rand.Rand) {
-	n := len(order)
-	place := make([]float64, n)
-	spreading := make([]bool, n)
+// spread evens out every artist's units without undoing the weights: the
+// dithering Spotify described in 2014, in the weighted order's own time.
+//
+// A weighted random order is a race: each unit arrives at its key, an
+// exponential time at the rate of its weight, and the order is the order of
+// arrival. An artist's units arrive as a random process, so they bunch and
+// leave gaps. spread keeps each artist's units in their order of arrival,
+// and so which of them come first, but moves them to the times the race
+// expects: the artist's first unit at a random phase within twice its
+// expected wait, each next one after the expected wait given the weight it
+// has left, with a little jitter. An artist with more weight still arrives
+// sooner and more densely; it just stops arriving in clumps. A unit alone
+// in its artist keeps its key.
+//
+// On the bench, spreading only artists with a large share of the set (the
+// spec's wording) left the gaps between an artist's units nearly as uneven
+// as a plain shuffle's; spreading every artist evenly by rank evened them
+// but cost the weights a third of their pull. This keeps both.
+func spread(p *Pool, keys []float64, reasons []Reason, order []int32, rng *rand.Rand) {
 	for _, units := range byPrimary(p, order) {
-		k := float64(len(units))
-		if len(units) < 2 || k < spreadShare*float64(n) {
+		if len(units) <= 1 {
 			continue
 		}
-		phase := rng.Float64()
-		for j, i := range units {
-			jitter := spreadJitter * (2*rng.Float64() - 1)
-			place[i] = (float64(j) + phase + jitter) / k
-			spreading[i] = true
+		left := 0.0
+		for _, i := range units {
+			left += reasons[i].Weight()
+		}
+		t := firstWait * rng.Float64() / left
+		for _, i := range units {
+			keys[i] = t
+			if left -= reasons[i].Weight(); left > 0 {
+				t += (1 + spreadJitter*(rng.Float64()-neutral)/neutral) / left
+			}
 		}
 	}
-	rest := slices.DeleteFunc(slices.Clone(order), func(i int32) bool { return spreading[i] })
-	if len(rest) == n {
-		return
-	}
-	for rank, i := range rest {
-		place[i] = (float64(rank) + neutral) / float64(len(rest))
-	}
-	slices.SortStableFunc(order, func(a, b int32) int { return cmp.Compare(place[a], place[b]) })
+	slices.SortStableFunc(order, func(a, b int32) int { return cmp.Compare(keys[a], keys[b]) })
 }
 
 // byPrimary lists order's units by their primary artist's index, each in

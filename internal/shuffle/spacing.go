@@ -21,7 +21,7 @@ const (
 // packed from the first slot to the last, and at k·g = n its units could
 // still come every g-th slot. But either leaves rigid rotations as the only
 // orders, which sound nothing like a shuffle, and two keys held that tight
-// leave each other no room: an artist's albums share its turns. On the bench
+// leave each other no room: an artist's albums share its turns. In tests,
 // the repair met such sets with breaks it could not undo.
 func gaps(counts []int32, gap, n int) []int32 {
 	out := make([]int32, len(counts))

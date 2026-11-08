@@ -5,7 +5,9 @@ import (
 	"slices"
 )
 
-// The repair's constants, chosen on the bench (internal/shuffle/bench).
+// The repair's constants: set by hand, and checked on the bench
+// (internal/shuffle/bench), which fails if spacing breaks or flow stops
+// leaning.
 const (
 	// flowChoices is how many of the next units that fit flow chooses
 	// among. One would be no choice at all.

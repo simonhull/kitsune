@@ -81,7 +81,7 @@ func TestFiniteIsRepeatable(t *testing.T) {
 	// Locks the order a seed gives, so a change to it is a decision: update
 	// this with the bench report that justifies it.
 	want := []TrackID{
-		20, 11, 24, 27, 1, 2, 9, 13, 17, 25, 30, 7, 4, 14, 18, 23, 28, 8, 12, 16, 21, 29, 3, 6, 15, 19, 22, 26, 10, 5,
+		17, 14, 10, 28, 5, 24, 18, 15, 9, 29, 23, 19, 13, 8, 1, 2, 27, 25, 16, 11, 7, 30, 4, 22, 20, 12, 6, 26, 21, 3,
 	}
 	if !slices.Equal(a, want) {
 		t.Fatalf("seed 42 gave\n%#v\nwant\n%#v", a, want)
