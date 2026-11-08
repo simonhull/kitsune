@@ -406,3 +406,57 @@ func TestReturnedUsersCarryNoHash(t *testing.T) {
 		}
 	}
 }
+
+const newPassword = "battery staple"
+
+func TestSetPasswordSignsOut(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name               string
+		out                func(here string) auth.SignOut
+		wantHere, wantAway bool // Whether each session still works.
+	}{
+		{name: "everywhere", out: func(string) auth.SignOut { return auth.SignOutEverywhere() }},
+		{name: "elsewhere", out: auth.SignOutElsewhere, wantHere: true},
+		{name: "nowhere", out: func(string) auth.SignOut { return auth.StaySignedIn() }, wantHere: true, wantAway: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t)
+			here, away := e.login(t), e.login(t)
+			if err := e.svc.SetPassword(t.Context(), here.User.ID, newPassword, tt.out(here.Token)); err != nil {
+				t.Fatal(err)
+			}
+			for _, s := range []struct {
+				token string
+				want  bool
+			}{{here.Token, tt.wantHere}, {away.Token, tt.wantAway}} {
+				_, err := e.svc.Authenticate(t.Context(), s.token)
+				if works := err == nil; works != s.want {
+					t.Errorf("session works = %v, want %v (%v)", works, s.want, err)
+				}
+			}
+			if _, err := e.svc.Login(t.Context(), simon, password, ""); !errors.Is(err, auth.ErrInvalidCredentials) {
+				t.Errorf("old password: err = %v, want ErrInvalidCredentials", err)
+			}
+			if _, err := e.svc.Login(t.Context(), simon, newPassword, ""); err != nil {
+				t.Errorf("new password: %v", err)
+			}
+		})
+	}
+}
+
+func TestSetPasswordRejects(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	res := e.login(t)
+	if err := e.svc.SetPassword(t.Context(), res.User.ID, "short", auth.SignOutEverywhere()); !errors.Is(err, auth.ErrPasswordTooShort) {
+		t.Errorf("short: err = %v, want ErrPasswordTooShort", err)
+	}
+	if err := e.svc.SetPassword(t.Context(), res.User.ID+100, newPassword, auth.SignOutEverywhere()); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("unknown id: err = %v, want ErrNotFound", err)
+	}
+	if _, err := e.svc.Authenticate(t.Context(), res.Token); err != nil {
+		t.Errorf("a refused change ended the session: %v", err)
+	}
+}

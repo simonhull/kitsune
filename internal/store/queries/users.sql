@@ -18,3 +18,8 @@ UPDATE users SET password_hash = ? WHERE id = ?;
 INSERT INTO users (name, password_hash, role, created_at)
 SELECT sqlc.arg(name), sqlc.arg(password_hash), sqlc.arg(role), sqlc.arg(created_at)
 WHERE NOT EXISTS (SELECT 1 FROM users);
+
+-- name: ListUsers :many
+SELECT id, name, role, created_at
+FROM users
+ORDER BY name, id;

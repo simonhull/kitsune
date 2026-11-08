@@ -19,6 +19,9 @@ Commands:
                    seeds it again (-config FILE)
   users add NAME   create a user (-admin, -password-stdin, -config FILE);
                    the first can also be made in a browser, on a server's first run
+  users passwd NAME   set a user's password and sign them out everywhere
+                   (-password-stdin, -keep-sessions, -config FILE)
+  users list       print every user's name and role (-config FILE)
   version   print the version and exit
   help      print this help and exit
 
