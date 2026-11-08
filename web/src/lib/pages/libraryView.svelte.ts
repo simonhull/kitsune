@@ -18,6 +18,7 @@ import {
 	type RowMetrics
 } from './libraryRows.ts';
 import { columnsFrom, coverFor, largeFrom, stepFor, type Step } from './columns.ts';
+import { albumAfter, LibraryContinues } from './libraryContinues.ts';
 import { createTapper } from './libraryTap.ts';
 
 /** Where the columns stack. The page's styles say the same. */
@@ -171,15 +172,44 @@ class LibraryView {
 		album: (id) => library.album(id),
 		load: (id) => library.loadAlbum(id),
 		play: (album, index) => {
-			player.play(album, index);
+			player.play(album, index, 'list');
 		},
 		playDisc: (album, disc) => {
-			player.playDisc(album, disc);
+			player.playDisc(album, disc, 'list');
 		},
 		failed: (id) => {
 			this.trouble = id;
 		}
 	});
+
+	/** What plays after an album started here: the next album down the list, as it shows now. */
+	readonly #continues = new LibraryContinues({
+		album: (id) => library.album(id),
+		loadAlbum: (id) => library.loadAlbum(id),
+		get queue() {
+			return player.queue;
+		},
+		continueList: (after, album) => player.continueList(after, album),
+		albumAfter: (id) => albumAfter(this.layout.albums, id)
+	});
+
+	constructor() {
+		player.onward.list = () => {
+			this.#continues.keep();
+		};
+		// A list that changes under a queue going through it: a live event, or another filter. The
+		// list is only read while one is.
+		$effect.root(() => {
+			$effect(() => {
+				if (player.queue?.continues !== undefined) {
+					void this.layout;
+					untrack(() => {
+						this.#continues.keep();
+					});
+				}
+			});
+		});
+	}
 
 	#mount(): MountedArtist[] {
 		const { rows, albums, artists } = this.layout;
