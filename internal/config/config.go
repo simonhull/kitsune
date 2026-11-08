@@ -42,6 +42,10 @@ func knownKeys() []string {
 }
 
 // Config is kitsune-server's configuration.
+//
+// Only Server.Listen and Storage.DataDir apply at every start. Every other key
+// is a setting the database keeps: the file only seeds one that has no value
+// there yet (see internal/settings).
 type Config struct {
 	Server  Server  `toml:"server"`
 	Library Library `toml:"library"`
@@ -49,6 +53,13 @@ type Config struct {
 	Log     Log     `toml:"log"`
 	LastFM  LastFM  `toml:"lastfm"`
 }
+
+// Keys are the keys a config file set, such as "lastfm.api_key". A key the
+// file leaves out has its [Default] value, which seeds nothing.
+type Keys []string
+
+// Has reports whether the file set key.
+func (k Keys) Has(key string) bool { return slices.Contains(k, key) }
 
 // Server configures the HTTP server.
 type Server struct {
@@ -166,19 +177,28 @@ func Default() Config {
 // not know, or has invalid values. Every invalid value is reported, as
 // "key: reason" joined with [errors.Join].
 func Load(path string, paths Paths) (Config, error) {
+	cfg, _, err := LoadKeys(path, paths)
+	return cfg, err
+}
+
+// LoadKeys is [Load] that also returns the keys the file set: those are the
+// settings it seeds.
+func LoadKeys(path string, paths Paths) (Config, Keys, error) {
 	cfg := Default()
 	name := path
 	if name == "" {
 		name = paths.ConfigFile
 	}
+	var keys Keys
 	read := false
 	if name != "" {
-		err := decodeFile(name, &cfg)
+		var err error
+		keys, err = decodeFile(name, &cfg)
 		switch {
 		case err == nil:
 			read = true
 		case path != "" || !errors.Is(err, fs.ErrNotExist):
-			return Config{}, err
+			return Config{}, nil, err
 		}
 	}
 	if cfg.Storage.DataDir == "" {
@@ -186,34 +206,38 @@ func Load(path string, paths Paths) (Config, error) {
 	}
 	if err := cfg.validate(); err != nil {
 		if read {
-			return Config{}, fmt.Errorf("config %s: %w", name, err)
+			return Config{}, nil, fmt.Errorf("config %s: %w", name, err)
 		}
-		return Config{}, fmt.Errorf("config: %w", err)
+		return Config{}, nil, fmt.Errorf("config: %w", err)
 	}
-	return cfg, nil
+	return cfg, keys, nil
 }
 
 // decodeFile decodes the TOML file name into cfg, rejecting unknown keys and
-// values the decoder would misread.
-func decodeFile(name string, cfg *Config) error {
+// values the decoder would misread, and returns the keys it set.
+func decodeFile(name string, cfg *Config) (Keys, error) {
 	b, err := os.ReadFile(name) //nolint:gosec // G304: the operator names the config file.
 	if err != nil {
-		return fmt.Errorf("read config: %w", err) // The error already names the file.
+		return nil, fmt.Errorf("read config: %w", err) // The error already names the file.
 	}
 	md, err := toml.Decode(string(b), cfg)
 	if err != nil {
-		return fmt.Errorf("config %s: %w", name, err)
+		return nil, fmt.Errorf("config %s: %w", name, err)
 	}
 	if unknown := unknownKeys(&md); len(unknown) > 0 {
-		return fmt.Errorf("config %s: %w: %s", name, errUnknownKey, strings.Join(unknown, ", "))
+		return nil, fmt.Errorf("config %s: %w: %s", name, errUnknownKey, strings.Join(unknown, ", "))
+	}
+	keys := make(Keys, 0, len(md.Keys()))
+	for _, k := range md.Keys() {
+		keys = append(keys, k.String())
 	}
 	// The decoder reads an integer duration as nanoseconds, so 86400 would
 	// mean 86.4µs, not a day.
 	if md.IsDefined("library", "missing_grace") && md.Type("library", "missing_grace") != "String" {
-		return fmt.Errorf("config %s: %w", name,
+		return nil, fmt.Errorf("config %s: %w", name,
 			&invalidError{key: "library.missing_grace", reason: `want a duration string, such as "24h"`})
 	}
-	return nil
+	return keys, nil
 }
 
 // unknownKeys lists the keys in md that are not in [knownKeys], leaving out
@@ -286,10 +310,24 @@ func (c *Config) validate() error {
 // checkRoots cleans each absolute root and reports roots that are relative
 // or that equal or contain an earlier one.
 func (c *Config) checkRoots(invalid func(key, reason string)) {
-	roots := c.Library.Roots
+	for _, p := range rootProblems(c.Library.Roots) {
+		invalid(rootKey(p.index), p.reason)
+	}
+}
+
+// rootProblem is what is wrong with the root at index.
+type rootProblem struct {
+	index  int
+	reason string
+}
+
+// rootProblems cleans each absolute root in place and describes the roots that
+// are relative or that equal or contain an earlier one.
+func rootProblems(roots []string) []rootProblem {
+	var problems []rootProblem
 	for i, root := range roots {
 		if !filepath.IsAbs(root) {
-			invalid(rootKey(i), "must be an absolute path")
+			problems = append(problems, rootProblem{i, "must be an absolute path"})
 			continue
 		}
 		roots[i] = filepath.Clean(root)
@@ -297,11 +335,39 @@ func (c *Config) checkRoots(invalid func(key, reason string)) {
 	for j, b := range roots {
 		for i, a := range roots[:j] {
 			if filepath.IsAbs(a) && filepath.IsAbs(b) && (contains(a, b) || contains(b, a)) {
-				invalid(rootKey(j), "overlaps "+rootKey(i))
+				problems = append(problems, rootProblem{j, "overlaps " + rootKey(i)})
 				break
 			}
 		}
 	}
+	return problems
+}
+
+// ErrInvalid means a value is not one its key takes. The error wrapping it
+// says why.
+var ErrInvalid = errors.New("invalid value")
+
+// CleanRoots returns a cleaned copy of roots, or an error wrapping [ErrInvalid]
+// when one is relative or overlaps another.
+func CleanRoots(roots []string) ([]string, error) {
+	out := slices.Clone(roots)
+	if p := rootProblems(out); len(p) > 0 {
+		return nil, fmt.Errorf("%w: %s: %s", ErrInvalid, rootKey(p[0].index), p[0].reason)
+	}
+	return out, nil
+}
+
+// Overlaps reports whether the cleaned absolute paths a and b are the same
+// folder or one holds the other.
+func Overlaps(a, b string) bool { return contains(a, b) || contains(b, a) }
+
+// CheckBaseURL returns an error wrapping [ErrInvalid] when s is not a value
+// server.base_url takes. "" is one: it means the server is not behind a proxy.
+func CheckBaseURL(s string) error {
+	if reason := baseURLProblem(s); reason != "" {
+		return fmt.Errorf("%w: %s", ErrInvalid, reason)
+	}
+	return nil
 }
 
 func rootKey(i int) string { return "library.roots[" + strconv.Itoa(i) + "]" }

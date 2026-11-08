@@ -24,6 +24,7 @@ import (
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/openapitest"
 	"github.com/simonhull/kitsune/internal/scrobbler"
+	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -104,14 +105,15 @@ type testServerOptions struct {
 
 // testServer is a running API over a real store and auth service.
 type testServer struct {
-	Server  *httptest.Server
-	URL     string // The API root: the origin, the base path and /api/v1.
-	Clock   *testClock
-	Log     *syncBuffer
-	Auth    *auth.Service
-	Handle  *Server
-	Store   *store.Store
-	Scanner *library.Scanner
+	Server   *httptest.Server
+	URL      string // The API root: the origin, the base path and /api/v1.
+	Clock    *testClock
+	Log      *syncBuffer
+	Auth     *auth.Service
+	Handle   *Server
+	Store    *store.Store
+	Settings *settings.Service
+	Scanner  *library.Scanner
 }
 
 // newTestServer starts a server over a temporary store.
@@ -169,7 +171,11 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		sending.Go(func() { sender.Run(ctx) })
 		tb.Cleanup(func() { cancel(); sending.Wait() }) // Before the store closes.
 	}
+	live := openSettings(tb, st)
 	h := New(Config{
+		Settings:      live,
+		Listen:        testListen,
+		Version:       testVersion,
 		Auth:          svc,
 		Logger:        logger,
 		Now:           clock.Now,
@@ -189,7 +195,23 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)
-	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st, Scanner: scanner}
+	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st, Scanner: scanner, Settings: live}
+}
+
+// What GET /admin/settings reports of a test server.
+const (
+	testListen  = ":4533"
+	testVersion = "v0.0.0-test"
+)
+
+// openSettings opens the settings kept in st.
+func openSettings(tb testing.TB, st *store.Store) *settings.Service {
+	tb.Helper()
+	live, err := settings.Open(tb.Context(), st)
+	if err != nil {
+		tb.Fatalf("open settings: %v", err)
+	}
+	return live
 }
 
 // testClientIP reads the client IP from testClientIPHeader, falling back to

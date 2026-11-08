@@ -28,6 +28,7 @@ import (
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/server"
+	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/store"
 	"github.com/simonhull/kitsune/internal/webui"
 )
@@ -133,6 +134,8 @@ type app struct {
 	// setupCode makes the first account from outside the server's network.
 	// It is "" when the server started with accounts.
 	setupCode string
+	covers    *artwork.Cache
+	genres    *library.Genres
 
 	// Background work outlives requests. Shutdown cancels it and waits, so a
 	// pending scan batch is written before the store closes.
@@ -152,7 +155,11 @@ func openApp(ctx context.Context, cfg *config.Config, l launch, log *slog.Logger
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-	a, err := buildApp(ctx, cfg, l.lastfmURL, st, log)
+	live, err := settings.Open(ctx, st)
+	if err != nil {
+		return nil, errors.Join(err, st.Close())
+	}
+	a, err := buildApp(ctx, cfg, l.lastfmURL, st, live, log)
 	if err != nil {
 		return nil, errors.Join(err, st.Close())
 	}
@@ -175,7 +182,7 @@ func firstRunCode(ctx context.Context, st *store.Store) (string, error) {
 // buildApp wires the auth service and the HTTP server over st. ctx ends tag edits:
 // a shutdown stops one between files, inside the drain. lastfmURL is the root of a
 // fake Last.fm, or "" for the real one.
-func buildApp(ctx context.Context, cfg *config.Config, lastfmURL string, st *store.Store, log *slog.Logger) (*app, error) {
+func buildApp(ctx context.Context, cfg *config.Config, lastfmURL string, st *store.Store, live *settings.Service, log *slog.Logger) (*app, error) {
 	svc, err := auth.New(st, auth.Options{Params: authParams()})
 	if err != nil {
 		return nil, fmt.Errorf("start auth: %w", err)
@@ -189,9 +196,9 @@ func buildApp(ctx context.Context, cfg *config.Config, lastfmURL string, st *sto
 	if err != nil {
 		return nil, err
 	}
-	genres := library.NewGenres(st)
-	if err = genres.Refresh(ctx); err != nil {
-		return nil, fmt.Errorf("read genres: %w", err)
+	genres, err := readGenres(ctx, st)
+	if err != nil {
+		return nil, err
 	}
 	setupCode, err := firstRunCode(ctx, st)
 	if err != nil {
@@ -209,32 +216,50 @@ func buildApp(ctx context.Context, cfg *config.Config, lastfmURL string, st *sto
 		dataDir:   cfg.Storage.DataDir,
 		baseURL:   cfg.Server.BaseURL,
 		setupCode: setupCode,
+		covers:    covers,
+		genres:    genres,
 	}
-	handler := server.New(server.Config{
-		Auth:          svc,
-		Logger:        log,
-		ClientIP:      server.ForwardedClientIP(trusted),
-		SecureCookies: cfg.Server.HTTPS(),
-		BasePath:      cfg.Server.BasePath(),
-		Ready:         a.ready,
-		Artwork:       covers,
-		Library:       st,
-		Roots:         len(cfg.Library.Roots),
-		TagWrites:     cfg.Library.TagWrites,
-		Scanner:       a.scanner,
-		StartScan:     a.startScan,
-		Genres:        genres,
-		Context:       ctx,
-		Web:           webClient(cfg, log),
-		Lastfm:        a.lastfm,
-		PublicURL:     cfg.Server.BaseURL,
-		SetupCode:     setupCode,
-	})
-	a.http = newHTTPServer(handler, log)
+	a.http = newHTTPServer(a.handler(ctx, cfg, live, trusted), log)
 	if cfg.Server.BaseURL != "" && len(trusted) == 0 {
 		log.Warn("base_url is set but trusted_proxies is empty; every client will share the proxy's address for login rate limits")
 	}
 	return a, nil
+}
+
+// handler returns the API and web client over a's parts. ctx ends tag edits.
+func (a *app) handler(ctx context.Context, cfg *config.Config, live *settings.Service, trusted []netip.Prefix) *server.Server {
+	return server.New(server.Config{
+		Auth:          a.auth,
+		Logger:        a.log,
+		ClientIP:      server.ForwardedClientIP(trusted),
+		SecureCookies: cfg.Server.HTTPS(),
+		BasePath:      cfg.Server.BasePath(),
+		Ready:         a.ready,
+		Artwork:       a.covers,
+		Library:       a.store,
+		Roots:         len(cfg.Library.Roots),
+		TagWrites:     cfg.Library.TagWrites,
+		Scanner:       a.scanner,
+		StartScan:     a.startScan,
+		Genres:        a.genres,
+		Context:       ctx,
+		Web:           webClient(cfg, a.log),
+		Lastfm:        a.lastfm,
+		PublicURL:     cfg.Server.BaseURL,
+		SetupCode:     a.setupCode,
+		Settings:      live,
+		Listen:        cfg.Server.Listen,
+		Version:       version(),
+	})
+}
+
+// readGenres returns the library's genres, read from st.
+func readGenres(ctx context.Context, st *store.Store) (*library.Genres, error) {
+	genres := library.NewGenres(st)
+	if err := genres.Refresh(ctx); err != nil {
+		return nil, fmt.Errorf("read genres: %w", err)
+	}
+	return genres, nil
 }
 
 // newScanner returns the library scanner over st that cfg sets up.

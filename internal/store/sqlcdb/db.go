@@ -90,6 +90,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteSessionStmt, err = db.PrepareContext(ctx, deleteSession); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSession: %w", err)
 	}
+	if q.deleteSettingStmt, err = db.PrepareContext(ctx, deleteSetting); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteSetting: %w", err)
+	}
 	if q.deleteTrackArtistsStmt, err = db.PrepareContext(ctx, deleteTrackArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTrackArtists: %w", err)
 	}
@@ -137,6 +140,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertPlayStmt, err = db.PrepareContext(ctx, insertPlay); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPlay: %w", err)
+	}
+	if q.insertSettingIfAbsentStmt, err = db.PrepareContext(ctx, insertSettingIfAbsent); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertSettingIfAbsent: %w", err)
 	}
 	if q.insertTrackStmt, err = db.PrepareContext(ctx, insertTrack); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTrack: %w", err)
@@ -246,6 +252,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listScanIssuesStmt, err = db.PrepareContext(ctx, listScanIssues); err != nil {
 		return nil, fmt.Errorf("error preparing query ListScanIssues: %w", err)
 	}
+	if q.listSettingsStmt, err = db.PrepareContext(ctx, listSettings); err != nil {
+		return nil, fmt.Errorf("error preparing query ListSettings: %w", err)
+	}
 	if q.listTrackArtistNamesStmt, err = db.PrepareContext(ctx, listTrackArtistNames); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackArtistNames: %w", err)
 	}
@@ -335,6 +344,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertScanIssueStmt, err = db.PrepareContext(ctx, upsertScanIssue); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertScanIssue: %w", err)
+	}
+	if q.upsertSettingStmt, err = db.PrepareContext(ctx, upsertSetting); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertSetting: %w", err)
 	}
 	if q.upsertTrackRatingStmt, err = db.PrepareContext(ctx, upsertTrackRating); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTrackRating: %w", err)
@@ -457,6 +469,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteSessionStmt: %w", cerr)
 		}
 	}
+	if q.deleteSettingStmt != nil {
+		if cerr := q.deleteSettingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteSettingStmt: %w", cerr)
+		}
+	}
 	if q.deleteTrackArtistsStmt != nil {
 		if cerr := q.deleteTrackArtistsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteTrackArtistsStmt: %w", cerr)
@@ -535,6 +552,11 @@ func (q *Queries) Close() error {
 	if q.insertPlayStmt != nil {
 		if cerr := q.insertPlayStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertPlayStmt: %w", cerr)
+		}
+	}
+	if q.insertSettingIfAbsentStmt != nil {
+		if cerr := q.insertSettingIfAbsentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertSettingIfAbsentStmt: %w", cerr)
 		}
 	}
 	if q.insertTrackStmt != nil {
@@ -717,6 +739,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listScanIssuesStmt: %w", cerr)
 		}
 	}
+	if q.listSettingsStmt != nil {
+		if cerr := q.listSettingsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listSettingsStmt: %w", cerr)
+		}
+	}
 	if q.listTrackArtistNamesStmt != nil {
 		if cerr := q.listTrackArtistNamesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTrackArtistNamesStmt: %w", cerr)
@@ -867,6 +894,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertScanIssueStmt: %w", cerr)
 		}
 	}
+	if q.upsertSettingStmt != nil {
+		if cerr := q.upsertSettingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertSettingStmt: %w", cerr)
+		}
+	}
 	if q.upsertTrackRatingStmt != nil {
 		if cerr := q.upsertTrackRatingStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertTrackRatingStmt: %w", cerr)
@@ -938,6 +970,7 @@ type Queries struct {
 	deleteMissingBeforeStmt        *sql.Stmt
 	deleteScanIssueStmt            *sql.Stmt
 	deleteSessionStmt              *sql.Stmt
+	deleteSettingStmt              *sql.Stmt
 	deleteTrackArtistsStmt         *sql.Stmt
 	deleteTrackHeartStmt           *sql.Stmt
 	deleteTrackRatingStmt          *sql.Stmt
@@ -954,6 +987,7 @@ type Queries struct {
 	insertAlbumHeartStmt           *sql.Stmt
 	insertArtistHeartStmt          *sql.Stmt
 	insertPlayStmt                 *sql.Stmt
+	insertSettingIfAbsentStmt      *sql.Stmt
 	insertTrackStmt                *sql.Stmt
 	insertTrackArtistStmt          *sql.Stmt
 	insertTrackHeartStmt           *sql.Stmt
@@ -990,6 +1024,7 @@ type Queries struct {
 	listLastfmDueUsersStmt         *sql.Stmt
 	listOwningArtistsStmt          *sql.Stmt
 	listScanIssuesStmt             *sql.Stmt
+	listSettingsStmt               *sql.Stmt
 	listTrackArtistNamesStmt       *sql.Stmt
 	listTrackHitArtistsStmt        *sql.Stmt
 	listTrackHitsStmt              *sql.Stmt
@@ -1020,6 +1055,7 @@ type Queries struct {
 	upsertLastfmAccountStmt        *sql.Stmt
 	upsertPrefStmt                 *sql.Stmt
 	upsertScanIssueStmt            *sql.Stmt
+	upsertSettingStmt              *sql.Stmt
 	upsertTrackRatingStmt          *sql.Stmt
 	userByNameStmt                 *sql.Stmt
 }
@@ -1050,6 +1086,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteMissingBeforeStmt:        q.deleteMissingBeforeStmt,
 		deleteScanIssueStmt:            q.deleteScanIssueStmt,
 		deleteSessionStmt:              q.deleteSessionStmt,
+		deleteSettingStmt:              q.deleteSettingStmt,
 		deleteTrackArtistsStmt:         q.deleteTrackArtistsStmt,
 		deleteTrackHeartStmt:           q.deleteTrackHeartStmt,
 		deleteTrackRatingStmt:          q.deleteTrackRatingStmt,
@@ -1066,6 +1103,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertAlbumHeartStmt:           q.insertAlbumHeartStmt,
 		insertArtistHeartStmt:          q.insertArtistHeartStmt,
 		insertPlayStmt:                 q.insertPlayStmt,
+		insertSettingIfAbsentStmt:      q.insertSettingIfAbsentStmt,
 		insertTrackStmt:                q.insertTrackStmt,
 		insertTrackArtistStmt:          q.insertTrackArtistStmt,
 		insertTrackHeartStmt:           q.insertTrackHeartStmt,
@@ -1102,6 +1140,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listLastfmDueUsersStmt:         q.listLastfmDueUsersStmt,
 		listOwningArtistsStmt:          q.listOwningArtistsStmt,
 		listScanIssuesStmt:             q.listScanIssuesStmt,
+		listSettingsStmt:               q.listSettingsStmt,
 		listTrackArtistNamesStmt:       q.listTrackArtistNamesStmt,
 		listTrackHitArtistsStmt:        q.listTrackHitArtistsStmt,
 		listTrackHitsStmt:              q.listTrackHitsStmt,
@@ -1132,6 +1171,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertLastfmAccountStmt:        q.upsertLastfmAccountStmt,
 		upsertPrefStmt:                 q.upsertPrefStmt,
 		upsertScanIssueStmt:            q.upsertScanIssueStmt,
+		upsertSettingStmt:              q.upsertSettingStmt,
 		upsertTrackRatingStmt:          q.upsertTrackRatingStmt,
 		userByNameStmt:                 q.userByNameStmt,
 	}

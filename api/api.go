@@ -5,6 +5,7 @@ package api
 
 import (
 	_ "embed"
+	"encoding/json/jsontext"
 	"time"
 )
 
@@ -529,4 +530,43 @@ type ScanResult struct {
 	SkippedRoots int       `json:"skippedRoots"`
 	// Error says why a failed scan failed, for administrators only.
 	Error string `json:"error,omitzero"`
+}
+
+// ServerSettings is the response to GET and PATCH /admin/settings.
+type ServerSettings struct {
+	// Settings holds every setting, by its key as server.toml spells it, such
+	// as "lastfm.api_key".
+	Settings map[string]Setting `json:"settings"`
+	// Listen is the address the server listens on. Only server.toml sets it,
+	// since the server needs it before it can open its database.
+	Listen string `json:"listen"`
+	// ListenSource is SettingFile, or SettingDefault when the file leaves it out.
+	ListenSource string `json:"listenSource"`
+	// Version is the server's version.
+	Version string `json:"version"`
+}
+
+// The values of Setting.Source. Every source but SettingDefault is stored.
+const (
+	SettingDefault = "default"
+	SettingWeb     = "web"
+	SettingFile    = "server.toml"
+	SettingEnv     = "env"
+	SettingFlag    = "flag"
+)
+
+// Setting is one server setting. A secret never carries its value: Set says
+// whether it has one.
+type Setting struct {
+	Value jsontext.Value `json:"value,omitzero"`
+	Set   *bool          `json:"set,omitzero"`
+	// Source is where the value came from, one of the Setting* constants.
+	Source string `json:"source"`
+	// From names that source for a person, such as KITSUNE_LASTFM_API_KEY.
+	From string `json:"from,omitzero"`
+	// RestartRequired says a change applies only after a restart.
+	RestartRequired bool `json:"restartRequired,omitzero"`
+	// PendingRestart says the value has changed since the server started and
+	// waits for a restart.
+	PendingRestart bool `json:"pendingRestart,omitzero"`
 }
