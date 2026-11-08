@@ -35,6 +35,7 @@ type TrackWrite struct {
 
 	Title, SortTitle                                           string
 	TrackNo, TrackTotal, DiscNo, DiscTotal, Year, OriginalYear int // 0 is unknown.
+	DiscSubtitle                                               string // The disc's name; empty is untagged.
 	Compilation                                                bool
 	ReplayGain                                                 ReplayGain
 
@@ -517,6 +518,7 @@ func insertTrack(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, albumID
 		TrackTotal:   nullInt(tw.TrackTotal),
 		DiscNo:       nullInt(tw.DiscNo),
 		DiscTotal:    nullInt(tw.DiscTotal),
+		DiscSubtitle: nullStr(tw.DiscSubtitle),
 		Year:         nullInt(tw.Year),
 		OriginalYear: nullInt(tw.OriginalYear),
 		Compilation:  flag(tw.Compilation),
@@ -556,6 +558,7 @@ func updateTrack(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, albumID
 		TrackTotal:   nullInt(tw.TrackTotal),
 		DiscNo:       nullInt(tw.DiscNo),
 		DiscTotal:    nullInt(tw.DiscTotal),
+		DiscSubtitle: nullStr(tw.DiscSubtitle),
 		Year:         nullInt(tw.Year),
 		OriginalYear: nullInt(tw.OriginalYear),
 		Compilation:  flag(tw.Compilation),

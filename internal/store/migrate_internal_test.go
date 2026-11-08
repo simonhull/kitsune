@@ -450,11 +450,16 @@ func TestMidFileCommitFailsLoudly(t *testing.T) {
 
 // rejectControl runs body with transaction control and pragmas denied. SQLite's
 // own parser decides, so a BEGIN in a trigger or a COMMIT in a string is fine.
+// The one pragma let through is quick_check, which only reads: SQLite runs it
+// itself to check the rows when a column is added to a STRICT table.
 func rejectControl(ctx context.Context, conn *sql.Conn, body string) error {
 	denied := []sqlite3.AuthorizerActionCode{
 		sqlite3.AUTH_TRANSACTION, sqlite3.AUTH_SAVEPOINT, sqlite3.AUTH_PRAGMA, sqlite3.AUTH_ATTACH, sqlite3.AUTH_DETACH,
 	}
-	deny := func(action sqlite3.AuthorizerActionCode, _, _, _, _ string) sqlite3.AuthorizerReturnCode {
+	deny := func(action sqlite3.AuthorizerActionCode, name, _, _, _ string) sqlite3.AuthorizerReturnCode {
+		if action == sqlite3.AUTH_PRAGMA && name == "quick_check" {
+			return sqlite3.AUTH_OK
+		}
 		if slices.Contains(denied, action) {
 			return sqlite3.AUTH_DENY
 		}
@@ -509,6 +514,7 @@ func TestRejectControl(t *testing.T) {
 		{"savepoint", "SAVEPOINT s;", false},
 		{"pragma", "PRAGMA foreign_keys = ON;", false},
 		{"attach", "ATTACH ':memory:' AS m;", false},
+		{"a column added to a STRICT table", "CREATE TABLE a (x INTEGER) STRICT;\nALTER TABLE a ADD COLUMN y TEXT;", true},
 		{"words in a comment and a string", "-- COMMIT;\nCREATE TABLE a (x TEXT DEFAULT 'COMMIT;');", true},
 		{"a trigger's BEGIN and END", `CREATE TABLE a (x INTEGER);
 			CREATE TRIGGER t AFTER INSERT ON a BEGIN
@@ -831,4 +837,42 @@ func TestDigestNullableKeepsTracks(t *testing.T) {
 	if _, err := d.w.ExecContext(t.Context(), "UPDATE tracks SET audio_digest = x'00' WHERE id = 2"); err == nil {
 		t.Error("a 1-byte fingerprint was stored")
 	}
+}
+
+// TestDiscSubtitleBackfillsFromRawTags runs 0009 over a v8 library: a track with
+// a disc subtitle among its raw tags gets it, TSST before DISCSUBTITLE, trimmed,
+// and a track with none, or only white space, stays NULL.
+func TestDiscSubtitleBackfillsFromRawTags(t *testing.T) {
+	t.Parallel()
+	steps := shippedSteps(t)
+	at := slices.IndexFunc(steps, func(m migration) bool { return m.name == "0009_disc_subtitle.sql" })
+	if at < 0 {
+		t.Fatal("0009_disc_subtitle.sql is not shipped")
+	}
+	d := newScratchDB(t)
+	d.mustSettle(t, steps[:at])
+	seedLibrary(t, d.w)
+	for _, tag := range []struct {
+		track      int
+		key, value string
+	}{
+		{1, "DISCSUBTITLE", "  The Electric Set\t"},
+		{2, "TSST", "The Room Recordings"},
+		{2, "DISCSUBTITLE", "Not this one"},
+		{3, "DISCSUBTITLE", "   "},
+	} {
+		if _, err := d.w.ExecContext(t.Context(), "INSERT INTO track_tags (track_id, key, ord, value) VALUES (?, ?, 0, ?)",
+			tag.track, tag.key, tag.value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	facts := libraryFacts(t, d.w)
+
+	d.mustSettle(t, steps[:at+1])
+
+	got := rawRows(t, d.w, "SELECT coalesce(disc_subtitle, '-') FROM tracks WHERE id <= 4 ORDER BY id")
+	if want := []string{"The Electric Set", "The Room Recordings", "-", "-"}; !slices.Equal(got, want) {
+		t.Errorf("disc subtitles = %q, want %q", got, want)
+	}
+	expectFacts(t, d.w, facts)
 }

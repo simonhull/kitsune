@@ -78,8 +78,9 @@ type Track struct {
 	Title                 string
 	Artists               []string
 	DiscNo, TrackNo       int // 0 is unknown.
-	DiscTotal, TrackTotal int // 0 is unknown.
-	Year                  int // 0 is unknown.
+	DiscTotal, TrackTotal int    // 0 is unknown.
+	DiscSubtitle          string // The disc's name as this track is tagged; empty is untagged.
+	Year                  int    // 0 is unknown.
 	ETag                  string
 	Duration              time.Duration
 	Format                string
@@ -101,6 +102,7 @@ type AlbumDetail struct {
 
 	Artists  []ArtistLink // Who it links to; empty leaves Artist as plain text.
 	Tracks   []Track
+	Discs    []Disc // In disc order; one, for an album on one disc.
 	Duration time.Duration
 	Formats  []string // Distinct and sorted.
 	ETag     string   // Covers the live tracks' files; see [etag].
@@ -391,6 +393,7 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 			ID: t.Ulid, Title: t.Title, Artists: artists[t.ID], ETag: etag(st),
 			DiscNo: intOr0(t.DiscNo), TrackNo: intOr0(t.TrackNo),
 			DiscTotal: intOr0(t.DiscTotal), TrackTotal: intOr0(t.TrackTotal), Year: intOr0(t.Year),
+			DiscSubtitle: strOrEmpty(t.DiscSubtitle),
 			Duration: time.Duration(t.DurationMs) * time.Millisecond, Format: t.Format,
 			SampleRate: intOr0(t.SampleRate), BitDepth: intOr0(t.BitDepth),
 			ReplayGain: ReplayGain{
@@ -399,6 +402,7 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 			},
 		}
 		d.Tracks = append(d.Tracks, tr)
+		(*discs)(&d.Discs).add(tr.DiscNo, tr.DiscSubtitle, tr.Duration)
 		d.Duration += tr.Duration
 		d.Formats = append(d.Formats, tr.Format)
 	}

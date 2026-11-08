@@ -33,6 +33,7 @@ const (
 	FieldTrackTotal      Field = "trackTotal"
 	FieldDisc            Field = "disc"
 	FieldDiscTotal       Field = "discTotal"
+	FieldDiscSubtitle    Field = "discSubtitle"
 	FieldDate            Field = "date"
 	FieldGenres          Field = "genres"
 	FieldComposers       Field = "composers"
@@ -143,6 +144,9 @@ const (
 	keyTORY    = "TORY"
 	keyComment = "COMM" // MP3: audiometa keeps it out of the raw tags.
 	keyLyrics  = "USLT" // MP3: audiometa takes it through the typed field.
+	keyTSST    = "TSST"
+	// keyDiscSubtitle is the disc's name in Vorbis and M4A, and a TXXX in ID3.
+	keyDiscSubtitle = "DISCSUBTITLE"
 )
 
 // fields is the table, in the order an edit applies: a field comes before those
@@ -179,6 +183,14 @@ var fields = []field{
 	number(FieldTrackTotal, trackTotal, keys("TRACKTOTAL", "TOTALTRACKS", "TRACKC"), keys("TRCK"), keys("trkn")),
 	number(FieldDisc, discNumber, keys("DISCNUMBER", "DISC"), keys("TPOS"), keys("disk")),
 	number(FieldDiscTotal, discTotal, keys("DISCTOTAL", "TOTALDISCS", "DISCC"), keys("TPOS"), keys("disk")),
+	{
+		// ID3v2.3 has no TSST, which audiometa won't write there: its name is a
+		// TXXX. A stray TSST on such a file would still win a scan, so a change
+		// takes it off; on ID3v2.4 the change writes it straight back.
+		name: FieldDiscSubtitle, flac: keys(keyDiscSubtitle), mp3: keys(keyTSST, keyDiscSubtitle),
+		mp3v23: keys(keyDiscSubtitle), m4a: keys(keyDiscSubtitle),
+		dependents: []string{keyTSST}, read: candidates(keysDiscSubtitle),
+	},
 	{
 		name: FieldDate, flac: keys("DATE", keyYear), mp3: keys("TDRC"), mp3v23: keys(keyTYER, keyTDAT), m4a: keys("\xA9day"),
 		dependents: []string{"TDRC", keyTYER, keyTDAT, "TIME"},

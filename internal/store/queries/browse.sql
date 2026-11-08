@@ -42,7 +42,7 @@ WHERE a.ulid = ?
 
 -- name: ListAlbumTracks :many
 SELECT
-    id, ulid, title, disc_no, disc_total, track_no, track_total, year, duration_ms, format,
+    id, ulid, title, disc_no, disc_total, disc_subtitle, track_no, track_total, year, duration_ms, format,
     sample_rate, bit_depth, rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak,
     size, mtime
 FROM tracks
@@ -111,7 +111,7 @@ LEFT JOIN artists ar ON ar.id = (
 WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL);
 
 -- name: ListIndexTracks :many
-SELECT id, album_id, ulid, title, disc_no, track_no, duration_ms
+SELECT id, album_id, ulid, title, disc_no, disc_subtitle, track_no, duration_ms
 FROM tracks
 WHERE missing_since IS NULL
 ORDER BY album_id, coalesce(disc_no, 1), track_no NULLS LAST, title, id;
@@ -162,7 +162,7 @@ GROUP BY track_id;
 -- plays or a tag key and reads thousands.
 
 -- name: ListIndexTracksOf :many
-SELECT t.id, t.album_id, t.ulid, t.title, t.disc_no, t.track_no, t.duration_ms
+SELECT t.id, t.album_id, t.ulid, t.title, t.disc_no, t.disc_subtitle, t.track_no, t.duration_ms
 FROM albums a
 CROSS JOIN tracks t
 WHERE a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND t.missing_since IS NULL

@@ -250,7 +250,7 @@ func TestEmptyGenresRemoveTheKey(t *testing.T) {
 func everyField() map[Field][]string {
 	return map[Field][]string{
 		FieldTitle: {newTitle}, FieldTrack: {"7"}, FieldTrackTotal: {"12"}, FieldDisc: {"2"}, FieldDiscTotal: {"3"},
-		FieldDate: {newDate}, FieldGenres: {jazz, "Blues"}, FieldComposers: {"Com One", "Com Two"},
+		FieldDiscSubtitle: {"The Room Recordings"}, FieldDate: {newDate}, FieldGenres: {jazz, "Blues"}, FieldComposers: {"Com One", "Com Two"},
 		FieldConductor: {"Con One", "Con Two"}, FieldLyricist: {"Lyr One", "Lyr Two"},
 		FieldPerformers: {"Per One", "Per Two"}, FieldRemixer: {"Rem One", "Rem Two"}, FieldGrouping: {"Group"},
 		FieldLabel: {"Label One", "Label Two"}, FieldCatalogNumber: {"CAT-1", "CAT-2"}, FieldBarcode: {"123", "456"},
@@ -277,6 +277,9 @@ func wantEveryField(t *testing.T, path string, before *store.TrackWrite) {
 	got := reread(t, path)
 	if got.Title != newTitle || got.TrackNo != 7 || got.TrackTotal != 12 || got.DiscNo != 2 || got.DiscTotal != 3 {
 		t.Errorf("track = %q %d/%d, disc %d/%d", got.Title, got.TrackNo, got.TrackTotal, got.DiscNo, got.DiscTotal)
+	}
+	if got.DiscSubtitle != "The Room Recordings" {
+		t.Errorf("disc subtitle = %q", got.DiscSubtitle)
 	}
 	if got.Year != newYear || got.OriginalYear != 1977 || got.SortTitle != "Title, New" {
 		t.Errorf("year %d, original %d, sort %q", got.Year, got.OriginalYear, got.SortTitle)

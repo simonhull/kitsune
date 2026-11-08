@@ -70,10 +70,11 @@ func setTitle(tw *store.TrackWrite, t *audiometa.Tags) {
 	tw.SortTitle = cmp.Or(single(t, keysTitleSort), tw.Title)
 }
 
-// setNumbers copies the track, disc and year fields.
+// setNumbers copies the track, disc and year fields, and the disc's name.
 func setNumbers(tw *store.TrackWrite, t *audiometa.Tags) {
 	tw.TrackNo, tw.TrackTotal = t.TrackNumber, t.TrackTotal
 	tw.DiscNo, tw.DiscTotal = t.DiscNumber, t.DiscTotal
+	tw.DiscSubtitle = single(t, keysDiscSubtitle)
 	tw.Year = t.Year
 	tw.OriginalYear = leadingYear(cmp.Or(t.OriginalDate, single(t, keysOriginalDate)))
 }

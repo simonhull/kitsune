@@ -35,13 +35,13 @@ RETURNING id, ulid;
 INSERT INTO tracks (
     ulid, root, rel_path, size, mtime, audio_digest, album_id,
     format, codec, duration_ms, sample_rate, bit_depth, channels, bitrate, lossless,
-    title, sort_title, track_no, track_total, disc_no, disc_total, year, original_year,
+    title, sort_title, track_no, track_total, disc_no, disc_total, disc_subtitle, year, original_year,
     compilation, rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak,
     scan_warnings, added_at
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?, ?,
-    ?, ?, ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?,
     ?, ?
 )
@@ -61,7 +61,7 @@ UPDATE tracks SET
     bitrate = sqlc.narg(bitrate), lossless = sqlc.arg(lossless),
     title = sqlc.arg(title), sort_title = sqlc.arg(sort_title),
     track_no = sqlc.narg(track_no), track_total = sqlc.narg(track_total),
-    disc_no = sqlc.narg(disc_no), disc_total = sqlc.narg(disc_total),
+    disc_no = sqlc.narg(disc_no), disc_total = sqlc.narg(disc_total), disc_subtitle = sqlc.narg(disc_subtitle),
     year = sqlc.narg(year), original_year = sqlc.narg(original_year),
     compilation = sqlc.arg(compilation),
     rg_track_gain = sqlc.narg(rg_track_gain), rg_track_peak = sqlc.narg(rg_track_peak),
