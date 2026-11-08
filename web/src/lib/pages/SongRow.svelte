@@ -83,8 +83,12 @@
 	/** The play target spans the cover, the number and the title, after the handle and the box. */
 	const playColumns = $derived.by(() => {
 		const from = (parts.handle ? 2 : 1) + 1;
-		return `${String(from)} / ${String(from + (parts.cover ? 1 : 0) + (parts.number ? 1 : 0) + 1)}`;
+		return `${String(from)} / ${String(titleColumn + 1)}`;
 	});
+	/** The title's own column, which a second line sits in. */
+	const titleColumn = $derived(
+		(parts.handle ? 2 : 1) + 1 + (parts.cover ? 1 : 0) + (parts.number ? 1 : 0)
+	);
 </script>
 
 {#snippet marks()}
@@ -195,7 +199,7 @@
 		{/if}
 	</button>
 	{#if second !== undefined}
-		<span class="second" style:grid-column={phone ? undefined : playColumns}
+		<span class="second" style:grid-column={phone ? undefined : String(titleColumn)}
 			>{@render second()}</span
 		>
 	{/if}
@@ -307,8 +311,12 @@
 		min-width: min(9ch, 100%);
 	}
 
+	.titled:has(.credit) .name {
+		min-width: 0;
+	}
+
 	.credit {
-		flex: 0 1 auto;
+		flex: 0 100 auto;
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -591,6 +599,10 @@
 	 */
 	.row.lined {
 		height: var(--song-row-lined, 64px);
+	}
+
+	.lined > :global(*) {
+		grid-row: 1;
 	}
 
 	.lined .play > .titled {

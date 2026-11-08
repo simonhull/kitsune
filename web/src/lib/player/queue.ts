@@ -88,6 +88,37 @@ function spliced(queue: Queue, at: number, songs: readonly Queued[]): Queue {
 	return { ...queue, tracks, ordered: false, albums };
 }
 
+/** Takes songs out of what's still to play. The one playing, and those before it, stay. */
+export function without(queue: Queue, ids: readonly string[]): Queue {
+	const ahead = queue.tracks.slice(queue.index + 1).filter(({ id }) => !ids.includes(id));
+	if (ahead.length === queue.tracks.length - queue.index - 1) {
+		return queue;
+	}
+	return {
+		...queue,
+		tracks: [...queue.tracks.slice(0, queue.index + 1), ...ahead],
+		ordered: false,
+		albums: albumsOf(queue)
+	};
+}
+
+/**
+ * Puts the songs still to play in a new order, `ahead` naming each of them once. Anything it
+ * doesn't name keeps its place after them; a name it doesn't hold is passed over.
+ */
+export function reordered(queue: Queue, ahead: readonly string[]): Queue {
+	const rest = queue.tracks.slice(queue.index + 1);
+	const byId = new Map(rest.map((track) => [track.id, track]));
+	const named = ahead.flatMap((id) => byId.get(id) ?? []);
+	const left = rest.filter(({ id }) => !ahead.includes(id));
+	return {
+		...queue,
+		tracks: [...queue.tracks.slice(0, queue.index + 1), ...named, ...left],
+		ordered: false,
+		albums: albumsOf(queue)
+	};
+}
+
 /** Queues an album as it stands, starting at `index`. */
 export function inOrder(album: Album, index = 0): Queue {
 	return { album, tracks: album.tracks, index, ordered: true };

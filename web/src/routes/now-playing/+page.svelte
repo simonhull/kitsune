@@ -127,6 +127,14 @@
 			{#if shuffle !== null}
 				<div class="up-next-slot" data-morph-part="panel">
 					<UpNext
+						{shuffle}
+						playing={{
+							id: playing.track.id,
+							title: playing.track.title,
+							artist: playing.track.artists.at(0) ?? playing.album.artist,
+							durationMs: playing.track.durationMs,
+							album: playing.album
+						}}
 						items={shuffle.upNext}
 						mode={shuffle.source.mode}
 						songs={shuffle.songs}

@@ -1,6 +1,15 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Selection } from './selection.svelte.ts';
-import { boxShows, LongPress, longPressMs, SongList, tapOf } from './songRow.ts';
+import {
+	boxShows,
+	clickIntent,
+	LongPress,
+	longPressMs,
+	SongList,
+	tapOf,
+	type Clicked
+} from './songRow.ts';
 
 /** An album on two discs, in page order: what a range runs over, across the heading. */
 const order = ['1-1', '1-2', '1-3', '2-1', '2-2', '2-3'];
@@ -149,5 +158,51 @@ describe('boxShows', () => {
 		expect(boxShows({ ...rest, focused: true })).toBe(true);
 		expect(boxShows({ ...rest, picked: true, selecting: true })).toBe(true);
 		expect(boxShows({ ...rest, selecting: true })).toBe(true);
+	});
+});
+
+describe('clickIntent', () => {
+	/** An element inside a row, given what each selector finds from it. */
+	function at(found: Record<string, string | true>): Clicked {
+		return {
+			closest(selector) {
+				const hit = found[selector];
+				return hit === undefined
+					? null
+					: { getAttribute: () => (typeof hit === 'string' ? hit : null) };
+			}
+		};
+	}
+	const own = '[data-own-click], a, input, label, button:not(.play)';
+
+	it('plays from anywhere on the row: the title, the number, a cell', () => {
+		expect(clickIntent(at({}))).toEqual({ kind: 'play' });
+	});
+
+	it('leaves the box, ⋯ and the stars their own clicks', () => {
+		expect(clickIntent(at({ '.box input': true, [own]: true }))).toEqual({ kind: 'box' });
+		expect(clickIntent(at({ '.more': true, [own]: true }))).toEqual({ kind: 'more' });
+		expect(clickIntent(at({ '[data-star]': '4', [own]: true }))).toEqual({
+			kind: 'rate',
+			stars: 4
+		});
+	});
+
+	it('leaves a name that links, the heart, the handle and the gutter to themselves', () => {
+		expect(clickIntent(at({ [own]: true }))).toEqual({ kind: 'own' });
+	});
+});
+
+describe('SongRow', () => {
+	it('knows nothing of why a song came up: only Up next fills the second line', () => {
+		for (const file of ['SongRow.svelte', 'songRow.ts', 'PickBox.svelte']) {
+			const source = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');
+			expect(source).not.toMatch(/shuffle\/why|Why\.svelte/u);
+		}
+	});
+
+	it('holds no effect or store of its own: props in, events out', () => {
+		const source = readFileSync(new URL('./SongRow.svelte', import.meta.url), 'utf8');
+		expect(source).not.toMatch(/\$effect|\$state|svelte\/store|library\.svelte/u);
 	});
 });

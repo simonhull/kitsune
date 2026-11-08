@@ -53,7 +53,7 @@
 		const wanted = id;
 		const fields = columnsView.fields;
 		if (columnsView.known) {
-			untrack(() => void library.loadAlbumRows(wanted, fields));
+			untrack(() => void library.loadAlbumRows([wanted], fields));
 		}
 	});
 	onMount(() => {

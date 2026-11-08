@@ -310,8 +310,12 @@ export function columnsIn(order: readonly ColumnId[], context: ColumnsContext): 
 		case 'album':
 			return order.filter((id) => id !== 'album');
 		case 'search': {
-			const forced = (['artist', 'album'] as const).filter((id) => !order.includes(id));
-			return [...forced, ...order];
+			// Artist and Album always, Album right after Artist when the person hasn't placed it.
+			const out = order.includes('artist') ? [...order] : ['artist' as const, ...order];
+			if (!out.includes('album')) {
+				out.splice(out.indexOf('artist') + 1, 0, 'album');
+			}
+			return out;
 		}
 	}
 }

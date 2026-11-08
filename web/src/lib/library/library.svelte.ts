@@ -1138,7 +1138,7 @@ export class Library {
 			const read = this.#rows.get(id);
 			if (read !== undefined) {
 				void this.loadAlbumRows(
-					id,
+					[id],
 					read.fields === '' ? [] : (read.fields.split(',') as IndexField[])
 				);
 			}
@@ -1347,15 +1347,20 @@ export class Library {
 		return read?.album;
 	}
 
-	/** Reads an album's songs with `fields`, for {@link Library.albumRows}. A failure leaves what was. */
-	async loadAlbumRows(id: string, fields: readonly IndexField[]): Promise<void> {
+	/** Reads albums' songs with `fields`, for {@link Library.albumRows}. A failure leaves what was. */
+	async loadAlbumRows(ids: readonly string[], fields: readonly IndexField[]): Promise<void> {
 		const epoch = this.#epoch;
+		if (ids.length === 0) {
+			return;
+		}
 		try {
-			const part = await this.#source.libraryIndexOf([id], fields);
-			const album = part.artists.flatMap((artist) => artist.albums).find((each) => each.id === id);
-			if (epoch === this.#epoch && album !== undefined) {
-				this.marks.seedIndex(part);
-				this.#rows.set(id, { fields: fields.join(','), album });
+			const part = await this.#source.libraryIndexOf(ids, fields);
+			if (epoch !== this.#epoch) {
+				return;
+			}
+			this.marks.seedIndex(part);
+			for (const album of part.artists.flatMap((artist) => artist.albums)) {
+				this.#rows.set(album.id, { fields: fields.join(','), album });
 			}
 		} catch {
 			// The rows stand as they were, or as the album itself says them.

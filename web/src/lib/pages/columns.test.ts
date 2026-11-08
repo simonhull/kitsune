@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { ColumnsPref, LibraryAlbum, LibraryTrack } from '#lib/library/source.ts';
 import {
+	artistWhenDifferentIn,
 	cellOf,
+	columnsIn,
 	coverFor,
 	defaultColumns,
 	fieldsFor,
@@ -261,5 +263,56 @@ describe('the menu', () => {
 	it('shows a column at the end, and hides one', () => {
 		expect(toggled(defaultColumns, 'year').order.at(-1)).toBe('year');
 		expect(toggled(defaultColumns, 'genre').order).not.toContain('genre');
+	});
+});
+
+describe('columnsIn', () => {
+	const order = ['genre', 'artist', 'album', 'rating'] as const;
+
+	it('shows the Library every column, and an album page all but Album', () => {
+		expect(columnsIn([...order], 'library')).toEqual(order);
+		expect(columnsIn([...order], 'album')).toEqual(['genre', 'artist', 'rating']);
+	});
+
+	it('keeps Artist and Album on in search, Album after Artist where the person has none', () => {
+		expect(columnsIn(['genre', 'artist', 'rating'], 'search')).toEqual([
+			'genre',
+			'artist',
+			'album',
+			'rating'
+		]);
+		expect(columnsIn(['rating'], 'search')).toEqual(['artist', 'album', 'rating']);
+		expect(columnsIn([...order], 'search')).toEqual(order);
+	});
+
+	it('reads one shared preference: an album page leaves out the album artist always', () => {
+		const pref = { order: [...order], artistWhenDifferent: false };
+		expect(artistWhenDifferentIn(pref, 'library')).toBe(false);
+		expect(artistWhenDifferentIn(pref, 'album')).toBe(true);
+		expect(artistWhenDifferentIn({ ...pref, artistWhenDifferent: true }, 'search')).toBe(false);
+	});
+});
+
+describe('the ReplayGain column', () => {
+	it('says the gain, and warns when there is none', () => {
+		expect(cellOf('gain', context({ track: track({ trackGain: -7.25 }) }))).toEqual({
+			look: 'fact',
+			text: '−7.3 dB'
+		});
+		expect(cellOf('gain', context())).toEqual({ look: 'fact', text: 'no RG', warn: true });
+		expect(fieldsFor(['gain'])).toEqual(['gain', 'shuffle']);
+	});
+
+	it('is off by default', () => {
+		expect(defaultColumns.order).not.toContain('gain');
+	});
+});
+
+describe('fit with a cover', () => {
+	it('fits fewer columns beside a cover than beside a number', () => {
+		const parts = { handle: false, cover: true, number: false };
+		expect(template([], 'columns', parts)).toBe('20px 40px minmax(200px, 1fr) 44px 36px');
+		expect(fit(['artist'], 600, 'columns', parts).shown).toEqual(['artist']);
+		expect(fit(['artist'], 540, 'columns', parts).shown).toEqual([]);
 	});
 });
