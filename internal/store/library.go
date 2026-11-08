@@ -80,6 +80,7 @@ type ArtworkWrite struct {
 }
 
 // ArtistWrite identifies an artist by MatchKey and carries its display fields.
+// An empty SortName keeps the artist's, or is the name for a new artist.
 type ArtistWrite struct {
 	MatchKey, Name, SortName, MBID string
 	ULID                           string // Required, 26 characters; the artist's public ID, kept when the artist already exists.

@@ -274,6 +274,19 @@ func TestWriteBatchArtistUpsert(t *testing.T) {
 	}
 }
 
+func TestWriteBatchKeepsASortNameNoTrackRepeats(t *testing.T) {
+	t.Parallel()
+	s := openTest(t)
+	tagged, untagged, fresh := newWrite(0), newWrite(1), newWrite(2)
+	tagged.Artists = []ArtistWrite{{ULID: artistULID("k"), MatchKey: "k", Name: "The Band", SortName: "Band, The"}}
+	untagged.Artists = []ArtistWrite{{ULID: artistULID("k"), MatchKey: "k", Name: "The Band"}}
+	fresh.Artists = []ArtistWrite{{ULID: artistULID("n"), MatchKey: "n", Name: "Newcomer"}}
+	writeAll(t, s, tagged, untagged, fresh)
+	if got := strs(t, s, "SELECT sort_name FROM artists ORDER BY match_key"); !slices.Equal(got, []string{"Band, The", "Newcomer"}) {
+		t.Errorf("sort names = %q, want the tagged one kept and a new artist's name", got)
+	}
+}
+
 func TestWriteBatchWarningsJSON(t *testing.T) {
 	t.Parallel()
 	s := openTest(t)
