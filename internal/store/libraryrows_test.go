@@ -95,6 +95,46 @@ func TestIndexTracksFollowLibraryWrites(t *testing.T) {
 	check(composer, "Retitled", 0)
 }
 
+// An album's discs come from the kept track rows, so a disc's new name shows in
+// the next index.
+func TestIndexDiscsFollowLibraryWrites(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	one, two := newWrite(0), newWrite(1)
+	two.Album = one.Album
+	one.DiscNo, one.DiscSubtitle = 1, "Side A"
+	two.DiscNo, two.DiscSubtitle = 2, "Side B"
+	writeAll(t, s, one, two)
+	names := func() []string {
+		t.Helper()
+		index, err := s.LibraryIndex(t.Context(), 0, &store.IndexOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, a := range index.Artists {
+			for j := range a.Albums {
+				for _, d := range a.Albums[j].Discs {
+					got = append(got, d.Name)
+				}
+			}
+		}
+		return got
+	}
+	want := func(discs ...string) {
+		t.Helper()
+		if got := names(); !slices.Equal(got, discs) {
+			t.Errorf("discs = %v, want %v", got, discs)
+		}
+	}
+	want("Side A", "Side B")
+	want("Side A", "Side B") // From what was kept.
+	two.ID = idOf(t, s, &two)
+	two.DiscSubtitle = "The Flip Side"
+	writeAll(t, s, two)
+	want("Side A", "The Flip Side")
+}
+
 // indexHead returns the index's first artist, who has an album.
 func indexHead(t *testing.T, s *store.Store) store.IndexArtist {
 	t.Helper()
