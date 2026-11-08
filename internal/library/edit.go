@@ -62,6 +62,22 @@ type AlbumEdit struct {
 type fileEdit struct {
 	file *store.EditFile
 	edit Edit
+	// after is where the file's track will hang once written, which preflight
+	// works out with a dry run of the edit.
+	after placement
+}
+
+// placement is what decides which rows a track hangs off: its album's group
+// key and its artists.
+type placement struct {
+	groupKey              string
+	artists, albumArtists []store.ArtistWrite
+}
+
+// placementOf returns where the track f is read from will hang.
+func placementOf(f *audiometa.File, file *store.EditFile) placement {
+	tw := NewTrackWrite(f, &FileInfo{Root: file.Root, RelPath: file.RelPath})
+	return placement{groupKey: tw.Album.GroupKey, artists: tw.Artists, albumArtists: tw.AlbumArtists}
 }
 
 // forFiles returns the edit of each of files that gets one. A track that isn't
@@ -108,7 +124,7 @@ func (s *Scanner) EditAlbum(ctx context.Context, id, ifMatch string, e *AlbumEdi
 		if err != nil {
 			return &EditError{Remaining: ulids(fileEdits(files)), Err: err}
 		}
-		return s.edit(ctx, edits)
+		return s.edit(ctx, edits, map[int64]int{files[0].Album: len(files)})
 	})
 }
 
@@ -121,20 +137,26 @@ func fileEdits(files []store.EditFile) []fileEdit {
 	return out
 }
 
-// edit checks every file, and only then writes them in order. The caller holds
-// the library lock.
-func (s *Scanner) edit(ctx context.Context, edits []fileEdit) error {
+// edit checks every file, and only then writes them in order. live counts the
+// live tracks of each album the files are on. The caller holds the library lock.
+func (s *Scanner) edit(ctx context.Context, edits []fileEdit, live map[int64]int) error {
 	for i := range edits {
 		err := checkDrift(edits[i].file)
 		if errors.Is(err, ErrStale) {
 			return ErrStale
 		}
 		if err == nil {
-			err = s.preflight(ctx, edits[i].file, &edits[i].edit)
+			edits[i].after, err = s.preflight(ctx, edits[i].file, &edits[i].edit)
 		}
 		if err != nil {
 			return stopped(edits, 0, err)
 		}
+	}
+	// An album renamed whole keeps its row: re-keyed first, its tracks land back on
+	// it as they are written, and a retry after a failure finds them there.
+	undo, err := s.st.RekeyAlbums(context.WithoutCancel(ctx), rekeys(edits, live))
+	if err != nil {
+		return stopped(edits, 0, err)
 	}
 	// Tracks written before a failure hold the edit, and a canceled edit still counts.
 	// A rewritten file loses its fingerprint, which the pass makes again.
@@ -143,15 +165,56 @@ func (s *Scanner) edit(ctx context.Context, edits []fileEdit) error {
 	for i := range edits {
 		file := edits[i].file
 		path := filepath.Join(file.Root, file.RelPath)
-		if err := s.write(ctx, path, edits[i].edit.apply); err != nil {
+		if err = s.write(ctx, path, edits[i].edit.apply); err != nil {
+			if i == 0 {
+				s.undoRekeys(ctx, undo)
+			}
 			return stopped(edits, i, err)
 		}
 		// The file has changed, so a canceled edit still indexes it.
-		if err := s.reindex(context.WithoutCancel(ctx), file.ID, file.Root, file.RelPath); err != nil {
+		if err = s.reindex(context.WithoutCancel(ctx), file.ID, file.Root, file.RelPath); err != nil {
 			return stopped(edits, i+1, err)
 		}
 	}
 	return nil
+}
+
+// rekeys returns the albums an edit renames whole: every live track of the album
+// is edited, and all of them will group under one new key.
+func rekeys(edits []fileEdit, live map[int64]int) []store.AlbumRekey {
+	type move struct {
+		from, to string
+		tracks   int
+		split    bool
+	}
+	moves := make(map[int64]*move)
+	var order []int64
+	for i := range edits {
+		file, to := edits[i].file, edits[i].after.groupKey
+		m, seen := moves[file.Album]
+		if !seen {
+			m = &move{from: file.GroupKey, to: to}
+			moves[file.Album] = m
+			order = append(order, file.Album)
+		}
+		m.tracks++
+		m.split = m.split || m.to != to
+	}
+	var out []store.AlbumRekey
+	for _, album := range order {
+		if m := moves[album]; !m.split && m.to != m.from && m.tracks == live[album] {
+			out = append(out, store.AlbumRekey{Album: album, To: m.to})
+		}
+	}
+	return out
+}
+
+// undoRekeys puts back the group keys of an edit that changed no file. A failure
+// is logged: the albums keep the new keys until a full scan reads their files.
+func (s *Scanner) undoRekeys(ctx context.Context, undo []store.AlbumRekey) {
+	if _, err := s.st.RekeyAlbums(context.WithoutCancel(ctx), undo); err != nil {
+		s.log.WarnContext(ctx, "undoing an album rename failed", "err", err)
+	}
 }
 
 // settle brings what the store derives from its tracks up to date, once per edit
@@ -208,27 +271,28 @@ func checkDrift(file *store.EditFile) error {
 
 // preflight does everything but the write: the target must lie under a
 // configured root, the file and its folder must be writable, and the edit must
-// go through a dry write to nowhere.
-func (s *Scanner) preflight(ctx context.Context, file *store.EditFile, e *Edit) error {
+// go through a dry write to nowhere. It returns where the track will hang once
+// the edit is written.
+func (s *Scanner) preflight(ctx context.Context, file *store.EditFile, e *Edit) (placement, error) {
 	path, err := s.resolve(file)
 	if err != nil {
-		return err
+		return placement{}, err
 	}
 	if writeErr := checkWritable(path); writeErr != nil {
-		return writeErr
+		return placement{}, writeErr
 	}
 	f, err := audiometa.OpenContext(ctx, path)
 	if err != nil {
-		return fmt.Errorf("preflight: %w", err)
+		return placement{}, fmt.Errorf("preflight: %w", err)
 	}
 	defer func() { _ = f.Close() }() // Only read.
 	if applyErr := e.apply(f); applyErr != nil {
-		return applyErr
+		return placement{}, applyErr
 	}
 	if _, err = f.WriteToContext(ctx, io.Discard); err != nil {
-		return fmt.Errorf("preflight: %w", err)
+		return placement{}, fmt.Errorf("preflight: %w", err)
 	}
-	return nil
+	return placementOf(f, file), nil
 }
 
 // resolve returns the real path of file, refusing a root that left the

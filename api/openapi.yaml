@@ -1657,9 +1657,10 @@ components:
       description: >-
         Values by field, the same in every format. Numbers are decimal text; a
         date is `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, and a new one replaces the
-        old one whole. A value a file can't hold is a 422. `album`, `artists`,
-        `albumArtists` and `compilation` can be read but not edited yet: they
-        decide which album a track groups into, and an edit of one is a 422.
+        old one whole. A value a file can't hold is a 422. `compilation` takes
+        `1`, and clearing it turns it off. `album`, `artists`, `albumArtists`
+        and `compilation` decide which album a track groups into: an album
+        renamed whole keeps its ID.
       type: object
       additionalProperties: false
       properties:

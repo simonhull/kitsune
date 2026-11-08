@@ -24,6 +24,9 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
+	if q.albumGroupKeyStmt, err = db.PrepareContext(ctx, albumGroupKey); err != nil {
+		return nil, fmt.Errorf("error preparing query AlbumGroupKey: %w", err)
+	}
 	if q.albumHeartedStmt, err = db.PrepareContext(ctx, albumHearted); err != nil {
 		return nil, fmt.Errorf("error preparing query AlbumHearted: %w", err)
 	}
@@ -131,6 +134,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getTrackFileStmt, err = db.PrepareContext(ctx, getTrackFile); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTrackFile: %w", err)
+	}
+	if q.groupKeyTakenStmt, err = db.PrepareContext(ctx, groupKeyTaken); err != nil {
+		return nil, fmt.Errorf("error preparing query GroupKeyTaken: %w", err)
 	}
 	if q.insertAlbumHeartStmt, err = db.PrepareContext(ctx, insertAlbumHeart); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAlbumHeart: %w", err)
@@ -303,6 +309,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.sessionByTokenHashStmt, err = db.PrepareContext(ctx, sessionByTokenHash); err != nil {
 		return nil, fmt.Errorf("error preparing query SessionByTokenHash: %w", err)
 	}
+	if q.setAlbumGroupKeyStmt, err = db.PrepareContext(ctx, setAlbumGroupKey); err != nil {
+		return nil, fmt.Errorf("error preparing query SetAlbumGroupKey: %w", err)
+	}
 	if q.setDigestStmt, err = db.PrepareContext(ctx, setDigest); err != nil {
 		return nil, fmt.Errorf("error preparing query SetDigest: %w", err)
 	}
@@ -362,6 +371,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
+	if q.albumGroupKeyStmt != nil {
+		if cerr := q.albumGroupKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing albumGroupKeyStmt: %w", cerr)
+		}
+	}
 	if q.albumHeartedStmt != nil {
 		if cerr := q.albumHeartedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing albumHeartedStmt: %w", cerr)
@@ -540,6 +554,11 @@ func (q *Queries) Close() error {
 	if q.getTrackFileStmt != nil {
 		if cerr := q.getTrackFileStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTrackFileStmt: %w", cerr)
+		}
+	}
+	if q.groupKeyTakenStmt != nil {
+		if cerr := q.groupKeyTakenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing groupKeyTakenStmt: %w", cerr)
 		}
 	}
 	if q.insertAlbumHeartStmt != nil {
@@ -827,6 +846,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing sessionByTokenHashStmt: %w", cerr)
 		}
 	}
+	if q.setAlbumGroupKeyStmt != nil {
+		if cerr := q.setAlbumGroupKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setAlbumGroupKeyStmt: %w", cerr)
+		}
+	}
 	if q.setDigestStmt != nil {
 		if cerr := q.setDigestStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setDigestStmt: %w", cerr)
@@ -956,6 +980,7 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 type Queries struct {
 	db                             DBTX
 	tx                             *sql.Tx
+	albumGroupKeyStmt              *sql.Stmt
 	albumHeartedStmt               *sql.Stmt
 	albumRowIDStmt                 *sql.Stmt
 	anyMissingWithDigestStmt       *sql.Stmt
@@ -992,6 +1017,7 @@ type Queries struct {
 	getPrefStmt                    *sql.Stmt
 	getTrackAlbumStmt              *sql.Stmt
 	getTrackFileStmt               *sql.Stmt
+	groupKeyTakenStmt              *sql.Stmt
 	insertAlbumHeartStmt           *sql.Stmt
 	insertArtistHeartStmt          *sql.Stmt
 	insertPlayStmt                 *sql.Stmt
@@ -1049,6 +1075,7 @@ type Queries struct {
 	resetLastfmOutboxStmt          *sql.Stmt
 	rootStatsStmt                  *sql.Stmt
 	sessionByTokenHashStmt         *sql.Stmt
+	setAlbumGroupKeyStmt           *sql.Stmt
 	setDigestStmt                  *sql.Stmt
 	setLastfmStateStmt             *sql.Stmt
 	setPasswordHashStmt            *sql.Stmt
@@ -1073,6 +1100,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
 		db:                             tx,
 		tx:                             tx,
+		albumGroupKeyStmt:              q.albumGroupKeyStmt,
 		albumHeartedStmt:               q.albumHeartedStmt,
 		albumRowIDStmt:                 q.albumRowIDStmt,
 		anyMissingWithDigestStmt:       q.anyMissingWithDigestStmt,
@@ -1109,6 +1137,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPrefStmt:                    q.getPrefStmt,
 		getTrackAlbumStmt:              q.getTrackAlbumStmt,
 		getTrackFileStmt:               q.getTrackFileStmt,
+		groupKeyTakenStmt:              q.groupKeyTakenStmt,
 		insertAlbumHeartStmt:           q.insertAlbumHeartStmt,
 		insertArtistHeartStmt:          q.insertArtistHeartStmt,
 		insertPlayStmt:                 q.insertPlayStmt,
@@ -1166,6 +1195,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		resetLastfmOutboxStmt:          q.resetLastfmOutboxStmt,
 		rootStatsStmt:                  q.rootStatsStmt,
 		sessionByTokenHashStmt:         q.sessionByTokenHashStmt,
+		setAlbumGroupKeyStmt:           q.setAlbumGroupKeyStmt,
 		setDigestStmt:                  q.setDigestStmt,
 		setLastfmStateStmt:             q.setLastfmStateStmt,
 		setPasswordHashStmt:            q.setPasswordHashStmt,

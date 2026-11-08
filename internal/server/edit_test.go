@@ -205,6 +205,18 @@ func TestEditOfOneTrackSavesAndReturnsTheAlbum(t *testing.T) {
 	fx.wantStoreFollowed(t, &before, &got)
 }
 
+func TestRenamingAnAlbumKeepsItsURL(t *testing.T) {
+	t.Parallel()
+	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
+	before := fx.album
+	var got api.AlbumDetail
+	fx.post(t, before.Etag, `{"all":{"set":{"album":["Renamed"],"albumArtists":["Someone Else"]}}}`).decode(t, &got)
+	if got.ID != before.ID || got.Title != "Renamed" || got.Artist != "Someone Else" {
+		t.Errorf("album = %s %q by %q, want %s renamed", got.ID, got.Title, got.Artist, before.ID)
+	}
+	fx.wantStoreFollowed(t, &before, &got)
+}
+
 // wantGenres checks the album and each of its tracks hold genres.
 func wantGenres(t *testing.T, album *api.AlbumDetail, genres []string) {
 	t.Helper()
@@ -469,13 +481,12 @@ func TestEditRefusedByTheFile(t *testing.T) {
 		{name: "two titles", samples: twoFLACs(), body: `{"all":{"set":{"title":["a","b"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a track of another album", samples: twoFLACs(), body: `{"tracks":[{"id":"` + missingID + `","set":{"title":["a"]}}]}`, want: http.StatusUnprocessableEntity},
 		{name: "clearing the title", samples: twoFLACs(), body: `{"all":{"clear":["title"]}}`, want: http.StatusUnprocessableEntity},
-		{name: "clearing an identity field", samples: twoFLACs(), body: `{"all":{"clear":["album"]}}`, want: http.StatusUnprocessableEntity},
+		{name: "a compilation flag that is not on", samples: twoFLACs(), body: `{"all":{"set":{"compilation":["0"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a lower-case tag", samples: twoFLACs(), body: rawBody("mood"), want: http.StatusUnprocessableEntity},
 		{name: "a tag a field owns", samples: twoFLACs(), body: rawBody("ALBUMARTIST"), want: http.StatusUnprocessableEntity},
 		{name: "a gain tag", samples: twoFLACs(), body: rawBody("REPLAYGAIN_TRACK_GAIN"), want: http.StatusUnprocessableEntity},
 		{name: "a false frame", samples: mp3Album, body: rawBody("APIC"), want: http.StatusUnprocessableEntity},
 		{name: "a new frame", samples: mp3Album, body: rawBody("TMED"), want: http.StatusUnprocessableEntity},
-		{name: "an identity field", samples: twoFLACs(), body: `{"all":{"set":{"album":["x"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a year MP3 can't hold", samples: mp3Album, body: `{"all":{"set":{"date":["1850"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a read-only file", samples: twoFLACs(), body: yearBody, want: http.StatusForbidden, prepare: readOnly(fileTwo)},
 	}

@@ -61,7 +61,7 @@ JOIN albums a ON a.id = t.album_id
 WHERE t.ulid = ? AND t.missing_since IS NULL;
 
 -- name: ListAlbumFiles :many
-SELECT t.id, t.ulid, t.root, t.rel_path, t.size, t.mtime
+SELECT t.id, t.ulid, t.root, t.rel_path, t.size, t.mtime, t.album_id, a.group_key
 FROM tracks t
 JOIN albums a ON a.id = t.album_id
 WHERE a.ulid = ? AND t.missing_since IS NULL
