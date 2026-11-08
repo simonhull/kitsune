@@ -264,6 +264,7 @@ func (s *Server) routes() []route {
 		{pattern: "PATCH /admin/settings", admin: true, handle: s.patchSettings},
 		{pattern: "GET /admin/folders", admin: true, handle: s.getFolders},
 		{pattern: "GET /me", handle: s.getMe},
+		{pattern: "POST /me/password", handle: s.postMyPassword},
 		{pattern: "POST /me/plays", handle: s.postPlay},
 		{pattern: "POST /me/listens", handle: s.postListen},
 		{pattern: "PUT /me/hearts/{kind}/{id}", handle: s.putHeart},

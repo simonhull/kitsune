@@ -49,3 +49,20 @@ func (s *Service) SetPassword(ctx context.Context, id int64, password string, ou
 	}
 	return nil
 }
+
+// ChangePassword makes next the password of the user called name, once
+// current is shown to be theirs, and ends every session of theirs but the one
+// token belongs to. It returns [ErrInvalidCredentials] if current is wrong, an
+// error wrapping [ErrPasswordTooShort] or [ErrPasswordTooLong] if next breaks
+// the rules (checked first, so a weak next costs no hashing), or the context's
+// error if it ends while waiting to hash.
+func (s *Service) ChangePassword(ctx context.Context, name, current, next, token string) error {
+	if err := ValidatePassword(next); err != nil {
+		return err
+	}
+	u, _, err := s.checkCredentials(ctx, name, current)
+	if err != nil {
+		return err
+	}
+	return s.SetPassword(ctx, u.ID, next, SignOutElsewhere(token))
+}

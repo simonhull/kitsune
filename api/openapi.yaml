@@ -361,6 +361,44 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /me/password:
+    post:
+      operationId: changePassword
+      summary: Change the caller's password.
+      description: >-
+        Needs the current password. A wrong one counts against the login rate
+        limit, per client IP and per account. The new one follows the same
+        rules as everywhere else: at least 8 characters, at most 1024 bytes.
+        The session the request used stays signed in; the caller's others end.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordChange" }
+      responses:
+        "204":
+          description: Changed, and the caller's other sessions ended.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          description: >-
+            The current password is wrong, or a cookie-authenticated request
+            did not send X-Kitsune-Request.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
   /me/prefs/{key}:
     get:
       operationId: getPref
@@ -1664,6 +1702,15 @@ components:
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
+    TooManyAttempts:
+      description: Too many failed attempts; wait before trying again.
+      headers:
+        Retry-After:
+          description: Seconds to wait before trying again.
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
     EditFailure:
       description: >-
         An RFC 9457 problem. When a tag edit was refused or stopped, it says
@@ -1924,6 +1971,13 @@ components:
         name: { type: string, minLength: 1 }
         password: { type: string, minLength: 1 }
         cookie: { type: boolean, default: false }
+    PasswordChange:
+      type: object
+      additionalProperties: false
+      required: [current, new]
+      properties:
+        current: { type: string, minLength: 1 }
+        new: { type: string, minLength: 1 }
     SetupStatus:
       type: object
       additionalProperties: false

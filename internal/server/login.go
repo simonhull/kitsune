@@ -1,9 +1,7 @@
 package server
 
 import (
-	"encoding/json/v2"
 	"errors"
-	"mime"
 	"net/http"
 	"strconv"
 	"time"
@@ -77,15 +75,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 // attacker's account.
 func decodeLogin(w http.ResponseWriter, r *http.Request) (api.LoginRequest, bool) {
 	var req api.LoginRequest
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != api.JSONMediaType {
-		return req, false
-	}
-	body := http.MaxBytesReader(w, r.Body, maxLoginBody)
-	if err = json.UnmarshalRead(body, &req, json.RejectUnknownMembers(true)); err != nil {
-		return req, false
-	}
-	return req, req.Name != "" && req.Password != ""
+	ok := decodeCredentials(w, r, &req)
+	return req, ok && req.Name != "" && req.Password != ""
 }
 
 // checkLimits counts a login attempt on the keys and, if one is blocked,

@@ -66,6 +66,12 @@ type SetupRequest struct {
 	Code string `json:"code,omitzero"`
 }
 
+// PasswordChange is the body of POST /me/password.
+type PasswordChange struct {
+	Current string `json:"current"`
+	New     string `json:"new"`
+}
+
 // User is an account as the API shows it. It has no password-hash field.
 type User struct {
 	ID        int64     `json:"id"`

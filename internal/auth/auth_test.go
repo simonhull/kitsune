@@ -460,3 +460,30 @@ func TestSetPasswordRejects(t *testing.T) {
 		t.Errorf("a refused change ended the session: %v", err)
 	}
 }
+
+func TestChangePassword(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	here, away := e.login(t), e.login(t)
+	if err := e.svc.ChangePassword(t.Context(), simon, "wrong password", newPassword, here.Token); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Fatalf("wrong current: err = %v, want ErrInvalidCredentials", err)
+	}
+	if err := e.svc.ChangePassword(t.Context(), simon, password, "short", here.Token); !errors.Is(err, auth.ErrPasswordTooShort) {
+		t.Fatalf("short next: err = %v, want ErrPasswordTooShort", err)
+	}
+	if _, err := e.svc.Authenticate(t.Context(), away.Token); err != nil {
+		t.Fatalf("a refused change ended a session: %v", err)
+	}
+	if err := e.svc.ChangePassword(t.Context(), simon, password, newPassword, here.Token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Authenticate(t.Context(), here.Token); err != nil {
+		t.Errorf("the changing session ended: %v", err)
+	}
+	if _, err := e.svc.Authenticate(t.Context(), away.Token); !errors.Is(err, auth.ErrUnauthenticated) {
+		t.Errorf("another session: err = %v, want ErrUnauthenticated", err)
+	}
+	if _, err := e.svc.Login(t.Context(), simon, newPassword, ""); err != nil {
+		t.Errorf("new password: %v", err)
+	}
+}

@@ -2,9 +2,7 @@ package server
 
 import (
 	"crypto/subtle"
-	"encoding/json/v2"
 	"errors"
-	"mime"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -194,13 +192,6 @@ func (s *Server) setupFailed(w http.ResponseWriter, r *http.Request, err error) 
 // stops cross-site form posts, as for login.
 func decodeSetup(w http.ResponseWriter, r *http.Request) (api.SetupRequest, bool) {
 	var req api.SetupRequest
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != api.JSONMediaType {
-		return req, false
-	}
-	body := http.MaxBytesReader(w, r.Body, maxLoginBody)
-	if err = json.UnmarshalRead(body, &req, json.RejectUnknownMembers(true)); err != nil {
-		return req, false
-	}
-	return req, req.Name != "" && req.Password != ""
+	ok := decodeCredentials(w, r, &req)
+	return req, ok && req.Name != "" && req.Password != ""
 }
