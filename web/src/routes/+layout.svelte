@@ -18,7 +18,7 @@
 	import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import { libraryView } from '#lib/pages/libraryView.svelte.ts';
-	import { selection } from '#lib/pages/selection.svelte.ts';
+	import { onScreen, selection } from '#lib/pages/selection.svelte.ts';
 	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
@@ -176,7 +176,7 @@
 		<PlayerIsland
 			playing={library.playing}
 			expanded={onNowPlaying}
-			away={selection.any && routeId === '/library' && bulkEdits.current === null}
+			away={onScreen.current?.any === true && bulkEdits.current === null}
 		/>
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>

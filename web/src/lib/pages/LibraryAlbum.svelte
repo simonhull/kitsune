@@ -11,12 +11,11 @@
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsShown from '#lib/shell/StarsShown.svelte';
-	import { cellOf, numbered } from './columns.ts';
+	import { numbered, sameOnAlbum } from './columns.ts';
 	import type { AlbumBlock, Row } from './libraryRows.ts';
 	import PickBox from './PickBox.svelte';
 	import type { Selection } from './selection.svelte.ts';
 	import SongRow from './SongRow.svelte';
-	import type { PickHow } from './songRow.ts';
 
 	interface Props {
 		block: AlbumBlock;
@@ -47,16 +46,8 @@
 		trouble: boolean;
 		/** The list's selection. */
 		selection: Selection;
-		play: (trackId: string) => void;
 		/** Plays one disc of the album. */
 		playDisc: (disc: number) => void;
-		/** A box clicked, or a row with Shift, Ctrl or Cmd. */
-		pick: (trackId: string, how: PickHow) => void;
-		/** Opens the ⋯ menu for a song, at a place. */
-		openMenu: (trackId: string, x: number, y: number) => void;
-		/** Space, the arrows and Shift with them, on a row. */
-		rowKey: (event: KeyboardEvent, trackId: string) => void;
-		rate: (trackId: string, stars: number) => void;
 	}
 
 	let {
@@ -75,12 +66,7 @@
 		sounding,
 		trouble,
 		selection,
-		play,
-		playDisc,
-		pick,
-		openMenu,
-		rowKey,
-		rate
+		playDisc
 	}: Props = $props();
 
 	const album = $derived(block.album);
@@ -89,7 +75,7 @@
 	const hearted = $derived(library.marks.hearted('albums', album.id));
 	/** Each disc's songs, for its heading's box. */
 	const discSongs = $derived(Map.groupBy(album.tracks, (track) => Math.max(track.discNo ?? 1, 1)));
-	const sameOnAlbum = (id: ColumnId): boolean => shared.has(id);
+	const sharedHas = (id: ColumnId): boolean => shared.has(id);
 	const stars = $derived(albumStars(album.tracks, library.marks));
 	/**
 	 * The cover's glow, in its own color: the accent, or, for a cover with no color of its own,
@@ -102,26 +88,9 @@
 			: `color-mix(in srgb, ${palette.wash} 22%, transparent)`;
 	});
 	/** What says the same for every song of the album: a phone's line leaves it to the heading. */
-	const shared = $derived.by(() => {
-		if (!phone) {
-			return new Set<string>();
-		}
-		const same = pref.order.filter((id) => {
-			const texts = album.tracks.map((track) => {
-				const cell = cellOf(id, {
-					track,
-					album,
-					stars: null,
-					hearted: false,
-					artistWhenDifferent: pref.artistWhenDifferent,
-					now
-				});
-				return cell.look === 'name' || cell.look === 'fact' ? cell.text : '';
-			});
-			return texts.every((text) => text === texts[0]);
-		});
-		return new Set<string>(same);
-	});
+	const shared = $derived(
+		phone ? sameOnAlbum(pref.order, album, pref.artistWhenDifferent, now) : new Set<ColumnId>()
+	);
 </script>
 
 <section
@@ -205,7 +174,7 @@
 					<span class="disc-box pick-gutter"
 						><PickBox
 							state={selection.boxFor(ids)}
-							what={`every song on disc ${String(row.disc)} of ${album.title}`}
+							label={`Select every song on disc ${String(row.disc)} of ${album.title}`}
 							ontoggle={() => {
 								selection.toggleAll(ids);
 							}}
@@ -247,7 +216,7 @@
 						order={pref.order}
 						artistWhenDifferent={pref.artistWhenDifferent}
 						{lineChars}
-						{sameOnAlbum}
+						sameOnAlbum={sharedHas}
 						top={row.top - block.top - head}
 						height={row.height}
 						{now}
@@ -259,11 +228,6 @@
 						joins={track.shuffle?.run === undefined
 							? undefined
 							: runJoins(album.tracks, row.trackIndex)}
-						onplay={play}
-						onpick={pick}
-						onmenu={openMenu}
-						onkey={rowKey}
-						onrate={rate}
 					/>
 				{/if}
 			{/if}
@@ -455,7 +419,8 @@
 	.disc-box {
 		flex: none;
 		align-self: stretch;
-		width: 20px;
+		box-sizing: border-box;
+		width: calc(var(--box-size, 16px) + 4px + var(--row-pad, 14px));
 		display: flex;
 		align-items: flex-end;
 		margin: 0 -2px 0 calc(-1 * var(--row-pad, 14px));

@@ -185,6 +185,155 @@ export class SongList {
 	}
 }
 
+/** What a click inside a row is for. */
+export type ClickIntent =
+	| { kind: 'play' }
+	| { kind: 'box' }
+	| { kind: 'more' }
+	| { kind: 'rate'; stars: number }
+	/** Something with its own click: a link, the heart, the handle, a column divider. */
+	| { kind: 'own' };
+
+/** As much of an element as {@link clickIntent} reads. */
+export interface Clicked {
+	closest(selector: string): { getAttribute(name: string): string | null } | null;
+}
+
+/**
+ * What a click on `target`, inside a row, does. Anywhere on a row plays it, except what has a click
+ * of its own: the box, ⋯, the stars, and anything else that takes a press (a link's text, the heart,
+ * the drag handle), which keeps it.
+ */
+export function clickIntent(target: Clicked): ClickIntent {
+	if (target.closest('.box input') !== null) {
+		return { kind: 'box' };
+	}
+	if (target.closest('.more') !== null) {
+		return { kind: 'more' };
+	}
+	const star = target.closest('[data-star]');
+	if (star !== null) {
+		return { kind: 'rate', stars: Number(star.getAttribute('data-star')) };
+	}
+	if (target.closest('[data-own-click], a, input, label, button:not(.play)') !== null) {
+		return { kind: 'own' };
+	}
+	return { kind: 'play' };
+}
+
+/** What a list does with its rows' events: the row says only which song, and how. */
+export interface RowHandlers {
+	play(trackId: string): void;
+	pick(trackId: string, how: PickHow): void;
+	/** Opens the ⋯ menu for a song, at a place. */
+	menu(trackId: string, x: number, y: number): void;
+	/** Space, the arrows and Shift with them, on a row. */
+	key(event: KeyboardEvent, trackId: string): void;
+	rate(trackId: string, stars: number): void;
+	picked(trackId: string): boolean;
+}
+
+/** The song of the row an event happened in, and the element it happened on. */
+function rowEvent(
+	event: Event
+): { trackId: string; target: Element; row: HTMLElement } | undefined {
+	const target = event.target;
+	if (!(target instanceof Element)) {
+		return undefined;
+	}
+	const row = target.closest<HTMLElement>('[data-track]');
+	const trackId = row?.dataset['track'];
+	return row === null || trackId === undefined ? undefined : { trackId, target, row };
+}
+
+/**
+ * One set of handlers for a whole list of rows, put on its container: a row holds no handler of
+ * its own, so the Library's virtual list mounts nothing for them. A plain click plays, Shift takes a
+ * range and Ctrl or Cmd adds the song, a right-click opens the menu, a held finger starts picking,
+ * and the keys go to the list.
+ */
+export function rowEvents(handlers: RowHandlers): {
+	onclick: (event: MouseEvent) => void;
+	oncontextmenu: (event: MouseEvent) => void;
+	onpointerdown: (event: PointerEvent) => void;
+	onpointerup: () => void;
+	onpointercancel: () => void;
+	onkeydown: (event: KeyboardEvent) => void;
+} {
+	return {
+		onclick(event) {
+			const at = rowEvent(event);
+			if (at === undefined) {
+				return;
+			}
+			const intent = clickIntent(at.target);
+			switch (intent.kind) {
+				case 'box': {
+					handlers.pick(at.trackId, event.shiftKey ? 'range' : 'toggle');
+					// The box says what the list did with the click, whatever the click did to it.
+					if (at.target instanceof HTMLInputElement) {
+						at.target.checked = handlers.picked(at.trackId);
+					}
+					return;
+				}
+				case 'more': {
+					const button = at.target.closest('.more');
+					const { right, bottom } = (button ?? at.target).getBoundingClientRect();
+					handlers.menu(at.trackId, right - 300, bottom + 4);
+					return;
+				}
+				case 'rate':
+					handlers.rate(at.trackId, intent.stars);
+					return;
+				case 'own':
+					return;
+				case 'play': {
+					if (longPress.swallow()) {
+						event.preventDefault();
+						return;
+					}
+					const picking = at.row.closest('[data-selecting]') !== null;
+					const how = tapOf(event, longPress.touch, picking);
+					if (how === 'play') {
+						handlers.play(at.trackId);
+					} else {
+						handlers.pick(at.trackId, how);
+					}
+				}
+			}
+		},
+		oncontextmenu(event) {
+			const at = rowEvent(event);
+			if (at !== undefined && at.target.closest('a') === null) {
+				event.preventDefault();
+				handlers.menu(at.trackId, event.clientX, event.clientY);
+			}
+		},
+		onpointerdown(event) {
+			const at = rowEvent(event);
+			if (at === undefined || at.target.closest('[data-own-click]') !== null) {
+				return;
+			}
+			longPress.start(event.pointerType, () => {
+				navigator.vibrate?.(10);
+				handlers.pick(at.trackId, 'toggle');
+			});
+		},
+		onpointerup() {
+			longPress.end();
+		},
+		onpointercancel() {
+			longPress.end();
+		},
+		onkeydown(event) {
+			const at = rowEvent(event);
+			if (at?.target.closest('.play') != null) {
+				handlers.key(event, at.trackId);
+			}
+		}
+	};
+}
+
 /** Gives a row's play target the focus, in the list under `root`. */
 export function focusRow(root: ParentNode | null | undefined, trackId: string): void {
 	root?.querySelector<HTMLElement>(`[data-track="${CSS.escape(trackId)}"] .play`)?.focus();

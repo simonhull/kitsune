@@ -40,6 +40,7 @@ import {
 	type LastfmStatus,
 	type LastfmSwitches,
 	type LibraryFacts,
+	type LibraryAlbum,
 	type LibraryIndex,
 	type LibrarySource,
 	type Listening,
@@ -240,6 +241,8 @@ export class Library {
 	readonly #pinnedAlbumId: string | undefined;
 	readonly #entries = new SvelteMap<string, AlbumEntry>();
 	readonly #albums = new SvelteMap<string, Album>();
+	/** Albums' songs as song rows show them, read one album at a time, with the fields asked. */
+	readonly #rows = new SvelteMap<string, { fields: string; album: LibraryAlbum }>();
 	readonly #missing = new SvelteSet<string>();
 	/** Albums an edit merged away, and where their tracks went. */
 	readonly #moved = new SvelteMap<string, string>();
@@ -1131,6 +1134,15 @@ export class Library {
 		for (const id of held) {
 			void this.#refreshAlbum(id);
 		}
+		for (const id of all ? [...this.#rows.keys()] : albums) {
+			const read = this.#rows.get(id);
+			if (read !== undefined) {
+				void this.loadAlbumRows(
+					id,
+					read.fields === '' ? [] : (read.fields.split(',') as IndexField[])
+				);
+			}
+		}
 		if (this.index.kind !== 'ready') {
 			return;
 		}
@@ -1312,6 +1324,41 @@ export class Library {
 			} else if (this.artist(id).kind !== 'ready') {
 				this.#artists.set(id, { kind: 'unavailable' });
 			}
+		}
+	}
+
+	/**
+	 * An album's songs as song rows show them, with what the columns ask for: read for it alone, or
+	 * the index's own entry when that already carries the fields.
+	 */
+	albumRows(id: string, fields: readonly IndexField[]): LibraryAlbum | undefined {
+		const read = this.#rows.get(id);
+		if (read !== undefined && read.fields === fields.join(',')) {
+			return read.album;
+		}
+		if (this.index.kind === 'ready' && fields.every((field) => this.#fields().includes(field))) {
+			for (const artist of this.index.value.artists) {
+				const found = artist.albums.find((album) => album.id === id);
+				if (found !== undefined) {
+					return found;
+				}
+			}
+		}
+		return read?.album;
+	}
+
+	/** Reads an album's songs with `fields`, for {@link Library.albumRows}. A failure leaves what was. */
+	async loadAlbumRows(id: string, fields: readonly IndexField[]): Promise<void> {
+		const epoch = this.#epoch;
+		try {
+			const part = await this.#source.libraryIndexOf([id], fields);
+			const album = part.artists.flatMap((artist) => artist.albums).find((each) => each.id === id);
+			if (epoch === this.#epoch && album !== undefined) {
+				this.marks.seedIndex(part);
+				this.#rows.set(id, { fields: fields.join(','), album });
+			}
+		} catch {
+			// The rows stand as they were, or as the album itself says them.
 		}
 	}
 
@@ -1528,6 +1575,7 @@ export class Library {
 		this.#session = Promise.resolve('signed-out');
 		this.#entries.clear();
 		this.#albums.clear();
+		this.#rows.clear();
 		this.#missing.clear();
 		this.#unavailable.clear();
 		this.artists = { kind: 'loading' };

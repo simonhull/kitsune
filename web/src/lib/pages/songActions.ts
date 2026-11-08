@@ -1,5 +1,6 @@
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
+import { clock } from '#lib/library/format.ts';
 import { library } from '#lib/library/library.svelte.ts';
 import type { LibraryIndex } from '#lib/library/source.ts';
 import { player } from '#lib/player/player.svelte.ts';
@@ -53,6 +54,52 @@ export type MenuTarget =
 			artistId: string | undefined;
 	  }
 	| { kind: 'picked'; count: number; line: string; trackIds: readonly string[] };
+
+/** How many albums some songs are on, and how long they last together. */
+export interface PickedFacts {
+	albums: number;
+	durationMs: number;
+}
+
+/** What a list knows of a song it shows: its album and its length. */
+export type SongFacts = (trackId: string) => { albumId: string; durationMs: number } | undefined;
+
+export function pickedFacts(trackIds: readonly string[], facts: SongFacts): PickedFacts {
+	const known = trackIds.flatMap((id) => facts(id) ?? []);
+	return {
+		albums: new Set(known.map(({ albumId }) => albumId)).size,
+		durationMs: known.reduce((sum, { durationMs }) => sum + durationMs, 0)
+	};
+}
+
+/** The facts as the menu and the bar say them: `1 ALBUM · 28:58`. */
+export function factsLine({ albums, durationMs }: PickedFacts): string {
+	return `${albums.toLocaleString('en-US')} ${albums === 1 ? 'ALBUM' : 'ALBUMS'} · ${clock(durationMs / 1000)}`;
+}
+
+/**
+ * What the ⋯ menu opens on, from a row: the picked songs when it's one of several picked, or else
+ * the song alone. `song` says what the menu needs of a song the list holds.
+ */
+export function menuTarget(
+	trackId: string,
+	picked: readonly string[],
+	facts: SongFacts,
+	song: (
+		trackId: string
+	) => Omit<Extract<MenuTarget, { kind: 'song' }>, 'kind' | 'trackId'> | undefined
+): MenuTarget | undefined {
+	if (picked.length > 1 && picked.includes(trackId)) {
+		return {
+			kind: 'picked',
+			count: picked.length,
+			line: factsLine(pickedFacts(picked, facts)),
+			trackIds: picked
+		};
+	}
+	const one = song(trackId);
+	return one === undefined ? undefined : { kind: 'song', trackId, ...one };
+}
 
 /** What can be done with songs, one or picked: the bar's actions and the ⋯ menu's. */
 export interface SongActions {

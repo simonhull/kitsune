@@ -461,6 +461,33 @@ export function cellOf(id: ColumnId, context: CellContext): Cell {
 	}
 }
 
+/**
+ * The columns that say the same for every song of an album: a phone's line leaves them to the
+ * album's heading.
+ */
+export function sameOnAlbum(
+	order: readonly ColumnId[],
+	album: RowAlbum & { tracks: readonly LibraryTrack[] },
+	artistWhenDifferent: boolean,
+	now: number
+): Set<ColumnId> {
+	const same = order.filter((id) => {
+		const texts = album.tracks.map((track) => {
+			const cell = cellOf(id, {
+				track,
+				album,
+				stars: null,
+				hearted: false,
+				artistWhenDifferent,
+				now
+			});
+			return cell.look === 'name' || cell.look === 'fact' ? cell.text : '';
+		});
+		return texts.every((text) => text === texts[0]);
+	});
+	return new Set(same);
+}
+
 /** Columns that say something of each song, so they're never left out for being shared. */
 const perSong = new Set<ColumnId>(['artist', 'rating', 'heart', 'plays', 'gain']);
 

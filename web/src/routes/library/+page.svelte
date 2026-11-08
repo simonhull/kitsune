@@ -19,13 +19,16 @@
 	import SelectionBar from '#lib/pages/SelectionBar.svelte';
 	import TagBar from '#lib/pages/TagBar.svelte';
 	import PickBox from '#lib/pages/PickBox.svelte';
-	import { selection } from '#lib/pages/selection.svelte.ts';
-	import { SongList } from '#lib/pages/songRow.ts';
+	import { onScreen, selection } from '#lib/pages/selection.svelte.ts';
+	import { rowEvents, SongList } from '#lib/pages/songRow.ts';
 	import {
 		actionsFor,
 		albumsByTrack,
+		menuTarget,
+		pickedFacts as pickedFactsOf,
 		type MenuTarget,
-		type SongActions
+		type SongActions,
+		type SongFacts
 	} from '#lib/pages/songActions.ts';
 	import { letterOf, railHere, railLetters } from '#lib/pages/libraryRows.ts';
 	import { libraryView as view } from '#lib/pages/libraryView.svelte.ts';
@@ -163,11 +166,14 @@
 	const albumOf = $derived(albumsByTrack(load.kind === 'ready' ? load.value : { artists: [] }));
 	const picked = $derived(selection.inOrder(order));
 	const pickedActions = $derived(actionsFor(picked, albumOf));
-	const pickedFacts = $derived({
-		albums: new Set(picked.map((id) => songs.get(id)?.album.id).filter((id) => id !== undefined))
-			.size,
-		durationMs: picked.reduce((sum, id) => sum + (songs.get(id)?.track.durationMs ?? 0), 0)
-	});
+	/** What the list knows of a song: its album and its length. */
+	const songFacts: SongFacts = (id) => {
+		const song = songs.get(id);
+		return song === undefined
+			? undefined
+			: { albumId: song.album.id, durationMs: song.track.durationMs };
+	};
+	const pickedFacts = $derived(pickedFactsOf(picked, songFacts));
 	const box = $derived(selection.boxFor(order));
 	/** Bulk editing a selection takes the page, over the list, which keeps its place beneath. */
 	const bulk = $derived(bulkEdits.current?.layout === 'selection' ? bulkEdits.current : null);
@@ -217,33 +223,25 @@
 	/** Opens the ⋯ menu: on the picked songs, when it's opened on one of them. */
 	function openRowMenu(trackId: string, x: number, y: number): void {
 		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-		if (selection.has(trackId) && selection.size > 1) {
-			const facts = `${String(pickedFacts.albums)} ${pickedFacts.albums === 1 ? 'ALBUM' : 'ALBUMS'} · ${clock(pickedFacts.durationMs / 1000)}`;
+		const target = menuTarget(trackId, picked, songFacts, (id) => {
+			const song = songs.get(id);
+			return song === undefined
+				? undefined
+				: {
+						albumId: song.album.id,
+						title: song.track.title,
+						line: `${song.album.title.toUpperCase()} · ${clock(song.track.durationMs / 1000)}`,
+						artistId: song.artist.id
+					};
+		});
+		if (target !== undefined) {
 			rowMenu = {
 				x,
 				y,
-				target: { kind: 'picked', count: picked.length, line: facts, trackIds: picked },
-				actions: pickedActions
+				target,
+				actions: target.kind === 'picked' ? pickedActions : actionsFor([trackId], albumOf)
 			};
-			return;
 		}
-		const song = songs.get(trackId);
-		if (song === undefined) {
-			return;
-		}
-		rowMenu = {
-			x,
-			y,
-			target: {
-				kind: 'song',
-				trackId,
-				albumId: song.album.id,
-				title: song.track.title,
-				line: `${song.album.title.toUpperCase()} · ${clock(song.track.durationMs / 1000)}`,
-				artistId: song.artist.id
-			},
-			actions: actionsFor([trackId], albumOf)
-		};
 	}
 
 	function closeRowMenu(refocus: boolean): void {
@@ -268,6 +266,27 @@
 		await tick();
 		document.querySelector<HTMLElement>(`[data-track="${CSS.escape(trackId)}"] .play`)?.focus();
 	}
+
+	/** The rows' one set of handlers: a row's song plays in its album, from where it is. */
+	const events = rowEvents({
+		play: (trackId) => {
+			const albumId = albumOf.get(trackId);
+			if (albumId !== undefined) {
+				view.play(albumId, trackId);
+			}
+		},
+		pick: (trackId, how) => {
+			list.pick(trackId, how);
+		},
+		menu: openRowMenu,
+		key: (event, trackId) => {
+			list.key(event, trackId);
+		},
+		rate: (trackId, stars) => {
+			library.marks.press(trackId, stars);
+		},
+		picked: (trackId) => selection.has(trackId)
+	});
 
 	function onWindowKey(event: KeyboardEvent): void {
 		list.windowKey(event, menu !== null || rowMenu !== null || bulk !== null);
@@ -346,6 +365,8 @@
 		landed = true;
 	});
 
+	onMount(() => onScreen.show(selection));
+
 	onMount(() => {
 		let frame = 0;
 		function onScroll(): void {
@@ -376,7 +397,7 @@
 {#snippet headerBox()}
 	<PickBox
 		state={box}
-		what="every song in view"
+		label={box === 'all' ? 'Clear every song in view' : 'Select every song in view'}
 		ontoggle={() => {
 			list.toggleAll();
 		}}
@@ -384,7 +405,7 @@
 {/snippet}
 
 <div
-	class="library"
+	class="library song-list"
 	class:large={view.step === 'large'}
 	class:stepping
 	style:--cover={`${String(view.cover)}px`}
@@ -465,7 +486,7 @@
 			</div>
 		{/if}
 
-		<div class="list" style:height={`${String(layout.height)}px`}>
+		<div class="list" style:height={`${String(layout.height)}px`} {...events}>
 			<div class="measure" aria-hidden="true" bind:clientWidth={songsWidth}></div>
 			{#each view.mounted as { index, block, albums } (index)}
 				{@const { name, id } = block.artist}
@@ -530,23 +551,10 @@
 								{cuedId}
 								sounding={player.sounding}
 								trouble={view.trouble === album.album.id}
-								play={(trackId) => {
-									view.play(album.album.id, trackId);
-								}}
 								playDisc={(disc) => {
 									view.playDisc(album.album.id, disc);
 								}}
 								{selection}
-								pick={(trackId, how) => {
-									list.pick(trackId, how);
-								}}
-								openMenu={openRowMenu}
-								rowKey={(event, trackId) => {
-									list.key(event, trackId);
-								}}
-								rate={(trackId, stars) => {
-									library.marks.press(trackId, stars);
-								}}
 							/>
 						{/each}
 					</div>
@@ -635,14 +643,6 @@
 		--cover-gap: 32px;
 		--songs-right: 64px;
 		--head-top: 96px;
-		--head-row: 40px;
-		--head-type: 11px;
-		--col-gap: 12px;
-		--row-pad: 14px;
-		--cell-type: 14px;
-		--star-type: 13px;
-		--box-size: 16px;
-		--more-size: 36px;
 		--songs-left: calc(var(--page-edge) + var(--name-column) + var(--name-gap));
 		/* Shuffle and its line, above the filters: libraryView's shuffleRow. */
 		--shuffle-row: 112px;
@@ -658,14 +658,6 @@
 		--cover-gap: 48px;
 		--songs-right: 120px;
 		--head-top: 128px;
-		--head-row: 50px;
-		--head-type: 13px;
-		--col-gap: 16px;
-		--row-pad: 18px;
-		--cell-type: 17px;
-		--star-type: 16px;
-		--box-size: 20px;
-		--more-size: 44px;
 		--shuffle-row: 140px;
 		--type-display: 132px;
 		--type-title: 22px;

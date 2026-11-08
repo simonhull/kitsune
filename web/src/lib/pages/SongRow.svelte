@@ -6,13 +6,14 @@
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { trackLabel } from '#lib/library/format.ts';
 	import type { ColumnId, LibraryTrack } from '#lib/library/source.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 	import { cellOf, fitLine, phoneLine, timeOf, type RowAlbum, type RowParts } from './columns.ts';
-	import { longPress, tapOf, type PickHow } from './songRow.ts';
+	import PickBox from './PickBox.svelte';
 
 	interface Props {
 		track: LibraryTrack;
@@ -47,14 +48,7 @@
 		picked: boolean;
 		/** Its combined run goes on above it and below it, joined by one bracket. */
 		joins?: { up: boolean; down: boolean } | undefined;
-		onplay: (trackId: string) => void;
-		onpick: (trackId: string, how: PickHow) => void;
-		/** Opens the ⋯ menu for it, at a place. */
-		onmenu: (trackId: string, x: number, y: number) => void;
-		/** Space, the arrows and Shift with them, on the row. */
-		onkey: (event: KeyboardEvent, trackId: string) => void;
-		onrate: (trackId: string, stars: number) => void;
-		/** The handle pressed to drag it, or Alt with an arrow on it. */
+		/** The handle pressed to drag it, or Alt with an arrow on it: a queue's. */
 		ondrag?: ((trackId: string, event: PointerEvent) => void) | undefined;
 		onmove?: ((trackId: string, by: -1 | 1) => void) | undefined;
 	}
@@ -80,11 +74,6 @@
 		sounding,
 		picked,
 		joins,
-		onplay,
-		onpick,
-		onmenu,
-		onkey,
-		onrate,
 		ondrag,
 		onmove
 	}: Props = $props();
@@ -96,23 +85,6 @@
 		const from = (parts.handle ? 2 : 1) + 1;
 		return `${String(from)} / ${String(from + (parts.cover ? 1 : 0) + (parts.number ? 1 : 0) + 1)}`;
 	});
-
-	function tap(event: MouseEvent): void {
-		if (longPress.swallow()) {
-			event.preventDefault();
-			return;
-		}
-		// The list says it's picking on its container, so starting a selection touches no row.
-		const picking =
-			event.currentTarget instanceof Element &&
-			event.currentTarget.closest('[data-selecting]') !== null;
-		const how = tapOf(event, longPress.touch, picking);
-		if (how === 'play') {
-			onplay(track.id);
-		} else {
-			onpick(track.id, how);
-		}
-	}
 </script>
 
 {#snippet marks()}
@@ -137,6 +109,11 @@
 	>
 {/snippet}
 
+<!--
+	A click anywhere on the row plays it, through its list's one handler (songRow.ts's rowEvents).
+	The title's button is the row's one control for a screen reader and the keyboard; the rest of
+	the row is a pointer's convenience.
+-->
 <div
 	class="row"
 	class:two={phone}
@@ -149,25 +126,6 @@
 	data-track={track.id}
 	style:top={top === undefined ? undefined : `${String(top)}px`}
 	style:height={height === undefined ? undefined : `${String(height)}px`}
-	oncontextmenu={(event) => {
-		event.preventDefault();
-		onmenu(track.id, event.clientX, event.clientY);
-	}}
-	onpointerdown={(event) => {
-		longPress.start(event.pointerType, () => {
-			navigator.vibrate?.(10);
-			onpick(track.id, 'toggle');
-		});
-	}}
-	onpointerup={() => {
-		longPress.end();
-	}}
-	onpointercancel={() => {
-		longPress.end();
-	}}
-	onpointerleave={() => {
-		longPress.end();
-	}}
 >
 	{#if joins !== undefined && mark?.run !== undefined}
 		<span class="bracket" class:start={!joins.up} class:end={!joins.down} aria-hidden="true"></span>
@@ -176,9 +134,9 @@
 		<button
 			type="button"
 			class="handle"
+			data-own-click
 			aria-label={`Move ${track.title}. Alt with an arrow moves it.`}
 			onpointerdown={(event) => {
-				event.stopPropagation();
 				ondrag?.(track.id, event);
 			}}
 			onkeydown={(event) => {
@@ -197,28 +155,15 @@
 			></button
 		>
 	{/if}
-	<span class="box">
-		<input
-			type="checkbox"
-			aria-label={`Select ${track.title}`}
-			checked={picked}
-			onclick={(event) => {
-				onpick(track.id, event.shiftKey ? 'range' : 'toggle');
-				// The box says what the list did with the click, whatever the click did to it.
-				event.currentTarget.checked = picked;
-			}}
-		/>
-	</span>
+	<span class="box pick-gutter" data-own-click
+		><PickBox state={picked ? 'all' : 'none'} label={`Select ${track.title}`} /></span
+	>
 	<button
 		type="button"
 		class="play"
 		aria-label={`Play ${track.title}`}
 		aria-current={cued ? 'true' : undefined}
 		style:grid-column={phone ? undefined : playColumns}
-		onclick={tap}
-		onkeydown={(event) => {
-			onkey(event, track.id);
-		}}
 	>
 		{#if parts.cover}
 			<span class="cover"><Cover albumId={album.id} entry={album} place="small" lazy /></span>
@@ -262,17 +207,19 @@
 					<button
 						type="button"
 						class:on={star <= cell.stars}
+						data-star={star}
 						aria-label={`Rate ${track.title} ${String(star)} of 5`}
-						aria-pressed={star <= cell.stars}
-						onclick={() => {
-							onrate(track.id, star);
-						}}>★</button
+						aria-pressed={star <= cell.stars}>★</button
 					>
 				{/each}
 			</span>
 		{:else if cell.look === 'heart'}
 			<span class="heart-cell"
 				><HeartButton kind="tracks" id={track.id} name={track.title} size={16} /></span
+			>
+		{:else if id === 'album' && cell.text !== ''}
+			<span class="cell name"
+				><a class="link" href={resolve('/album/[id]', { id: album.id })}>{cell.text}</a></span
 			>
 		{:else}
 			<span
@@ -283,15 +230,7 @@
 		{/if}
 	{/each}
 	{#if !phone || second !== undefined}<span class="mono time">{timeOf(track)}</span>{/if}
-	<button
-		type="button"
-		class="more"
-		aria-label={`More for ${track.title}`}
-		aria-haspopup="menu"
-		onclick={(event) => {
-			const { right, bottom } = event.currentTarget.getBoundingClientRect();
-			onmenu(track.id, right - 300, bottom + 4);
-		}}
+	<button type="button" class="more" aria-label={`More for ${track.title}`} aria-haspopup="menu"
 		><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
 			><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle
 				cx="19"
@@ -319,6 +258,9 @@
 		padding: 0 var(--row-pad, 14px);
 		border-bottom: 1px solid var(--edge-card);
 		font-size: var(--type-body);
+		cursor: pointer;
+		/* A Shift-click takes songs, not words. */
+		user-select: none;
 	}
 
 	/* In a list that places every row itself, as the Library's does. */
@@ -539,11 +481,9 @@
 	}
 
 	/*
-	 * The box is hidden at rest. It shows while the pointer is in the gutter (the whole column, edge
-	 * to edge and top to bottom, so passing down it shows each box in turn), on a row with the
-	 * focus, on a picked row, and on every row while the list is picking: the list says so with
-	 * `data-selecting` on its container, so starting a selection changes no row. songRow.ts's
-	 * `boxShows` says the same in words, and its tests hold them.
+	 * The gutter, where the box is: the whole column, from the row's edge and top to bottom, so
+	 * passing down it shows each box in turn. PickBox says when its box shows; a row shows its own on
+	 * focus too.
 	 */
 	.box {
 		align-self: stretch;
@@ -551,33 +491,16 @@
 		align-items: center;
 		margin-left: calc(-1 * var(--row-pad, 14px));
 		padding-left: var(--row-pad, 14px);
+		cursor: default;
 	}
 
-	.box input {
-		width: var(--box-size, 16px);
-		height: var(--box-size, 16px);
-		margin: 0;
-		accent-color: var(--fox);
-		opacity: 0;
-		transition: opacity 120ms var(--curve-morph);
-	}
-
-	@media (hover: hover) {
-		.box:hover input {
-			opacity: 1;
-		}
-	}
-
-	.row:focus-within .box input,
-	.row.picked .box input,
-	:global([data-selecting]) .box input {
+	.row:focus-within .box :global(.pick) {
 		opacity: 1;
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.box input {
-			transition: none;
-		}
+	.link:hover {
+		color: var(--fox-text);
+		text-decoration: underline;
 	}
 
 	.more {
@@ -660,10 +583,6 @@
 
 	.cued .rate button {
 		color: color-mix(in srgb, var(--fox-ink) 30%, transparent);
-	}
-
-	.cued .box input {
-		accent-color: var(--fox-ink);
 	}
 
 	/*

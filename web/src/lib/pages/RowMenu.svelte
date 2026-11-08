@@ -12,10 +12,14 @@
 		y: number;
 		target: MenuTarget;
 		actions: SongActions;
+		/** The page it's on, whose own link it leaves out: no Go to album on the album. */
+		here?: 'album' | 'artist' | undefined;
+		/** Takes the songs out of the queue, in Up next. */
+		remove?: (() => void) | undefined;
 		onclose: (refocus: boolean) => void;
 	}
 
-	let { x, y, target, actions, onclose }: Props = $props();
+	let { x, y, target, actions, here, remove, onclose }: Props = $props();
 
 	let info = $state(false);
 
@@ -114,17 +118,25 @@
 				onclick={then(actions.editTags)}>Edit tags…</button
 			>
 		{/if}
+		{#if remove !== undefined}
+			<button type="button" role="menuitem" class="item" data-menu-item onclick={then(remove)}
+				>Remove from queue</button
+			>
+		{/if}
 		{#if target.kind === 'song'}
 			{@const { albumId, artistId } = target}
 			<div class="rule"></div>
-			<button
-				type="button"
-				role="menuitem"
-				class="item quiet"
-				data-menu-item
-				onclick={then(() => void goto(resolve('/album/[id]', { id: albumId })))}>Go to album</button
-			>
-			{#if artistId !== undefined}
+			{#if here !== 'album'}
+				<button
+					type="button"
+					role="menuitem"
+					class="item quiet"
+					data-menu-item
+					onclick={then(() => void goto(resolve('/album/[id]', { id: albumId })))}
+					>Go to album</button
+				>
+			{/if}
+			{#if artistId !== undefined && here !== 'artist'}
 				<button
 					type="button"
 					role="menuitem"
