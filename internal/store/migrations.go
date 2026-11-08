@@ -195,17 +195,15 @@ func runBody(ctx context.Context, conn *sql.Conn, tx *sql.Tx, m *migration) erro
 }
 
 // inTransaction runs fn in a transaction and commits if it returns nil. The
-// writer's transactions are BEGIN IMMEDIATE.
+// writer's transactions are BEGIN IMMEDIATE. An SQLite error comes back with its
+// extended result code named.
 func inTransaction(ctx context.Context, conn *sql.Conn, fn func(*sql.Tx) error) (err error) {
+	defer func() { err = named(err) }() // Deferred first, so it runs after the rollback.
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
-	defer func() {
-		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
-			err = errors.Join(err, fmt.Errorf("rollback: %w", rbErr))
-		}
-	}()
+	defer func() { err = errors.Join(err, rollback(conn, tx)) }()
 	if fnErr := fn(tx); fnErr != nil {
 		return fnErr
 	}
@@ -213,6 +211,31 @@ func inTransaction(ctx context.Context, conn *sql.Conn, fn func(*sql.Tx) error) 
 		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
+}
+
+// rollback rolls tx back, and reports nothing when there was nothing to undo:
+// tx had ended, or SQLite had rolled it back itself, as it does after an I/O
+// error or a full disk. ROLLBACK then fails with "no transaction is active",
+// which says nothing about the error that caused it.
+func rollback(conn *sql.Conn, tx *sql.Tx) error {
+	err := tx.Rollback()
+	if err == nil || errors.Is(err, sql.ErrTxDone) || autocommit(conn) {
+		return nil
+	}
+	return fmt.Errorf("rollback: %w", err)
+}
+
+// autocommit reports whether conn is outside any transaction, as SQLite sees
+// it. A connection it can't ask counts as inside one.
+func autocommit(conn *sql.Conn) bool {
+	on := false
+	err := conn.Raw(func(raw any) error {
+		if c, ok := raw.(sqlitedriver.Conn); ok {
+			on = c.Raw().GetAutocommit()
+		}
+		return nil
+	})
+	return err == nil && on
 }
 
 // readPragma reads an integer pragma. name is always a literal here.

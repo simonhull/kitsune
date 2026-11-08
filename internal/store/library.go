@@ -199,30 +199,26 @@ func nullStr(v string) *string {
 // inTx runs fn in a writer transaction, with every sqlc query prepared on it.
 // The ncruces driver prepares, steps and finalizes every statement that has
 // arguments, so preparing once per transaction saves thousands of prepares per batch.
+// It commits if fn returns nil, as [inTransaction] does.
 func (s *Store) inTx(ctx context.Context, fn func(q *sqlcdb.Queries, tx *sql.Tx) error) (err error) {
-	tx, err := s.w.BeginTx(ctx, nil)
+	conn, err := s.w.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("begin: %w", err)
+		return named(fmt.Errorf("connect: %w", err))
 	}
-	defer func() {
-		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
-			err = errors.Join(err, fmt.Errorf("rollback: %w", rbErr))
+	defer func() { err = errors.Join(err, conn.Close()) }()
+	return inTransaction(ctx, conn, func(tx *sql.Tx) error {
+		q, prepErr := sqlcdb.Prepare(ctx, tx)
+		if prepErr != nil {
+			return fmt.Errorf("prepare: %w", prepErr)
 		}
-	}()
-	q, err := sqlcdb.Prepare(ctx, tx)
-	if err != nil {
-		return fmt.Errorf("prepare: %w", err)
-	}
-	if err = fn(q, tx); err != nil {
-		return errors.Join(err, q.Close())
-	}
-	if err = q.Close(); err != nil {
-		return fmt.Errorf("close statements: %w", err)
-	}
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("commit: %w", err)
-	}
-	return nil
+		if fnErr := fn(q, tx); fnErr != nil {
+			return errors.Join(fnErr, q.Close())
+		}
+		if closeErr := q.Close(); closeErr != nil {
+			return fmt.Errorf("close statements: %w", closeErr)
+		}
+		return nil
+	})
 }
 
 // validate checks b before any write, so a bad batch writes nothing.

@@ -3,7 +3,7 @@ import { SilentOutput } from '#lib/player/output.ts';
 import { Player } from '#lib/player/player.svelte.ts';
 import { theme } from '#lib/theme/theme.svelte.ts';
 import { createFixtureSource } from './fixtures';
-import { Library, pileSize, type ReadyMemory } from './library.svelte';
+import { issuesRetryMs, Library, pileSize, type ReadyMemory } from './library.svelte';
 import {
 	AlbumNotFoundError,
 	ArtistNotFoundError,
@@ -227,6 +227,41 @@ describe('following a scan', () => {
 		expect(library.issues.kind).toBe('unavailable');
 		library.reset();
 		expect(library.issues.kind).toBe('loading');
+	});
+
+	it('asks once more for issues that failed to load, a moment later', async () => {
+		vi.useFakeTimers();
+		try {
+			const issues = vi.fn(createFixtureSource().issues);
+			issues.mockRejectedValueOnce(new ServerError(500));
+			const library = new Library(source({ issues }));
+			await library.loadIssues();
+			expect(library.issues.kind).toBe('unavailable');
+			await vi.advanceTimersByTimeAsync(issuesRetryMs);
+			expect(library.issues.kind).toBe('ready');
+			expect(issues).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('asks only once more, and not after sign-out', async () => {
+		vi.useFakeTimers();
+		try {
+			const issues = vi.fn(() => Promise.reject(new ServerError(500)));
+			const library = new Library(source({ issues }));
+			await library.loadIssues();
+			await vi.advanceTimersByTimeAsync(issuesRetryMs * 3);
+			expect(issues).toHaveBeenCalledTimes(2);
+			expect(library.issues.kind).toBe('unavailable');
+
+			await library.loadIssues();
+			library.reset();
+			await vi.advanceTimersByTimeAsync(issuesRetryMs * 3);
+			expect(issues).toHaveBeenCalledTimes(3);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 

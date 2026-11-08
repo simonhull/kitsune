@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	allClear,
+	filesState,
 	issueGroups,
 	lastScan,
 	minutesLeft,
@@ -8,6 +9,8 @@ import {
 	scanHelp,
 	scanLine,
 	scanPercent,
+	splitPath,
+	staleFor,
 	standing,
 	steadyMinutes,
 	timeLeft,
@@ -317,5 +320,57 @@ describe('warningLine', () => {
 	it('agrees at 1 and N', () => {
 		expect(warningLine(1)).toBe('1 track read fine but left a note');
 		expect(warningLine(1200)).toBe('1,200 tracks read fine but left a note');
+	});
+});
+
+describe('filesState', () => {
+	it('shows a loaded list, and nothing to anyone but an admin', () => {
+		expect(filesState(true, 'ready', 3, false)).toBe('shown');
+		expect(filesState(true, 'ready', 3, true)).toBe('shown');
+		expect(filesState(true, 'unavailable', 3, false)).toBe('shown');
+		expect(filesState(false, 'loading', 0, false)).toBe('hidden');
+		expect(filesState(false, 'unavailable', 0, true)).toBe('hidden');
+	});
+
+	it('says the files are coming while they load, or while a list behind the counts is asked for', () => {
+		expect(filesState(true, 'loading', 0, false)).toBe('loading');
+		expect(filesState(true, 'ready', 0, false)).toBe('loading');
+	});
+
+	it('says when they could not be loaded', () => {
+		expect(filesState(true, 'unavailable', 0, false)).toBe('failed');
+		expect(filesState(true, 'missing', 0, false)).toBe('failed');
+	});
+
+	it('gives up on a list still behind the counts after asking again', () => {
+		expect(filesState(true, 'ready', 0, true)).toBe('failed');
+	});
+});
+
+describe('staleFor', () => {
+	const file = (kind: ScanIssue['kind']): ScanIssue => ({ path: 'a/b.wav', kind, message: '' });
+
+	it('is null while the list holds every counted kind', () => {
+		expect(staleFor({ ...noCounts, unsupported: 16 }, [file('unsupported')])).toBeNull();
+		expect(staleFor(noCounts, [])).toBeNull();
+	});
+
+	it('names the counts a list is behind, so it is asked for again once per count', () => {
+		const counts = { ...noCounts, corrupted: 1, unsupported: 16 };
+		expect(staleFor(counts, [file('corrupted')])).toBe('0:1:16');
+		expect(staleFor({ ...counts, unsupported: 17 }, [file('corrupted')])).toBe('0:1:17');
+	});
+});
+
+describe('splitPath', () => {
+	it('puts the folders first, then the name', () => {
+		expect(splitPath('Low/Things We Lost in the Fire/01 Sunflower.wav')).toEqual({
+			folder: 'Low / Things We Lost in the Fire',
+			name: '01 Sunflower.wav'
+		});
+	});
+
+	it('has no folder for a file at the top of a root', () => {
+		expect(splitPath('loose.wav')).toEqual({ folder: '', name: 'loose.wav' });
 	});
 });

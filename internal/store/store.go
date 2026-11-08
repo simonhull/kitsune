@@ -105,6 +105,12 @@ func (o *Options) logger() *slog.Logger {
 // [ErrUnversioned] or [ErrNotKitsune] if the file can't be used, and an error if
 // opts.Readers is negative.
 func Open(ctx context.Context, path string, opts Options) (*Store, error) {
+	s, err := open(ctx, path, opts)
+	return s, named(err)
+}
+
+// open is [Open] without naming SQLite's result code.
+func open(ctx context.Context, path string, opts Options) (*Store, error) {
 	if opts.Readers < 0 {
 		return nil, fmt.Errorf("store: Options.Readers is %d; %w", opts.Readers, errNegativeReaders)
 	}
@@ -153,7 +159,7 @@ func (s *Store) Close() error {
 // stall readiness.
 func (s *Store) Ping(ctx context.Context) error {
 	if err := s.r.PingContext(ctx); err != nil {
-		return fmt.Errorf("store: ping: %w", err)
+		return named(fmt.Errorf("store: ping: %w", err))
 	}
 	return nil
 }
