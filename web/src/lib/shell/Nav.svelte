@@ -123,7 +123,7 @@
 	.nav:is([data-route='album'], [data-route='gone']) {
 		/* Heavier than the board's 50%: at that level the glow behind it fails AA on most albums. */
 		background: color-mix(in srgb, var(--stage) 68%, transparent);
-		border-color: rgb(255 255 255 / 10%);
+		border-color: var(--edge-raised);
 		box-shadow: none;
 	}
 
@@ -134,14 +134,14 @@
 		top: 6px;
 		height: var(--target);
 		border-radius: var(--radius-pill);
-		background: rgb(255 255 255 / 10%);
+		background: var(--fill);
 		transition:
 			background var(--morph) var(--curve-morph),
 			opacity var(--morph-fast) var(--curve-morph);
 	}
 
 	:is([data-route='album'], [data-route='gone']) .pill {
-		background: rgb(255 255 255 / 14%);
+		background: var(--pressed);
 	}
 
 	.fox {
@@ -195,7 +195,7 @@
 	}
 
 	a.item:hover {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.item[aria-current='page'] {
@@ -233,7 +233,7 @@
 		margin-left: 4px;
 		padding: 0 18px 0 14px;
 		border-radius: var(--radius-pill);
-		background: rgb(255 255 255 / 6%);
+		background: var(--input);
 		transition:
 			background var(--morph) var(--curve-morph),
 			margin var(--morph) var(--curve-morph),
@@ -247,12 +247,12 @@
 	:is([data-route='album'], [data-route='gone']) .search {
 		margin-left: 0;
 		padding: 0 14px;
-		background: rgb(255 255 255 / 8%);
+		background: var(--hover);
 		color: var(--wash);
 	}
 
 	a.search:hover {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.search-label {

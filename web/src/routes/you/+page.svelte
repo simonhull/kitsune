@@ -318,7 +318,7 @@
 	}
 
 	.ghost:hover:not(:disabled) {
-		border-color: rgb(255 255 255 / 36%);
+		border-color: var(--edge-hover);
 	}
 
 	.solid {
@@ -345,7 +345,7 @@
 	/* Comes in, stays, and goes on its own: three steps forward, nothing played back. */
 	.result {
 		font-size: 13px;
-		color: var(--fox);
+		color: var(--fox-text);
 		animation: said 4200ms var(--curve-morph) forwards;
 	}
 
@@ -382,7 +382,7 @@
 	}
 
 	.card[data-card='reconnect'] {
-		border-color: var(--fox);
+		border-color: var(--fox-text);
 	}
 
 	.card[data-card='unset'] {
@@ -411,7 +411,7 @@
 	}
 
 	.state.on {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.as {
@@ -494,7 +494,7 @@
 		width: 44px;
 		height: 26px;
 		border-radius: var(--radius-pill);
-		background: rgb(255 255 255 / 14%);
+		background: var(--rail);
 		transition: background var(--morph-fast) var(--curve-morph);
 	}
 
@@ -521,7 +521,7 @@
 	}
 
 	input:focus-visible + .track {
-		outline: 2px solid var(--fox);
+		outline: 2px solid var(--fox-text);
 		outline-offset: 2px;
 	}
 

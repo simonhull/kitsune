@@ -89,7 +89,7 @@
 		padding: 0;
 		border: 0;
 		background: none;
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	ul {
@@ -113,7 +113,7 @@
 	}
 
 	a:hover {
-		background: rgb(255 255 255 / 5%);
+		background: var(--hover);
 	}
 
 	.name {
@@ -126,7 +126,7 @@
 	}
 
 	a:hover .name {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.count {

@@ -106,8 +106,8 @@
 		height: 60px;
 		padding: 0 8px 0 24px;
 		border-radius: var(--radius-pill);
-		background: rgb(24 22 20 / 90%);
-		border: 1px solid rgb(255 255 255 / 10%);
+		background: var(--glass-solid);
+		border: 1px solid var(--edge-raised);
 		box-shadow: var(--glass-shadow);
 		backdrop-filter: var(--glass-blur);
 	}
@@ -157,8 +157,8 @@
 		padding: 16px 20px;
 		overflow-y: auto;
 		border-radius: var(--radius-24);
-		background: rgb(24 22 20 / 94%);
-		border: 1px solid rgb(255 255 255 / 10%);
+		background: var(--glass-solid);
+		border: 1px solid var(--edge-raised);
 		box-shadow: var(--glass-shadow);
 		backdrop-filter: var(--glass-blur);
 		outline: none;
@@ -168,7 +168,7 @@
 		font-size: 14px;
 		font-weight: 600;
 		line-height: 1.4;
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.detail {
@@ -208,7 +208,7 @@
 		.bar {
 			gap: 8px;
 			padding: 0 8px 0 18px;
-			background: rgb(24 22 20 / 94%);
+			background: var(--glass-solid);
 		}
 
 		.where {

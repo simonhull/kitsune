@@ -163,6 +163,6 @@
 		min-height: var(--target);
 		display: flex;
 		align-items: center;
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 </style>

@@ -190,7 +190,7 @@
 		margin-top: 10px;
 		height: 8px;
 		border-radius: 4px;
-		background: rgb(26 15 5 / 20%);
+		background: color-mix(in srgb, var(--fox-ink) 20%, transparent);
 		overflow: hidden;
 	}
 
@@ -266,7 +266,7 @@
 	}
 
 	.ghost:hover:enabled {
-		background: rgb(26 15 5 / 12%);
+		background: color-mix(in srgb, var(--fox-ink) 12%, transparent);
 	}
 
 	.help {

@@ -12,7 +12,7 @@ html {
 	-webkit-font-smoothing: antialiased;
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
-	scrollbar-color: rgb(255 255 255 / 16%) transparent;
+	scrollbar-color: var(--rail) transparent;
 	/* A short page growing a scrollbar would shift whatever is meant to stay still, like the greeting. */
 	scrollbar-gutter: stable;
 }
@@ -46,7 +46,7 @@ button {
 }
 
 :focus-visible {
-	outline: 2px solid var(--fox);
+	outline: 2px solid var(--fox-text);
 	outline-offset: 2px;
 }
 

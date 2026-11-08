@@ -134,7 +134,7 @@
 		padding: 0;
 		border: 0;
 		background: none;
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.missing {
@@ -158,7 +158,7 @@
 		min-height: var(--target);
 		display: flex;
 		align-items: center;
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	@media (max-width: 720px) {

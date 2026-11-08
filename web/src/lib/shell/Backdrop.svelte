@@ -63,9 +63,9 @@
 		inset: 0;
 		background: linear-gradient(
 			180deg,
-			rgb(10 9 8 / 0%) 14%,
-			rgb(10 9 8 / 34%) 48%,
-			rgb(10 9 8 / 58%) 70%,
+			color-mix(in srgb, var(--ground) 0%, transparent) 14%,
+			color-mix(in srgb, var(--ground) 34%, transparent) 48%,
+			color-mix(in srgb, var(--ground) 58%, transparent) 70%,
 			var(--ground) 100%
 		);
 	}

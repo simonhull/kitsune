@@ -203,23 +203,23 @@
 		padding: 0 20px;
 		border: 1px solid var(--edge-strong);
 		border-radius: var(--radius-pill);
-		background: rgb(255 255 255 / 6%);
+		background: var(--input);
 		color: var(--text);
-		caret-color: var(--fox);
+		caret-color: var(--fox-text);
 		/* Under 16 px, iOS zooms the page on focus. */
 		font: 400 16px var(--font-sans);
 		transition: border-color var(--morph-fast) var(--curve-morph);
 	}
 
 	input:hover {
-		border-color: rgb(255 255 255 / 32%);
+		border-color: var(--edge-hover);
 	}
 
 	/* The browser's yellow has no place here. */
 	input:-webkit-autofill {
 		-webkit-text-fill-color: var(--text);
-		box-shadow: inset 0 0 0 52px #1d1b19;
-		caret-color: var(--fox);
+		box-shadow: inset 0 0 0 52px var(--input-solid);
+		caret-color: var(--fox-text);
 	}
 
 	button {
@@ -245,6 +245,6 @@
 		font-size: 14px;
 		line-height: 20px;
 		text-align: center;
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 </style>

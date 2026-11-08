@@ -114,6 +114,11 @@ function liftAccent(accent: Rgb, surfaces: readonly Rgb[], panel: Rgb): Rgb {
 	);
 }
 
+/** Whether a cover has a color of its own: the server gives one with none the fox as its accent. */
+export function ownColor(artwork: AlbumEntry['artwork']): boolean {
+	return artwork === undefined || artwork.accent !== fox;
+}
+
 function fromArtwork(accentHex: string, groundHex: string): AlbumPalette {
 	const ground = parse(groundHex);
 	const stage = darken(ground, stageLimit);

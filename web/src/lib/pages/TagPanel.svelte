@@ -189,8 +189,8 @@
 		margin: 10px -8px;
 		padding: 20px 24px 24px;
 		border-radius: var(--radius-20);
-		background: #1d1a17;
-		box-shadow: inset 0 0 0 1px rgb(242 140 40 / 50%);
+		background: var(--card-raised);
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fox) 50%, transparent);
 		outline: none;
 		scroll-margin: 96px 0 200px;
 		animation: unfold var(--morph) var(--curve-morph) both;
@@ -291,7 +291,7 @@
 		height: 150px;
 		padding: 12px;
 		border-radius: 14px;
-		border: 1px solid rgb(255 255 255 / 14%);
+		border: 1px solid var(--edge-field);
 		outline: none;
 		background: var(--card);
 		color: var(--text);
@@ -311,7 +311,7 @@
 	}
 
 	.lyrics textarea.changed {
-		border-color: var(--fox);
+		border-color: var(--fox-text);
 	}
 
 	.lyrics .note {
@@ -342,7 +342,7 @@
 	}
 
 	.others li.changed {
-		border-bottom-color: var(--fox);
+		border-bottom-color: var(--fox-text);
 	}
 
 	.others li:focus-within {

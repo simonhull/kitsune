@@ -31,7 +31,7 @@
 </div>
 
 <style>
-	/* Where it stands sets --star-on and --star-off, and reaches it as :global(.stars) to hide it. */
+	/* Where it stands sets --star-on, and reaches it as :global(.stars) to hide it. */
 	.stars {
 		flex: none;
 		display: flex;
@@ -45,7 +45,7 @@
 		background: transparent;
 		font-size: 15px;
 		line-height: 1;
-		color: var(--star-off, rgb(255 255 255 / 28%));
+		color: var(--star-empty);
 	}
 
 	.on {

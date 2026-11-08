@@ -113,7 +113,7 @@
 		align-items: center;
 		column-gap: var(--col-gap, 12px);
 		padding: 0 var(--row-pad, 14px);
-		border-bottom: 1px solid rgb(255 255 255 / 12%);
+		border-bottom: 1px solid var(--edge-raised);
 		font-family: var(--font-mono);
 		font-size: var(--head-type, 11px);
 		letter-spacing: 0.08em;
@@ -149,7 +149,7 @@
 	.chip {
 		height: 24px;
 		padding: 0 6px;
-		border: 1px solid rgb(255 255 255 / 16%);
+		border: 1px solid var(--edge-strong);
 		border-radius: var(--radius-pill);
 		background: transparent;
 		color: var(--text-secondary);
@@ -157,7 +157,7 @@
 	}
 
 	.chip:hover {
-		border-color: var(--fox);
-		color: var(--fox);
+		border-color: var(--fox-text);
+		color: var(--fox-text);
 	}
 </style>

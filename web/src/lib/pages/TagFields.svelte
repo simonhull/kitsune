@@ -86,7 +86,7 @@
 		height: 48px;
 		padding: 0 16px;
 		border-radius: var(--radius-16);
-		background: rgb(10 9 8 / 42%);
+		background: color-mix(in srgb, var(--ground) 42%, transparent);
 		transition: box-shadow var(--morph-fast) var(--curve-morph);
 	}
 
@@ -102,7 +102,7 @@
 	}
 
 	.changed {
-		box-shadow: inset 0 0 0 1px var(--fox);
+		box-shadow: inset 0 0 0 1px var(--fox-text);
 	}
 
 	.invalid {

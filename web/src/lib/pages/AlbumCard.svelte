@@ -77,7 +77,7 @@
 	}
 
 	.card:hover .title {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.artist {

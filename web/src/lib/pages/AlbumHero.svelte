@@ -187,7 +187,7 @@
 		height: var(--hero-cover);
 		border-radius: var(--radius-24);
 		overflow: hidden;
-		box-shadow: 0 40px 90px rgb(0 0 0 / 50%);
+		box-shadow: var(--shadow-hero);
 		transition:
 			width var(--morph-slow) var(--curve-settle),
 			height var(--morph-slow) var(--curve-settle),
@@ -362,7 +362,7 @@
 		padding: 0 18px;
 		border-radius: var(--radius-pill);
 		border: 1px solid var(--edge-strong);
-		background: rgb(10 9 8 / 30%);
+		background: color-mix(in srgb, var(--ground) 30%, transparent);
 		color: var(--text);
 		font-size: 14px;
 		font-weight: 600;
@@ -386,7 +386,7 @@
 
 	.favorite :global(.heart) {
 		border: 1px solid var(--edge-strong);
-		background: rgb(10 9 8 / 30%);
+		background: color-mix(in srgb, var(--ground) 30%, transparent);
 	}
 
 	.rating {
@@ -397,8 +397,6 @@
 	}
 
 	.glyphs {
-		--star-empty: rgb(255 255 255 / 28%);
-
 		font-size: 18px;
 		color: var(--accent);
 	}

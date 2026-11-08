@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
-	import { paletteFor } from '#lib/cover/palette.ts';
+	import { ownColor, paletteFor } from '#lib/cover/palette.ts';
 	import { albumStars } from '#lib/library/albumStars.ts';
 	import { albumHoldings, trackLabel } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
@@ -125,9 +125,8 @@
 	 */
 	const glow = $derived.by(() => {
 		const palette = paletteFor(album);
-		const tinted = album.artwork === undefined || album.artwork.accent !== '#f28c28';
-		return tinted
-			? `color-mix(in srgb, ${palette.accent} 45%, transparent)`
+		return ownColor(album.artwork)
+			? `color-mix(in srgb, ${palette.accent} var(--cover-glow-alpha), transparent)`
 			: `color-mix(in srgb, ${palette.wash} 22%, transparent)`;
 	});
 	/** What says the same for every song of the album: a phone's line leaves it to the heading. */
@@ -393,7 +392,7 @@
 		box-shadow:
 			0 calc(var(--cover, 208px) * 0.125) calc(var(--cover, 208px) * 0.31)
 				calc(var(--cover, 208px) * -0.11) var(--glow, transparent),
-			0 0 0 1px rgb(255 255 255 / 6%);
+			0 0 0 1px var(--cover-edge);
 	}
 
 	.names {
@@ -428,7 +427,7 @@
 	}
 
 	.title:hover {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.facts {
@@ -446,7 +445,7 @@
 	}
 
 	.trouble {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.songs {
@@ -471,8 +470,8 @@
 
 	/* The grid is the header's: every cell sits under its label. */
 	.row {
-		--heart-on: var(--fox);
-		--heart-off: rgb(255 255 255 / 20%);
+		--heart-on: var(--star);
+		--heart-off: var(--star-off);
 
 		position: absolute;
 		left: 0;
@@ -554,18 +553,18 @@
 		padding: 0;
 		border: 0;
 		background: transparent;
-		color: rgb(255 255 255 / 16%);
+		color: var(--star-off);
 		font: inherit;
 		line-height: 1;
 	}
 
 	.rate button.on {
-		color: var(--fox);
+		color: var(--star);
 	}
 
 	.rate button:hover,
 	.rate:hover button:has(~ button:hover) {
-		color: color-mix(in srgb, var(--fox) 70%, transparent);
+		color: color-mix(in srgb, var(--star) 70%, transparent);
 	}
 
 	.heart-cell {
@@ -610,7 +609,7 @@
 	}
 
 	.more:hover {
-		background: rgb(255 255 255 / 14%);
+		background: var(--pressed);
 	}
 
 	.row:focus-within .box input,
@@ -622,13 +621,13 @@
 
 	.row.picked {
 		border-radius: var(--radius-12);
-		background: rgb(242 140 40 / 16%);
+		background: color-mix(in srgb, var(--fox) 16%, transparent);
 	}
 
 	@media (hover: hover) {
 		.row:hover {
 			border-radius: var(--radius-12);
-			background: rgb(255 255 255 / 8%);
+			background: var(--hover);
 		}
 
 		.row:hover .box input,
@@ -637,7 +636,7 @@
 		}
 
 		.row.picked:hover {
-			background: rgb(242 140 40 / 22%);
+			background: color-mix(in srgb, var(--fox) 22%, transparent);
 		}
 	}
 
@@ -651,7 +650,7 @@
 	.row.cued,
 	.row.cued:hover {
 		--heart-on: var(--fox-ink);
-		--heart-off: rgb(26 15 5 / 40%);
+		--heart-off: color-mix(in srgb, var(--fox-ink) 40%, transparent);
 
 		border-radius: var(--radius-12);
 		background: var(--fox);
@@ -666,7 +665,7 @@
 	}
 
 	.cued .rate button {
-		color: rgb(26 15 5 / 30%);
+		color: color-mix(in srgb, var(--fox-ink) 30%, transparent);
 	}
 
 	/* Two lines a song: the title, then a line of the person's columns, and its length. */

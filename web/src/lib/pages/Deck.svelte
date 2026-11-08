@@ -347,7 +347,7 @@
 	.card {
 		overflow: hidden;
 		border-radius: var(--radius-20);
-		box-shadow: 0 12px 28px rgb(0 0 0 / 32%);
+		box-shadow: var(--shadow-deck);
 	}
 
 	.count,

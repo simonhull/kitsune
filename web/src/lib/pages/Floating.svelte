@@ -119,8 +119,8 @@
 		flex-direction: column;
 		border-radius: var(--radius-20);
 		background: var(--card);
-		border: 1px solid rgb(255 255 255 / 10%);
-		box-shadow: 0 24px 64px rgb(0 0 0 / 60%);
+		border: 1px solid var(--edge-raised);
+		box-shadow: var(--shadow-float);
 		visibility: hidden;
 		opacity: 0;
 		transform: translateY(-4px) scale(0.98);

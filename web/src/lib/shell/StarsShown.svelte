@@ -17,7 +17,8 @@
 
 <!-- Read-only: an album's stars are worked out from its songs, and can't be set. -->
 <span class="shown" role="img" aria-label={label}
-	>{'★'.repeat(filled)}<span class="empty">{blank.repeat(maxStars - filled)}</span></span
+	>{'★'.repeat(filled)}<span class:dim={empty === 'dim'}>{blank.repeat(maxStars - filled)}</span
+	></span
 >
 
 <style>
@@ -26,7 +27,7 @@
 		white-space: nowrap;
 	}
 
-	.empty {
-		color: var(--star-empty, inherit);
+	.dim {
+		color: var(--star-empty);
 	}
 </style>

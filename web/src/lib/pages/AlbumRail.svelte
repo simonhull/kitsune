@@ -97,7 +97,7 @@
 	}
 
 	button:hover:enabled {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	button:disabled {
@@ -107,7 +107,7 @@
 	}
 
 	[aria-current='true'] {
-		color: var(--fox);
+		color: var(--fox-text);
 		font-weight: 700;
 	}
 

@@ -64,7 +64,7 @@
 		height: 220px;
 		border-radius: 18px;
 		overflow: hidden;
-		box-shadow: 0 30px 60px rgb(0 0 0 / 45%);
+		box-shadow: var(--shadow-tile);
 		transform: rotate(4deg);
 	}
 

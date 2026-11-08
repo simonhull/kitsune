@@ -95,7 +95,7 @@
 	}
 
 	a:hover {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.quiet,

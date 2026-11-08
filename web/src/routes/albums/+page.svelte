@@ -250,7 +250,7 @@
 		width: 1px;
 		height: 28px;
 		margin: 0 8px;
-		background: rgb(255 255 255 / 14%);
+		background: var(--edge-field);
 	}
 
 	.chip {
@@ -272,13 +272,13 @@
 	}
 
 	.all[aria-expanded='true'] {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.sort[aria-pressed='false']:hover,
 	.chip[aria-pressed='false']:hover,
 	.all:hover {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.every {
@@ -317,7 +317,7 @@
 		padding: 0;
 		border: 0;
 		background: none;
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	@media (max-width: 1100px) {
@@ -352,6 +352,7 @@
 			flex-wrap: nowrap;
 			overflow-x: auto;
 			scrollbar-width: none;
+			/* raw-color: a mask reads only alpha. */
 			mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
 		}
 
