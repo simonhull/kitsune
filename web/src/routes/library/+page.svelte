@@ -1,16 +1,30 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { emWidth } from '#lib/library/fit.ts';
-	import { artistHoldings, libraryLine } from '#lib/library/format.ts';
+	import { artistHoldings, clock, libraryLine } from '#lib/library/format.ts';
 	import { emptyLine } from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import type { ColumnId } from '#lib/library/source.ts';
+	import { fit, monoAdvance, template } from '#lib/pages/columns.ts';
+	import ColumnsMenu from '#lib/pages/ColumnsMenu.svelte';
+	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import LibraryAlbum from '#lib/pages/LibraryAlbum.svelte';
 	import LibraryFilters from '#lib/pages/LibraryFilters.svelte';
 	import LibraryRail from '#lib/pages/LibraryRail.svelte';
+	import RowMenu from '#lib/pages/RowMenu.svelte';
+	import SelectionBar from '#lib/pages/SelectionBar.svelte';
+	import { selection } from '#lib/pages/selection.svelte.ts';
+	import {
+		actionsFor,
+		albumsByTrack,
+		type MenuTarget,
+		type SongActions
+	} from '#lib/pages/songActions.ts';
 	import { letterOf, railHere, railLetters } from '#lib/pages/libraryRows.ts';
 	import { libraryView as view } from '#lib/pages/libraryView.svelte.ts';
+	import SongHeader from '#lib/pages/SongHeader.svelte';
 	import { player } from '#lib/player/player.svelte.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 
@@ -31,6 +45,191 @@
 		new Set(filtered ? letters.filter((each) => !layout.letters.has(each)) : [])
 	);
 	const cuedId = $derived(library.playing?.track.id);
+
+	/** How wide a song row is, measured, so the columns that fit are known before a row mounts. */
+	let songsWidth = $state(0);
+	/** The columns' step: the phone has none, so it fits as the step above it would. */
+	const columnStep = $derived(view.step === 'large' ? 'large' : 'columns');
+	const fitted = $derived(fit(columnsView.pref.order, songsWidth, columnStep));
+	const grid = $derived(template(fitted.shown, columnStep));
+	/**
+	 * Set for a moment when the width crosses a step, so what changes size moves to it. Nothing
+	 * else animates a resize: between the steps everything follows the width as it goes.
+	 */
+	let stepping = $state(false);
+	let lastStep = view.step;
+	$effect(() => {
+		const step = view.step;
+		if (step === lastStep) {
+			return;
+		}
+		lastStep = step;
+		stepping = true;
+		const done = setTimeout(() => {
+			stepping = false;
+		}, 450);
+		return () => {
+			clearTimeout(done);
+		};
+	});
+	const fields = $derived(columnsView.fields);
+	/** When "Yesterday" is, for Last played: read once a visit. */
+	const now = Date.now();
+
+	/** Every song the list shows, in its order: what a Shift range and the header's box run over. */
+	const order = $derived(
+		layout.rows.flatMap((row) => {
+			const id =
+				row.kind === 'song'
+					? layout.albums.at(row.albumIndex)?.album.tracks.at(row.trackIndex)?.id
+					: undefined;
+			return id === undefined ? [] : [id];
+		})
+	);
+	/** Where each of them is in the list's rows, to scroll to. */
+	const rowOf = $derived(
+		new Map(
+			layout.rows.flatMap((row, index) => {
+				const id =
+					row.kind === 'song'
+						? layout.albums.at(row.albumIndex)?.album.tracks.at(row.trackIndex)?.id
+						: undefined;
+				return id === undefined ? [] : [[id, index] as const];
+			})
+		)
+	);
+	/** Each song of the whole index, filter or not, with its album. */
+	const songs = $derived(
+		new Map(
+			(load.kind === 'ready' ? load.value.artists : []).flatMap((artist) =>
+				artist.albums.flatMap((album) =>
+					album.tracks.map((track) => [track.id, { track, album, artist }] as const)
+				)
+			)
+		)
+	);
+	const albumOf = $derived(albumsByTrack(load.kind === 'ready' ? load.value : { artists: [] }));
+	const picked = $derived(selection.inOrder(order));
+	const pickedActions = $derived(actionsFor(picked, albumOf));
+	const pickedFacts = $derived({
+		albums: new Set(picked.map((id) => songs.get(id)?.album.id).filter((id) => id !== undefined))
+			.size,
+		durationMs: picked.reduce((sum, id) => sum + (songs.get(id)?.track.durationMs ?? 0), 0)
+	});
+	const box = $derived(selection.boxFor(order));
+
+	/** The ⋯ menu, where it was opened, and on what. */
+	let rowMenu = $state<{ x: number; y: number; target: MenuTarget; actions: SongActions } | null>(
+		null
+	);
+
+	function pick(trackId: string, how: 'toggle' | 'range'): void {
+		if (how === 'range') {
+			selection.extend(trackId, order);
+		} else {
+			selection.toggle(trackId);
+		}
+	}
+
+	/** Opens the ⋯ menu: on the picked songs, when it's opened on one of them. */
+	function openRowMenu(trackId: string, x: number, y: number): void {
+		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		if (selection.has(trackId) && selection.size > 1) {
+			const facts = `${String(pickedFacts.albums)} ${pickedFacts.albums === 1 ? 'ALBUM' : 'ALBUMS'} · ${clock(pickedFacts.durationMs / 1000)}`;
+			rowMenu = {
+				x,
+				y,
+				target: { kind: 'picked', count: picked.length, line: facts, trackIds: picked },
+				actions: pickedActions
+			};
+			return;
+		}
+		const song = songs.get(trackId);
+		if (song === undefined) {
+			return;
+		}
+		rowMenu = {
+			x,
+			y,
+			target: {
+				kind: 'song',
+				trackId,
+				albumId: song.album.id,
+				title: song.track.title,
+				line: `${song.album.title.toUpperCase()} · ${clock(song.track.durationMs / 1000)}`,
+				artistId: song.artist.id
+			},
+			actions: actionsFor([trackId], albumOf)
+		};
+	}
+
+	function closeRowMenu(refocus: boolean): void {
+		rowMenu = null;
+		if (refocus) {
+			opener?.focus();
+		}
+	}
+
+	/** Puts a song's row on screen, if it isn't, and gives it the focus. */
+	async function focusRow(trackId: string): Promise<void> {
+		const row = layout.rows.at(rowOf.get(trackId) ?? -1);
+		if (row === undefined) {
+			return;
+		}
+		const y = row.top + view.frame.top;
+		const clear = view.frame.line;
+		if (y < scrollY + clear || y + row.height > scrollY + innerHeight - 120) {
+			scrollTo({ top: y - clear - row.height * 2, behavior: 'instant' });
+			track();
+		}
+		await tick();
+		document.querySelector<HTMLElement>(`[data-track="${CSS.escape(trackId)}"] .play`)?.focus();
+	}
+
+	/** Space picks the focused song; the arrows move, and with Shift take the songs passed. */
+	function rowKey(event: KeyboardEvent, trackId: string): void {
+		if (event.key === ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+			event.preventDefault();
+			selection.toggle(trackId);
+			return;
+		}
+		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+			return;
+		}
+		event.preventDefault();
+		const at = order.indexOf(trackId);
+		const next = order.at(at + (event.key === 'ArrowDown' ? 1 : -1));
+		if (at < 0 || next === undefined || (at === 0 && event.key === 'ArrowUp')) {
+			return;
+		}
+		if (event.shiftKey) {
+			selection.add(trackId);
+			selection.add(next);
+		}
+		void focusRow(next);
+	}
+
+	function onWindowKey(event: KeyboardEvent): void {
+		if (event.key === 'Escape' && selection.any && menu === null && rowMenu === null) {
+			selection.clear();
+		}
+	}
+
+	/** The columns menu, where it was opened, and what opened it, to go back to. */
+	let menu = $state<{ x: number; y: number; hiding: ColumnId | undefined } | null>(null);
+	let opener: HTMLElement | null = null;
+
+	function openMenu(x: number, y: number, hiding?: ColumnId): void {
+		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		menu = { x, y, hiding };
+	}
+
+	function closeMenu(refocus: boolean): void {
+		menu = null;
+		if (refocus) {
+			opener?.focus();
+		}
+	}
 
 	// Before the first frame: marks pressed elsewhere since the filter last looked show on arrival.
 	if (view.filter !== 'everything') {
@@ -62,10 +261,16 @@
 		return Math.max(...name.split(' ').map((word) => emWidth(word, nameWeight, nameTracking)), 0.1);
 	}
 
-	// A scan or an edit ending asks again. Untracked: a failure must wait for Try again.
+	// A scan or an edit ending asks again, and so do columns that need more. Untracked: a failure
+	// must wait for Try again. The columns come first, so the index is asked for once.
 	$effect(() => {
-		if (facts !== null && (library.indexStale || library.index.kind === 'loading')) {
-			untrack(() => void library.loadIndex());
+		const wanted = fields.join(',');
+		if (
+			facts !== null &&
+			columnsView.known &&
+			(library.indexStale || library.index.kind === 'loading' || library.indexFields !== wanted)
+		) {
+			untrack(() => void library.loadIndex(fields));
 		}
 	});
 
@@ -94,6 +299,7 @@
 		addEventListener('scroll', onScroll, { passive: true });
 		addEventListener('resize', onScroll, { passive: true });
 		const stopWatching = view.watch();
+		void columnsView.load();
 		return () => {
 			cancelAnimationFrame(frame);
 			removeEventListener('scroll', onScroll);
@@ -107,7 +313,30 @@
 	<title>Library · Kitsune</title>
 </svelte:head>
 
-<div class="library">
+<svelte:window onkeydown={onWindowKey} />
+
+{#snippet headerBox()}
+	<input
+		type="checkbox"
+		class="all"
+		aria-label={box === 'all' ? 'Clear every song in view' : 'Select every song in view'}
+		checked={box === 'all'}
+		indeterminate={box === 'some'}
+		onclick={(event) => {
+			selection.toggleAll(order);
+			event.currentTarget.checked = selection.boxFor(order) === 'all';
+			event.currentTarget.indeterminate = selection.boxFor(order) === 'some';
+		}}
+	/>
+{/snippet}
+
+<div
+	class="library"
+	class:large={view.step === 'large'}
+	class:stepping
+	style:--cover={`${String(view.cover)}px`}
+	style:--list-line={`${String(view.frame.line)}px`}
+>
 	<h1>Library</h1>
 
 	{#if facts !== null && facts.albums === 0}
@@ -115,7 +344,7 @@
 	{:else if load.kind === 'unavailable'}
 		<p class="note" role="status">
 			The library couldn't be loaded.
-			<button type="button" onclick={() => void library.loadIndex()}>Try again</button>
+			<button type="button" onclick={() => void library.loadIndex(fields)}>Try again</button>
 		</p>
 	{:else if load.kind === 'ready'}
 		<div class="veil" aria-hidden="true"></div>
@@ -138,6 +367,17 @@
 				</p>
 			{/if}
 		</div>
+		{#if view.columns && !view.stacked}
+			<div class="columns-head" data-morph-part="intro" data-morph-key="columns-head">
+				<SongHeader
+					shown={fitted.shown}
+					hiddenCount={fitted.hiddenCount}
+					{grid}
+					{openMenu}
+					box={headerBox}
+				/>
+			</div>
+		{/if}
 		{#if next !== undefined}
 			<div class="next" class:ahead={view.nextAhead} data-morph-part="intro" data-morph-key="next">
 				<span class="next-label">NEXT</span>
@@ -146,6 +386,7 @@
 		{/if}
 
 		<div class="list" style:height={`${String(layout.height)}px`}>
+			<div class="measure" aria-hidden="true" bind:clientWidth={songsWidth}></div>
 			{#each view.mounted as { index, block, albums } (index)}
 				{@const { name, id } = block.artist}
 				<section
@@ -157,6 +398,7 @@
 					<div class="head-column">
 						<div
 							class="head"
+							class:with-header={view.stacked && view.columns}
 							data-morph-part="intro"
 							data-morph-key={`head:${name}`}
 							data-morph-pinned
@@ -179,6 +421,17 @@
 								{/if}
 								<p class="holdings">{artistHoldings(block.artist.albums, block)}</p>
 							</div>
+							{#if view.stacked && view.columns}
+								<div class="stacked-header">
+									<SongHeader
+										shown={fitted.shown}
+										hiddenCount={fitted.hiddenCount}
+										{grid}
+										{openMenu}
+										box={headerBox}
+									/>
+								</div>
+							{/if}
 						</div>
 					</div>
 					<div class="albums">
@@ -189,12 +442,22 @@
 								{rows}
 								head={view.frame.metrics.albumHead}
 								stacked={view.stacked}
+								phone={!view.columns}
+								cover={view.cover}
+								lineChars={Math.floor((songsWidth - 96 - (selection.any ? 26 : 0)) / monoAdvance)}
+								shown={fitted.shown}
+								{grid}
+								pref={columnsView.pref}
+								{now}
 								{cuedId}
 								sounding={player.sounding}
 								trouble={view.trouble === album.album.id}
 								play={(trackId) => {
 									view.play(album.album.id, trackId);
 								}}
+								{pick}
+								openMenu={openRowMenu}
+								{rowKey}
 							/>
 						{/each}
 					</div>
@@ -203,18 +466,99 @@
 		</div>
 
 		<LibraryRail {letters} {quiet} here={letter && railHere(letters, letter)} onjump={jump} />
+		{#if menu !== null}
+			<ColumnsMenu x={menu.x} y={menu.y} hiding={menu.hiding} onclose={closeMenu} />
+		{/if}
+		{#if rowMenu !== null}
+			<RowMenu
+				x={rowMenu.x}
+				y={rowMenu.y}
+				target={rowMenu.target}
+				actions={rowMenu.actions}
+				onclose={closeRowMenu}
+			/>
+		{/if}
+		{#if selection.any}
+			<SelectionBar
+				count={selection.size}
+				hidden={selection.size - picked.filter((id) => rowOf.has(id)).length}
+				albums={pickedFacts.albums}
+				durationMs={pickedFacts.durationMs}
+				hearted={picked.every((id) => library.marks.hearted('tracks', id))}
+				actions={pickedActions}
+				compact={!view.columns}
+				onclear={() => {
+					selection.clear();
+				}}
+			/>
+		{/if}
 	{/if}
 </div>
 
 <style>
+	/*
+	 * One layout from a phone to 4K and beyond, never a centred column. These are its sizes; from
+	 * 2560 they take one step up together, so a 4K screen at 100% reads like 1920. --cover comes from
+	 * the view, which needs it for the rows' maths.
+	 */
 	.library {
 		--name-column: clamp(220px, 23.6vw, 340px);
-		--page-edge: max(64px, calc((100vw - 1440px) / 2 + 64px));
+		--page-edge: 64px;
+		--name-gap: 44px;
+		--cover-gap: 32px;
+		--songs-right: 64px;
+		--head-top: 96px;
+		--head-row: 40px;
+		--head-type: 11px;
+		--col-gap: 12px;
+		--row-pad: 14px;
+		--cell-type: 14px;
+		--star-type: 13px;
+		--box-size: 16px;
+		--more-size: 36px;
+		--songs-left: calc(var(--page-edge) + var(--name-column) + var(--name-gap));
 
 		position: relative;
-		max-width: 1440px;
-		margin: 0 auto;
-		padding: 96px 0 140px;
+		padding: var(--head-top) 0 140px;
+	}
+
+	.library.large {
+		--name-column: clamp(340px, 13.6vw, 520px);
+		--page-edge: 96px;
+		--name-gap: 64px;
+		--cover-gap: 48px;
+		--songs-right: 120px;
+		--head-top: 128px;
+		--head-row: 50px;
+		--head-type: 13px;
+		--col-gap: 16px;
+		--row-pad: 18px;
+		--cell-type: 17px;
+		--star-type: 16px;
+		--box-size: 20px;
+		--more-size: 44px;
+		--type-display: 132px;
+		--type-title: 22px;
+		--type-body: 18px;
+		--type-mono: 15px;
+		--type-section: 52px;
+	}
+
+	/* Crossing a step, what changes size moves to it; nothing else animates a resize. */
+	.stepping :global(:is(.artist, .album, .side, .square, .songs, .row, .disc, .header, h2)) {
+		transition:
+			top var(--morph) var(--curve-morph),
+			height var(--morph) var(--curve-morph),
+			width var(--morph) var(--curve-morph),
+			left var(--morph) var(--curve-morph),
+			font-size var(--morph) var(--curve-morph),
+			padding var(--morph) var(--curve-morph);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.stepping :global(*) {
+			transition: none;
+		}
 	}
 
 	/* The boards have no page title: the pinned artist is the headline. Screen readers still get one. */
@@ -256,7 +600,7 @@
 	.top {
 		position: fixed;
 		z-index: 2;
-		top: 96px;
+		top: var(--head-top);
 		left: var(--page-edge);
 		width: var(--name-column);
 		padding-bottom: 16px;
@@ -316,8 +660,55 @@
 		color: var(--text-label);
 	}
 
+	/* Over the songs, under the nav. Rows leave upward behind it, and behind the veil above it. */
+	.columns-head {
+		position: sticky;
+		z-index: 2;
+		top: var(--head-top);
+		height: var(--head-row);
+		margin: 0 var(--songs-right) calc(var(--list-line) - var(--head-top) - var(--head-row))
+			var(--songs-left);
+		padding-left: calc(var(--cover) + var(--cover-gap));
+		background: var(--ground);
+	}
+
+	.columns-head::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 100%;
+		height: var(--head-top);
+		background: var(--ground);
+	}
+
 	.list {
 		position: relative;
+	}
+
+	.all {
+		width: var(--box-size, 16px);
+		height: var(--box-size, 16px);
+		margin: 0;
+		accent-color: var(--fox);
+		opacity: 0.5;
+	}
+
+	.all:checked,
+	.all:indeterminate,
+	.all:hover,
+	.all:focus-visible {
+		opacity: 1;
+	}
+
+	/* As wide as a song row: what the columns are fitted to. */
+	.measure {
+		position: absolute;
+		top: 0;
+		left: calc(var(--songs-left) + var(--cover) + var(--cover-gap));
+		right: var(--songs-right);
+		height: 0;
+		visibility: hidden;
 	}
 
 	.artist {
@@ -331,7 +722,7 @@
 		z-index: 1;
 		top: 0;
 		bottom: 0;
-		left: 64px;
+		left: var(--page-edge);
 		width: var(--name-column);
 		pointer-events: none;
 	}
@@ -346,7 +737,7 @@
 	/* The name stays while its albums scroll; the next one pushes it out. */
 	.head {
 		position: sticky;
-		top: 186px;
+		top: calc(var(--head-top) + 90px);
 		pointer-events: auto;
 	}
 
@@ -398,8 +789,8 @@
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		left: calc(64px + var(--name-column) + 44px);
-		right: 92px;
+		left: var(--songs-left);
+		right: var(--songs-right);
 	}
 
 	@media (max-height: 720px) {
@@ -455,6 +846,22 @@
 			padding: 8px 48px 12px 16px;
 			background: var(--ground);
 			border-bottom: 1px solid var(--edge);
+		}
+
+		/* The columns' header stands under the name, and pins with it. */
+		.head.with-header {
+			height: 120px;
+			padding-bottom: 0;
+			border-bottom: 0;
+		}
+
+		.stacked-header {
+			margin-top: 6px;
+		}
+
+		.measure {
+			left: 16px;
+			right: 48px;
 		}
 
 		h2 {

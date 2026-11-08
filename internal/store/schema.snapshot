@@ -448,6 +448,20 @@ CREATE TABLE 'tracks_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHO
 --   column cid=1 name=term type= notnull=1 dflt_value=<nil> pk=2 hidden=0
 --   column cid=2 name=pgno type= notnull=0 dflt_value=<nil> pk=0 hidden=0
 
+-- table user_prefs
+CREATE TABLE user_prefs (
+	user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	key        TEXT    NOT NULL,
+	value      TEXT    NOT NULL, -- JSON, checked by the key's rule before it is written
+	updated_at INTEGER NOT NULL,
+	PRIMARY KEY (user_id, key)
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=key type=TEXT notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=value type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=updated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
 -- table users
 CREATE TABLE users (
 	id            INTEGER PRIMARY KEY,

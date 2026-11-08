@@ -58,7 +58,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   This also supersedes the spec's `next_cursor` and limit 500: the API says `nextCursor` and caps
   `limit` at 200.
 - `GET /library/index` is the one browse list that doesn't page: the client needs every row's height
-  to place the scrollbar and the rail. Its order lives in `orderIndex`, and nowhere else.
+  to place the scrollbar and the rail. Its order lives in `orderIndex`, and nowhere else. `fields`
+  adds what the song columns show, each read by its own query only when asked for (`IndexOptions`)
+  and sent through the nil-able `TrackFields`, so an index without it costs what it did;
+  `TestLibraryIndexWithoutFieldsIsUnchanged` holds its bytes.
 - Tag edits are one route, `POST /albums/{id}/edits`, and `GET /albums/{id}/tags` reads what an editor
   shows, from the files. The validator is the album's `etag` field in the body, a hash of
   `ulid:size:mtime_ms` per track, and not a response header. Clients send it back verbatim as
@@ -67,6 +70,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `r.Context().Err()` before logging an error from a handler a client can abandon.
 - Responses carry `api` types built field by field (`toAPIUser`); never marshal a
   `store` type, so a new store column can't leak.
+- A person's preferences are `GET`/`PUT /me/prefs/{key}`. `internal/prefs` alone says which keys
+  there are and what each holds, and checks a value on the way in and again on the way out; the
+  store keeps the text. A new key is an entry there and its schema in the contract. Server settings
+  never go there.
 - Nothing the server writes (bodies, headers, logs) contains a password or token, except
   login's response and `Set-Cookie`, and the setup code's one log line (see Operations).
 - `GET /setup` and `POST /setup` are public. They make the first account, an administrator, while

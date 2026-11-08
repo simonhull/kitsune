@@ -64,10 +64,18 @@ func mostTracks(tracks map[string]int) []string {
 	})
 }
 
-// displayGenres works out each album's genres from counts of raw tag values. One
-// genre has one spelling across the library, its most common. Spellings are only
-// grouped, never reinterpreted: synonyms stay apart, and the tag editor fixes them.
-func displayGenres(counts []store.AlbumTagCount) map[string][]string {
+// genreState is what a refresh works out: each album's genres, and the one
+// spelling of each genre, by its key.
+type genreState struct {
+	albums    map[string][]string
+	spellings map[string]string
+}
+
+// displayGenres works out each album's genres from counts of raw tag values, and
+// each genre's spelling. One genre has one spelling across the library, its most
+// common. Spellings are only grouped, never reinterpreted: synonyms stay apart,
+// and the tag editor fixes them.
+func displayGenres(counts []store.AlbumTagCount) genreState {
 	names := make(map[string][]genreName)
 	spellings := make(map[string]map[string]int) // By genre key.
 	albums := make(map[string]map[string]int)    // By album ID, then genre key.
@@ -83,10 +91,13 @@ func displayGenres(counts []store.AlbumTagCount) map[string][]string {
 			add(albums, c.AlbumID, name.key, c.Tracks)
 		}
 	}
-	out := make(map[string][]string, len(albums))
+	out := genreState{albums: make(map[string][]string, len(albums)), spellings: make(map[string]string, len(spellings))}
+	for key, spelled := range spellings {
+		out.spellings[key] = mostTracks(spelled)[0]
+	}
 	for id, genres := range albums {
 		for _, key := range mostTracks(genres) {
-			out[id] = append(out[id], mostTracks(spellings[key])[0])
+			out.albums[id] = append(out.albums[id], out.spellings[key])
 		}
 	}
 	return out
@@ -105,8 +116,8 @@ func add(counts map[string]map[string]int, outer, inner string, n int) {
 // concurrent use, and readers never wait for a refresh.
 type Genres struct {
 	st         *store.Store
-	albums     atomic.Pointer[map[string][]string] // Nil until the first refresh.
-	refreshing sync.Mutex                          // Held by a refresh, so an older one can't land last.
+	state      atomic.Pointer[genreState] // Nil until the first refresh.
+	refreshing sync.Mutex                 // Held by a refresh, so an older one can't land last.
 }
 
 // NewGenres returns a Genres over st that knows nothing until [Genres.Refresh].
@@ -120,16 +131,37 @@ func (g *Genres) Refresh(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("refresh genres: %w", err)
 	}
-	albums := displayGenres(counts)
-	g.albums.Store(&albums)
+	state := displayGenres(counts)
+	g.state.Store(&state)
 	return nil
 }
 
 // Of returns the genres of the album with the public ID id, the ones on most of
 // its tracks first. Nil means none. The caller must not change the slice.
 func (g *Genres) Of(id string) []string {
-	if albums := g.albums.Load(); albums != nil {
-		return (*albums)[id]
+	if state := g.state.Load(); state != nil {
+		return state.albums[id]
 	}
 	return nil
+}
+
+// Display returns the genres a track's raw genre values name, split as an
+// album's are and spelled the library's way, each once, in the order they are
+// tagged. A genre the last refresh didn't see keeps its own spelling. Nil means
+// none.
+func (g *Genres) Display(values []string) []string {
+	var spellings map[string]string
+	if state := g.state.Load(); state != nil {
+		spellings = state.spellings
+	}
+	var out, seen []string
+	for _, value := range values {
+		for _, name := range genreNames(value) {
+			if !slices.Contains(seen, name.key) {
+				seen = append(seen, name.key)
+				out = append(out, cmp.Or(spellings[name.key], name.spelling))
+			}
+		}
+	}
+	return out
 }

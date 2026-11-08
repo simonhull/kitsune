@@ -152,7 +152,7 @@ func TestMarksKeepUsersApart(t *testing.T) {
 	if got := marksOf(t, s, 1); got.Hearted || len(got.Tracks) != 0 {
 		t.Errorf("the first user's marks = %+v, want none", got)
 	}
-	index, err := s.LibraryIndex(t.Context(), 1)
+	index, err := s.LibraryIndex(t.Context(), 1, &IndexOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestIndexCarriesTheUsersMarks(t *testing.T) {
 	second := fmt.Sprintf("T%025d", 2)
 	mustRate(t, s, 1, second, 3)
 
-	index, err := s.LibraryIndex(t.Context(), 1)
+	index, err := s.LibraryIndex(t.Context(), 1, &IndexOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

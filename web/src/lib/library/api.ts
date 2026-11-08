@@ -25,6 +25,7 @@ import {
 	type MarkKind,
 	type Me,
 	type PlayReport,
+	type Prefs,
 	type ScanIssues,
 	type ScanStatus,
 	type SearchResults,
@@ -298,7 +299,28 @@ export function createApiSource({
 
 		facts: () => read<LibraryFacts>('/library'),
 
-		libraryIndex: () => read<LibraryIndex>('/library/index'),
+		libraryIndex: (fields = []) =>
+			read<LibraryIndex>(
+				fields.length === 0 ? '/library/index' : `/library/index?fields=${fields.join(',')}`
+			),
+
+		async pref(key) {
+			try {
+				return await read<Prefs[typeof key]>(`/me/prefs/${encodeURIComponent(key)}`);
+			} catch (error) {
+				if (error instanceof ServerError && error.status === 404) {
+					return null;
+				}
+				throw error;
+			}
+		},
+
+		setPref: (key, value) =>
+			read<undefined>(`/me/prefs/${encodeURIComponent(key)}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(value)
+			}),
 
 		async ready() {
 			return (await call('/readyz')).ok;

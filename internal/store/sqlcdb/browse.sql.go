@@ -603,6 +603,80 @@ func (q *Queries) ListIndexAlbums(ctx context.Context) ([]ListIndexAlbumsRow, er
 	return items, nil
 }
 
+const listIndexPlays = `-- name: ListIndexPlays :many
+SELECT track_id, count(*) AS plays, CAST(max(played_at) AS INTEGER) AS last_played
+FROM plays
+WHERE user_id = ?
+GROUP BY track_id
+`
+
+type ListIndexPlaysRow struct {
+	TrackID    int64
+	Plays      int64
+	LastPlayed int64
+}
+
+// plays_recent leads with user_id, so this reads only the person's plays.
+func (q *Queries) ListIndexPlays(ctx context.Context, userID int64) ([]ListIndexPlaysRow, error) {
+	rows, err := q.query(ctx, q.listIndexPlaysStmt, listIndexPlays, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexPlaysRow
+	for rows.Next() {
+		var i ListIndexPlaysRow
+		if err := rows.Scan(&i.TrackID, &i.Plays, &i.LastPlayed); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndexTrackAlbumArtists = `-- name: ListIndexTrackAlbumArtists :many
+SELECT ta.track_id, ar.name
+FROM track_artists ta
+JOIN artists ar ON ar.id = ta.artist_id
+JOIN tracks t ON t.id = ta.track_id AND t.missing_since IS NULL
+WHERE ta.role = 'album_artist'
+ORDER BY ta.track_id, ta.ord
+`
+
+type ListIndexTrackAlbumArtistsRow struct {
+	TrackID int64
+	Name    string
+}
+
+func (q *Queries) ListIndexTrackAlbumArtists(ctx context.Context) ([]ListIndexTrackAlbumArtistsRow, error) {
+	rows, err := q.query(ctx, q.listIndexTrackAlbumArtistsStmt, listIndexTrackAlbumArtists)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTrackAlbumArtistsRow
+	for rows.Next() {
+		var i ListIndexTrackAlbumArtistsRow
+		if err := rows.Scan(&i.TrackID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIndexTrackArtists = `-- name: ListIndexTrackArtists :many
 SELECT ta.track_id, ar.name
 FROM track_artists ta
@@ -627,6 +701,103 @@ func (q *Queries) ListIndexTrackArtists(ctx context.Context) ([]ListIndexTrackAr
 	for rows.Next() {
 		var i ListIndexTrackArtistsRow
 		if err := rows.Scan(&i.TrackID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndexTrackDetails = `-- name: ListIndexTrackDetails :many
+
+SELECT id, year, format, sample_rate, bit_depth, bitrate, added_at
+FROM tracks
+WHERE missing_since IS NULL
+`
+
+type ListIndexTrackDetailsRow struct {
+	ID         int64
+	Year       *int64
+	Format     string
+	SampleRate *int64
+	BitDepth   *int64
+	Bitrate    *int64
+	AddedAt    int64
+}
+
+// What the song columns ask for, read only when they do: an index without them
+// stays as fast as it was.
+func (q *Queries) ListIndexTrackDetails(ctx context.Context) ([]ListIndexTrackDetailsRow, error) {
+	rows, err := q.query(ctx, q.listIndexTrackDetailsStmt, listIndexTrackDetails)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTrackDetailsRow
+	for rows.Next() {
+		var i ListIndexTrackDetailsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Year,
+			&i.Format,
+			&i.SampleRate,
+			&i.BitDepth,
+			&i.Bitrate,
+			&i.AddedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndexTrackTags = `-- name: ListIndexTrackTags :many
+SELECT tt.track_id, tt.key, tt.value
+FROM track_tags tt
+JOIN tracks t ON t.id = tt.track_id AND t.missing_since IS NULL
+WHERE tt.key IN (/*SLICE:tag_keys*/?)
+ORDER BY tt.track_id, tt.key, tt.ord
+`
+
+type ListIndexTrackTagsRow struct {
+	TrackID int64
+	Key     string
+	Value   string
+}
+
+func (q *Queries) ListIndexTrackTags(ctx context.Context, tagKeys []string) ([]ListIndexTrackTagsRow, error) {
+	query := listIndexTrackTags
+	var queryParams []interface{}
+	if len(tagKeys) > 0 {
+		for _, v := range tagKeys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:tag_keys*/?", strings.Repeat(",?", len(tagKeys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:tag_keys*/?", "NULL", 1)
+	}
+	rows, err := q.query(ctx, nil, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTrackTagsRow
+	for rows.Next() {
+		var i ListIndexTrackTagsRow
+		if err := rows.Scan(&i.TrackID, &i.Key, &i.Value); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -15,6 +15,7 @@ import {
 import { healthFixture } from './healthFixtures.ts';
 import { Marks } from './marks.svelte.ts';
 import { Outbox } from './outbox.ts';
+import { createPrefs, type PrefsStore } from './prefs.ts';
 import { Search } from './search.svelte.ts';
 import {
 	AlbumNotFoundError,
@@ -29,6 +30,7 @@ import {
 	type ArtistDetail,
 	type ArtistEntry,
 	type ArtistLink,
+	type IndexField,
 	type LastfmStatus,
 	type LastfmSwitches,
 	type LibraryFacts,
@@ -190,6 +192,10 @@ export class Library {
 	readonly simulated: boolean;
 	/** The signed-in person's hearts and stars: what every page shows, whatever it was given. */
 	readonly marks: Marks;
+	/** The signed-in person's preferences, kept on the server. */
+	readonly prefs: PrefsStore;
+	/** What {@link Library.index} was asked for besides the songs, joined by commas. */
+	indexFields = $state('');
 
 	readonly #source: LibrarySource;
 	readonly #pinnedAlbumId: string | undefined;
@@ -248,6 +254,7 @@ export class Library {
 			options.readyMemory ?? readyMemoryIn(() => localStorage, 'kitsune:ready-seen');
 		this.#outbox = new Outbox(options.outbox ?? (() => localStorage), this.#source);
 		this.marks = new Marks(this.#source);
+		this.prefs = createPrefs(this.#source);
 	}
 
 	/** Whether the signed-in user may run scans and see paths. */
@@ -883,23 +890,27 @@ export class Library {
 		this.#indexEdited = true;
 	}
 
-	/** Reads the whole library, once at a time. A list already here stays through a refresh. */
-	loadIndex(): Promise<void> {
-		this.#indexLoad ??= this.#loadIndex().finally(() => {
+	/**
+	 * Reads the whole library, once at a time, with what `fields` asks for besides. A list already
+	 * here stays through a refresh, and through a change of fields.
+	 */
+	loadIndex(fields: readonly IndexField[] = []): Promise<void> {
+		this.#indexLoad ??= this.#loadIndex(fields).finally(() => {
 			this.#indexLoad = null;
 		});
 		return this.#indexLoad;
 	}
 
-	async #loadIndex(): Promise<void> {
+	async #loadIndex(fields: readonly IndexField[]): Promise<void> {
 		const epoch = this.#epoch;
 		if (this.index.kind !== 'ready') {
 			this.index = { kind: 'loading' };
 		}
 		this.#indexedAfter = this.facts?.scan.last?.endedAt;
 		this.#indexEdited = false;
+		this.indexFields = fields.join(',');
 		try {
-			const index = await this.#source.libraryIndex();
+			const index = await this.#source.libraryIndex(fields);
 			if (epoch === this.#epoch) {
 				this.#rememberIndex(index);
 				this.marks.seedIndex(index);
@@ -1074,6 +1085,8 @@ export class Library {
 		this.artists = { kind: 'loading' };
 		this.issues = { kind: 'loading' };
 		this.index = { kind: 'loading' };
+		this.indexFields = '';
+		this.prefs.reset();
 		this.#indexedAfter = undefined;
 		this.#indexEdited = false;
 		this.#artists.clear();

@@ -404,6 +404,27 @@ type LibraryTrack struct {
 	Hearted    bool     `json:"hearted"`
 	// Stars is absent when the caller hasn't rated it.
 	Stars int `json:"stars,omitzero"`
+
+	// What `fields` asks for, nil when it asks for nothing: a pointer, so an index
+	// without it costs what it did.
+	*TrackFields `json:",inline"` //nolint:embeddedstructfieldcheck // Last, so its members follow the track's own on the wire.
+}
+
+// TrackFields is what GET /library/index?fields= adds to a track. Each is
+// absent unless asked for, and when there is nothing to say: no album artists,
+// no genre, never played.
+type TrackFields struct {
+	AlbumArtists  []string  `json:"albumArtists,omitzero"`
+	DisplayGenres []string  `json:"displayGenres,omitzero"`
+	Year          int       `json:"year,omitzero"`
+	Composers     []string  `json:"composers,omitzero"`
+	Format        string    `json:"format,omitzero"`
+	SampleRate    int       `json:"sampleRate,omitzero"`
+	BitDepth      int       `json:"bitDepth,omitzero"`
+	Bitrate       int       `json:"bitrate,omitzero"` // kbps.
+	AddedAt       time.Time `json:"addedAt,omitzero"`
+	Plays         int       `json:"plays,omitzero"` // The caller's.
+	LastPlayedAt  time.Time `json:"lastPlayedAt,omitzero"`
 }
 
 // LibraryFacts is the response to GET /library.

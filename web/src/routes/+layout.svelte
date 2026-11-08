@@ -15,7 +15,9 @@
 	import { watchInput } from '#lib/morph/journey.ts';
 	import { albumsView } from '#lib/pages/albumsView.svelte.ts';
 	import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
+	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import { libraryView } from '#lib/pages/libraryView.svelte.ts';
+	import { selection } from '#lib/pages/selection.svelte.ts';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
 	import { togglesOnSpace } from '#lib/player/keys.ts';
@@ -95,6 +97,8 @@
 			homeGrid.reset();
 			albumsView.reset();
 			libraryView.reset();
+			columnsView.reset();
+			selection.clear();
 			tagEdits.reset();
 		};
 		void Promise.all(routeIds.map((route) => preloadCode(route)));
@@ -148,7 +152,11 @@
 	<div class="ghost-layer" aria-hidden="true"></div>
 	{#if palette !== null}<Bloom {palette} />{/if}
 	{#if library.playing !== null && !atDoor}
-		<PlayerIsland playing={library.playing} expanded={onNowPlaying} />
+		<PlayerIsland
+			playing={library.playing}
+			expanded={onNowPlaying}
+			away={selection.any && routeId === '/library'}
+		/>
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
 	{#if import.meta.env.DEV}<Hud />{/if}

@@ -1,12 +1,75 @@
 import type { Album, Track } from '#lib/library/source.ts';
 
-/** What the player works through: one album, in some order, and how far it has got. */
+/**
+ * What the player works through, and how far it has got: one album in some order, or songs picked
+ * from several, each with its album.
+ */
 export interface Queue {
+	/** The album it was started from: the first song's. */
 	album: Album;
 	tracks: readonly Track[];
 	index: number;
 	/** Whether this is the album's own order, which is what album gain is measured for. */
 	ordered: boolean;
+	/** For songs from more than one album, each song's, by track ID. Absent for one album. */
+	albums?: ReadonlyMap<string, Album>;
+}
+
+/** A song to queue, with the album it's on. */
+export interface Queued {
+	album: Album;
+	track: Track;
+}
+
+/** The album a song in the queue is on. */
+export function albumOf(queue: Queue, track: Track): Album {
+	return queue.albums?.get(track.id) ?? queue.album;
+}
+
+/**
+ * Queues songs picked from anywhere, in the order given. Their own gain plays: album gain is
+ * measured for a whole album, in its order. None makes no queue.
+ */
+export function picked(songs: readonly Queued[]): Queue | null {
+	const first = songs.at(0);
+	if (first === undefined) {
+		return null;
+	}
+	return {
+		album: first.album,
+		tracks: songs.map(({ track }) => track),
+		index: 0,
+		ordered: false,
+		albums: new Map(songs.map(({ album, track }) => [track.id, album]))
+	};
+}
+
+/** Every song's album, as a map, for a queue that's about to hold more than one. */
+function albumsOf(queue: Queue): Map<string, Album> {
+	return new Map(queue.tracks.map((track) => [track.id, albumOf(queue, track)]));
+}
+
+/** Puts songs right after the one playing. The queue's own order is no longer the album's. */
+export function playingNext(queue: Queue, songs: readonly Queued[]): Queue {
+	return spliced(queue, queue.index + 1, songs);
+}
+
+/** Puts songs at the end of the queue. */
+export function appended(queue: Queue, songs: readonly Queued[]): Queue {
+	return spliced(queue, queue.tracks.length, songs);
+}
+
+function spliced(queue: Queue, at: number, songs: readonly Queued[]): Queue {
+	if (songs.length === 0) {
+		return queue;
+	}
+	const albums = albumsOf(queue);
+	for (const { album, track } of songs) {
+		albums.set(track.id, album);
+	}
+	const tracks = [...queue.tracks];
+	tracks.splice(at, 0, ...songs.map(({ track }) => track));
+	return { ...queue, tracks, ordered: false, albums };
 }
 
 /** Queues an album as it stands, starting at `index`. */
@@ -67,5 +130,21 @@ export function rewound(queue: Queue): Queue {
 /** Takes in an album just edited, keeping the order and the place. Renumbering moves neither. */
 export function retagged(queue: Queue, album: Album): Queue {
 	const fresh = new Map(album.tracks.map((track) => [track.id, track]));
-	return { ...queue, album, tracks: queue.tracks.map((track) => fresh.get(track.id) ?? track) };
+	const tracks = queue.tracks.map((track) => fresh.get(track.id) ?? track);
+	const home = queue.album.id === album.id ? album : queue.album;
+	if (queue.albums === undefined) {
+		return { ...queue, album: home, tracks };
+	}
+	const albums = new Map(
+		[...queue.albums].map(([id, each]) => [id, each.id === album.id ? album : each])
+	);
+	return { ...queue, album: home, tracks, albums };
+}
+
+/** Whether an album has songs in the queue. */
+export function holds(queue: Queue, albumId: string): boolean {
+	return (
+		queue.album.id === albumId ||
+		(queue.albums !== undefined && [...queue.albums.values()].some(({ id }) => id === albumId))
+	);
 }

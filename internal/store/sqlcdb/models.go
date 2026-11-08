@@ -173,3 +173,10 @@ type User struct {
 	Role         string
 	CreatedAt    int64
 }
+
+type UserPref struct {
+	UserID    int64
+	Key       string
+	Value     string
+	UpdatedAt int64
+}

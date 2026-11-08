@@ -5,15 +5,21 @@ import { appliedGain } from './gain.ts';
 import { Listen } from './listen.ts';
 import { HtmlOutput, mediaTypeOf, SilentOutput, type AudioOutput } from './output.ts';
 import {
+	albumOf,
+	appended,
 	currentOf,
+	holds,
 	inOrder,
 	next,
+	picked,
+	playingNext,
 	previous,
 	retagged,
 	rewound,
 	shuffled,
 	upcoming,
-	type Queue
+	type Queue,
+	type Queued
 } from './queue.ts';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused';
@@ -85,7 +91,13 @@ export class Player implements PlayerView {
 	/** What the island and Now playing should name: the player owns the order. */
 	get cue(): NowPlaying | null {
 		const { queue } = this;
-		return queue === null ? null : cueOf(queue.album, queue.tracks, queue.index);
+		return queue === null ? null : cueOf(queue.album, queue.tracks, queue.index, queue.albums);
+	}
+
+	/** The album of the song playing, which in a queue of picked songs changes as it goes. */
+	get album(): Album | null {
+		const { queue, current } = this;
+		return queue === null || current === null ? null : albumOf(queue, current);
 	}
 
 	get #output(): AudioOutput {
@@ -116,6 +128,36 @@ export class Player implements PlayerView {
 		this.#begin(inOrder(album, index));
 	}
 
+	/** Plays songs picked from anywhere, in the order given. */
+	playSongs(songs: readonly Queued[]): void {
+		const queue = picked(songs);
+		if (queue !== null) {
+			this.#fresh();
+			this.#begin(queue);
+		}
+	}
+
+	/** Puts songs after the one playing; with nothing started, plays them. */
+	playNext(songs: readonly Queued[]): void {
+		if (this.queue === null) {
+			this.playSongs(songs);
+		} else {
+			this.queue = playingNext(this.queue, songs);
+			this.#ahead = null;
+			this.#show();
+		}
+	}
+
+	/** Puts songs at the end of the queue; with nothing started, plays them. */
+	addToQueue(songs: readonly Queued[]): void {
+		if (this.queue === null) {
+			this.playSongs(songs);
+		} else {
+			this.queue = appended(this.queue, songs);
+			this.#show();
+		}
+	}
+
 	shuffle(album: Album): void {
 		this.#fresh();
 		this.#begin(shuffled(album, Math.floor(Math.random() * 2 ** 32)));
@@ -123,7 +165,7 @@ export class Player implements PlayerView {
 
 	/** Plays an album from the top, or toggles it if it's the one in the player. */
 	playOrToggle(album: Album): void {
-		if (this.queue?.album.id === album.id) {
+		if (this.queue?.album.id === album.id && this.queue.albums === undefined) {
 			this.toggle();
 		} else {
 			this.play(album);
@@ -204,7 +246,7 @@ export class Player implements PlayerView {
 
 	/** Takes in an album just edited: the names move at once, and the sound doesn't notice. */
 	retag(album: Album): void {
-		if (this.queue?.album.id === album.id) {
+		if (this.queue !== null && holds(this.queue, album.id)) {
 			this.queue = retagged(this.queue, album);
 		}
 	}

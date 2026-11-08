@@ -222,6 +222,64 @@ export interface LibraryTrack {
 	hearted: boolean;
 	/** The caller's rating, 1 to 5. Absent when unrated. */
 	stars?: number;
+	/** Everything below comes only when {@link IndexField}s ask for it, and is absent with nothing to say. */
+	albumArtists?: string[];
+	/** Split and spelled as an album's `displayGenres` are. */
+	displayGenres?: string[];
+	year?: number;
+	composers?: string[];
+	/** Such as `FLAC`, with `sampleRate`, `bitDepth` and `bitrate`. */
+	format?: string;
+	sampleRate?: number;
+	bitDepth?: number;
+	/** kbps. */
+	bitrate?: number;
+	addedAt?: string;
+	/** The caller's. */
+	plays?: number;
+	lastPlayedAt?: string;
+}
+
+/** What `GET /library/index?fields=` can add to each track. */
+export type IndexField =
+	| 'albumArtist'
+	| 'genre'
+	| 'year'
+	| 'composer'
+	| 'format'
+	| 'bitrate'
+	| 'added'
+	| 'plays'
+	| 'lastPlayed';
+
+/** The preferences a person keeps on the server, by key, with what each holds. */
+export interface Prefs {
+	'library.columns': ColumnsPref;
+}
+
+export type PrefKey = keyof Prefs;
+
+/** A song column a person may choose. Checkbox, number, title, time and ⋯ are always there. */
+export type ColumnId =
+	| 'artist'
+	| 'albumArtist'
+	| 'album'
+	| 'genre'
+	| 'year'
+	| 'rating'
+	| 'heart'
+	| 'plays'
+	| 'lastPlayed'
+	| 'added'
+	| 'composer'
+	| 'format'
+	| 'bitrate';
+
+/** `library.columns`: the columns shown, in their order, and the Artist switch. */
+export interface ColumnsPref {
+	order: ColumnId[];
+	/** Leave Artist empty where the track's artists are the album's. */
+	artistWhenDifferent: boolean;
 }
 
 export interface LibraryAlbum {
@@ -419,7 +477,12 @@ export interface LibrarySource {
 	/** Says a track started. Best effort, so it goes nowhere on a 401 either. */
 	nowPlaying(trackId: string): Promise<void>;
 	facts(): Promise<LibraryFacts>;
-	libraryIndex(): Promise<LibraryIndex>;
+	/** Every song, with what `fields` asks for besides. */
+	libraryIndex(fields?: readonly IndexField[]): Promise<LibraryIndex>;
+	/** One of the caller's preferences, or null when it was never set. */
+	pref<K extends PrefKey>(key: K): Promise<Prefs[K] | null>;
+	/** Rejects with a {@link ServerError}: 400 for a value the server won't keep. */
+	setPref<K extends PrefKey>(key: K, value: Prefs[K]): Promise<void>;
 	/** Reports whether the first scan has finished. */
 	ready(): Promise<boolean>;
 	albumsPage(sort: AlbumSort, cursor?: string, limit?: number): Promise<AlbumPage>;

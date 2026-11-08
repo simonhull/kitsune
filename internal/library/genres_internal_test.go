@@ -63,8 +63,33 @@ func TestDisplayGenres(t *testing.T) {
 		// Synonyms stay apart.
 		"b": {"Electronic", rock, "Électronique"},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("displayGenres = %q, want %q", got, want)
+	if !reflect.DeepEqual(got.albums, want) {
+		t.Errorf("displayGenres = %q, want %q", got.albums, want)
+	}
+}
+
+func TestGenresDisplayATracksValues(t *testing.T) {
+	t.Parallel()
+	const dub, dubSpelled = "dub", "DUB"
+	g := &Genres{}
+	if got := g.Display([]string{"Dub, ska", dub}); !slices.Equal(got, []string{"Dub", "ska"}) {
+		t.Errorf("before a refresh, Display = %q, want the values' own spellings, each once", got)
+	}
+	g.state.Store(&genreState{spellings: map[string]string{dub: dubSpelled, "ska": "Ska"}})
+	tests := []struct {
+		in   []string
+		want []string
+	}{
+		{nil, nil},
+		{[]string{", "}, nil},
+		{[]string{dub}, []string{dubSpelled}},
+		{[]string{"ska, Dub", dub}, []string{"Ska", dubSpelled}},
+		{[]string{"(12)Jazz"}, []string{"Jazz"}},
+	}
+	for _, tt := range tests {
+		if got := g.Display(tt.in); !slices.Equal(got, tt.want) {
+			t.Errorf("Display(%q) = %q, want %q", tt.in, got, tt.want)
+		}
 	}
 }
 
@@ -72,7 +97,7 @@ func TestDisplayGenresTieIsStable(t *testing.T) {
 	t.Parallel()
 	counts := []store.AlbumTagCount{{AlbumID: "a", Value: "rock", Tracks: 1}, {AlbumID: "a", Value: "ROCK", Tracks: 1}}
 	for range 20 {
-		if got := displayGenres(counts)["a"]; !slices.Equal(got, []string{"ROCK"}) {
+		if got := displayGenres(counts).albums["a"]; !slices.Equal(got, []string{"ROCK"}) {
 			t.Fatalf("got %q", got)
 		}
 	}
