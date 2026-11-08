@@ -50,7 +50,7 @@ func (s *Scanner) ended(stats *Stats, err error) {
 		last := &ScanResult{Mode: p.Mode, StartedAt: p.StartedAt, EndedAt: s.now(), Stats: *stats}
 		if err != nil {
 			last.Err = err.Error()
-			for _, root := range s.roots {
+			for _, root := range s.live().Roots {
 				last.Err = StripRoot(last.Err, root)
 			}
 		}

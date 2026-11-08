@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -10,7 +11,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"os/signal"
@@ -28,6 +28,7 @@ import (
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/server"
+	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/store"
 	"github.com/simonhull/kitsune/internal/webui"
 )
@@ -52,8 +53,8 @@ const (
 // not started, or shutdown has begun.
 var errStopping = errors.New("the server is stopping")
 
-// newLogger returns a JSON logger on w at the given level.
-func newLogger(w io.Writer, level slog.Level) *slog.Logger {
+// newLogger returns a JSON logger on w at level, which the Server page changes.
+func newLogger(w io.Writer, level *slog.LevelVar) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level}))
 }
 
@@ -62,17 +63,26 @@ func runServe(args []string, env config.Env, stderr io.Writer) error {
 	flags := flag.NewFlagSet(serveName, flag.ContinueOnError)
 	flags.SetOutput(io.Discard) // cli prints the usage itself.
 	path := flags.String("config", "", "config file")
+	var sets setFlags
+	flags.Var(&sets, "set", "seed a setting: KEY=VALUE")
 	if err := flags.Parse(args); err != nil {
 		return &usageError{msg: err.Error()}
 	}
 	if err := noArgs(serveName, flags.Args()); err != nil {
 		return err
 	}
-	cfg, err := config.Load(*path, config.DefaultPaths(env))
+	cfg, keys, err := config.LoadKeys(*path, config.DefaultPaths(env))
 	if err != nil {
 		return err //nolint:wrapcheck // config's errors already name the file and key.
 	}
-	log := newLogger(stderr, cfg.Log.Level)
+	seeds, err := seedsFor(&cfg, keys, env, sets)
+	if err != nil {
+		return err
+	}
+	// Until the database says otherwise, log at the level the seeds ask for.
+	level := new(slog.LevelVar)
+	level.Set(cfg.Log.Level)
+	log := newLogger(stderr, level)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -81,7 +91,22 @@ func runServe(args []string, env config.Env, stderr io.Writer) error {
 	context.AfterFunc(ctx, stop)
 
 	lastfmURL, _ := env(lastfmURLEnv)
-	return serveConfig(ctx, &cfg, launch{lastfmURL: lastfmURL}, log)
+	l := launch{
+		lastfmURL: lastfmURL, seeds: seeds, level: level, listenFromFile: keys.Has("server.listen"),
+		configDir: configDir(*path, config.DefaultPaths(env)),
+	}
+	return serveConfig(ctx, &cfg, l, log)
+}
+
+// configDir is the folder of the config file serve reads, named or default, or
+// "" when there is none.
+func configDir(named string, paths config.Paths) string {
+	if name := cmp.Or(named, paths.ConfigFile); name != "" {
+		if abs, err := filepath.Abs(name); err == nil {
+			return filepath.Dir(abs)
+		}
+	}
+	return ""
 }
 
 // lastfmURLEnv names the root of a fake Last.fm to talk to in place of the
@@ -93,9 +118,14 @@ const lastfmURLEnv = "KITSUNE_LASTFM_URL"
 var errBadLastfmURL = errors.New(lastfmURLEnv + " must be an absolute http or https URL")
 
 // launch is what serve takes besides the config: the fake Last.fm to use, if
-// any.
+// any, the seeds for settings the database has no value for, and the logger's
+// level, which the database's log.level sets.
 type launch struct {
-	lastfmURL string // "" means the real Last.fm.
+	lastfmURL      string // "" means the real Last.fm.
+	seeds          []settings.Seed
+	level          *slog.LevelVar // Nil means the level can't change.
+	listenFromFile bool           // server.toml set listen.
+	configDir      string         // The config file's folder, which the folder picker won't offer.
 }
 
 // serveConfig opens the app, listens and serves until ctx ends.
@@ -118,21 +148,29 @@ func serveConfig(ctx context.Context, cfg *config.Config, l launch, log *slog.Lo
 
 // app is a server with the state it needs to run.
 type app struct {
-	log       *slog.Logger
-	store     *store.Store
-	auth      *auth.Service
-	scanner   *library.Scanner
-	lastfm    *scrobbler.Scrobbler
-	quickScan config.ClockTime
-	scanned   atomic.Bool // Set when the first scan has ended, whatever its outcome.
-	http      *http.Server
-	drain     time.Duration // How long shutdown waits for in-flight requests.
-	basePath  string
-	dataDir   string
-	baseURL   string
+	log      *slog.Logger
+	store    *store.Store
+	auth     *auth.Service
+	scanner  *library.Scanner
+	lastfm   *scrobbler.Scrobbler
+	scanned  atomic.Bool // Set when the first scan has ended, whatever its outcome.
+	http     *http.Server
+	drain    time.Duration // How long shutdown waits for in-flight requests.
+	basePath string
+	dataDir  string
+	baseURL  string
 	// setupCode makes the first account from outside the server's network.
 	// It is "" when the server started with accounts.
 	setupCode string
+	covers    *artwork.Cache
+	genres    *library.Genres
+
+	// live holds the settings, and the owners of the ones that apply at once
+	// follow it (follow.go).
+	live      *settings.Service
+	level     *slog.LevelVar // Nil means the level can't change.
+	lastfmURL string         // A stand-in Last.fm's root, or "".
+	changes   ownerChanges
 
 	// Background work outlives requests. Shutdown cancels it and waits, so a
 	// pending scan batch is written before the store closes.
@@ -142,7 +180,7 @@ type app struct {
 }
 
 // openApp creates data_dir if needed, opens and migrates the database in it,
-// and builds the HTTP server.
+// seeds the settings it has no value for, and builds the HTTP server.
 func openApp(ctx context.Context, cfg *config.Config, l launch, log *slog.Logger) (*app, error) {
 	if err := os.MkdirAll(cfg.Storage.DataDir, dataDirMode); err != nil {
 		return nil, fmt.Errorf("create data_dir: %w", err)
@@ -152,11 +190,27 @@ func openApp(ctx context.Context, cfg *config.Config, l launch, log *slog.Logger
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-	a, err := buildApp(ctx, cfg, l.lastfmURL, st, log)
+	live, err := openSettings(ctx, st, l.seeds, log)
+	if err != nil {
+		return nil, errors.Join(err, st.Close())
+	}
+	if l.level != nil {
+		l.level.Set(live.Snapshot().LogLevel)
+	}
+	a, err := buildApp(ctx, cfg, &l, st, live, log)
 	if err != nil {
 		return nil, errors.Join(err, st.Close())
 	}
 	return a, nil
+}
+
+// openSettings stores the seeds the database has no value for and opens the
+// settings.
+func openSettings(ctx context.Context, st *store.Store, seeds []settings.Seed, log *slog.Logger) (*settings.Service, error) {
+	if err := settings.Apply(ctx, st, seeds, log); err != nil {
+		return nil, err //nolint:wrapcheck // It says it is the settings.
+	}
+	return settings.Open(ctx, st) //nolint:wrapcheck // As above, and it names the key.
 }
 
 // firstRunCode returns a fresh setup code when st has no accounts, so the first
@@ -172,10 +226,11 @@ func firstRunCode(ctx context.Context, st *store.Store) (string, error) {
 	return newSetupCode(), nil
 }
 
-// buildApp wires the auth service and the HTTP server over st. ctx ends tag edits:
-// a shutdown stops one between files, inside the drain. lastfmURL is the root of a
-// fake Last.fm, or "" for the real one.
-func buildApp(ctx context.Context, cfg *config.Config, lastfmURL string, st *store.Store, log *slog.Logger) (*app, error) {
+// buildApp wires the auth service and the HTTP server over st, with the settings
+// in live. ctx ends tag edits: a shutdown stops one between files, inside the
+// drain.
+func buildApp(ctx context.Context, cfg *config.Config, l *launch, st *store.Store, live *settings.Service, log *slog.Logger) (*app, error) {
+	snap := live.Snapshot()
 	svc, err := auth.New(st, auth.Options{Params: authParams()})
 	if err != nil {
 		return nil, fmt.Errorf("start auth: %w", err)
@@ -184,68 +239,87 @@ func buildApp(ctx context.Context, cfg *config.Config, lastfmURL string, st *sto
 	if err != nil {
 		return nil, err
 	}
-	trusted := trustedPrefixes(cfg)
-	sender, err := newScrobbler(cfg.LastFM, lastfmURL, st, log)
+	sender, err := newScrobbler(lastfmConfig(snap), l.lastfmURL, st, log)
 	if err != nil {
 		return nil, err
 	}
-	genres := library.NewGenres(st)
-	if err = genres.Refresh(ctx); err != nil {
-		return nil, fmt.Errorf("read genres: %w", err)
+	genres, err := readGenres(ctx, st)
+	if err != nil {
+		return nil, err
 	}
 	setupCode, err := firstRunCode(ctx, st)
 	if err != nil {
 		return nil, err
 	}
+	// base_url and trusted_proxies apply as the server started: changing them
+	// live could cut off the page that changed them.
+	public := config.Server{BaseURL: snap.BaseURL}
 	a := &app{
-		log:       log,
-		store:     st,
-		auth:      svc,
-		scanner:   newScanner(cfg, st, covers, genres, log),
-		lastfm:    sender,
-		quickScan: cfg.Library.QuickScan,
-		drain:     shutdownTimeout,
-		basePath:  cfg.Server.BasePath(),
-		dataDir:   cfg.Storage.DataDir,
-		baseURL:   cfg.Server.BaseURL,
-		setupCode: setupCode,
+		log: log, store: st, auth: svc, lastfm: sender, drain: shutdownTimeout,
+		scanner:  newScanner(snap, st, covers, genres, log),
+		basePath: public.BasePath(), dataDir: cfg.Storage.DataDir, baseURL: snap.BaseURL,
+		setupCode: setupCode, covers: covers, genres: genres,
+		live: live, level: l.level, lastfmURL: l.lastfmURL, changes: subscribe(live),
 	}
-	handler := server.New(server.Config{
-		Auth:          svc,
-		Logger:        log,
-		ClientIP:      server.ForwardedClientIP(trusted),
-		SecureCookies: cfg.Server.HTTPS(),
-		BasePath:      cfg.Server.BasePath(),
-		Ready:         a.ready,
-		Artwork:       covers,
-		Library:       st,
-		Roots:         len(cfg.Library.Roots),
-		TagWrites:     cfg.Library.TagWrites,
-		Scanner:       a.scanner,
-		StartScan:     a.startScan,
-		Genres:        genres,
-		Context:       ctx,
-		Web:           webClient(cfg, log),
-		Lastfm:        a.lastfm,
-		PublicURL:     cfg.Server.BaseURL,
-		SetupCode:     setupCode,
-	})
-	a.http = newHTTPServer(handler, log)
-	if cfg.Server.BaseURL != "" && len(trusted) == 0 {
+	a.http = newHTTPServer(a.handler(ctx, cfg, l, &public), log)
+	if snap.BaseURL != "" && len(snap.TrustedProxies) == 0 {
 		log.Warn("base_url is set but trusted_proxies is empty; every client will share the proxy's address for login rate limits")
 	}
 	return a, nil
 }
 
-// newScanner returns the library scanner over st that cfg sets up.
-func newScanner(cfg *config.Config, st *store.Store, covers *artwork.Cache, genres *library.Genres, log *slog.Logger) *library.Scanner {
+// handler returns the API and web client over a's parts. ctx ends tag edits.
+func (a *app) handler(ctx context.Context, cfg *config.Config, l *launch, public *config.Server) *server.Server {
+	return server.New(server.Config{
+		Auth:           a.auth,
+		Logger:         a.log,
+		ClientIP:       server.ForwardedClientIP(a.live.Snapshot().TrustedProxies),
+		SecureCookies:  public.HTTPS(),
+		BasePath:       public.BasePath(),
+		Ready:          a.ready,
+		Artwork:        a.covers,
+		Library:        a.store,
+		Scanner:        a.scanner,
+		StartScan:      a.startScan,
+		Genres:         a.genres,
+		Context:        ctx,
+		Web:            webClient(public.BasePath(), a.log),
+		Lastfm:         a.lastfm,
+		PublicURL:      public.BaseURL,
+		SetupCode:      a.setupCode,
+		Settings:       a.live,
+		Listen:         cfg.Server.Listen,
+		ListenFromFile: l.listenFromFile,
+		DataDir:        cfg.Storage.DataDir,
+		ConfigDir:      l.configDir,
+		Version:        version(),
+	})
+}
+
+// lastfmConfig is the Last.fm part of snap, as [lastfmClient] takes it.
+func lastfmConfig(snap *settings.Snapshot) config.LastFM {
+	return config.LastFM{APIKey: snap.LastfmAPIKey, SharedSecret: config.Secret(snap.LastfmSharedSecret)}
+}
+
+// readGenres returns the library's genres, read from st.
+func readGenres(ctx context.Context, st *store.Store) (*library.Genres, error) {
+	genres := library.NewGenres(st)
+	if err := genres.Refresh(ctx); err != nil {
+		return nil, fmt.Errorf("read genres: %w", err)
+	}
+	return genres, nil
+}
+
+// newScanner returns the library scanner over st that snap sets up.
+func newScanner(snap *settings.Snapshot, st *store.Store, covers *artwork.Cache, genres *library.Genres, log *slog.Logger) *library.Scanner {
 	return library.NewScanner(st, library.Options{
-		Roots:        cfg.Library.Roots,
-		MissingGrace: cfg.Library.MissingGrace,
+		Roots:        snap.Roots,
+		MissingGrace: snap.MissingGrace,
 		Logger:       log,
 		Artwork:      covers,
-		TagWrites:    cfg.Library.TagWrites,
+		TagWrites:    snap.TagWrites,
 		Genres:       genres,
+		QuickScan:    library.Daily{Hour: snap.QuickScan.Hour, Minute: snap.QuickScan.Minute},
 	})
 }
 
@@ -278,24 +352,15 @@ func lastfmClient(cfg config.LastFM, fakeURL string, log *slog.Logger) (*lastfm.
 	return client, nil
 }
 
-// trustedPrefixes returns the networks of the proxies cfg trusts.
-func trustedPrefixes(cfg *config.Config) []netip.Prefix {
-	trusted := make([]netip.Prefix, 0, len(cfg.Server.TrustedProxies))
-	for _, n := range cfg.Server.TrustedProxies {
-		trusted = append(trusted, n.Prefix)
-	}
-	return trusted
-}
-
 // webClient returns the client built into this binary, and says so when the
 // server will give the API alone.
-func webClient(cfg *config.Config, log *slog.Logger) fs.FS {
+func webClient(basePath string, log *slog.Logger) fs.FS {
 	web := webui.Files()
 	switch {
 	case web == nil:
 		log.Info("this build has no web client: serving the API alone")
-	case cfg.Server.BasePath() != "":
-		log.Warn("the web client only runs at the root of a host: serving the API alone", "basePath", cfg.Server.BasePath())
+	case basePath != "":
+		log.Warn("the web client only runs at the root of a host: serving the API alone", "basePath", basePath)
 	}
 	return web
 }
@@ -362,9 +427,9 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.workMu.Unlock()
 	a.work.Go(func() { a.purgeSessions(bgCtx) })
 	a.work.Go(func() { a.lastfm.Run(bgCtx) })
-	a.work.Go(func() {
-		a.scanner.Run(bgCtx, a.quickScan.Hour, a.quickScan.Minute, func() { a.scanned.Store(true) })
-	})
+	a.work.Go(func() { a.scanner.Run(bgCtx, func() { a.scanned.Store(true) }) })
+	a.work.Go(func() { a.followLibrary(bgCtx) })
+	a.work.Go(func() { a.followRest(bgCtx) })
 	a.work.Go(func() { a.scanner.RunFingerprints(bgCtx) }) // Readiness never waits for it.
 
 	served := make(chan error, 1)

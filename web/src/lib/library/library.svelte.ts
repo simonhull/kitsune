@@ -42,6 +42,9 @@ import {
 	type ScanIssues,
 	type ScanMode,
 	type ScanRefusal,
+	type FolderListing,
+	type ServerSettings,
+	type SettingsChange,
 	type SetupStatus
 } from './source.ts';
 
@@ -61,6 +64,10 @@ const restartGraceMs = 1500;
 const scanPollMs = 1000;
 /** How often anyone else asks how a running scan is doing. */
 const progressPollMs = 1000;
+/** How often anyone asks how the fingerprint pass is doing: it runs for many minutes. */
+const passPollMs = 5000;
+/** When to read again what a settings change changes, which the server applies a moment later. */
+const settledReadsMs = [300, 1500] as const;
 /** How much of the newest end of the library each of those asks for. */
 const feedSize = 100;
 /** The most cards on the pile at once: older ones have left the DOM, under it. */
@@ -548,10 +555,57 @@ export class Library {
 		}
 	}
 
-	/** Polls only while a scan runs. The deck follows a first scan its own way. */
+	/**
+	 * Polls only while a scan runs, or, slower, while the fingerprint pass does. The deck follows a
+	 * first scan its own way.
+	 */
 	#watchScan(delayMs = progressPollMs): void {
-		if (this.#progressPoll === undefined && !this.deck && this.facts?.scan.state === 'running') {
+		if (this.#progressPoll !== undefined || this.deck || this.facts === null) {
+			return;
+		}
+		const { scan, fingerprints } = this.facts;
+		if (scan.state === 'running') {
 			this.#progressPoll = setTimeout(() => void this.#pollProgress(), delayMs);
+		} else if (fingerprints !== undefined && fingerprints.done < fingerprints.total) {
+			this.#progressPoll = setTimeout(
+				() => void this.#pollProgress(),
+				Math.max(delayMs, passPollMs)
+			);
+		}
+	}
+
+	/** The folders the server sees in a path, for the folder picker. */
+	folders(path: string): Promise<FolderListing> {
+		return this.#source.folders(path);
+	}
+
+	/** The server's settings, for an administrator's Server page. */
+	serverSettings(): Promise<ServerSettings> {
+		return this.#source.settings();
+	}
+
+	/**
+	 * Changes settings, all or none. The server applies most of them a moment later, so what they
+	 * change is read again then: a scan to follow, Last.fm on or off, tag editing.
+	 */
+	async changeSettings(change: SettingsChange): Promise<ServerSettings> {
+		const saved = await this.#source.changeSettings(change);
+		for (const delayMs of settledReadsMs) {
+			setTimeout(() => void this.#readSettled(), delayMs);
+		}
+		return saved;
+	}
+
+	async #readSettled(): Promise<void> {
+		const epoch = this.#epoch;
+		await Promise.all([this.refreshFacts(), this.refreshLastfm()]);
+		try {
+			const me = await this.#source.me();
+			if (epoch === this.#epoch && this.user !== null) {
+				this.user = me;
+			}
+		} catch {
+			// The page stands as it is; a lost session has gone to the door.
 		}
 	}
 

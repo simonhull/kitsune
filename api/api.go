@@ -5,6 +5,7 @@ package api
 
 import (
 	_ "embed"
+	"encoding/json/jsontext"
 	"time"
 )
 
@@ -529,4 +530,91 @@ type ScanResult struct {
 	SkippedRoots int       `json:"skippedRoots"`
 	// Error says why a failed scan failed, for administrators only.
 	Error string `json:"error,omitzero"`
+}
+
+// ServerSettings is the response to GET and PATCH /admin/settings.
+type ServerSettings struct {
+	// Settings holds every setting, by its key as server.toml spells it, such
+	// as "lastfm.api_key".
+	Settings map[string]Setting `json:"settings"`
+	// Listen is the address the server listens on. Only server.toml sets it,
+	// since the server needs it before it can open its database.
+	Listen string `json:"listen"`
+	// ListenSource is SettingFile, or SettingDefault when the file leaves it out.
+	ListenSource string `json:"listenSource"`
+	// Version is the server's version.
+	Version string `json:"version"`
+	// Folders are the library.roots, in order, with what each holds now.
+	Folders []LibraryFolder `json:"folders"`
+}
+
+// The values of Folder.Kind and FolderListing.Kind. Only FolderFree can be added
+// to the library; the others are listed so the server's own folders show.
+const (
+	FolderFree    = "folder"  // Can be added.
+	FolderLibrary = "library" // Is a library folder already.
+	FolderInside  = "inside"  // Lies inside a library folder.
+	FolderHolds   = "holds"   // Holds a library folder.
+	FolderData    = "data"    // Is or holds Kitsune's data.
+	FolderConfig  = "config"  // Holds Kitsune's config file.
+)
+
+// FolderListing is the response to GET /admin/folders: the folders in Path,
+// directories only, and what Path itself holds.
+type FolderListing struct {
+	Path string `json:"path"`
+	// Parent is the folder above Path, absent at /.
+	Parent  string     `json:"parent,omitzero"`
+	Kind    string     `json:"kind"`
+	Folders []Folder   `json:"folders"`
+	Audio   AudioCount `json:"audio"`
+}
+
+// Folder is one folder in a listing.
+type Folder struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Kind string `json:"kind"`
+}
+
+// AudioCount is how much audio a folder holds, its subfolders included. The
+// count stops after a while: Complete is false when it stopped early, and the
+// numbers are then at least that.
+type AudioCount struct {
+	Files    int  `json:"files"`
+	Folders  int  `json:"folders"`
+	Complete bool `json:"complete"`
+}
+
+// LibraryFolder is a library root and what it holds now: 0 and 0 until a scan
+// has read it.
+type LibraryFolder struct {
+	Path   string `json:"path"`
+	Tracks int64  `json:"tracks"`
+	Bytes  int64  `json:"bytes"`
+}
+
+// The values of Setting.Source. Every source but SettingDefault is stored.
+const (
+	SettingDefault = "default"
+	SettingWeb     = "web"
+	SettingFile    = "server.toml"
+	SettingEnv     = "env"
+	SettingFlag    = "flag"
+)
+
+// Setting is one server setting. A secret never carries its value: Set says
+// whether it has one.
+type Setting struct {
+	Value jsontext.Value `json:"value,omitzero"`
+	Set   *bool          `json:"set,omitzero"`
+	// Source is where the value came from, one of the Setting* constants.
+	Source string `json:"source"`
+	// From names that source for a person, such as KITSUNE_LASTFM_API_KEY.
+	From string `json:"from,omitzero"`
+	// RestartRequired says a change applies only after a restart.
+	RestartRequired bool `json:"restartRequired,omitzero"`
+	// PendingRestart says the value has changed since the server started and
+	// waits for a restart.
+	PendingRestart bool `json:"pendingRestart,omitzero"`
 }

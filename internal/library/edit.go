@@ -94,6 +94,9 @@ func (e *AlbumEdit) forFiles(files []store.EditFile) ([]fileEdit, error) {
 // the edit was refused or stopped.
 func (s *Scanner) EditAlbum(ctx context.Context, id, ifMatch string, e *AlbumEdit) error {
 	return s.exclusive(ctx, func() error {
+		if !s.live().TagWrites {
+			return ErrTagWritesOff
+		}
 		files, etag, err := s.st.AlbumEditFiles(ctx, id)
 		if err != nil {
 			return err //nolint:wrapcheck // The store's error already says what failed.
@@ -232,7 +235,7 @@ func (s *Scanner) preflight(ctx context.Context, file *store.EditFile, e *Edit) 
 // configuration and a symlink that leads out of the root: a rewrite would land
 // on the link's target.
 func (s *Scanner) resolve(file *store.EditFile) (string, error) {
-	if !slices.Contains(s.roots, file.Root) {
+	if !slices.Contains(s.live().Roots, file.Root) {
 		return "", fmt.Errorf("its root is not configured: %w", ErrNotWritable)
 	}
 	root, err := filepath.EvalSymlinks(file.Root)

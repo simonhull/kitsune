@@ -24,6 +24,7 @@ import (
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/openapitest"
 	"github.com/simonhull/kitsune/internal/scrobbler"
+	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -92,7 +93,7 @@ type testServerOptions struct {
 	Ready         func(context.Context) error
 	LogLevel      slog.Level // The zero value is Info.
 	Artwork       *artwork.Cache
-	Roots         int
+	Roots         int // Empty library roots to configure, beside LibraryRoot.
 	TagWrites     bool
 	LibraryRoot   string                   // "" means a scanner with no roots.
 	Write         library.WriteFunc        // Nil means real writes.
@@ -100,18 +101,21 @@ type testServerOptions struct {
 	Web           fs.FS                    // Nil means no web client.
 	Lastfm        *lastfmtest.Server       // Nil means Last.fm is not set up; else the sender runs against it.
 	SetupCode     string                   // "" means the server started with accounts.
+	FolderRoot    string                   // What the folder picker calls /. "" means the real /.
+	DataDir       string                   // Kitsune's data folder, as the picker sees it.
 }
 
 // testServer is a running API over a real store and auth service.
 type testServer struct {
-	Server  *httptest.Server
-	URL     string // The API root: the origin, the base path and /api/v1.
-	Clock   *testClock
-	Log     *syncBuffer
-	Auth    *auth.Service
-	Handle  *Server
-	Store   *store.Store
-	Scanner *library.Scanner
+	Server   *httptest.Server
+	URL      string // The API root: the origin, the base path and /api/v1.
+	Clock    *testClock
+	Log      *syncBuffer
+	Auth     *auth.Service
+	Handle   *Server
+	Store    *store.Store
+	Settings *settings.Service
+	Scanner  *library.Scanner
 }
 
 // newTestServer starts a server over a temporary store.
@@ -138,10 +142,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	if err != nil {
 		tb.Fatalf("auth.New: %v", err)
 	}
-	var roots []string
-	if o.LibraryRoot != "" {
-		roots = []string{o.LibraryRoot}
-	}
+	roots := testRoots(tb, &o)
 	scanner := library.NewScanner(st, library.Options{
 		Roots: roots, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
 	})
@@ -169,7 +170,11 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		sending.Go(func() { sender.Run(ctx) })
 		tb.Cleanup(func() { cancel(); sending.Wait() }) // Before the store closes.
 	}
+	live := openSettings(tb, st)
 	h := New(Config{
+		Settings:      live,
+		Listen:        testListen,
+		Version:       testVersion,
 		Auth:          svc,
 		Logger:        logger,
 		Now:           clock.Now,
@@ -179,17 +184,47 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		Ready:         o.Ready,
 		Artwork:       o.Artwork,
 		Library:       st,
-		Roots:         o.Roots,
-		TagWrites:     o.TagWrites,
 		Scanner:       scanner,
 		StartScan:     o.StartScan,
 		Web:           o.Web,
 		Lastfm:        sender,
 		SetupCode:     o.SetupCode,
+		FolderRoot:    o.FolderRoot,
+		DataDir:       o.DataDir,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)
-	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st, Scanner: scanner}
+	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st, Scanner: scanner, Settings: live}
+}
+
+// What GET /admin/settings reports of a test server.
+const (
+	testListen  = ":4533"
+	testVersion = "v0.0.0-test"
+)
+
+// testRoots returns the library roots o asks for: its LibraryRoot, then
+// o.Roots empty folders.
+func testRoots(tb testing.TB, o *testServerOptions) []string {
+	tb.Helper()
+	var roots []string
+	if o.LibraryRoot != "" {
+		roots = append(roots, o.LibraryRoot)
+	}
+	for range o.Roots {
+		roots = append(roots, tb.TempDir())
+	}
+	return roots
+}
+
+// openSettings opens the settings kept in st.
+func openSettings(tb testing.TB, st *store.Store) *settings.Service {
+	tb.Helper()
+	live, err := settings.Open(tb.Context(), st)
+	if err != nil {
+		tb.Fatalf("open settings: %v", err)
+	}
+	return live
 }
 
 // testClientIP reads the client IP from testClientIPHeader, falling back to

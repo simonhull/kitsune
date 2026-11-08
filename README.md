@@ -36,12 +36,26 @@ shared_secret = ""       # never logged; `kitsune-server config` shows it as "(s
 ```
 
 Unknown keys are errors, so a typo cannot be silently ignored. Paths must be
-absolute. `kitsune-server config` prints the configuration in effect.
+absolute. `kitsune-server config` prints the file's values.
 
-With `[lastfm]` set, each user can connect their Last.fm account on the You page, and the
-server sends their plays, the song playing and their hearts as loves. Last.fm sends the browser
+**Settings live in the database.** An administrator changes them on the Server page (You, then
+Server settings), and most apply at once: a new library folder starts a scan, a Last.fm key turns
+on Connect. `base_url` and `trusted_proxies` apply after a restart. The file only fills a setting
+that has no value in the database yet, so a restart never undoes a change made in the browser.
+Environment variables named `KITSUNE_` and the key (`KITSUNE_LASTFM_API_KEY`,
+`KITSUNE_LIBRARY_ROOTS=/music:/audiobooks`, `KITSUNE_SERVER_TRUSTED_PROXIES=10.0.0.2,172.17.0.0/16`)
+and `serve -set KEY=VALUE` fill one the same way; a flag beats the environment, which beats the
+file. When the database already has a value, the server logs a warning naming the key and keeps
+the database's. To let the file apply again, clear the setting on the Server page, or run
+`kitsune-server settings reset KEY` with the server stopped; the next start fills it again.
+`listen` and `data_dir` are only ever read from the file, at every start.
+
+With a Last.fm key and secret set, each user can connect their Last.fm account on the You page, and
+the server sends their plays, the song playing and their hearts as loves. Last.fm sends the browser
 back to `/api/v1/lastfm/callback` at `server.base_url`, or at the address the browser used when
-that is not set. Keep the secret out of committed files: fill it in with `op inject` or similar.
+that is not set. The secret is write-only: no page or response shows it. Keep it out of committed
+files: paste it on the Server page, or fill it in with `op inject` or similar. A secret can't be a
+`-set` flag, which everyone on the host can read.
 
 ## Building
 

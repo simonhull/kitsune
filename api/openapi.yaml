@@ -892,6 +892,104 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "403":
           $ref: "#/components/responses/Problem"
+  /admin/settings:
+    get:
+      operationId: getSettings
+      summary: Read the server's settings.
+      description: >-
+        For administrators. Settings live in the database: server.toml, the
+        environment and flags only fill a setting that has no value yet, so
+        each one says where its value came from. A secret never carries its
+        value, only whether it is set.
+      responses:
+        "200":
+          description: Every setting.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerSettings" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: patchSettings
+      summary: Change some of the server's settings.
+      description: >-
+        For administrators. The body names only the settings that change. Every
+        value is checked before any is stored, and all are stored together: a
+        400 names the first key refused, and changes nothing. A change applies
+        at once, except where a setting says it waits for a restart. A null, or
+        an empty string or list for a setting that can be empty, clears it: it
+        takes its default, and the next start fills it from server.toml, the
+        environment or a flag again.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SettingsChange" }
+      responses:
+        "200":
+          description: Every setting, changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerSettings" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+  /admin/folders:
+    get:
+      operationId: getFolders
+      summary: List the folders the server can see, for the folder picker.
+      description: >-
+        For administrators. Directories only, never a file name or size: the
+        folders in `path`, and how much audio `path` holds, counted as a scan
+        would find it and for at most a second or two. Read from / through a
+        root that neither `..` nor a symlink can leave. Under Docker these are
+        the container's paths. Kitsune's own data and config folders, and the
+        library's, are listed with a kind that says they can't be added.
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: An absolute path; / when absent.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The folders in path.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FolderListing" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
   /library:
     get:
       operationId: getLibrary
@@ -1970,3 +2068,153 @@ components:
         issues: { type: integer, description: Files this scan read and could not use. }
         skippedRoots: { type: integer, description: Roots left alone because they looked like an outage. }
         error: { type: string, description: 'Why it failed, without library paths. Administrators only.' }
+    ServerSettings:
+      type: object
+      additionalProperties: false
+      required: [settings, listen, listenSource, version, folders]
+      properties:
+        folders:
+          type: array
+          description: The library.roots, in order, with what each holds now.
+          items: { $ref: "#/components/schemas/LibraryFolder" }
+        settings:
+          type: object
+          additionalProperties: false
+          description: Every setting, by its key as server.toml spells it.
+          required:
+            - lastfm.api_key
+            - lastfm.shared_secret
+            - library.roots
+            - library.tag_writes
+            - library.quick_scan
+            - library.missing_grace
+            - log.level
+            - server.base_url
+            - server.trusted_proxies
+          properties:
+            lastfm.api_key: { $ref: "#/components/schemas/StringSetting" }
+            lastfm.shared_secret: { $ref: "#/components/schemas/SecretSetting" }
+            library.roots: { $ref: "#/components/schemas/ListSetting" }
+            library.tag_writes: { $ref: "#/components/schemas/BoolSetting" }
+            library.quick_scan: { $ref: "#/components/schemas/StringSetting" }
+            library.missing_grace: { $ref: "#/components/schemas/StringSetting" }
+            log.level: { $ref: "#/components/schemas/StringSetting" }
+            server.base_url: { $ref: "#/components/schemas/StringSetting" }
+            server.trusted_proxies: { $ref: "#/components/schemas/ListSetting" }
+        listen:
+          type: string
+          description: >-
+            The address the server listens on. Only server.toml sets it: the
+            server needs it before it can open its database.
+        listenSource: { type: string, enum: [server.toml, default] }
+        version: { type: string }
+    FolderListing:
+      type: object
+      additionalProperties: false
+      required: [path, kind, folders, audio]
+      properties:
+        path: { type: string }
+        parent: { type: string, description: The folder above path. Absent at /. }
+        kind: { $ref: "#/components/schemas/FolderKind" }
+        folders: { type: array, items: { $ref: "#/components/schemas/Folder" } }
+        audio: { $ref: "#/components/schemas/AudioCount" }
+    Folder:
+      type: object
+      additionalProperties: false
+      required: [name, path, kind]
+      properties:
+        name: { type: string }
+        path: { type: string }
+        kind: { $ref: "#/components/schemas/FolderKind" }
+    FolderKind:
+      type: string
+      enum: [folder, library, inside, holds, data, config]
+      description: >-
+        Only `folder` can be added. `library` is a library folder already,
+        `inside` lies in one and `holds` holds one; `data` is Kitsune's data and
+        `config` holds its config file.
+    AudioCount:
+      type: object
+      additionalProperties: false
+      description: >-
+        The audio files under a folder and the folders that hold them. With
+        `complete` false the count stopped early, and these are at least that.
+      required: [files, folders, complete]
+      properties:
+        files: { type: integer }
+        folders: { type: integer }
+        complete: { type: boolean }
+    LibraryFolder:
+      type: object
+      additionalProperties: false
+      description: A library root and what it holds now. Both are 0 until a scan has read it.
+      required: [path, tracks, bytes]
+      properties:
+        path: { type: string }
+        tracks: { type: integer, format: int64, description: Live tracks under it. }
+        bytes: { type: integer, format: int64, description: Their size on disk. }
+    SettingSource:
+      type: string
+      enum: [default, web, server.toml, env, flag]
+      description: Where the value came from. `default` means nothing has set it.
+    SettingFrom:
+      type: string
+      description: >-
+        The source named for a person: the variable, such as
+        KITSUNE_LASTFM_API_KEY, the flag, or server.toml. Absent for `default`
+        and `web`.
+    StringSetting:
+      type: object
+      additionalProperties: false
+      description: >-
+        `library.quick_scan` is a local time as HH:MM, `library.missing_grace` a
+        duration such as "720h0m0s", and `log.level` one of debug, info, warn and
+        error.
+      required: [value, source]
+      properties:
+        value: { type: string }
+        source: { $ref: "#/components/schemas/SettingSource" }
+        from: { $ref: "#/components/schemas/SettingFrom" }
+        restartRequired: { type: boolean, description: A change applies only after a restart. }
+        pendingRestart: { type: boolean, description: The value has changed since the server started. }
+    ListSetting:
+      type: object
+      additionalProperties: false
+      required: [value, source]
+      properties:
+        value: { type: array, items: { type: string } }
+        source: { $ref: "#/components/schemas/SettingSource" }
+        from: { $ref: "#/components/schemas/SettingFrom" }
+        restartRequired: { type: boolean, description: A change applies only after a restart. }
+        pendingRestart: { type: boolean, description: The value has changed since the server started. }
+    BoolSetting:
+      type: object
+      additionalProperties: false
+      required: [value, source]
+      properties:
+        value: { type: boolean }
+        source: { $ref: "#/components/schemas/SettingSource" }
+        from: { $ref: "#/components/schemas/SettingFrom" }
+    SecretSetting:
+      type: object
+      additionalProperties: false
+      description: A write-only setting. Nothing returns its value.
+      required: [set, source]
+      properties:
+        set: { type: boolean }
+        source: { $ref: "#/components/schemas/SettingSource" }
+        from: { $ref: "#/components/schemas/SettingFrom" }
+    SettingsChange:
+      type: object
+      additionalProperties: false
+      description: The settings to change, by key. null clears one.
+      properties:
+        lastfm.api_key: { type: [string, "null"], maxLength: 256 }
+        lastfm.shared_secret: { type: [string, "null"], maxLength: 256 }
+        library.roots: { type: [array, "null"], items: { type: string }, maxItems: 64 }
+        library.tag_writes: { type: [boolean, "null"] }
+        library.quick_scan: { type: [string, "null"], description: A local time as HH:MM. }
+        library.missing_grace: { type: [string, "null"], description: 'A duration from "0s" to "87600h".' }
+        log.level: { type: [string, "null"], description: 'debug, info, warn or error, in any case.' }
+        server.base_url: { type: [string, "null"] }
+        server.trusted_proxies: { type: [array, "null"], items: { type: string }, maxItems: 64 }

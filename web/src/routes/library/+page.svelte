@@ -27,12 +27,38 @@
 	import SongHeader from '#lib/pages/SongHeader.svelte';
 	import { player } from '#lib/player/player.svelte.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
+	import ScanCard from '#lib/pages/ScanCard.svelte';
+	import { cubicOut } from 'svelte/easing';
+	import type { TransitionConfig } from 'svelte/transition';
 
 	/** The headline's weight and tracking: the fit is worked out for exactly these. */
 	const nameWeight = 900;
 	const nameTracking = -0.06;
 
 	const facts = $derived(library.facts);
+	/** The clock a running scan's estimate reads, ticking only while one runs. */
+	let scanNow = $state(Date.now());
+	$effect(() => {
+		if (facts?.scan.state !== 'running') {
+			return;
+		}
+		const clock = setInterval(() => {
+			scanNow = Date.now();
+		}, 1000);
+		return () => {
+			clearInterval(clock);
+		};
+	});
+
+	/** A finished scan's card folds away: its height closes as it fades, so the list rises to meet it. */
+	function fold(node: HTMLElement): TransitionConfig {
+		const height = node.offsetHeight;
+		return {
+			duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 420,
+			easing: cubicOut,
+			css: (t) => `height: ${String(t * height)}px; opacity: ${String(t)}; overflow: hidden;`
+		};
+	}
 	const load = $derived(library.index);
 	const layout = $derived(view.layout);
 	const artist = $derived(layout.artists.at(view.here)?.artist);
@@ -341,6 +367,9 @@
 
 	{#if facts !== null && facts.albums === 0}
 		<p class="note" role="status">{emptyLine(facts, library.deck)}</p>
+		{#if facts.scan.state === 'running'}
+			<div class="scanning alone"><ScanCard kind="scan" scan={facts.scan} now={scanNow} /></div>
+		{/if}
 	{:else if load.kind === 'unavailable'}
 		<p class="note" role="status">
 			The library couldn't be loaded.
@@ -367,6 +396,11 @@
 				</p>
 			{/if}
 		</div>
+		{#if facts !== null && facts.scan.state === 'running'}
+			<div class="scanning dock" class:stacked={view.stacked} out:fold>
+				<ScanCard kind="scan" scan={facts.scan} now={scanNow} />
+			</div>
+		{/if}
 		{#if view.columns && !view.stacked}
 			<div class="columns-head" data-morph-part="intro" data-morph-key="columns-head">
 				<SongHeader
@@ -605,6 +639,39 @@
 		width: var(--name-column);
 		padding-bottom: 16px;
 		background: var(--ground);
+	}
+
+	.scanning {
+		padding-top: 16px;
+	}
+
+	/* In the name column, under the artist and above what's next, so neither is covered. */
+	.dock {
+		position: fixed;
+		z-index: 2;
+		left: var(--page-edge);
+		bottom: 320px;
+		width: var(--name-column);
+		padding-top: 0;
+	}
+
+	/* No name column on a phone: just above the player island, the card's note left out. */
+	.dock.stacked {
+		left: 16px;
+		right: 16px;
+		border-radius: var(--radius-20);
+		box-shadow: var(--glass-shadow);
+		bottom: 104px;
+		width: auto;
+		--scan-pad: 14px 18px;
+	}
+
+	.dock.stacked :global(.note) {
+		display: none;
+	}
+
+	.scanning.alone {
+		max-width: 560px;
 	}
 
 	.frame {

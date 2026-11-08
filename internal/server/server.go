@@ -8,6 +8,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io/fs"
@@ -21,6 +22,7 @@ import (
 	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/scrobbler"
+	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -39,9 +41,7 @@ type Config struct {
 	Ready         func(context.Context) error // Nil means always ready. Backs GET /readyz.
 	Artwork       *artwork.Cache              // Nil means every GET /artwork/{hash} is a 404.
 	Library       *store.Store                // Required; New panics if nil. Backs the browse routes.
-	Roots         int                         // The number of configured library roots, reported by GET /library.
-	TagWrites     bool                        // Administrators may edit tags. Off leaves every file alone.
-	Scanner       *library.Scanner            // Required; New panics if nil. Applies tag edits and reports scans.
+	Scanner       *library.Scanner            // Required; New panics if nil. Applies tag edits, reports scans, and owns the live roots and tag writes.
 	// StartScan claims a scan and runs it in the background; required, New panics if
 	// nil. It returns [library.ErrScanRunning] while one runs, and another error when
 	// the server is stopping.
@@ -64,6 +64,20 @@ type Config struct {
 	// server's network. "" means the server started with accounts, so setup is
 	// done. It never appears in a response.
 	SetupCode string
+	// Settings holds the live settings an administrator changes on the Server
+	// page; required, New panics if nil.
+	Settings *settings.Service
+	// Listen is the address the server listens on, and ListenFromFile says
+	// server.toml set it. GET /admin/settings shows both, and Version.
+	Listen         string
+	ListenFromFile bool
+	Version        string
+	// FolderRoot is what GET /admin/folders calls /. "" means the real /; tests
+	// point it at a temporary folder.
+	FolderRoot string
+	// DataDir and ConfigDir are Kitsune's own folders: the picker shows them and
+	// never lets them be chosen. "" means none.
+	DataDir, ConfigDir string
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -81,8 +95,6 @@ type Server struct {
 	ready         func(context.Context) error
 	artwork       *artwork.Cache
 	library       *store.Store
-	roots         int
-	tagWrites     bool
 	scanner       *library.Scanner
 	startScan     func(library.Mode) error
 	genres        *library.Genres
@@ -92,6 +104,13 @@ type Server struct {
 	publicURL     string
 	lastfmStates  lastfmStates
 	setup         *setupState
+	settings      *settings.Service
+	listen        string
+	listenFile    bool
+	version       string
+	folderRoot    string
+	dataDir       string
+	configDir     string
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -106,7 +125,7 @@ type route struct {
 
 // New returns a server for cfg.
 //
-// New panics if cfg.Auth, cfg.Library, cfg.Scanner or cfg.StartScan is nil or
+// New panics if cfg.Auth, cfg.Library, cfg.Scanner, cfg.StartScan or cfg.Settings is nil or
 // cfg.BasePath is malformed, which are programming errors.
 func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built once at startup; a value keeps every caller a plain literal.
 	checkConfig(&cfg)
@@ -121,8 +140,6 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		ready:         cfg.Ready,
 		artwork:       cfg.Artwork,
 		library:       cfg.Library,
-		roots:         cfg.Roots,
-		tagWrites:     cfg.TagWrites,
 		scanner:       cfg.Scanner,
 		startScan:     cfg.StartScan,
 		genres:        cfg.Genres,
@@ -132,6 +149,13 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		publicURL:     cfg.PublicURL,
 		lastfmStates:  lastfmStates{byUser: map[int64]pendingState{}},
 		setup:         newSetupState(cfg.SetupCode),
+		settings:      cfg.Settings,
+		listen:        cfg.Listen,
+		listenFile:    cfg.ListenFromFile,
+		version:       cfg.Version,
+		folderRoot:    cmp.Or(cfg.FolderRoot, "/"),
+		dataDir:       cfg.DataDir,
+		configDir:     cfg.ConfigDir,
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
@@ -172,6 +196,9 @@ func checkConfig(cfg *Config) {
 	}
 	if cfg.StartScan == nil {
 		panic("server: Config.StartScan is required")
+	}
+	if cfg.Settings == nil {
+		panic("server: Config.Settings is required")
 	}
 	if b := cfg.BasePath; b != "" && (!strings.HasPrefix(b, "/") || strings.HasSuffix(b, "/")) {
 		panic("server: Config.BasePath must be empty, or start with / and not end with /")
@@ -215,6 +242,9 @@ func (s *Server) routes() []route {
 		{pattern: "POST /auth/logout", handle: s.logout},
 		{pattern: "GET /admin/library/issues", admin: true, handle: s.getIssues},
 		{pattern: "POST /admin/library/scan", admin: true, handle: s.postScan},
+		{pattern: "GET /admin/settings", admin: true, handle: s.getSettings},
+		{pattern: "PATCH /admin/settings", admin: true, handle: s.patchSettings},
+		{pattern: "GET /admin/folders", admin: true, handle: s.getFolders},
 		{pattern: "GET /me", handle: s.getMe},
 		{pattern: "POST /me/plays", handle: s.postPlay},
 		{pattern: "PUT /me/hearts/{kind}/{id}", handle: s.putHeart},

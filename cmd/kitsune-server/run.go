@@ -13,8 +13,10 @@ import (
 const usage = `Usage: kitsune-server <command> [flags]
 
 Commands:
-  serve     run the server (-config FILE)
-  config    print the configuration in effect and exit
+  serve     run the server (-config FILE, -set KEY=VALUE)
+  config    print the config file's values and exit
+  settings reset KEY   clear a setting in the database, so the next start
+                   seeds it again (-config FILE)
   users add NAME   create a user (-admin, -password-stdin, -config FILE);
                    the first can also be made in a browser, on a server's first run
   version   print the version and exit
@@ -22,6 +24,12 @@ Commands:
 
 Flags:
   -config FILE   read FILE instead of $XDG_CONFIG_HOME/kitsune/server.toml (config)
+  -set KEY=VALUE seed a setting the database has no value for, such as
+                 -set log.level=debug (repeatable)
+
+Settings live in the database and are changed on the Server page. server.toml,
+KITSUNE_<KEY> variables (KITSUNE_LASTFM_API_KEY) and -set only fill a setting
+that has no value yet; listen and data_dir apply at every start.
 `
 
 // Exit statuses returned by cli.
@@ -65,6 +73,8 @@ func run(args []string, env config.Env, stdin io.Reader, stdout, stderr io.Write
 		return runServe(rest, env, stderr)
 	case "config":
 		return runConfig(rest, env, stdout)
+	case "settings":
+		return runSettings(rest, env, stdout)
 	case "users":
 		return runUsers(rest, env, stdin, stdout, stderr)
 	case "version":

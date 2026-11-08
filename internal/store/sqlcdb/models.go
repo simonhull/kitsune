@@ -97,6 +97,13 @@ type Session struct {
 	UserAgent string
 }
 
+type Setting struct {
+	Key       string
+	Value     string
+	Source    string
+	UpdatedAt int64
+}
+
 type Track struct {
 	ID           int64
 	Ulid         string

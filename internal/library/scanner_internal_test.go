@@ -736,7 +736,7 @@ func TestSweepRemovesLeftoverTemps(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			l := newTestLib(t, 1)
-			l.scanner.tagWrites = tt.tagWrites
+			l.scanner.cfg.Store(&Live{Roots: l.roots, TagWrites: tt.tagWrites})
 			root := l.roots[0]
 			l.copyTo(root, "a/one.flac", sampleFLAC)
 			l.copyTo(root, temp, sampleFLAC)

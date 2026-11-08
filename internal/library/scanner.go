@@ -59,6 +59,7 @@ type Options struct {
 	TagWrites    bool             // Files may be rewritten. Off, a scan changes nothing under the roots.
 	Write        WriteFunc        // Nil means audiometa.WriteContext.
 	Genres       *Genres          // Refreshed after scans and edits. Nil means a private one.
+	QuickScan    Daily            // When Run scans every day.
 }
 
 // WriteFunc saves edit to the audio file at path, as [audiometa.WriteContext] does.
@@ -79,19 +80,19 @@ type Stats struct {
 // concurrent use, but runs one scan at a time.
 type Scanner struct {
 	st        *store.Store
-	roots     []string
-	grace     time.Duration
 	workers   int
 	batchSize int // Tracks plus issues per write; tests lower it.
 	log       *slog.Logger
 	now       func() time.Time
 	artwork   *artwork.Cache
-	tagWrites bool
 	write     WriteFunc
 	claim     *libraryLock // Held by the one scan, from its claim to its end.
 	genres    *Genres
 	lock      *libraryLock // Held by a running scan or edit, or a batch of the fingerprint pass.
 	progress  atomic.Pointer[Progress]
+	cfg       atomic.Pointer[Live]  // Swapped only under the library lock.
+	daily     atomic.Pointer[Daily] // When the day's quick scan runs.
+	redaily   chan struct{}         // Holds a token when daily has moved.
 
 	fingerprint  fingerprintFunc                     // Reads a file's fingerprint; tests replace it.
 	fingerprints atomic.Pointer[FingerprintProgress] // The pass's progress.
@@ -102,10 +103,10 @@ type Scanner struct {
 // NewScanner returns a scanner that writes to st.
 func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // hugeParam: Options is built once at startup; a value keeps every caller a plain literal.
 	s := &Scanner{
-		st: st, roots: opts.Roots, grace: opts.MissingGrace, workers: opts.Workers,
+		st: st, workers: opts.Workers,
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
-		tagWrites: opts.TagWrites, write: opts.Write, genres: opts.Genres, claim: newLibraryLock(), lock: newLibraryLock(),
-		fingerprint: readFingerprint, wantPass: make(chan struct{}, 1),
+		write: opts.Write, genres: opts.Genres, claim: newLibraryLock(), lock: newLibraryLock(),
+		fingerprint: readFingerprint, wantPass: make(chan struct{}, 1), redaily: make(chan struct{}, 1),
 	}
 	if s.workers <= 0 {
 		s.workers = runtime.NumCPU()
@@ -125,6 +126,9 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 		}
 	}
 	s.progress.Store(&Progress{})
+	s.cfg.Store(&Live{Roots: opts.Roots, MissingGrace: opts.MissingGrace, TagWrites: opts.TagWrites})
+	daily := opts.QuickScan
+	s.daily.Store(&daily)
 	s.fingerprints.Store(&FingerprintProgress{})
 	return s
 }
@@ -179,7 +183,7 @@ func (s *Scanner) exclusiveScan(ctx context.Context, mode Mode) (Stats, error) {
 
 // scan is one scan, with the library lock held.
 func (s *Scanner) scan(ctx context.Context, mode Mode) (Stats, error) {
-	if len(s.roots) == 0 {
+	if len(s.live().Roots) == 0 {
 		// A lost config file must not start deleting the library.
 		known, err := s.st.KnownRoots(ctx)
 		if err != nil {
@@ -235,7 +239,7 @@ func (s *Scanner) finish(ctx context.Context, hold bool, stats *Stats) error {
 	if hold {
 		s.log.WarnContext(ctx, "not deleting missing tracks: a library root or folder was unreadable or a missing track's file is unreadable")
 	} else {
-		n, err := s.st.DeleteMissingBefore(ctx, s.now().Add(-s.grace))
+		n, err := s.st.DeleteMissingBefore(ctx, s.now().Add(-s.live().MissingGrace))
 		if err != nil {
 			return fmt.Errorf("delete missing: %w", err)
 		}

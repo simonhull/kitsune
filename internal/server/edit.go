@@ -20,6 +20,8 @@ const (
 	retryAfterSeconds = "30"
 	// staleDetail is what a client whose ETag or files fell behind is told.
 	staleDetail = "the files changed since you read them; read them again"
+	// tagWritesOffDetail is what an edit is told while tag writes are off.
+	tagWritesOffDetail = "tag writes are off: library.tag_writes"
 )
 
 // getAlbumTags answers with what a tag editor shows of an album.
@@ -90,8 +92,8 @@ func afterEdit(r *http.Request) *http.Request {
 // into req. It writes the problem and reports false when it can't go on. Unknown
 // members are refused, so a field this server doesn't edit never looks saved.
 func (s *Server) readEdit(w http.ResponseWriter, r *http.Request, req any) (string, bool) {
-	if !s.tagWrites {
-		writeProblem(w, r, http.StatusForbidden, "tag writes are off: library.tag_writes")
+	if !s.scanner.TagWrites() {
+		writeProblem(w, r, http.StatusForbidden, tagWritesOffDetail)
 		return "", false
 	}
 	ifMatch := r.Header.Get("If-Match")
@@ -169,6 +171,8 @@ func (s *Server) editFailed(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, library.ErrTagWritesOff): // Turned off since readEdit looked.
+		writeProblem(w, r, http.StatusForbidden, tagWritesOffDetail)
 	case errors.Is(err, library.ErrBusy):
 		w.Header().Set("Retry-After", retryAfterSeconds)
 		writeProblem(w, r, http.StatusConflict, "a scan or another edit is running")

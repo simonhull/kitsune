@@ -66,7 +66,7 @@ func TestRunDaily(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			runDaily(ctx, time.Now, 3, 30, scan, ready)
+			runDaily(ctx, time.Now, func() Daily { return Daily{Hour: 3, Minute: 30} }, nil, scan, ready)
 		}()
 		synctest.Wait()
 		if scans.Load() != 1 || readies.Load() != 1 {

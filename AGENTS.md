@@ -142,6 +142,31 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   caps are what stop a long query taking down a read connection; never hand-build an FTS expression.
   The `tracks_fts` table is contentless: it can rank, but can't say which column matched.
 
+## Settings
+- Server settings live in the database's `settings` table, one JSON value per key with its source.
+  `internal/settings` alone says which keys there are, what each holds (`defs`) and when a change
+  applies; the store keeps the text. `listen` and `data_dir` are not settings: the server needs them
+  before it opens the database, so `internal/config` reads them from the file at every start.
+- server.toml, `KITSUNE_<KEY>` variables and `serve -set KEY=VALUE` only seed a key the database has
+  no value for (flag over env over file), and only `cmd/` seeds (`seedsFor`, `settings.Apply`), at
+  startup. A seed that differs from the database's value logs one warning naming the key and source.
+  Clearing a key in the browser, or `kitsune-server settings reset KEY`, deletes its row, so the next
+  start seeds it again.
+- A `settings.Service` holds the live values as an immutable `Snapshot`, swapped atomically after a
+  `Change` stored every value in one transaction. Owners subscribe to their keys and apply a change
+  in `cmd/kitsune-server/follow.go`: the scanner through `Scanner.Configure`, which waits for the
+  library lock, so a scan or an edit never sees roots, grace or tag writes change midway; the
+  scrobbler through `SetClient`; the schedule through `SetDaily`; the log level through a
+  `slog.LevelVar`. `base_url` and `trusted_proxies` apply only at a restart (`restartRequired`).
+  `server.Config` keeps startup values; anything live is read from its owner.
+- `lastfm.shared_secret` is a secret: stored as written, because the server signs with it, and never
+  logged, returned (`GET /admin/settings` says only `set`) or put in an error. Never quote a value
+  in a `KeyError`. A secret can't be a `-set` flag, which the process list shows.
+- `GET /admin/folders` is the folder picker's browser of what the server sees: directories only, read
+  through `os.Root` from `Config.FolderRoot` (`/`), never a file name or size. A symlink is listed as
+  the folder it names, and an absolute target is read under the root, since `os.Root` refuses every
+  absolute link. The audio count is bounded by time and folders. Tests point the root at a temp dir.
+
 ## Auth
 - `internal/auth` owns credentials. Passwords are Argon2id in PHC format; the store only
   ever sees the encoded hash. Session tokens (`kss_…`) are shown to the client once and

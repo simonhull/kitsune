@@ -11,6 +11,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/simonhull/kitsune/internal/lastfm"
@@ -52,7 +53,7 @@ type Options struct {
 // Scrobbler sends the outbox to Last.fm. It is safe for concurrent use.
 type Scrobbler struct {
 	store    *store.Store
-	client   *lastfm.Client
+	client   atomic.Pointer[lastfm.Client] // Nil while Last.fm is not set up.
 	mbidKeys []string
 	log      *slog.Logger
 	now      func() time.Time
@@ -70,7 +71,7 @@ type start struct {
 // New returns a scrobbler for the outbox in st.
 func New(st *store.Store, opts Options) *Scrobbler {
 	s := &Scrobbler{
-		store: st, client: opts.Client, mbidKeys: opts.MBIDKeys, log: opts.Logger, now: opts.Now,
+		store: st, mbidKeys: opts.MBIDKeys, log: opts.Logger, now: opts.Now,
 		poke: make(chan struct{}, 1), playing: make(chan start, nowPlayingQueue),
 	}
 	if s.log == nil {
@@ -79,19 +80,30 @@ func New(st *store.Store, opts Options) *Scrobbler {
 	if s.now == nil {
 		s.now = time.Now
 	}
+	s.client.Store(opts.Client)
 	return s
 }
 
+// SetClient replaces the Last.fm client, as when an administrator changes the
+// key: nil turns Last.fm off. What waited is sent with the new client. Accounts
+// connected under another key may be refused, and are then asked to connect
+// again.
+func (s *Scrobbler) SetClient(c *lastfm.Client) {
+	s.client.Store(c)
+	s.Poke()
+}
+
 // Configured reports whether Last.fm is set up on this server.
-func (s *Scrobbler) Configured() bool { return s != nil && s.client != nil }
+func (s *Scrobbler) Configured() bool { return s.current() != nil }
 
 // AuthURL returns the page where a person approves Kitsune, which sends them
 // back to callback. It is "" when Last.fm is not set up.
 func (s *Scrobbler) AuthURL(callback string) string {
-	if !s.Configured() {
+	c := s.current()
+	if c == nil {
 		return ""
 	}
-	return s.client.AuthURL(callback)
+	return c.AuthURL(callback)
 }
 
 // errNotConfigured means Last.fm is not set up on this server.
@@ -104,10 +116,11 @@ var errNotConfigured = errors.New("last.fm is not set up")
 // The error wraps one of [lastfm.ErrTemporary] or [lastfm.ErrRejected], or
 // says that Last.fm is not set up.
 func (s *Scrobbler) Session(ctx context.Context, token string) (lastfm.Session, error) {
-	if !s.Configured() {
+	c := s.current()
+	if c == nil {
 		return lastfm.Session{}, errNotConfigured
 	}
-	return s.client.Session(ctx, token) //nolint:wrapcheck // lastfm's errors name the method and never a secret.
+	return c.Session(ctx, token) //nolint:wrapcheck // lastfm's errors name the method and never a secret.
 }
 
 // Poke wakes the sender: something was queued, or an account came back.
@@ -135,11 +148,9 @@ func (s *Scrobbler) NowPlaying(userID int64, trackID string) {
 	}
 }
 
-// Run sends until ctx ends. It returns at once when Last.fm is not set up.
+// Run sends until ctx ends. While Last.fm is not set up it sends nothing, and
+// [Scrobbler.SetClient] wakes it.
 func (s *Scrobbler) Run(ctx context.Context) {
-	if !s.Configured() {
-		return
-	}
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 	s.flush(ctx)
@@ -152,15 +163,27 @@ func (s *Scrobbler) Run(ctx context.Context) {
 		case <-s.poke:
 			s.flush(ctx)
 		case p := <-s.playing:
-			s.sendNowPlaying(ctx, p)
+			if client := s.current(); client != nil { // Not if Last.fm was turned off since.
+				s.sendNowPlaying(ctx, client, p)
+			}
 		}
 	}
+}
+
+// current returns the client, or nil while Last.fm is not set up. A nil
+// Scrobbler has none.
+func (s *Scrobbler) current() *lastfm.Client {
+	if s == nil {
+		return nil
+	}
+	return s.client.Load()
 }
 
 // flush sends what is due now for every account Last.fm takes. Only Run calls
 // it, so no two sends of the same item can overlap.
 func (s *Scrobbler) flush(ctx context.Context) {
-	if !s.Configured() {
+	client := s.current()
+	if client == nil {
 		return
 	}
 	users, err := s.store.LastfmDueUsers(ctx, s.now())
@@ -172,13 +195,13 @@ func (s *Scrobbler) flush(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		s.sendUser(ctx, id)
+		s.sendUser(ctx, client, id)
 	}
 }
 
 // sendUser sends one person's due items: scrobbles in batches, then loves one
 // at a time. It stops at the first failure that isn't the item's own fault.
-func (s *Scrobbler) sendUser(ctx context.Context, userID int64) {
+func (s *Scrobbler) sendUser(ctx context.Context, client *lastfm.Client, userID int64) {
 	acct, err := s.store.LastfmAccount(ctx, userID)
 	if err != nil {
 		s.warn(ctx, "last.fm: read the account", err, "userId", userID)
@@ -194,7 +217,7 @@ func (s *Scrobbler) sendUser(ctx context.Context, userID int64) {
 	} else if n > 0 {
 		s.log.WarnContext(ctx, "last.fm: dropped scrobbles too old to send", "userId", userID, "count", n)
 	}
-	sender := &userSender{s: s, userID: userID, acct: &acct, now: now}
+	sender := &userSender{s: s, client: client, userID: userID, acct: &acct, now: now}
 	if sender.drain(ctx, lastfm.MaxScrobbles, sender.scrobble, store.OutboxScrobble) {
 		sender.drain(ctx, 1, sender.love, store.OutboxLove, store.OutboxUnlove)
 	}
@@ -203,6 +226,7 @@ func (s *Scrobbler) sendUser(ctx context.Context, userID int64) {
 // userSender sends one person's items during one wake.
 type userSender struct {
 	s      *Scrobbler
+	client *lastfm.Client
 	userID int64
 	acct   *store.LastfmAccount
 	now    time.Time
@@ -313,22 +337,22 @@ func (u *userSender) scrobble(ctx context.Context, items []store.LastfmItem) ([]
 	for i := range items {
 		plays[i] = lastfm.Scrobble{Track: toTrack(&items[i].Track), At: items[i].At}
 	}
-	return u.s.client.Scrobble(ctx, u.acct.SessionKey, plays) //nolint:wrapcheck // settle branches on lastfm's kinds.
+	return u.client.Scrobble(ctx, u.acct.SessionKey, plays) //nolint:wrapcheck // settle branches on lastfm's kinds.
 }
 
 // love sends one love or unlove.
 func (u *userSender) love(ctx context.Context, items []store.LastfmItem) ([]lastfm.Ignored, error) {
 	it := &items[0]
-	send := u.s.client.Love
+	send := u.client.Love
 	if it.Kind == store.OutboxUnlove {
-		send = u.s.client.Unlove
+		send = u.client.Unlove
 	}
 	return nil, send(ctx, u.acct.SessionKey, artistOf(&it.Track), it.Track.Title)
 }
 
 // sendNowPlaying tells Last.fm what the user started, when their account
 // takes it. Nothing is retried.
-func (s *Scrobbler) sendNowPlaying(ctx context.Context, p start) {
+func (s *Scrobbler) sendNowPlaying(ctx context.Context, client *lastfm.Client, p start) {
 	acct, err := s.store.LastfmAccount(ctx, p.userID)
 	if err != nil || acct.State != store.LastfmOK || !acct.Switches.NowPlaying {
 		return // Not connected, or not wanted.
@@ -340,7 +364,7 @@ func (s *Scrobbler) sendNowPlaying(ctx context.Context, p start) {
 	t := toTrack(&track)
 	callCtx, cancel := context.WithTimeout(ctx, nowPlayingTimeout)
 	defer cancel()
-	err = s.client.NowPlaying(callCtx, acct.SessionKey, &t)
+	err = client.NowPlaying(callCtx, acct.SessionKey, &t)
 	switch {
 	case err == nil, ctx.Err() != nil:
 	case errors.Is(err, lastfm.ErrSession):

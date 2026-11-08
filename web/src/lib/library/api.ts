@@ -4,6 +4,7 @@ import {
 	EditError,
 	LoginError,
 	ServerError,
+	SettingsError,
 	SetupError,
 	UnauthorizedError,
 	type Album,
@@ -30,6 +31,9 @@ import {
 	type ScanStatus,
 	type SearchResults,
 	type SetupFailure,
+	type FolderListing,
+	type ServerSettings,
+	type SettingKey,
 	type SetupStatus,
 	type User
 } from './source.ts';
@@ -124,6 +128,28 @@ async function setupFailureOf(response: Response): Promise<SetupFailure> {
 		}
 	}
 	return { kind: 'unavailable' };
+}
+
+/** The keys a settings refusal can name, as its detail begins. */
+const settingKeys: readonly SettingKey[] = [
+	'lastfm.api_key',
+	'lastfm.shared_secret',
+	'library.roots',
+	'library.tag_writes',
+	'library.quick_scan',
+	'library.missing_grace',
+	'log.level',
+	'server.base_url',
+	'server.trusted_proxies'
+];
+
+/** Reads a refused settings change: its detail is `key: why`. */
+async function settingsErrorOf(response: Response): Promise<SettingsError> {
+	const { detail = '' } = ((await response.json().catch(() => null)) ?? {}) as {
+		detail?: string;
+	};
+	const key = settingKeys.find((each) => detail.startsWith(`${each}: `));
+	return new SettingsError(key === undefined ? detail : detail.slice(key.length + 2), key);
 }
 
 /** Builds a {@link LibrarySource} over the real API, on the session cookie. */
@@ -393,6 +419,30 @@ export function createApiSource({
 				body: JSON.stringify({ mode })
 			}),
 
-		issues: () => read<ScanIssues>('/admin/library/issues')
+		issues: () => read<ScanIssues>('/admin/library/issues'),
+
+		settings: () => read<ServerSettings>('/admin/settings'),
+
+		folders: (path) =>
+			read<FolderListing>(`/admin/folders?${new URLSearchParams({ path }).toString()}`),
+
+		async changeSettings(change) {
+			const response = await call('/admin/settings', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(change)
+			});
+			if (response.status === 401) {
+				onUnauthorized();
+				throw new UnauthorizedError();
+			}
+			if (response.status === 400) {
+				throw await settingsErrorOf(response);
+			}
+			if (!response.ok) {
+				throw new ServerError(response.status);
+			}
+			return (await response.json()) as ServerSettings;
+		}
 	};
 }

@@ -68,8 +68,11 @@ func (b *syncBuffer) String() string {
 
 // serveEnv is a config file for serve, with a data_dir of its own.
 type serveEnv struct {
-	config  string
-	dataDir string
+	config    string
+	dataDir   string
+	env       map[string]string // The environment serve sees.
+	level     *slog.LevelVar    // The level the database sets, or nil to keep Debug.
+	lastfmURL string            // A stand-in Last.fm, or "" for none.
 }
 
 // newServeEnv writes a config that listens on a free local port. extra is
@@ -81,13 +84,25 @@ func newServeEnv(t *testing.T, extra string) serveEnv {
 	return serveEnv{config: writeFile(t, "server.toml", body), dataDir: dataDir}
 }
 
-func (e serveEnv) load(t *testing.T) config.Config {
+// load reads the config as serve does, with the environment env, and returns
+// it with the launch serve would make of it.
+func (e serveEnv) load(t *testing.T) (config.Config, launch) {
 	t.Helper()
-	cfg, err := config.Load(e.config, config.DefaultPaths(noEnv))
+	cfg, keys, err := config.LoadKeys(e.config, config.DefaultPaths(noEnv))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	return cfg
+	seeds, err := seedsFor(&cfg, keys, e.lookup, nil)
+	if err != nil {
+		t.Fatalf("seeds: %v", err)
+	}
+	return cfg, launch{seeds: seeds, listenFromFile: keys.Has("server.listen"), lastfmURL: e.lastfmURL}
+}
+
+// lookup reads e's environment.
+func (e serveEnv) lookup(key string) (string, bool) {
+	v, ok := e.env[key]
+	return v, ok
 }
 
 func (e serveEnv) serveCLI() cliResult {
@@ -115,8 +130,8 @@ func TestServeMigrates(t *testing.T) {
 	}
 	markUnmigrated(t, path)
 
-	cfg := e.load(t)
-	a, err := openApp(t.Context(), &cfg, launch{}, slog.New(slog.DiscardHandler))
+	cfg, l := e.load(t)
+	a, err := openApp(t.Context(), &cfg, l, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("openApp: %v", err)
 	}
@@ -176,8 +191,9 @@ func newApp(t *testing.T, e serveEnv) (*app, *syncBuffer) {
 	t.Helper()
 	logs := &syncBuffer{}
 	log := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	cfg := e.load(t)
-	a, err := openApp(t.Context(), &cfg, launch{}, log)
+	cfg, l := e.load(t)
+	l.level = e.level
+	a, err := openApp(t.Context(), &cfg, l, log)
 	if err != nil {
 		t.Fatalf("openApp: %v", err)
 	}

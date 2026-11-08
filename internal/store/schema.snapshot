@@ -240,6 +240,18 @@ CREATE INDEX sessions_user ON sessions (user_id);
 --   key seqno=0 cid=1 name=user_id desc=0 coll=BINARY key=1
 --   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
 
+-- table settings
+CREATE TABLE settings (
+	key        TEXT    PRIMARY KEY,
+	value      TEXT    NOT NULL, -- JSON, checked by the key's rule before it is written
+	source     TEXT    NOT NULL CHECK (source IN ('web', 'server.toml', 'env', 'flag')),
+	updated_at INTEGER NOT NULL
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=key type=TEXT notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=value type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=source type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=updated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+
 -- table track_artists
 CREATE TABLE track_artists (
 	track_id  INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,

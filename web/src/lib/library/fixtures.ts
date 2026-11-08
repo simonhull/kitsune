@@ -1,3 +1,4 @@
+import { changedSettings, foldersFixture, settingsFixture } from './settingsFixtures.ts';
 import { fnv1a } from '#lib/cover/cover.ts';
 import { letterOf } from '#lib/pages/libraryRows.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
@@ -769,6 +770,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	const hearts = new Set(boardHearts);
 	const stars = new Map(boardStars);
 	let lastfm = lastfmStatusOf(options.lastfm ?? 'none');
+	let settings = settingsFixture(lastfm.configured);
 	const prefs = new Map<PrefKey, unknown>(
 		Object.entries(options.prefs ?? {}) as [PrefKey, unknown][]
 	);
@@ -868,6 +870,13 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	}
 
 	/** Tags are for administrators, as on the server. */
+	/** Settings are an administrator's, as on the server. */
+	function adminOnly(): void {
+		if (role !== 'admin') {
+			throw new ServerError(403);
+		}
+	}
+
 	function refuseAnyoneElse(): void {
 		if (!signedIn.canEditTags) {
 			throw new EditError({ kind: 'forbidden' });
@@ -1033,7 +1042,32 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		// Never fetched: the fixtures play on a silent clock.
 		streamUrl: (trackId) => `fixture:${trackId}`,
 		startScan: (mode) => respond(() => scans.start(mode)),
-		issues: () => respond(() => scans.issues())
+		issues: () => respond(() => scans.issues()),
+		settings: () =>
+			respond(() => {
+				adminOnly();
+				return structuredClone(settings);
+			}),
+		folders: (path) =>
+			respond(() => {
+				adminOnly();
+				const listing = foldersFixture(path, settings.settings['library.roots'].value);
+				if (listing === null) {
+					throw new ServerError(404);
+				}
+				return listing;
+			}),
+		changeSettings: (change) =>
+			respond(() => {
+				adminOnly();
+				settings = changedSettings(settings, change);
+				const key = settings.settings['lastfm.api_key'].value;
+				const configured = key !== '' && settings.settings['lastfm.shared_secret'].set;
+				if (configured !== lastfm.configured) {
+					lastfm = lastfmStatusOf(configured ? 'none' : 'unset');
+				}
+				return structuredClone(settings);
+			})
 	};
 }
 
