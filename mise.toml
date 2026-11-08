@@ -45,6 +45,10 @@ run = "golangci-lint fmt ./..."
 description = "Known-vulnerability scan (CI runs this too)"
 run = "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./..."
 
+[tasks.perf]
+description = "Measure how fast Kitsune responds against perf/budgets.json: server speed tests, then the browser suite"
+run = "sh scripts/perf.sh"
+
 [tasks."web:dev"]
 description = "Run the web client's dev server"
 dir = "web"

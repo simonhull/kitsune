@@ -1,0 +1,183 @@
+/**
+ * What the suite puts in the page before the app loads. It never changes what the app does: it
+ * notes when input arrived, when each `<audio>` element starts playing, and when a frame showing
+ * what a test waits for has been painted, all on the page's own clock (`performance.now()`).
+ *
+ * "Painted" is the end of the first frame whose rendering includes the change: the predicate is
+ * checked in every `requestAnimationFrame` callback, and once it holds, a message posted from that
+ * callback is delivered after the frame's style, layout and paint, which is when the time is taken.
+ */
+
+/** The probe's face in the page, as `window.perf`. */
+export interface Probe {
+	/** Starts waiting for `what`, before the input that should bring it. */
+	arm(what: Wait): void;
+	/**
+	 * Resolves with the ms from the latest `input` event (its `timeStamp`, when it reached the page)
+	 * to what was armed, or rejects after `timeoutMs`.
+	 */
+	settle(input: InputType, timeoutMs: number): Promise<number>;
+	/** Resolves with the length of every frame, in ms, over the next `ms`. */
+	frames(ms: number): Promise<number[]>;
+}
+
+/** What a measurement can start at: an input event, or the start of the page load. */
+export type InputType = 'click' | 'contextmenu' | 'keydown' | 'navigation';
+
+/** Where a test leaves a {@link Wait} for the next page load to arm at its very start. */
+export const armOnLoadKey = 'perf:arm';
+
+/**
+ * What a test can wait for. Each but `playing` is a check the probe runs once a frame, and with a
+ * `path`, holds only on that page.
+ */
+export type Wait =
+	| { kind: 'selector'; selector: string; path?: string }
+	/** An element is there and an `img` in it has decoded, as the cover on an album page. */
+	| { kind: 'loaded'; selector: string; image: string; path?: string }
+	| { kind: 'attribute'; selector: string; name: string; value: string; path?: string }
+	/** An `<audio>` element whose source has `src` in it fires `playing`: sound is coming out. */
+	| { kind: 'playing'; src: string };
+
+declare global {
+	interface Window {
+		perf: Probe;
+	}
+}
+
+/** Runs in the page, so it must stand alone: no imports, nothing from the module around it. */
+export function installProbe(): void {
+	// The default keeps 250 entries, and a long run fetches more than that.
+	performance.setResourceTimingBufferSize(100_000);
+	const input: Record<string, number> = {};
+	for (const type of ['click', 'contextmenu', 'keydown']) {
+		addEventListener(
+			type,
+			(event) => {
+				input[type] = event.timeStamp;
+			},
+			{ capture: true }
+		);
+	}
+
+	const waiting = new Map<string, ((at: number) => void)[]>();
+	const NativeAudio = window.Audio;
+	function ProbedAudio(src?: string): HTMLAudioElement {
+		const element = new NativeAudio(src);
+		element.addEventListener('playing', () => {
+			const at = performance.now();
+			for (const [want, resolvers] of waiting) {
+				if (element.src.includes(want)) {
+					waiting.delete(want);
+					for (const resolve of resolvers) {
+						resolve(at);
+					}
+				}
+			}
+		});
+		return element;
+	}
+	ProbedAudio.prototype = NativeAudio.prototype;
+	window.Audio = ProbedAudio as unknown as typeof Audio;
+
+	function holds(what: Exclude<Wait, { kind: 'playing' }>): boolean {
+		const element = document.querySelector(what.selector);
+		if (element === null || (what.path !== undefined && location.pathname !== what.path)) {
+			return false;
+		}
+		switch (what.kind) {
+			case 'selector':
+				return true;
+			case 'loaded': {
+				const images = [...element.querySelectorAll<HTMLImageElement>(what.image)];
+				return images.some((img) => img.complete && img.naturalWidth > 0);
+			}
+			case 'attribute':
+				return element.getAttribute(what.name) === what.value;
+		}
+	}
+
+	function afterPaint(): Promise<number> {
+		return new Promise((resolve) => {
+			const channel = new MessageChannel();
+			channel.port1.onmessage = () => {
+				resolve(performance.now());
+			};
+			channel.port2.postMessage(null);
+		});
+	}
+
+	function painted(what: Exclude<Wait, { kind: 'playing' }>): Promise<number> {
+		return new Promise((resolve) => {
+			const frame = () => {
+				if (holds(what)) {
+					void afterPaint().then(resolve);
+				} else {
+					requestAnimationFrame(frame);
+				}
+			};
+			requestAnimationFrame(frame);
+		});
+	}
+
+	function playing(src: string): Promise<number> {
+		return new Promise((resolve) => {
+			waiting.set(src, [...(waiting.get(src) ?? []), resolve]);
+		});
+	}
+
+	let armed: Promise<number> | null = null;
+	window.perf = {
+		arm(what) {
+			armed = what.kind === 'playing' ? playing(what.src) : painted(what);
+		},
+		async settle(type, timeoutMs) {
+			const wanted = armed;
+			armed = null;
+			if (wanted === null) {
+				throw new Error('nothing armed');
+			}
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const timeout = new Promise<never>((_, reject) => {
+				timer = setTimeout(() => {
+					reject(new Error(`not there after ${String(timeoutMs)} ms`));
+				}, timeoutMs);
+			});
+			const at = await Promise.race([wanted, timeout]);
+			clearTimeout(timer);
+			const from = type === 'navigation' ? 0 : input[type];
+			if (from === undefined) {
+				throw new Error(`no ${type} event seen`);
+			}
+			return at - from;
+		},
+		frames(ms) {
+			return new Promise((resolve) => {
+				const gaps: number[] = [];
+				let last = 0;
+				let end = 0;
+				const frame = (now: number) => {
+					if (last === 0) {
+						end = now + ms;
+					} else {
+						gaps.push(now - last);
+					}
+					last = now;
+					if (now < end) {
+						requestAnimationFrame(frame);
+					} else {
+						resolve(gaps);
+					}
+				};
+				requestAnimationFrame(frame);
+			});
+		}
+	};
+
+	// The key is spelled out: this function runs in the page, without the module's constants.
+	const onLoad = sessionStorage.getItem('perf:arm');
+	if (onLoad !== null) {
+		sessionStorage.removeItem('perf:arm');
+		window.perf.arm(JSON.parse(onLoad) as Wait);
+	}
+}
