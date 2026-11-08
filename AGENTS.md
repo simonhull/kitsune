@@ -80,6 +80,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   there are and what each holds, and checks a value on the way in and again on the way out; the
   store keeps the text. A new key is an entry there and its schema in the contract. Server settings
   never go there.
+- Every song a client starts is a listen (`POST /me/listens`), whether or not it counts as a play:
+  its start and its end share a client ID and are one `listens` row, and once ended it never
+  changes. Only `skipped`, moving on while it sounds, counts against a song; pausing, a restart,
+  the page closing and an error never do. `plays` and Last.fm stay as they were.
 - `GET /events` is every client's one stream of changes (server-sent events). `internal/events` numbers
   them, keeps 5 minutes or 10,000 for `Last-Event-ID`, and filters each by its `Audience`; past that a
   client gets `resync`. Handlers publish only after a change succeeded (`s.publish`), and the scanner
@@ -248,6 +252,22 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   passes messages through `StripRoot`; `GET /library` gives everyone counts by kind.
 - Scans remove audiometa's temp files (`isWriteTemp`), and only with `library.tag_writes` on: off,
   nothing under a root ever changes.
+
+## Shuffle
+- `internal/shuffle` is the pure engine: units, weights, a finite order and an endless stream, given
+  plain values. It knows nothing of the store. Its bench (`internal/shuffle/bench`, `BASELINE.md`) is
+  how a change to it is judged: hard rules fail the report, and a change lands only when no metric
+  is worse and one is better.
+- `internal/shuffler` feeds it: it builds a pool from the store (the scope's songs, the person's
+  marks, Combine and Exclude, and their listening), and keeps each session's state
+  (`shuffle_sessions`, opaque to the store) so `GET /me/shuffles/{id}/next` continues it on any
+  device. A run holding a song in scope plays whole, even into another album. A person's history is
+  kept in memory and dropped by their own listens and plays (`Service.Forget`). Flow's similarity is
+  genre overlap and co-listening from listens outside shuffle only, so flow never learns from itself;
+  with nothing known it is off.
+- A pick's `why` is structured factors, never prose: the client words them.
+- The web client starts every shuffle without waiting: it picks the first song from what it holds
+  and plays it, and asks `POST /me/shuffles` with it as `first` at the same time.
 
 ## Artwork
 - `internal/artwork` renders covers during the scan and knows nothing of the store or the

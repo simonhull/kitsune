@@ -179,7 +179,9 @@ func explain(t *testing.T, b *strings.Builder, lib *library) {
 	t.Helper()
 	tb := newTable(b, "Why it came up ("+lib.name+", first page, default settings)", "#", "unit", "weight", "reason")
 	s := newSession(t, lib, shuffle.DefaultSettings(), lib.sim, neutral{}, 15)
-	for i, pk := range s.play(10) {
+	picks := s.play(10)
+	for i := range picks {
+		pk := &picks[i]
 		tb.row(strconv.Itoa(i+1), fmt.Sprint(pk.Unit.Tracks()), num(pk.Reason.Weight()), pk.Reason.String())
 	}
 }

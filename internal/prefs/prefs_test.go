@@ -113,3 +113,38 @@ func TestThemeCheck(t *testing.T) {
 		})
 	}
 }
+
+func TestShuffleChecks(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		key, in, want string // An empty want is a refusal.
+	}{
+		{prefs.ShuffleRatings, "0.5", "0.5"},
+		{prefs.ShuffleRatings, " 1 ", "1"},
+		{prefs.ShuffleFlow, "0", "0"},
+		{prefs.ShuffleFlow, "1.5", ""},
+		{prefs.ShuffleFlow, "-0.1", ""},
+		{prefs.ShuffleRatings, `"0.5"`, ""},
+		{prefs.ShuffleMemory, "false", "false"},
+		{prefs.ShuffleMemory, "1", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key+" "+tt.in, func(t *testing.T) {
+			t.Parallel()
+			key, err := prefs.Lookup(tt.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := key.Check([]byte(tt.in))
+			if tt.want == "" {
+				if !errors.Is(err, prefs.ErrBadValue) {
+					t.Errorf("Check = %s, %v, want ErrBadValue", got, err)
+				}
+				return
+			}
+			if err != nil || string(got) != tt.want {
+				t.Errorf("Check = %s, %v, want %s", got, err, tt.want)
+			}
+		})
+	}
+}

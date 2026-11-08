@@ -70,6 +70,17 @@ type LastfmOutbox struct {
 	NextAt   int64
 }
 
+type Listen struct {
+	UserID     int64
+	TrackID    int64
+	ClientID   string
+	Shuffle    string
+	StartedAt  int64
+	ListenedMs int64
+	DurationMs int64
+	Ended      *string
+}
+
 type Play struct {
 	UserID   int64
 	TrackID  int64
@@ -122,6 +133,19 @@ type ShuffleRunTrack struct {
 	UserID   int64
 	Position int64
 	TrackID  int64
+}
+
+type ShuffleSession struct {
+	ID        int64
+	Ulid      string
+	UserID    int64
+	Scope     string
+	Mode      string
+	Seed      int64
+	Position  int64
+	State     []byte
+	CreatedAt int64
+	UpdatedAt int64
 }
 
 type Track struct {

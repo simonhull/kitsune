@@ -91,6 +91,13 @@
 		}}
 		>{#if edit === undefined}<Icon name="play" size={14} />{/if}Play</button
 	>
+	<button
+		type="button"
+		class="text"
+		onclick={() => {
+			actions.shuffle();
+		}}>Shuffle</button
+	>
 	{#if !compact}
 		<button
 			type="button"

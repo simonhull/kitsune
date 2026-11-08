@@ -146,6 +146,7 @@ type Pool struct {
 	solo      map[TrackID]Unit // songs skipped in shuffle outside any run, to lead when chosen
 	artistGap []int32          // by artist index: how far apart its units must be
 	albumGap  []int32          // by album index
+	artists   int              // how many artists the units have between them
 }
 
 // NewPool builds the units of tracks, linked by runs. A run's songs missing
@@ -237,6 +238,7 @@ func (p *Pool) index(b *builder) {
 		}
 	}
 	n := len(p.units)
+	p.artists = len(artistUnits)
 	p.artistGap = gaps(artistUnits, ArtistGap, n)
 	p.albumGap = gaps(albumUnits, AlbumGap, n)
 }

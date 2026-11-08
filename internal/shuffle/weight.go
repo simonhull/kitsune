@@ -116,6 +116,12 @@ type Reason struct {
 	Played bool
 	// Since is how long ago the unit last played.
 	Since time.Duration
+	// EarlySkips, Starts and Skips are the counts behind skip memory and skip
+	// rate: the most early skips of any song in the unit, and its starts and
+	// skips in shuffle. Listens counts the listens behind listen time, and
+	// Heard is the share of a song they heard, on average; 0 with none.
+	EarlySkips, Starts, Skips, Listens int
+	Heard                              float64
 	// Rating, Heart, Recency, SkipMemory, SkipRate and Listen are the factors.
 	Rating, Heart, Recency, SkipMemory, SkipRate, Listen float64
 	// Flow is the factor flow gave the pick, 1 when it gave none.
@@ -186,6 +192,10 @@ func Explain(u *Unit, s Settings, now time.Time) Reason {
 		Hearted: f.hearted,
 		Rating:  ratingFactor(f, s.Ratings),
 		Heart:   1, SkipMemory: 1, SkipRate: 1, Listen: 1, Flow: 1,
+		EarlySkips: f.earlySkips, Starts: f.starts, Skips: f.skips, Listens: f.listens,
+	}
+	if f.listens > 0 {
+		r.Heard = f.heard / float64(f.listens)
 	}
 	if f.rated > 0 {
 		r.Stars = float64(f.starSum) / float64(f.rated)

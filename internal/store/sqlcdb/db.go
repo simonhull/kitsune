@@ -141,6 +141,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getPrefStmt, err = db.PrepareContext(ctx, getPref); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPref: %w", err)
 	}
+	if q.getShuffleSessionStmt, err = db.PrepareContext(ctx, getShuffleSession); err != nil {
+		return nil, fmt.Errorf("error preparing query GetShuffleSession: %w", err)
+	}
 	if q.getTrackAlbumStmt, err = db.PrepareContext(ctx, getTrackAlbum); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTrackAlbum: %w", err)
 	}
@@ -170,6 +173,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertSettingIfAbsentStmt, err = db.PrepareContext(ctx, insertSettingIfAbsent); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSettingIfAbsent: %w", err)
+	}
+	if q.insertShuffleSessionStmt, err = db.PrepareContext(ctx, insertShuffleSession); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertShuffleSession: %w", err)
 	}
 	if q.insertTrackStmt, err = db.PrepareContext(ctx, insertTrack); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTrack: %w", err)
@@ -240,8 +246,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listArtistHitsStmt, err = db.PrepareContext(ctx, listArtistHits); err != nil {
 		return nil, fmt.Errorf("error preparing query ListArtistHits: %w", err)
 	}
+	if q.listArtistLinksByIDStmt, err = db.PrepareContext(ctx, listArtistLinksByID); err != nil {
+		return nil, fmt.Errorf("error preparing query ListArtistLinksByID: %w", err)
+	}
 	if q.listArtistNamesStmt, err = db.PrepareContext(ctx, listArtistNames); err != nil {
 		return nil, fmt.Errorf("error preparing query ListArtistNames: %w", err)
+	}
+	if q.listArtistTrackIDsStmt, err = db.PrepareContext(ctx, listArtistTrackIDs); err != nil {
+		return nil, fmt.Errorf("error preparing query ListArtistTrackIDs: %w", err)
 	}
 	if q.listExcludedOfStmt, err = db.PrepareContext(ctx, listExcludedOf); err != nil {
 		return nil, fmt.Errorf("error preparing query ListExcludedOf: %w", err)
@@ -315,6 +327,27 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listSettingsStmt, err = db.PrepareContext(ctx, listSettings); err != nil {
 		return nil, fmt.Errorf("error preparing query ListSettings: %w", err)
 	}
+	if q.listShuffleHeartedAlbumsStmt, err = db.PrepareContext(ctx, listShuffleHeartedAlbums); err != nil {
+		return nil, fmt.Errorf("error preparing query ListShuffleHeartedAlbums: %w", err)
+	}
+	if q.listShuffleLastPlaysStmt, err = db.PrepareContext(ctx, listShuffleLastPlays); err != nil {
+		return nil, fmt.Errorf("error preparing query ListShuffleLastPlays: %w", err)
+	}
+	if q.listShuffleListensStmt, err = db.PrepareContext(ctx, listShuffleListens); err != nil {
+		return nil, fmt.Errorf("error preparing query ListShuffleListens: %w", err)
+	}
+	if q.listShuffleRunsStmt, err = db.PrepareContext(ctx, listShuffleRuns); err != nil {
+		return nil, fmt.Errorf("error preparing query ListShuffleRuns: %w", err)
+	}
+	if q.listShuffleSittingsStmt, err = db.PrepareContext(ctx, listShuffleSittings); err != nil {
+		return nil, fmt.Errorf("error preparing query ListShuffleSittings: %w", err)
+	}
+	if q.listShuffleTrackArtistsStmt, err = db.PrepareContext(ctx, listShuffleTrackArtists); err != nil {
+		return nil, fmt.Errorf("error preparing query ListShuffleTrackArtists: %w", err)
+	}
+	if q.listShuffleTracksStmt, err = db.PrepareContext(ctx, listShuffleTracks); err != nil {
+		return nil, fmt.Errorf("error preparing query ListShuffleTracks: %w", err)
+	}
 	if q.listTrackArtistNamesStmt, err = db.PrepareContext(ctx, listTrackArtistNames); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackArtistNames: %w", err)
 	}
@@ -326,6 +359,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTrackRatingsStmt, err = db.PrepareContext(ctx, listTrackRatings); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackRatings: %w", err)
+	}
+	if q.listTrackRowIDsStmt, err = db.PrepareContext(ctx, listTrackRowIDs); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTrackRowIDs: %w", err)
 	}
 	if q.listWarnedTracksStmt, err = db.PrepareContext(ctx, listWarnedTracks); err != nil {
 		return nil, fmt.Errorf("error preparing query ListWarnedTracks: %w", err)
@@ -359,6 +395,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.pruneArtworkStmt, err = db.PrepareContext(ctx, pruneArtwork); err != nil {
 		return nil, fmt.Errorf("error preparing query PruneArtwork: %w", err)
+	}
+	if q.pruneShuffleSessionsStmt, err = db.PrepareContext(ctx, pruneShuffleSessions); err != nil {
+		return nil, fmt.Errorf("error preparing query PruneShuffleSessions: %w", err)
+	}
+	if q.recentListensStmt, err = db.PrepareContext(ctx, recentListens); err != nil {
+		return nil, fmt.Errorf("error preparing query RecentListens: %w", err)
 	}
 	if q.recentPlaysStmt, err = db.PrepareContext(ctx, recentPlays); err != nil {
 		return nil, fmt.Errorf("error preparing query RecentPlays: %w", err)
@@ -408,6 +450,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.trackAlbumULIDStmt, err = db.PrepareContext(ctx, trackAlbumULID); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackAlbumULID: %w", err)
 	}
+	if q.trackForListenStmt, err = db.PrepareContext(ctx, trackForListen); err != nil {
+		return nil, fmt.Errorf("error preparing query TrackForListen: %w", err)
+	}
 	if q.trackRowIDStmt, err = db.PrepareContext(ctx, trackRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackRowID: %w", err)
 	}
@@ -419,6 +464,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateLastfmSwitchesStmt, err = db.PrepareContext(ctx, updateLastfmSwitches); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateLastfmSwitches: %w", err)
+	}
+	if q.updateShuffleSessionStmt, err = db.PrepareContext(ctx, updateShuffleSession); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateShuffleSession: %w", err)
 	}
 	if q.updateTrackStmt, err = db.PrepareContext(ctx, updateTrack); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTrack: %w", err)
@@ -434,6 +482,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertLastfmAccountStmt, err = db.PrepareContext(ctx, upsertLastfmAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertLastfmAccount: %w", err)
+	}
+	if q.upsertListenStmt, err = db.PrepareContext(ctx, upsertListen); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertListen: %w", err)
 	}
 	if q.upsertPrefStmt, err = db.PrepareContext(ctx, upsertPref); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertPref: %w", err)
@@ -650,6 +701,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getPrefStmt: %w", cerr)
 		}
 	}
+	if q.getShuffleSessionStmt != nil {
+		if cerr := q.getShuffleSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getShuffleSessionStmt: %w", cerr)
+		}
+	}
 	if q.getTrackAlbumStmt != nil {
 		if cerr := q.getTrackAlbumStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTrackAlbumStmt: %w", cerr)
@@ -698,6 +754,11 @@ func (q *Queries) Close() error {
 	if q.insertSettingIfAbsentStmt != nil {
 		if cerr := q.insertSettingIfAbsentStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertSettingIfAbsentStmt: %w", cerr)
+		}
+	}
+	if q.insertShuffleSessionStmt != nil {
+		if cerr := q.insertShuffleSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertShuffleSessionStmt: %w", cerr)
 		}
 	}
 	if q.insertTrackStmt != nil {
@@ -815,9 +876,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listArtistHitsStmt: %w", cerr)
 		}
 	}
+	if q.listArtistLinksByIDStmt != nil {
+		if cerr := q.listArtistLinksByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listArtistLinksByIDStmt: %w", cerr)
+		}
+	}
 	if q.listArtistNamesStmt != nil {
 		if cerr := q.listArtistNamesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listArtistNamesStmt: %w", cerr)
+		}
+	}
+	if q.listArtistTrackIDsStmt != nil {
+		if cerr := q.listArtistTrackIDsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listArtistTrackIDsStmt: %w", cerr)
 		}
 	}
 	if q.listExcludedOfStmt != nil {
@@ -940,6 +1011,41 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listSettingsStmt: %w", cerr)
 		}
 	}
+	if q.listShuffleHeartedAlbumsStmt != nil {
+		if cerr := q.listShuffleHeartedAlbumsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listShuffleHeartedAlbumsStmt: %w", cerr)
+		}
+	}
+	if q.listShuffleLastPlaysStmt != nil {
+		if cerr := q.listShuffleLastPlaysStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listShuffleLastPlaysStmt: %w", cerr)
+		}
+	}
+	if q.listShuffleListensStmt != nil {
+		if cerr := q.listShuffleListensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listShuffleListensStmt: %w", cerr)
+		}
+	}
+	if q.listShuffleRunsStmt != nil {
+		if cerr := q.listShuffleRunsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listShuffleRunsStmt: %w", cerr)
+		}
+	}
+	if q.listShuffleSittingsStmt != nil {
+		if cerr := q.listShuffleSittingsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listShuffleSittingsStmt: %w", cerr)
+		}
+	}
+	if q.listShuffleTrackArtistsStmt != nil {
+		if cerr := q.listShuffleTrackArtistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listShuffleTrackArtistsStmt: %w", cerr)
+		}
+	}
+	if q.listShuffleTracksStmt != nil {
+		if cerr := q.listShuffleTracksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listShuffleTracksStmt: %w", cerr)
+		}
+	}
 	if q.listTrackArtistNamesStmt != nil {
 		if cerr := q.listTrackArtistNamesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTrackArtistNamesStmt: %w", cerr)
@@ -958,6 +1064,11 @@ func (q *Queries) Close() error {
 	if q.listTrackRatingsStmt != nil {
 		if cerr := q.listTrackRatingsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTrackRatingsStmt: %w", cerr)
+		}
+	}
+	if q.listTrackRowIDsStmt != nil {
+		if cerr := q.listTrackRowIDsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTrackRowIDsStmt: %w", cerr)
 		}
 	}
 	if q.listWarnedTracksStmt != nil {
@@ -1013,6 +1124,16 @@ func (q *Queries) Close() error {
 	if q.pruneArtworkStmt != nil {
 		if cerr := q.pruneArtworkStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing pruneArtworkStmt: %w", cerr)
+		}
+	}
+	if q.pruneShuffleSessionsStmt != nil {
+		if cerr := q.pruneShuffleSessionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing pruneShuffleSessionsStmt: %w", cerr)
+		}
+	}
+	if q.recentListensStmt != nil {
+		if cerr := q.recentListensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing recentListensStmt: %w", cerr)
 		}
 	}
 	if q.recentPlaysStmt != nil {
@@ -1095,6 +1216,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing trackAlbumULIDStmt: %w", cerr)
 		}
 	}
+	if q.trackForListenStmt != nil {
+		if cerr := q.trackForListenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing trackForListenStmt: %w", cerr)
+		}
+	}
 	if q.trackRowIDStmt != nil {
 		if cerr := q.trackRowIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing trackRowIDStmt: %w", cerr)
@@ -1113,6 +1239,11 @@ func (q *Queries) Close() error {
 	if q.updateLastfmSwitchesStmt != nil {
 		if cerr := q.updateLastfmSwitchesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateLastfmSwitchesStmt: %w", cerr)
+		}
+	}
+	if q.updateShuffleSessionStmt != nil {
+		if cerr := q.updateShuffleSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateShuffleSessionStmt: %w", cerr)
 		}
 	}
 	if q.updateTrackStmt != nil {
@@ -1138,6 +1269,11 @@ func (q *Queries) Close() error {
 	if q.upsertLastfmAccountStmt != nil {
 		if cerr := q.upsertLastfmAccountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertLastfmAccountStmt: %w", cerr)
+		}
+	}
+	if q.upsertListenStmt != nil {
+		if cerr := q.upsertListenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertListenStmt: %w", cerr)
 		}
 	}
 	if q.upsertPrefStmt != nil {
@@ -1243,6 +1379,7 @@ type Queries struct {
 	getLastfmAccountStmt             *sql.Stmt
 	getLastfmTrackStmt               *sql.Stmt
 	getPrefStmt                      *sql.Stmt
+	getShuffleSessionStmt            *sql.Stmt
 	getTrackAlbumStmt                *sql.Stmt
 	getTrackFileStmt                 *sql.Stmt
 	groupKeyTakenStmt                *sql.Stmt
@@ -1253,6 +1390,7 @@ type Queries struct {
 	insertRunStmt                    *sql.Stmt
 	insertRunTrackStmt               *sql.Stmt
 	insertSettingIfAbsentStmt        *sql.Stmt
+	insertShuffleSessionStmt         *sql.Stmt
 	insertTrackStmt                  *sql.Stmt
 	insertTrackArtistStmt            *sql.Stmt
 	insertTrackHeartStmt             *sql.Stmt
@@ -1276,7 +1414,9 @@ type Queries struct {
 	listAlbumsByNameStmt             *sql.Stmt
 	listArtistAlbumsStmt             *sql.Stmt
 	listArtistHitsStmt               *sql.Stmt
+	listArtistLinksByIDStmt          *sql.Stmt
 	listArtistNamesStmt              *sql.Stmt
+	listArtistTrackIDsStmt           *sql.Stmt
 	listExcludedOfStmt               *sql.Stmt
 	listHeartedAlbumsStmt            *sql.Stmt
 	listHeartedArtistsStmt           *sql.Stmt
@@ -1301,10 +1441,18 @@ type Queries struct {
 	listRunsOfStmt                   *sql.Stmt
 	listScanIssuesStmt               *sql.Stmt
 	listSettingsStmt                 *sql.Stmt
+	listShuffleHeartedAlbumsStmt     *sql.Stmt
+	listShuffleLastPlaysStmt         *sql.Stmt
+	listShuffleListensStmt           *sql.Stmt
+	listShuffleRunsStmt              *sql.Stmt
+	listShuffleSittingsStmt          *sql.Stmt
+	listShuffleTrackArtistsStmt      *sql.Stmt
+	listShuffleTracksStmt            *sql.Stmt
 	listTrackArtistNamesStmt         *sql.Stmt
 	listTrackHitArtistsStmt          *sql.Stmt
 	listTrackHitsStmt                *sql.Stmt
 	listTrackRatingsStmt             *sql.Stmt
+	listTrackRowIDsStmt              *sql.Stmt
 	listWarnedTracksStmt             *sql.Stmt
 	liveTrackFactsStmt               *sql.Stmt
 	markLastfmSentStmt               *sql.Stmt
@@ -1316,6 +1464,8 @@ type Queries struct {
 	pruneAlbumsStmt                  *sql.Stmt
 	pruneArtistsStmt                 *sql.Stmt
 	pruneArtworkStmt                 *sql.Stmt
+	pruneShuffleSessionsStmt         *sql.Stmt
+	recentListensStmt                *sql.Stmt
 	recentPlaysStmt                  *sql.Stmt
 	renameArtistStmt                 *sql.Stmt
 	resetLastfmOutboxStmt            *sql.Stmt
@@ -1332,15 +1482,18 @@ type Queries struct {
 	touchSessionStmt                 *sql.Stmt
 	trackAlbumRowStmt                *sql.Stmt
 	trackAlbumULIDStmt               *sql.Stmt
+	trackForListenStmt               *sql.Stmt
 	trackRowIDStmt                   *sql.Stmt
 	trackStatesStmt                  *sql.Stmt
 	undigestedStmt                   *sql.Stmt
 	updateLastfmSwitchesStmt         *sql.Stmt
+	updateShuffleSessionStmt         *sql.Stmt
 	updateTrackStmt                  *sql.Stmt
 	upsertAlbumStmt                  *sql.Stmt
 	upsertArtistStmt                 *sql.Stmt
 	upsertArtworkStmt                *sql.Stmt
 	upsertLastfmAccountStmt          *sql.Stmt
+	upsertListenStmt                 *sql.Stmt
 	upsertPrefStmt                   *sql.Stmt
 	upsertScanIssueStmt              *sql.Stmt
 	upsertSettingStmt                *sql.Stmt
@@ -1391,6 +1544,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getLastfmAccountStmt:             q.getLastfmAccountStmt,
 		getLastfmTrackStmt:               q.getLastfmTrackStmt,
 		getPrefStmt:                      q.getPrefStmt,
+		getShuffleSessionStmt:            q.getShuffleSessionStmt,
 		getTrackAlbumStmt:                q.getTrackAlbumStmt,
 		getTrackFileStmt:                 q.getTrackFileStmt,
 		groupKeyTakenStmt:                q.groupKeyTakenStmt,
@@ -1401,6 +1555,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertRunStmt:                    q.insertRunStmt,
 		insertRunTrackStmt:               q.insertRunTrackStmt,
 		insertSettingIfAbsentStmt:        q.insertSettingIfAbsentStmt,
+		insertShuffleSessionStmt:         q.insertShuffleSessionStmt,
 		insertTrackStmt:                  q.insertTrackStmt,
 		insertTrackArtistStmt:            q.insertTrackArtistStmt,
 		insertTrackHeartStmt:             q.insertTrackHeartStmt,
@@ -1424,7 +1579,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAlbumsByNameStmt:             q.listAlbumsByNameStmt,
 		listArtistAlbumsStmt:             q.listArtistAlbumsStmt,
 		listArtistHitsStmt:               q.listArtistHitsStmt,
+		listArtistLinksByIDStmt:          q.listArtistLinksByIDStmt,
 		listArtistNamesStmt:              q.listArtistNamesStmt,
+		listArtistTrackIDsStmt:           q.listArtistTrackIDsStmt,
 		listExcludedOfStmt:               q.listExcludedOfStmt,
 		listHeartedAlbumsStmt:            q.listHeartedAlbumsStmt,
 		listHeartedArtistsStmt:           q.listHeartedArtistsStmt,
@@ -1449,10 +1606,18 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listRunsOfStmt:                   q.listRunsOfStmt,
 		listScanIssuesStmt:               q.listScanIssuesStmt,
 		listSettingsStmt:                 q.listSettingsStmt,
+		listShuffleHeartedAlbumsStmt:     q.listShuffleHeartedAlbumsStmt,
+		listShuffleLastPlaysStmt:         q.listShuffleLastPlaysStmt,
+		listShuffleListensStmt:           q.listShuffleListensStmt,
+		listShuffleRunsStmt:              q.listShuffleRunsStmt,
+		listShuffleSittingsStmt:          q.listShuffleSittingsStmt,
+		listShuffleTrackArtistsStmt:      q.listShuffleTrackArtistsStmt,
+		listShuffleTracksStmt:            q.listShuffleTracksStmt,
 		listTrackArtistNamesStmt:         q.listTrackArtistNamesStmt,
 		listTrackHitArtistsStmt:          q.listTrackHitArtistsStmt,
 		listTrackHitsStmt:                q.listTrackHitsStmt,
 		listTrackRatingsStmt:             q.listTrackRatingsStmt,
+		listTrackRowIDsStmt:              q.listTrackRowIDsStmt,
 		listWarnedTracksStmt:             q.listWarnedTracksStmt,
 		liveTrackFactsStmt:               q.liveTrackFactsStmt,
 		markLastfmSentStmt:               q.markLastfmSentStmt,
@@ -1464,6 +1629,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		pruneAlbumsStmt:                  q.pruneAlbumsStmt,
 		pruneArtistsStmt:                 q.pruneArtistsStmt,
 		pruneArtworkStmt:                 q.pruneArtworkStmt,
+		pruneShuffleSessionsStmt:         q.pruneShuffleSessionsStmt,
+		recentListensStmt:                q.recentListensStmt,
 		recentPlaysStmt:                  q.recentPlaysStmt,
 		renameArtistStmt:                 q.renameArtistStmt,
 		resetLastfmOutboxStmt:            q.resetLastfmOutboxStmt,
@@ -1480,15 +1647,18 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		touchSessionStmt:                 q.touchSessionStmt,
 		trackAlbumRowStmt:                q.trackAlbumRowStmt,
 		trackAlbumULIDStmt:               q.trackAlbumULIDStmt,
+		trackForListenStmt:               q.trackForListenStmt,
 		trackRowIDStmt:                   q.trackRowIDStmt,
 		trackStatesStmt:                  q.trackStatesStmt,
 		undigestedStmt:                   q.undigestedStmt,
 		updateLastfmSwitchesStmt:         q.updateLastfmSwitchesStmt,
+		updateShuffleSessionStmt:         q.updateShuffleSessionStmt,
 		updateTrackStmt:                  q.updateTrackStmt,
 		upsertAlbumStmt:                  q.upsertAlbumStmt,
 		upsertArtistStmt:                 q.upsertArtistStmt,
 		upsertArtworkStmt:                q.upsertArtworkStmt,
 		upsertLastfmAccountStmt:          q.upsertLastfmAccountStmt,
+		upsertListenStmt:                 q.upsertListenStmt,
 		upsertPrefStmt:                   q.upsertPrefStmt,
 		upsertScanIssueStmt:              q.upsertScanIssueStmt,
 		upsertSettingStmt:                q.upsertSettingStmt,

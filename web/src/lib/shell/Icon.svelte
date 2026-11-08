@@ -17,7 +17,12 @@
 	const outlines = {
 		search: { path: 'm20 20-3.5-3.5', circle: true },
 		'chevron-down': { path: 'M6 9l6 6 6-6', circle: false },
-		close: { path: 'M6 6l12 12M18 6L6 18', circle: false }
+		close: { path: 'M6 6l12 12M18 6L6 18', circle: false },
+		// The Shuffle board's: two crossing paths, an arrow at each end.
+		shuffle: {
+			path: 'M3 7h3.5c2 0 3.2 1 4.3 2.6l2.4 3.8c1.1 1.6 2.3 2.6 4.3 2.6H21M3 17h3.5c1.4 0 2.4-.5 3.2-1.3M14.3 8.3c.8-.8 1.8-1.3 3.2-1.3H21M18 4l3 3-3 3M18 14l3 3-3 3',
+			circle: false
+		}
 	} as const;
 
 	interface Props {
@@ -42,6 +47,8 @@
 		fill="none"
 		stroke="currentColor"
 		stroke-width="2"
+		stroke-linecap={name === 'shuffle' ? 'round' : undefined}
+		stroke-linejoin={name === 'shuffle' ? 'round' : undefined}
 		aria-hidden="true"
 	>
 		{#if outline.circle}<circle cx="11" cy="11" r="7"></circle>{/if}

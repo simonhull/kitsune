@@ -32,8 +32,8 @@ func pool(t *testing.T, tracks []Track, runs []Run) *Pool {
 // ids flattens picks to their songs, in play order.
 func ids(picks []Pick) []TrackID {
 	var out []TrackID
-	for _, pk := range picks {
-		out = append(out, pk.Unit.tracks...)
+	for i := range picks {
+		out = append(out, picks[i].Unit.tracks...)
 	}
 	return out
 }
@@ -143,7 +143,8 @@ func TestFiniteSpacing(t *testing.T) {
 func scaledBreaks(p *Pool, picks []Pick) int {
 	var w window
 	breaks := 0
-	for _, pk := range picks {
+	for i := range picks {
+		pk := &picks[i]
 		if !w.fits(p, pk.Unit) {
 			breaks++
 		}

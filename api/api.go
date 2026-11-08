@@ -74,6 +74,23 @@ type User struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// ListenReport is the body of POST /me/listens: a listen's start, or its end.
+// The two share ClientID, and a report sent again changes nothing.
+type ListenReport struct {
+	// ClientID is the client's own ID for the listen.
+	ClientID string `json:"clientId"`
+	TrackID  string `json:"trackId"`
+	// StartedAt is when the listen started, by the client's clock.
+	StartedAt time.Time `json:"startedAt"`
+	// Shuffle is the shuffle session it plays in, if any.
+	Shuffle string `json:"shuffle,omitzero"`
+	// Ended is how it ended: completed, skipped, stopped or interrupted.
+	// Absent on a start.
+	Ended string `json:"ended,omitzero"`
+	// ListenedMs is how much of the song played.
+	ListenedMs int64 `json:"listenedMs,omitzero"`
+}
+
 // PlayReport is the body of POST /me/plays: one listen that counted. It names no
 // user: a play is always the caller's.
 type PlayReport struct {
@@ -530,6 +547,79 @@ type ShuffleRules struct {
 type ShuffleRun struct {
 	ID     string   `json:"id"`
 	Tracks []string `json:"tracks"`
+}
+
+// ShuffleStart is the body of POST /me/shuffles.
+type ShuffleStart struct {
+	Scope ShuffleScope `json:"scope"`
+	// Mode is finite or endless.
+	Mode string `json:"mode"`
+	// First is the song to lead with, which the client may already be playing.
+	First string `json:"first,omitzero"`
+	// Seed repeats a shuffle; absent for a new one.
+	Seed *uint64 `json:"seed,omitzero"`
+}
+
+// ShuffleScope is what a shuffle draws from.
+type ShuffleScope struct {
+	// Kind is library, hearted, rated, album, artist or tracks.
+	Kind string `json:"kind"`
+	// ID is the album's or artist's.
+	ID string `json:"id,omitzero"`
+	// Tracks are the songs, for tracks.
+	Tracks []string `json:"tracks,omitzero"`
+}
+
+// ShufflePage is a page of a shuffle: the response to POST /me/shuffles and to
+// GET /me/shuffles/{id}/next.
+type ShufflePage struct {
+	ID   string `json:"id"`
+	Mode string `json:"mode"`
+	// From is the position the page starts at, and To the one after it: the
+	// next page is asked for after To.
+	From int64 `json:"from"`
+	To   int64 `json:"to"`
+	// Songs is how many songs shuffle may pick from.
+	Songs int `json:"songs"`
+	// Done says a finite shuffle has nothing more.
+	Done  bool          `json:"done"`
+	Picks []ShufflePick `json:"picks"`
+}
+
+// ShufflePick is one pick: a song, or songs combined, and why it came up.
+type ShufflePick struct {
+	Songs []TrackHit `json:"songs"`
+	Why   ShuffleWhy `json:"why"`
+}
+
+// ShuffleWhy is why a pick came up, as factors that multiply its weight. The
+// client words them.
+type ShuffleWhy struct {
+	Stars      float64     `json:"stars"`
+	Rating     float64     `json:"rating"`
+	Hearted    bool        `json:"hearted"`
+	Heart      float64     `json:"heart"`
+	Played     bool        `json:"played"`
+	SinceDays  int         `json:"sinceDays"`
+	Recency    float64     `json:"recency"`
+	Memory     bool        `json:"memory"`
+	EarlySkips int         `json:"earlySkips"`
+	SkipMemory float64     `json:"skipMemory"`
+	Starts     int         `json:"starts"`
+	Skips      int         `json:"skips"`
+	SkipRate   float64     `json:"skipRate"`
+	Listens    int         `json:"listens"`
+	Heard      float64     `json:"heard"`
+	Listen     float64     `json:"listen"`
+	Flow       float64     `json:"flow"`
+	After      *ArtistLink `json:"after,omitzero"`
+	Similarity float64     `json:"similarity,omitzero"`
+}
+
+// EventShuffle is a shuffle event: one of the person's shuffles moved on.
+type EventShuffle struct {
+	ID string `json:"id"`
+	To int64  `json:"to"`
 }
 
 // ShuffleTracks is the body of PUT /me/shuffle/runs and of PUT and DELETE

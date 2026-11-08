@@ -57,6 +57,7 @@ type session struct {
 	e      *shuffle.Endless
 	who    listener
 	pool   *shuffle.Pool // the last page's
+	pages  int           // pages a day; 0 is one
 }
 
 // newSession starts a session over lib at now.
@@ -87,7 +88,7 @@ func (s *session) play(picks int) []shuffle.Pick {
 			}
 		}
 		out = append(out, page...)
-		s.c.Now = s.c.Now.Add(day) // one page a day
+		s.c.Now = s.c.Now.Add(day / time.Duration(max(1, s.pages))) // a page a day, or as many as asked
 	}
 	return out
 }

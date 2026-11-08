@@ -151,6 +151,7 @@
 			trouble = "Signing out didn't work. Try again.";
 		}
 	}
+	import ShuffleCard from '#lib/shuffle/ShuffleCard.svelte';
 </script>
 
 <svelte:head>
@@ -211,6 +212,11 @@
 						: 'dark'}.
 				</p>
 			</div>
+		</section>
+
+		<section aria-labelledby="shuffle-head" class="shuffles" data-morph-part="panel">
+			<h2 id="shuffle-head" class="mono">HOW SHUFFLE CHOOSES</h2>
+			<ShuffleCard />
 		</section>
 
 		<section aria-labelledby="where" class="where" data-morph-part="panel">
@@ -674,10 +680,11 @@
 
 	/* The Appearance board: how Kitsune looks heads the right column, and Last.fm follows it. */
 	.who {
-		grid-row: span 2;
+		grid-row: span 3;
 	}
 
 	.looks,
+	.shuffles,
 	.where {
 		grid-column: 2;
 	}
@@ -853,6 +860,7 @@
 
 		.who,
 		.looks,
+		.shuffles,
 		.where {
 			grid-row: auto;
 			grid-column: auto;

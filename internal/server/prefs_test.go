@@ -70,7 +70,7 @@ func TestPrefsKeepTheTheme(t *testing.T) {
 		"unknown":    `"sepia"`,
 		"case":       `"Dark"`,
 		"columns":    columnsBody,
-		"not a name": `true`,
+		"not a name": `42`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

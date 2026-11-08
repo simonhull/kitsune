@@ -14,7 +14,9 @@
 		"scroll": { "interaction": "Longest frame in a 2 s Library fling", "p95Ms": 32 },
 		"search": { "interaction": "Search, keystroke to results", "p95Ms": 65 },
 		"columns-menu": { "interaction": "Open the columns menu", "p95Ms": 30 },
-		"row-menu": { "interaction": "Open a song's ⋯ menu", "p95Ms": 25 }
+		"row-menu": { "interaction": "Open a song's ⋯ menu", "p95Ms": 25 },
+		"play-shuffle": { "interaction": "Shuffle the library, press to sound", "p95Ms": 50 },
+		"next-shuffle": { "interaction": "Next, in a shuffle", "p95Ms": 30 }
 	},
 	"server": {
 		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 0.5 },

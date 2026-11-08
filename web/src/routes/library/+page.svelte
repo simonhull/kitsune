@@ -31,6 +31,11 @@
 	import { player } from '#lib/player/player.svelte.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import ScanCard from '#lib/pages/ScanCard.svelte';
+	import Icon from '#lib/shell/Icon.svelte';
+	import { shuffles } from '#lib/shuffle/session.svelte.ts';
+	import { shuffleSettings } from '#lib/shuffle/settings.svelte.ts';
+	import { librarySource } from '#lib/shuffle/sources.ts';
+	import { settingsLine } from '#lib/shuffle/words.ts';
 	import { cubicOut } from 'svelte/easing';
 	import type { TransitionConfig } from 'svelte/transition';
 
@@ -74,6 +79,22 @@
 		new Set(filtered ? letters.filter((each) => !layout.letters.has(each)) : [])
 	);
 	const cuedId = $derived(library.playing?.track.id);
+	/** What Shuffle shuffles here: the library, or what the filter shows. */
+	const shuffleSource = $derived(librarySource(view.filter));
+	/**
+	 * Picks the first song ahead, so a press plays at once: when the list is ready, again for each
+	 * filter, and again after every press.
+	 */
+	$effect(() => {
+		const source = shuffleSource;
+		if (load.kind === 'ready') {
+			untrack(() => void shuffles.prime(source));
+		}
+	});
+	function shuffleList(): void {
+		shuffles.start(shuffleSource);
+		void shuffles.prime(shuffleSource);
+	}
 
 	/** How wide a song row is, measured, so the columns that fit are known before a row mounts. */
 	let songsWidth = $state(0);
@@ -420,6 +441,24 @@
 	{:else if load.kind === 'ready'}
 		<div class="veil" aria-hidden="true"></div>
 		<div class="top">
+			<div class="shuffle" data-morph-part="intro" data-morph-key="shuffle">
+				<button
+					type="button"
+					class="shuffle-button"
+					onpointerenter={() => void shuffles.prime(shuffleSource)}
+					onclick={shuffleList}
+					aria-label={filtered ? 'Shuffle these' : 'Shuffle the library'}
+					><Icon name="shuffle" size={18} /><span class="shuffle-words"
+						>{filtered ? 'Shuffle these' : 'Shuffle the library'}</span
+					></button
+				>
+				<span class="shuffle-line"
+					>{#each settingsLine(shuffleSettings.current).split(' · ') as part, index (part)}{index >
+						0
+							? ' · '
+							: ''}<span class="part">{part}</span>{/each}</span
+				>
+			</div>
 			<div class="filters" data-morph-part="intro" data-morph-key="filters">
 				<LibraryFilters
 					filter={view.filter}
@@ -634,6 +673,8 @@
 		--box-size: 16px;
 		--more-size: 36px;
 		--songs-left: calc(var(--page-edge) + var(--name-column) + var(--name-gap));
+		/* Shuffle and its line, above the filters: libraryView's shuffleRow. */
+		--shuffle-row: 112px;
 
 		position: relative;
 		padding: var(--head-top) 0 140px;
@@ -654,6 +695,7 @@
 		--star-type: 16px;
 		--box-size: 20px;
 		--more-size: 44px;
+		--shuffle-row: 140px;
 		--type-display: 132px;
 		--type-title: 22px;
 		--type-body: 18px;
@@ -726,6 +768,51 @@
 
 	.scanning {
 		padding-top: 16px;
+	}
+
+	/* The Shuffle board's: the fox's own button, and the settings it shuffles by under it. */
+	.shuffle {
+		height: calc(var(--shuffle-row) - 20px);
+		margin-bottom: 20px;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 10px;
+	}
+
+	.large .shuffle-button {
+		height: 64px;
+		padding: 0 28px;
+		gap: 12px;
+		font-size: 18px;
+	}
+
+	.shuffle-button {
+		height: 52px;
+		padding: 0 22px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		border: 0;
+		border-radius: var(--radius-pill);
+		background: var(--fox);
+		color: var(--fox-ink);
+		font-size: 15px;
+		font-weight: 700;
+		white-space: nowrap;
+	}
+
+	.shuffle-line {
+		font-family: var(--font-mono);
+		font-size: var(--type-mono);
+		letter-spacing: 0.06em;
+		line-height: 1.5;
+		color: var(--text-meta);
+	}
+
+	/* The line breaks between settings, never inside one. */
+	.part {
+		white-space: nowrap;
 	}
 
 	/* In the name column, under the artist and above what's next, so neither is covered. */
@@ -887,7 +974,7 @@
 	/* The name stays while its albums scroll; the next one pushes it out. */
 	.head {
 		position: sticky;
-		top: calc(var(--head-top) + 90px);
+		top: calc(var(--head-top) + var(--shuffle-row) + 90px);
 		pointer-events: auto;
 	}
 
@@ -970,7 +1057,26 @@
 			left: 16px;
 			width: auto;
 			padding: 0;
+			display: flex;
+			align-items: center;
+			gap: 6px;
 			background: none;
+		}
+
+		/* Stacked, Shuffle stands beside the filters, without its line. */
+		.shuffle {
+			order: 2;
+			height: auto;
+			margin: 0;
+		}
+
+		.shuffle-button {
+			height: 46px;
+			padding: 0 18px;
+		}
+
+		.shuffle-line {
+			display: none;
 		}
 
 		.frame,
@@ -1039,6 +1145,20 @@
 
 		.note {
 			margin-left: 16px;
+		}
+	}
+
+	/* A phone: Shuffle is the fox's round button, its words for the screen reader. */
+	@media (max-width: 600px) {
+		.shuffle-button {
+			width: 44px;
+			height: 44px;
+			padding: 0;
+			justify-content: center;
+		}
+
+		.shuffle-words {
+			display: none;
 		}
 	}
 </style>

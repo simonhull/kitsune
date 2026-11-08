@@ -26,6 +26,7 @@ import {
 	type LoginFailure,
 	type MarkKind,
 	type Me,
+	type ListenReport,
 	type PlayReport,
 	type Prefs,
 	type ScanIssues,
@@ -36,6 +37,7 @@ import {
 	type ServerSettings,
 	type SettingKey,
 	type SetupStatus,
+	type ShufflePage,
 	type ShuffleRules,
 	type ShuffleRun,
 	type TracksEdit,
@@ -245,6 +247,17 @@ export function createApiSource({
 				quietly
 			),
 
+		reportListen: (listen: ListenReport) =>
+			read<undefined>(
+				'/me/listens',
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(listen)
+				},
+				quietly
+			),
+
 		setHeart: (kind: MarkKind, id: string, on: boolean) =>
 			read<undefined>(`/me/hearts/${kind}/${encodeURIComponent(id)}`, {
 				method: on ? 'PUT' : 'DELETE'
@@ -437,6 +450,20 @@ export function createApiSource({
 
 		shuffleRules: (trackIds) =>
 			read<ShuffleRules>(`/me/shuffle/rules?tracks=${trackIds.map(encodeURIComponent).join(',')}`),
+
+		startShuffle: (start) =>
+			read<ShufflePage>('/me/shuffles', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(start)
+			}),
+
+		nextShuffle: (id, after) =>
+			read<ShufflePage>(
+				`/me/shuffles/${encodeURIComponent(id)}/next?after=${String(after)}`,
+				undefined,
+				quietly
+			),
 
 		setRun: (trackIds) =>
 			read<ShuffleRun>('/me/shuffle/runs', {

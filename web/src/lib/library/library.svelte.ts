@@ -19,7 +19,7 @@ import { healthFixture } from './healthFixtures.ts';
 import { patchIndex } from './indexPatch.ts';
 import { eventsUrl, Live, type EventStream } from './live.ts';
 import { Marks } from './marks.svelte.ts';
-import { Outbox } from './outbox.ts';
+import { ListenOutbox, Outbox } from './outbox.ts';
 import { createPrefs, type PrefsStore } from './prefs.ts';
 import { Search } from './search.svelte.ts';
 import {
@@ -56,7 +56,10 @@ import {
 	type ServerSettings,
 	type SettingsChange,
 	type SetupStatus,
+	type ListenReport,
+	type ShufflePage,
 	type ShuffleRules,
+	type ShuffleStart,
 	type TracksEdit
 } from './source.ts';
 
@@ -92,6 +95,8 @@ const readyAhead = 12;
 const hiddenRetryMs = 1000;
 /** How long a list of issues that failed to load waits before its one try again. */
 export const issuesRetryMs = 3000;
+/** How long a listen's report waits to go, so the sound starting has the connection to itself. */
+export const listenFlushMs = 1500;
 
 export type Session = 'signed-in' | 'signed-out' | 'down';
 
@@ -261,6 +266,8 @@ export class Library {
 	#epoch = 0;
 	readonly #readyMemory: ReadyMemory;
 	readonly #outbox: Outbox;
+	readonly #listens: ListenOutbox;
+	#listensFlush: ReturnType<typeof setTimeout> | undefined;
 	#waited = false;
 	#scanPoll: ReturnType<typeof setTimeout> | undefined;
 	/** Set while a running scan is being followed, so there's only ever one of these. */
@@ -297,6 +304,7 @@ export class Library {
 		this.#readyMemory =
 			options.readyMemory ?? readyMemoryIn(() => localStorage, 'kitsune:ready-seen');
 		this.#outbox = new Outbox(options.outbox ?? (() => localStorage), this.#source);
+		this.#listens = new ListenOutbox(options.outbox ?? (() => localStorage), this.#source);
 		this.marks = new Marks(this.#source);
 		this.prefs = createPrefs(this.#source);
 		const events = options.events === undefined ? browserEvents() : options.events;
@@ -416,10 +424,26 @@ export class Library {
 		}
 	}
 
+	/**
+	 * Reports a listen's start or end. It goes a moment later, with whatever else came by then: a
+	 * track change mustn't spend the connection the next song's sound needs.
+	 */
+	reportListen(report: ListenReport): void {
+		if (this.user === null || this.simulated) {
+			return;
+		}
+		this.#listens.add(this.user.id, report);
+		clearTimeout(this.#listensFlush);
+		this.#listensFlush = setTimeout(() => {
+			this.flushPlays();
+		}, listenFlushMs);
+	}
+
 	/** Sends what's waiting for whoever is signed in, and only for them. */
 	flushPlays(): void {
 		if (this.user !== null && !this.simulated) {
 			void this.#outbox.flush(this.user.id);
+			void this.#listens.flush(this.user.id);
 		}
 	}
 
@@ -1366,6 +1390,16 @@ export class Library {
 				this.markIndexStale();
 			}
 		}
+	}
+
+	/** Starts a shuffle on the server, with its first page. Rejects with `ServerError`. */
+	startShuffle(start: ShuffleStart): Promise<ShufflePage> {
+		return this.#source.startShuffle(start);
+	}
+
+	/** A shuffle's page after a position. Rejects with `ServerError`. */
+	nextShuffle(id: string, after: number): Promise<ShufflePage> {
+		return this.#source.nextShuffle(id, after);
 	}
 
 	/** The caller's shuffle rules touching these songs. Rejects with `ServerError`. */

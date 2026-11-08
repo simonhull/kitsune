@@ -20,6 +20,18 @@ type Config struct {
 	Similarity Similarity
 	// Now is the present, for recency.
 	Now time.Time
+	// Cycle is the share of an endless pool's weight that must play before a
+	// unit may come back, from 0 to 1; 0 means [CycleShare]. It is here for
+	// the bench, which prices other values against it.
+	Cycle float64
+}
+
+// cycle is c's cycle share, its default when unset or out of range.
+func (c *Config) cycle() float64 {
+	if c.Cycle > 0 && c.Cycle <= 1 {
+		return c.Cycle
+	}
+	return CycleShare
 }
 
 // Pick is one unit in an order, with why it came up.

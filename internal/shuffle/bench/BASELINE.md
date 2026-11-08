@@ -58,63 +58,75 @@ Orders per library: 60 (50k: 4, tiny album: 500), at the default settings.
 
 | library | metric | shuffle | naive |
 | --- | --- | --- | --- |
-| skewed | artist within 4, per 1000 | 0.00 | 187.00 |
-| skewed | album within 8, per 1000 | 0.00 | 21.33 |
-| skewed | longest artist streak | 1 | 5 |
-| skewed | gap spread (CV, 0 is even) | 0.762 | 0.936 |
-| skewed | units played in the first pool-size picks | 80.2% | 100.0% |
-| skewed | longest wait, in pool sizes | 2.084 | 1.966 |
-| skewed | units never played | 98 | 0 |
+| skewed | artist within 4, per 1000 | 0.00 | 183.22 |
+| skewed | album within 8, per 1000 | 0.00 | 19.67 |
+| skewed | longest artist streak | 1 | 6 |
+| skewed | gap spread (CV, 0 is even) | 0.737 | 0.927 |
+| skewed | units played in the first pool-size picks | 79.9% | 100.0% |
+| skewed | longest wait, in pool sizes | 2.050 | 1.995 |
+| skewed | units never played in 3 passes | 0 | 0 |
 | skewed | runs intact | 100.0% | 0.0% |
 | skewed | skipped songs played, per 1000 | 0.00 | 22.00 |
-| compilations | artist within 4, per 1000 | 0.00 | 28.25 |
-| compilations | album within 8, per 1000 | 0.00 | 41.75 |
+| compilations | artist within 4, per 1000 | 0.00 | 26.83 |
+| compilations | album within 8, per 1000 | 0.00 | 38.83 |
 | compilations | longest artist streak | 1 | 3 |
-| compilations | gap spread (CV, 0 is even) | 0.823 | 0.876 |
-| compilations | units played in the first pool-size picks | 88.3% | 100.0% |
-| compilations | longest wait, in pool sizes | 2.067 | 1.978 |
-| compilations | units never played | 20 | 0 |
+| compilations | gap spread (CV, 0 is even) | 0.741 | 0.867 |
+| compilations | units played in the first pool-size picks | 78.0% | 100.0% |
+| compilations | longest wait, in pool sizes | 2.051 | 1.978 |
+| compilations | units never played in 3 passes | 0 | 0 |
 | compilations | runs intact | 100.0% | 0.0% |
 | compilations | skipped songs played, per 1000 | 0.00 | 19.50 |
-| many runs | artist within 4, per 1000 | 0.00 | 132.33 |
-| many runs | album within 8, per 1000 | 0.00 | 50.67 |
+| many runs | artist within 4, per 1000 | 0.00 | 128.22 |
+| many runs | album within 8, per 1000 | 0.00 | 48.67 |
 | many runs | longest artist streak | 1 | 5 |
-| many runs | gap spread (CV, 0 is even) | 0.770 | 0.935 |
-| many runs | units played in the first pool-size picks | 90.1% | 100.0% |
-| many runs | longest wait, in pool sizes | 2.632 | 1.986 |
-| many runs | units never played | 1 | 0 |
+| many runs | gap spread (CV, 0 is even) | 0.725 | 0.932 |
+| many runs | units played in the first pool-size picks | 79.1% | 100.0% |
+| many runs | longest wait, in pool sizes | 2.046 | 1.986 |
+| many runs | units never played in 3 passes | 0 | 0 |
 | many runs | runs intact | 100.0% | 0.0% |
 | many runs | skipped songs played, per 1000 | 0.00 | 48.00 |
 | 50k | artist within 4, per 1000 | 0.00 | 38.00 |
 | 50k | album within 8, per 1000 | 0.00 | 2.00 |
 | 50k | longest artist streak | 1 | 3 |
-| 50k | gap spread (CV, 0 is even) | 0.737 | 0.824 |
+| 50k | gap spread (CV, 0 is even) | 0.721 | 0.824 |
 | 50k | units played in the first pool-size picks | 4.1% | 4.0% |
 | 50k | longest wait, in pool sizes | 0.041 | 0.040 |
-| 50k | units never played | 46352 | 48000 |
+| 50k | units never played in 3 passes | 46352 | 48000 |
 | 50k | runs intact | 100.0% | 0.0% |
 | 50k | skipped songs played, per 1000 | 0.00 | 22.50 |
 
-Two passes' worth of picks over each library (50k: 2,000), 50 a day, the listener hearing every song through, so recency counts. The naive shuffle plays the songs through in one random order, then another.
+Three passes' worth of picks over each library (50k: 2,000), 50 a day, the listener hearing every song through, so recency counts. The naive shuffle plays the songs through in one random order, then another.
 
 ## Fidelity: plays against weights (skewed)
 
 | ratings matter | distance (0 is exact) | naive distance | 5★ : 1★ plays | 5★ : 1★ weight |
 | --- | --- | --- | --- | --- |
-| 0.000 | 0.018 | 0.003 | 0.833 | 1.000 |
-| 0.500 | 0.060 | 0.102 | 1.663 | 3.451 |
-| 1.000 | 0.119 | 0.201 | 3.504 | 11.901 |
+| 0.000 | 0.014 | 0.003 | 0.936 | 1.000 |
+| 0.500 | 0.059 | 0.102 | 1.729 | 3.451 |
+| 1.000 | 0.113 | 0.201 | 2.517 | 11.901 |
 
 Distance is the total variation between plays by rating and weight by rating, the weight being rating × heart. The no-repeat window and recency hold plays closer to even than the weights alone would, by design, and spacing caps an artist at one unit in four, which holds back this library's biggest artist and the ratings it tends to get, even with ratings off.
+
+## Cycle share: fidelity against coverage (skewed)
+
+| cycle share | 5★ : 1★ plays | distance | played in the first pool-size | longest wait | never in 3 passes |
+| --- | --- | --- | --- | --- | --- |
+| 0.500 | 1.654 | 0.057 | 76.8% | 2.076 | 0 |
+| 0.600 | 1.686 | 0.061 | 77.8% | 2.057 | 0 |
+| 0.700 (chosen) | 1.656 | 0.068 | 79.3% | 2.058 | 0 |
+| 0.800 | 1.639 | 0.073 | 83.6% | 2.035 | 0 |
+| 0.900 | 1.420 | 0.079 | 90.2% | 2.021 | 0 |
+
+Three passes at ratings 0.5, four pages a day. A lower share lets played units back sooner, so weights bite harder (5★ : 1★ plays toward the weight ratio) at the cost of how many units a first pass reaches. The deadline holds the longest wait whatever the share.
 
 ## Flow: neighbor similarity (skewed)
 
 | mode | flow | neighbors | random pairs | lift |
 | --- | --- | --- | --- | --- |
 | naive | – | 0.286 | 0.242 | – |
-| endless | 0.000 | 0.245 | 0.245 | 0.000 |
-| endless | 0.300 | 0.273 | 0.246 | 0.026 |
-| endless | 1.000 | 0.375 | 0.247 | 0.129 |
+| endless | 0.000 | 0.243 | 0.243 | -0.001 |
+| endless | 0.300 | 0.274 | 0.242 | 0.033 |
+| endless | 1.000 | 0.377 | 0.246 | 0.131 |
 | finite | 0.000 | 0.248 | 0.244 | 0.003 |
 | finite | 0.300 | 0.340 | 0.241 | 0.099 |
 | finite | 1.000 | 0.466 | 0.246 | 0.220 |
@@ -126,9 +138,9 @@ The bench's similarity places artists on a circle, standing in for genre; a rand
 | listener | phase | share of plays from their set | skip memory | skip rate | listen time |
 | --- | --- | --- | --- | --- | --- |
 | neutral | always | 0.099 | 1.000 | 1.000 | 1.000 |
-| skipper | skips its set within 12 s | 0.069 | 0.731 | 0.527 | 0.701 |
-| skipper | then stops skipping | 0.083 | 1.000 | 0.741 | 0.836 |
-| half-listener | moves on halfway through its set | 0.077 | 1.000 | 0.518 | 0.839 |
+| skipper | skips its set within 12 s | 0.069 | 0.731 | 0.533 | 0.704 |
+| skipper | then stops skipping | 0.084 | 1.000 | 0.747 | 0.840 |
+| half-listener | moves on halfway through its set | 0.075 | 1.000 | 0.520 | 0.840 |
 
 Each phase is 4000 picks, 50 a day, measured over its second half; each listener's set is the same tenth of the songs. Factors are means over the set's units that have come up, at the end of the phase.
 
@@ -136,13 +148,13 @@ Each phase is 4000 picks, 50 a day, measured over its second half; each listener
 
 | # | unit | weight | reason |
 | --- | --- | --- | --- |
-| 1 | [2861] | 1.000 | no signals |
-| 2 | [1040] | 1.859 | 5★ ×1.55, never played ×1.20, flow from 7 ×0.85 |
-| 3 | [2957] | 1.859 | 5★ ×1.55, played 321d ago ×1.20, flow from 1 ×0.85 |
-| 4 | [775] | 1.200 | never played ×1.20, flow from 2 ×0.85 |
-| 5 | [1953] | 1.518 | 4★ ×1.26, never played ×1.20, flow from 67 ×0.85 |
-| 6 | [2941] | 1.518 | 4★ ×1.26, never played ×1.20, flow from 72 ×0.85 |
-| 7 | [2898] | 1.859 | 5★ ×1.55, played 209d ago ×1.20, flow from 1 ×0.85 |
-| 8 | [517] | 1.200 | played 325d ago ×1.20, flow from 10 ×0.97 |
-| 9 | [20] | 0.930 | 2★ ×0.77, played 307d ago ×1.20, flow from 37 ×0.85 |
-| 10 | [582] | 0.930 | 2★ ×0.77, never played ×1.20, flow from 5 ×0.85 |
+| 1 | [2957] | 1.859 | 5★ ×1.55, played 321d ago ×1.20 |
+| 2 | [1669] | 1.000 | 3★ ×1.00, flow from 2 ×0.85 |
+| 3 | [775] | 1.200 | never played ×1.20, flow from 1 ×0.85 |
+| 4 | [1953] | 1.518 | 4★ ×1.26, never played ×1.20, flow from 67 ×0.85 |
+| 5 | [219] | 1.859 | 5★ ×1.55, played 295d ago ×1.20, flow from 72 ×1.01 |
+| 6 | [2119] | 0.930 | 2★ ×0.77, never played ×1.20, flow from 10 ×0.85 |
+| 7 | [158] | 1.859 | 5★ ×1.55, played 197d ago ×1.20, flow from 4 ×0.85 |
+| 8 | [1926] | 1.265 | 4★ ×1.26, flow from 1 ×0.90 |
+| 9 | [1411] | 1.500 | heart ×1.25, played 209d ago ×1.20, flow from 9 ×0.85 |
+| 10 | [2074] | 1.518 | 4★ ×1.26, never played ×1.20, flow from 16 ×0.85 |
