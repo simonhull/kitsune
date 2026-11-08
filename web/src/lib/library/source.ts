@@ -255,6 +255,30 @@ export interface LibraryTrack {
 	/** The caller's. */
 	plays?: number;
 	lastPlayedAt?: string;
+	/** The caller's shuffle rules on it. */
+	shuffle?: ShuffleMark;
+}
+
+/** What a person's shuffle rules say of one song, on the Library list. */
+export interface ShuffleMark {
+	/** The run it's combined in, its place from 1, and how many songs the run has. */
+	run?: string;
+	position?: number;
+	length?: number;
+	/** Shuffle never picks it. */
+	excluded?: boolean;
+}
+
+/** Songs that always play together in shuffle, in order. */
+export interface ShuffleRun {
+	id: string;
+	tracks: string[];
+}
+
+/** A person's rules touching some songs: every run holding one, whole, and which they left out. */
+export interface ShuffleRules {
+	runs: ShuffleRun[];
+	excluded: string[];
 }
 
 /** What `GET /library/index?fields=` can add to each track. */
@@ -267,7 +291,8 @@ export type IndexField =
 	| 'bitrate'
 	| 'added'
 	| 'plays'
-	| 'lastPlayed';
+	| 'lastPlayed'
+	| 'shuffle';
 
 /** The preferences a person keeps on the server, by key, with what each holds. */
 export interface Prefs {
@@ -617,6 +642,14 @@ export interface LibrarySource {
 	editTracks(edit: TracksEdit): Promise<EditedTracks>;
 	/** The album a song is on now. Rejects with {@link EditError}: `gone` for an unknown one. */
 	trackAlbum(trackId: string): Promise<string>;
+	/** The caller's shuffle rules touching these songs. Rejects with {@link ServerError}. */
+	shuffleRules(trackIds: readonly string[]): Promise<ShuffleRules>;
+	/** Combines songs into one run, in order. Rejects with {@link ServerError}: 404 for an unknown song. */
+	setRun(trackIds: readonly string[]): Promise<ShuffleRun>;
+	/** Undoes a run. Rejects with {@link ServerError}. */
+	deleteRun(id: string): Promise<void>;
+	/** Leaves songs out of shuffle, or lets them back. Rejects with {@link ServerError}. */
+	setExcluded(trackIds: readonly string[], on: boolean): Promise<void>;
 	/** The URL a track's audio streams from. */
 	streamUrl(trackId: string): string;
 	/** Starts a scan. Rejects with a {@link ServerError}: 409 when one is running, 503 at shutdown. */

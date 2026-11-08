@@ -108,8 +108,12 @@
 		tagEdits.close(id);
 		bulkEdits.open(
 			'album',
-			tracks.map((track) => track.id),
-			new Map(tracks.map((track) => [track.id, id]))
+			tracks.map((track) => ({
+				id: track.id,
+				albumId: id,
+				title: track.fields.title?.at(0) ?? track.file
+			})),
+			library.user?.canEditTags === true
 		);
 	}
 
@@ -166,7 +170,7 @@
 			bind:eyebrow
 		/>
 		{#if bulk !== null}
-			<BulkEditor session={bulk} canWrite={library.user?.canEditTags === true} />
+			<BulkEditor session={bulk} />
 			<TagBar session={bulk} what="these tracks" leave={leaveBulk} write={() => void writeBulk()} />
 		{:else}
 			<TrackList

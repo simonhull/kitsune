@@ -133,7 +133,9 @@
 
 <div
 	class="shell"
-	class:editing={edit !== undefined || many}
+	class:editing={edit !== undefined ||
+		many ||
+		(bulkEdits.current !== null && routeId === '/library')}
 	class:one={edit?.open != null}
 	style:--accent={palette?.accent}
 	style:--on-accent={palette?.onAccent}

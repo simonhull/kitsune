@@ -153,7 +153,16 @@
 
 	function editPicked(): void {
 		bulkNote = '';
-		bulkEdits.open('selection', picked, albumOf);
+		bulkEdits.open(
+			'selection',
+			picked.flatMap((id) => {
+				const song = songs.get(id);
+				return song === undefined
+					? []
+					: [{ id, albumId: song.album.id, title: song.track.title, trackNo: song.track.trackNo }];
+			}),
+			canEditTags
+		);
 	}
 
 	function leaveBulk(words = ''): void {
@@ -547,7 +556,7 @@
 		{/if}
 		{#if bulk !== null}
 			<div class="bulk-layer" role="region" aria-label="Editing songs">
-				<BulkEditor session={bulk} canWrite={canEditTags} />
+				<BulkEditor session={bulk} />
 				<TagBar
 					session={bulk}
 					what="these songs"
@@ -566,7 +575,7 @@
 				hearted={picked.every((id) => library.marks.hearted('tracks', id))}
 				actions={pickedActions}
 				compact={!view.columns}
-				edit={canEditTags ? editPicked : undefined}
+				edit={editPicked}
 				onclear={() => {
 					selection.clear();
 				}}

@@ -1,5 +1,6 @@
 import { MediaQuery, SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { library } from '#lib/library/library.svelte.ts';
+import type { RuleChange } from '#lib/library/shuffleRules.ts';
 import { EditError, type AlbumTags, type TagField } from '#lib/library/source.ts';
 import {
 	albumWide,
@@ -51,18 +52,35 @@ export class TagSession {
 	/** Problems wait for a field to be left: a year half typed isn't wrong yet. */
 	readonly #left = new SvelteSet<string>();
 	#attempted = $state(false);
+	/** The songs the person leaves out of shuffle, as read, and what they've switched. */
+	excluded = $state.raw<readonly string[]>([]);
+	excludeDraft = $state.raw<Readonly<Record<string, boolean>>>({});
+
+	/** What saving sends to the person's shuffle rules, which are never in a file. */
+	readonly ruleChanges = $derived.by<RuleChange[]>(() => {
+		const switched = Object.entries(this.excludeDraft);
+		return [true, false].flatMap((on) => {
+			const tracks = switched.filter(([, want]) => want === on).map(([id]) => id);
+			return tracks.length === 0 ? [] : [{ kind: 'exclude' as const, tracks, on }];
+		});
+	});
 
 	readonly wide = $derived<AlbumWide | null>(this.tags === null ? null : albumWide(this.tags));
 	readonly #problems = $derived(
 		this.tags === null ? noProblems : problemsIn(this.tags, this.draft)
 	);
-	readonly summary = $derived<Summary>(
-		this.tags === null ? { changes: 0, files: 0, only: null } : summaryOf(this.tags, this.draft)
-	);
+	readonly summary = $derived.by<Summary>(() => {
+		const files =
+			this.tags === null ? { changes: 0, files: 0, only: null } : summaryOf(this.tags, this.draft);
+		return { ...files, changes: files.changes + Object.keys(this.excludeDraft).length };
+	});
 	/** Whether a problem stands in the way of a write. */
 	readonly blocked = $derived(this.#problems.size > 0);
 	/** Whether there's anything here to lose. */
-	readonly dirty = $derived(this.tags === null ? false : editOf(this.tags, this.draft) !== null);
+	readonly dirty = $derived(
+		Object.keys(this.excludeDraft).length > 0 ||
+			(this.tags !== null && editOf(this.tags, this.draft) !== null)
+	);
 
 	constructor(albumId: string, tagger: Tagger, close: () => void) {
 		this.albumId = albumId;
@@ -97,6 +115,19 @@ export class TagSession {
 		return (id) => tags?.tracks.find((track) => track.id === id)?.fields.title?.at(0) ?? id;
 	}
 
+	/** Whether shuffle leaves a song out, as switched. */
+	isExcluded(id: string): boolean {
+		return this.excludeDraft[id] ?? this.excluded.includes(id);
+	}
+
+	/** Leaves a song out of the person's shuffle, or lets it back: saved with the tags. */
+	setExcluded(id: string, on: boolean): void {
+		const others = Object.fromEntries(
+			Object.entries(this.excludeDraft).filter(([key]) => key !== id)
+		);
+		this.excludeDraft = on === this.excluded.includes(id) ? others : { ...others, [id]: on };
+	}
+
 	/** Reads the files, carrying what's been touched over to whatever they hold now. */
 	async read(): Promise<void> {
 		try {
@@ -104,10 +135,19 @@ export class TagSession {
 			this.draft = rebased(this.draft, fresh);
 			this.tags = fresh;
 			this.report = null;
+			void this.#readRules(fresh.tracks.map(({ id }) => id));
 		} catch (error) {
 			if (error instanceof EditError) {
 				this.report = reportOf(error.failure, this.#titleOf(this.tags));
 			}
+		}
+	}
+
+	async #readRules(ids: readonly string[]): Promise<void> {
+		try {
+			this.excluded = (await library.shuffleRules(ids)).excluded;
+		} catch {
+			// Not known: the switches read as off, and saving one still says what it wants.
 		}
 	}
 
@@ -143,23 +183,49 @@ export class TagSession {
 			return { kind: 'problem', field };
 		}
 		const edit = editOf(tags, draft);
-		if (edit === null) {
+		const rules = this.ruleChanges;
+		if (edit === null && rules.length === 0) {
 			return { kind: 'idle' };
 		}
 		this.saving = true;
 		this.report = null;
-		const { stop, fresh } = await save(this.#tagger, this.albumId, tags.etag, edit);
-		this.saving = false;
+		const { stop, fresh } =
+			edit === null
+				? { stop: null, fresh: null }
+				: await save(this.#tagger, this.albumId, tags.etag, edit);
 		if (stop === null) {
-			this.#close();
-			return { kind: 'done' };
+			const saved = await this.#saveRules(rules);
+			this.saving = false;
+			if (saved) {
+				this.#close();
+				return { kind: 'done' };
+			}
+			return { kind: 'stopped' };
 		}
+		this.saving = false;
 		this.report = reportOf(stop, this.#titleOf(tags));
 		if (fresh !== null) {
 			this.draft = rebased(this.draft, fresh);
 			this.tags = fresh;
 		}
 		return { kind: 'stopped' };
+	}
+
+	/** Saves the shuffle switches, after the files. It reports false, and says why, when it can't. */
+	async #saveRules(rules: readonly RuleChange[]): Promise<boolean> {
+		try {
+			await library.changeShuffleRules(rules);
+			return true;
+		} catch {
+			this.report = {
+				message: "Your shuffle rules couldn't be saved. Try again.",
+				detail: undefined,
+				written: [],
+				unwritten: [],
+				retry: true
+			};
+			return false;
+		}
 	}
 }
 

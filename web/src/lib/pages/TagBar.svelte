@@ -32,10 +32,14 @@
 	const plural = (count: number, one: string): string =>
 		`${String(count)} ${one}${count === 1 ? '' : 's'}`;
 	const changes = $derived(plural(summary.changes, 'change'));
+	/** Changes that touch no file are shuffle rules: they save, they aren't written. */
+	const rulesOnly = $derived(summary.files === 0 && summary.changes > 0);
 	const where = $derived(
-		summary.only !== null && summary.only === open
-			? 'on this track'
-			: `across ${plural(summary.files, 'file')}`
+		rulesOnly
+			? 'to your shuffle'
+			: summary.only !== null && summary.only === open
+				? 'on this track'
+				: `across ${plural(summary.files, 'file')}`
 	);
 
 	let reportBox: HTMLElement | undefined = $state();
@@ -85,7 +89,8 @@
 				(summary.changes === 0 && !session.blocked)}
 			onclick={write}
 		>
-			{#if session.saving}Writing…{:else}Write to {summary.files === 1 ? 'file' : 'files'}{/if}
+			{#if session.saving}{rulesOnly ? 'Saving…' : 'Writing…'}{:else if rulesOnly}Save{:else}Write
+				to {summary.files === 1 ? 'file' : 'files'}{/if}
 		</button>
 	</div>
 </div>

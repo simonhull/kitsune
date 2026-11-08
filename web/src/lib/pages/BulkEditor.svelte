@@ -1,21 +1,25 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack } from 'svelte';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { bulkFields, effective, shownOf } from '#lib/library/bulk.ts';
 	import { clock } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import BulkField from './BulkField.svelte';
+	import ShuffleTab from './ShuffleTab.svelte';
 	import type { BulkSession } from './bulkEdits.svelte.ts';
 
 	interface Props {
 		session: BulkSession;
-		/** Tags can be written here: off, the Tags tab says why. */
-		canWrite: boolean;
-		/** Board F's Shuffle tab, when there is one. */
-		shuffle?: Snippet | undefined;
 	}
 
-	let { session, canWrite, shuffle }: Props = $props();
+	let { session }: Props = $props();
+
+	/** Why the Tags tab can't edit, when it can't: the Shuffle tab still can. */
+	const noTags = $derived(
+		library.user?.role === 'admin'
+			? "Tag writes are off on this server, so the files can't be changed from here. The Shuffle tab still works."
+			: 'Only an administrator can change tags. Your shuffle rules are yours: set them on the Shuffle tab.'
+	);
 
 	const selection = $derived(session.layout === 'selection');
 	const picked = $derived(session.pickedTracks.length);
@@ -32,7 +36,8 @@
 	const plural = (count: number, one: string): string =>
 		`${String(count)} ${one}${count === 1 ? '' : 's'}`;
 
-	let tab = $state<'tags' | 'shuffle'>('tags');
+	// Someone who can't change tags starts where they can change something.
+	let tab = $state<'tags' | 'shuffle'>(untrack(() => session.canTag) ? 'tags' : 'shuffle');
 	let finding = $state(false);
 	let find = $state('');
 	let replace = $state('');
@@ -178,40 +183,32 @@
 		class="edit"
 		aria-label={selection ? 'Edit the selected songs' : 'Tags for the picked tracks'}
 	>
-		{#if selection && shuffle !== undefined}
-			<div class="tabs" role="tablist" aria-label="What to edit">
-				<button
-					type="button"
-					role="tab"
-					id="bulk-tab-tags"
-					aria-selected={tab === 'tags'}
-					aria-controls="bulk-panel"
-					onclick={() => (tab = 'tags')}>Tags</button
-				>
-				<button
-					type="button"
-					role="tab"
-					id="bulk-tab-shuffle"
-					aria-selected={tab === 'shuffle'}
-					aria-controls="bulk-panel"
-					onclick={() => (tab = 'shuffle')}>Shuffle</button
-				>
-			</div>
-		{:else if !selection}
+		{#if !selection}
 			<h2>{plural(picked, 'track')}</h2>
 		{/if}
-		<div
-			id="bulk-panel"
-			role={selection && shuffle !== undefined ? 'tabpanel' : undefined}
-			aria-labelledby={selection && shuffle !== undefined ? `bulk-tab-${tab}` : undefined}
-		>
-			{#if tab === 'shuffle' && shuffle !== undefined}
-				{@render shuffle()}
-			{:else if !canWrite}
-				<p class="hint">
-					Tag writes are off on this server, so the files can't be changed from here.
-					{#if shuffle !== undefined}The Shuffle tab still works.{/if}
-				</p>
+		<div class="tabs" role="tablist" aria-label="What to edit">
+			<button
+				type="button"
+				role="tab"
+				id="bulk-tab-tags"
+				aria-selected={tab === 'tags'}
+				aria-controls="bulk-panel"
+				onclick={() => (tab = 'tags')}>Tags</button
+			>
+			<button
+				type="button"
+				role="tab"
+				id="bulk-tab-shuffle"
+				aria-selected={tab === 'shuffle'}
+				aria-controls="bulk-panel"
+				onclick={() => (tab = 'shuffle')}>Shuffle</button
+			>
+		</div>
+		<div id="bulk-panel" role="tabpanel" aria-labelledby={`bulk-tab-${tab}`}>
+			{#if tab === 'shuffle'}
+				<ShuffleTab {session} />
+			{:else if !session.canTag}
+				<p class="hint">{noTags}</p>
 			{:else if picked === 0}
 				<p class="hint">Pick a song to edit its tags.</p>
 			{:else}
@@ -467,7 +464,7 @@
 	}
 
 	h2 {
-		margin: 0;
+		margin: 0 0 14px;
 		font-size: 24px;
 		font-weight: 800;
 		letter-spacing: -0.03em;

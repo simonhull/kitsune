@@ -4,6 +4,7 @@ import { decodesAhead, mostQueued, openingFor, throwGap } from '#lib/pages/deck.
 import { theme } from '#lib/theme/theme.svelte.ts';
 import { createApiSource } from './api.ts';
 import { once } from './bulk.ts';
+import type { RuleChange } from './shuffleRules.ts';
 import { cueOf, retagged, type NowPlaying } from './cue.ts';
 import {
 	createFixtureSource,
@@ -48,6 +49,7 @@ import {
 	type ServerSettings,
 	type SettingsChange,
 	type SetupStatus,
+	type ShuffleRules,
 	type TracksEdit
 } from './source.ts';
 
@@ -1103,6 +1105,37 @@ export class Library {
 			return edited;
 		} finally {
 			this.markIndexStale();
+		}
+	}
+
+	/** The caller's shuffle rules touching these songs. Rejects with `ServerError`. */
+	shuffleRules(trackIds: readonly string[]): Promise<ShuffleRules> {
+		return this.#source.shuffleRules(trackIds);
+	}
+
+	/**
+	 * Makes the caller's shuffle rules what `changes` say, in order, and has the list show them.
+	 * Rejects with `ServerError` at the first that fails: those before it hold.
+	 */
+	async changeShuffleRules(changes: readonly RuleChange[]): Promise<void> {
+		try {
+			for (const change of changes) {
+				switch (change.kind) {
+					case 'run':
+						await this.#source.setRun(change.tracks);
+						break;
+					case 'unrun':
+						await this.#source.deleteRun(change.id);
+						break;
+					case 'exclude':
+						await this.#source.setExcluded(change.tracks, change.on);
+						break;
+				}
+			}
+		} finally {
+			if (changes.length > 0) {
+				this.markIndexStale();
+			}
 		}
 	}
 

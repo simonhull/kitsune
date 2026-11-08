@@ -36,6 +36,8 @@ import {
 	type ServerSettings,
 	type SettingKey,
 	type SetupStatus,
+	type ShuffleRules,
+	type ShuffleRun,
 	type TracksEdit,
 	type User
 } from './source.ts';
@@ -424,6 +426,26 @@ export function createApiSource({
 			});
 			return (await response.json()) as EditedTracks;
 		},
+
+		shuffleRules: (trackIds) =>
+			read<ShuffleRules>(`/me/shuffle/rules?tracks=${trackIds.map(encodeURIComponent).join(',')}`),
+
+		setRun: (trackIds) =>
+			read<ShuffleRun>('/me/shuffle/runs', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ tracks: trackIds })
+			}),
+
+		deleteRun: (id) =>
+			read<undefined>(`/me/shuffle/runs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+		setExcluded: (trackIds, on) =>
+			read<undefined>('/me/shuffle/excluded', {
+				method: on ? 'PUT' : 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ tracks: trackIds })
+			}),
 
 		async trackAlbum(trackId) {
 			const response = await forEdit(`/tracks/${encodeURIComponent(trackId)}`, tagsFailureOf);

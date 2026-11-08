@@ -17,8 +17,30 @@ import {
 	type BulkTrack
 } from '#lib/library/bulk.ts';
 import { library } from '#lib/library/library.svelte.ts';
-import { EditError, type AlbumTags, type EditFailure } from '#lib/library/source.ts';
+import {
+	emptyRulesDraft,
+	moveIn,
+	noRules,
+	orderOf,
+	ruleChanges,
+	type RuleChange,
+	type RulesDraft
+} from '#lib/library/shuffleRules.ts';
+import {
+	EditError,
+	type AlbumTags,
+	type EditFailure,
+	type ShuffleRules
+} from '#lib/library/source.ts';
 import { reportOf, type Report, type Summary } from '#lib/library/tags.ts';
+
+/** What a bulk edit knows of a song before reading its file: enough to list it. */
+export interface SongInfo {
+	id: string;
+	albumId: string;
+	title: string;
+	trackNo?: number | undefined;
+}
 
 /** Where bulk editing was opened: an album's page (board D), or a selection (board F). */
 export type BulkLayout = 'album' | 'selection';
@@ -42,6 +64,9 @@ export class BulkSession {
 	readonly #ids: string[];
 	/** Where each song is, as far as is known. */
 	readonly #albumOf: Map<string, string>;
+	readonly #info: Map<string, SongInfo>;
+	/** Tags can be read and written: off, only the Shuffle tab works. */
+	readonly canTag: boolean;
 
 	/** Each album's tags, in the order the songs first name them. Null until read. */
 	albums = $state.raw<{ id: string; tags: AlbumTags }[] | null>(null);
@@ -52,40 +77,58 @@ export class BulkSession {
 	readonly picked = new SvelteSet<string>();
 	readonly #left = new SvelteSet<string>();
 	#attempted = $state(false);
+	/** The person's shuffle rules touching the songs, as read. */
+	rules = $state.raw<ShuffleRules>(noRules);
+	rulesRead = $state(false);
+	rulesDraft = $state.raw<RulesDraft>(emptyRulesDraft());
 
 	/** Every song shown: on an album's page that's all of it, picked or not. */
-	readonly tracks = $derived<BulkTrack[]>(
-		this.albums === null
+	readonly tracks = $derived.by<BulkTrack[]>(() => {
+		if (this.albums !== null) {
+			return bulkTracks(this.albums).filter(
+				({ id }) => this.layout === 'album' || this.#ids.includes(id)
+			);
+		}
+		return this.canTag
 			? []
-			: bulkTracks(this.albums).filter(
-					({ id }) => this.layout === 'album' || this.#ids.includes(id)
-				)
-	);
+			: this.#ids.flatMap((id) => {
+					const info = this.#info.get(id);
+					return info === undefined ? [] : [unreadTrack(info)];
+				});
+	});
 	readonly pickedTracks = $derived(this.tracks.filter(({ id }) => this.picked.has(id)));
+	readonly pickedIds = $derived(this.pickedTracks.map(({ id }) => id));
 	readonly #problems = $derived(
 		this.albums === null ? noProblems : bulkProblems(this.pickedTracks, this.draft)
 	);
-	readonly summary = $derived<Summary>({
-		...bulkSummaryOf(this.pickedTracks, this.draft),
-		only: null
+	/** What saving the Shuffle tab sends. */
+	readonly ruleChanges = $derived<RuleChange[]>(
+		ruleChanges(this.pickedIds, this.rules, this.rulesDraft)
+	);
+	readonly summary = $derived.by<Summary>(() => {
+		const files =
+			this.albums === null
+				? { changes: 0, files: 0 }
+				: bulkSummaryOf(this.pickedTracks, this.draft);
+		return { changes: files.changes + this.ruleChanges.length, files: files.files, only: null };
 	});
 	readonly blocked = $derived(this.#problems.size > 0);
-	/** For the bar: there's something to write once the files are read. */
-	readonly tags = $derived(this.albums);
+	/** For the bar: there's something to save once what it's about is read. */
+	readonly tags = $derived.by(() =>
+		this.canTag ? this.albums : this.rulesRead ? this.tracks : null
+	);
 	readonly dirty = $derived(
-		this.albums !== null && bulkEditOf(this.pickedTracks, this.draft, this.#etags()) !== null
+		this.ruleChanges.length > 0 ||
+			(this.albums !== null && bulkEditOf(this.pickedTracks, this.draft, this.#etags()) !== null)
 	);
 
-	constructor(layout: BulkLayout, ids: readonly string[], albumOf: ReadonlyMap<string, string>) {
+	constructor(layout: BulkLayout, songs: readonly SongInfo[], canTag: boolean) {
 		this.layout = layout;
-		this.#ids = [...ids];
-		this.#albumOf = new SvelteMap(
-			ids.flatMap((id) => {
-				const album = albumOf.get(id);
-				return album === undefined ? [] : [[id, album] as [string, string]];
-			})
-		);
-		for (const id of ids) {
+		this.canTag = canTag;
+		this.#ids = songs.map(({ id }) => id);
+		this.#info = new SvelteMap(songs.map((song) => [song.id, song]));
+		this.#albumOf = new SvelteMap(songs.map(({ id, albumId }) => [id, albumId]));
+		for (const { id } of songs) {
 			this.picked.add(id);
 		}
 	}
@@ -111,8 +154,35 @@ export class BulkSession {
 		return this.tracks.find((track) => track.id === id)?.tags.fields.title?.at(0) ?? id;
 	}
 
-	/** Reads every album's files. The draft is kept: it's by song and by field. */
+	/** Reads every album's files and the person's rules. The drafts are kept: they're by song. */
 	async read(): Promise<void> {
+		await Promise.all([this.#readRules(), this.canTag ? this.#readTags() : Promise.resolve()]);
+	}
+
+	async #readRules(): Promise<void> {
+		try {
+			this.rules = await library.shuffleRules(this.#ids);
+			this.rulesRead = true;
+		} catch {
+			this.report = rulesTrouble("Couldn't read your shuffle rules.");
+		}
+	}
+
+	setCombine(on: boolean): void {
+		this.rulesDraft = { ...this.rulesDraft, combine: on };
+	}
+
+	setExclude(on: boolean): void {
+		this.rulesDraft = { ...this.rulesDraft, exclude: on };
+	}
+
+	/** Moves a song of the run, as a drag or Alt with an arrow does. */
+	moveInRun(from: number, to: number): void {
+		const order = orderOf(this.pickedIds, this.rules, this.rulesDraft);
+		this.rulesDraft = { ...this.rulesDraft, order: moveIn(order, from, to) };
+	}
+
+	async #readTags(): Promise<void> {
 		try {
 			const ids = this.albumIds;
 			const tags = await Promise.all(ids.map((id) => library.albumTags(id)));
@@ -176,9 +246,12 @@ export class BulkSession {
 		this.draft = findAndReplace(this.pickedTracks, this.draft, find, replace);
 	}
 
-	/** Writes the draft to the picked songs' files, in one request. */
+	/**
+	 * Writes the draft to the picked songs' files, in one request, then saves the shuffle rules,
+	 * which are never in a file: one Save does both, and rules save even where files can't.
+	 */
 	async write(): Promise<BulkWritten> {
-		if (this.albums === null || this.saving || this.report?.retry === false) {
+		if (this.saving || this.report?.retry === false) {
 			return { kind: 'idle' };
 		}
 		this.#attempted = true;
@@ -186,15 +259,29 @@ export class BulkSession {
 		if (field !== undefined) {
 			return { kind: 'problem', field };
 		}
-		const edit = bulkEditOf(this.pickedTracks, this.draft, this.#etags());
-		if (edit === null) {
+		const edit =
+			this.albums === null ? null : bulkEditOf(this.pickedTracks, this.draft, this.#etags());
+		const changes = this.ruleChanges;
+		if (edit === null && changes.length === 0) {
 			return { kind: 'idle' };
 		}
 		this.saving = true;
 		this.report = null;
 		try {
-			const edited = await library.editTracks(edit);
-			return { kind: 'done', albumId: edited.tracks.at(0)?.albumId };
+			const edited = edit === null ? null : await library.editTracks(edit);
+			try {
+				await library.changeShuffleRules(changes);
+			} catch {
+				await this.#readRules();
+				this.rulesDraft = emptyRulesDraft();
+				this.report = rulesTrouble(
+					edit === null
+						? "Your shuffle rules couldn't be saved. Try again."
+						: "The tags were written, but your shuffle rules couldn't be saved. Try again."
+				);
+				return { kind: 'stopped' };
+			}
+			return { kind: 'done', albumId: edited?.tracks.at(0)?.albumId };
 		} catch (error) {
 			const failure: EditFailure =
 				error instanceof EditError ? error.failure : { kind: 'unavailable' };
@@ -213,17 +300,31 @@ export class BulkSession {
 	}
 }
 
+/** A song as listed before its file is read: its title and number from the library. */
+function unreadTrack(info: SongInfo): BulkTrack {
+	const fields = {
+		title: [info.title],
+		...(info.trackNo === undefined ? {} : { track: [String(info.trackNo)] })
+	};
+	return {
+		id: info.id,
+		albumId: info.albumId,
+		tags: { id: info.id, file: info.title, fields, tags: [] }
+	};
+}
+
+/** A report of rules that couldn't be read or saved: trying again may work. */
+function rulesTrouble(message: string): Report {
+	return { message, detail: undefined, written: [], unwritten: [], retry: true };
+}
+
 /** The one bulk edit under way: it outlives a page left with it unsaved, for the session. */
 class BulkEdits {
 	current = $state.raw<BulkSession | null>(null);
 
 	/** Starts editing these songs, dropping any other bulk edit. */
-	open(
-		layout: BulkLayout,
-		ids: readonly string[],
-		albumOf: ReadonlyMap<string, string>
-	): BulkSession {
-		const session = new BulkSession(layout, ids, albumOf);
+	open(layout: BulkLayout, songs: readonly SongInfo[], canTag: boolean): BulkSession {
+		const session = new BulkSession(layout, songs, canTag);
 		this.current = session;
 		void session.read();
 		return session;

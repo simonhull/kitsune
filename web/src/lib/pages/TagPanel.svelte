@@ -14,6 +14,7 @@
 	} from '#lib/library/tags.ts';
 	import { reducedMotion } from '#lib/morph/journey.ts';
 	import ChipField from './ChipField.svelte';
+	import Switch from './Switch.svelte';
 	import TagField from './TagField.svelte';
 	import type { TagSession } from './tagEdits.svelte.ts';
 
@@ -110,6 +111,18 @@
 					</div>
 				</div>
 			{/each}
+			<div class="rules">
+				<h3>IN YOUR SHUFFLE · NOT A TAG, NEVER WRITTEN TO THE FILE</h3>
+				<Switch
+					label="Exclude from shuffle"
+					on={session.isExcluded(track.id)}
+					note="Shuffle never picks it. It still plays when you choose it or play the album in order."
+					toggle={(on) => {
+						session.setExcluded(track.id, on);
+					}}
+				/>
+				<p class="hint">To combine songs, select two or more and edit them together.</p>
+			</div>
 		</div>
 	</div>
 	<div class="bottom">
@@ -261,6 +274,26 @@
 		font-size: var(--type-mono);
 		font-weight: 400;
 		letter-spacing: 0.08em;
+		color: var(--text-meta);
+	}
+
+	.rules {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding-top: 16px;
+		border-top: 1px solid var(--edge-card);
+	}
+
+	.rules h3 {
+		margin: 0;
+		font-size: 11px;
+	}
+
+	.rules .hint {
+		margin: 0;
+		font-size: 13px;
+		line-height: 1.5;
 		color: var(--text-meta);
 	}
 
