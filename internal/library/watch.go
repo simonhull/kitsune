@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"maps"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -24,6 +26,11 @@ const (
 	// defaultMaxWait bounds the settle: a folder that never stops changing is
 	// scanned this long after its first change, and again once it settles.
 	defaultMaxWait = time.Minute
+	// defaultPoll is how often a root that can't be watched is looked over.
+	defaultPoll = 5 * time.Minute
+	// backWork is how much work can wait for the loop: a round of scans and a
+	// poll's walk.
+	backWork = 2
 	// eventBuffer is how many file events wait for the watcher's loop.
 	eventBuffer = 1024
 )
@@ -37,12 +44,19 @@ const (
 	WatchOff WatchMode = iota
 	// Watching means the OS reports every change under the root.
 	Watching
+	// Polling means the root is looked over every few minutes, because the OS
+	// can't report its changes: see the [WatchReason].
+	Polling
 )
 
 // String returns the mode's name on the wire.
 func (m WatchMode) String() string {
-	if m == Watching {
+	switch m {
+	case Watching:
 		return "watching"
+	case Polling:
+		return "polling"
+	case WatchOff:
 	}
 	return "off"
 }
@@ -56,12 +70,24 @@ const (
 	// ReasonMissing means the root is missing, unreadable, or empty while the
 	// library has tracks there.
 	ReasonMissing
+	// ReasonNetwork means the root is on a network or FUSE filesystem, whose
+	// changes made elsewhere the OS never hears of.
+	ReasonNetwork
+	// ReasonWatchLimit means watching every folder would pass the OS's limit
+	// (fs.inotify.max_user_watches on Linux).
+	ReasonWatchLimit
 )
 
 // String returns the reason's name on the wire, "" for none.
 func (r WatchReason) String() string {
-	if r == ReasonMissing {
+	switch r {
+	case ReasonMissing:
 		return "missing"
+	case ReasonNetwork:
+		return "network"
+	case ReasonWatchLimit:
+		return "watch-limit"
+	case ReasonNone:
 	}
 	return ""
 }
@@ -71,17 +97,20 @@ type RootWatch struct {
 	Root   string
 	Mode   WatchMode
 	Reason WatchReason
+	FSType string // The filesystem's type, as the OS names it, when ReasonNetwork.
 }
 
 // WatchOptions configures [NewWatcher]. The zero value is the server's.
 type WatchOptions struct {
 	Settle  time.Duration // Zero means 10 s.
 	MaxWait time.Duration // Zero means a minute.
+	Poll    time.Duration // Zero means 5 minutes.
 	// OnChange is called, on the watcher's goroutine, after a root's mode
 	// changes. Nil means nothing is told.
 	OnChange func()
 
 	notify func() (notifier, error) // Nil means fsnotify; tests replace it.
+	mounts func() []mount           // Nil reads /proc/self/mountinfo; tests replace it.
 }
 
 // notifier is what the watcher needs of fsnotify.
@@ -92,6 +121,21 @@ type notifier interface {
 	Errors() <-chan error
 	Close() error
 }
+
+// noNotifier stands in when the OS gives no notifier at all: every root polls.
+type noNotifier struct{}
+
+func (noNotifier) Add(string) error              { return errWatchLimit }
+func (noNotifier) Remove(string) error           { return nil }
+func (noNotifier) Events() <-chan fsnotify.Event { return nil }
+func (noNotifier) Errors() <-chan error          { return nil }
+func (noNotifier) Close() error                  { return nil }
+
+// errWatchLimit is what noNotifier's Add says: no folder can be watched.
+var errWatchLimit = fmt.Errorf("no folder watcher: %w", syscall.ENOSPC)
+
+// atWatchLimit reports whether err from adding a watch means the OS's limit.
+func atWatchLimit(err error) bool { return errors.Is(err, syscall.ENOSPC) }
 
 // fsNotifier is an fsnotify watcher as a [notifier].
 type fsNotifier struct{ w *fsnotify.Watcher }
@@ -129,8 +173,14 @@ func NewWatcher(s *Scanner, opts WatchOptions) *Watcher {
 	if opts.MaxWait <= 0 {
 		opts.MaxWait = defaultMaxWait
 	}
+	if opts.Poll <= 0 {
+		opts.Poll = defaultPoll
+	}
 	if opts.notify == nil {
 		opts.notify = newFSNotifier
+	}
+	if opts.mounts == nil {
+		opts.mounts = readMounts
 	}
 	w := &Watcher{s: s, opts: opts, log: s.log}
 	w.modes.Store(&[]RootWatch{})
@@ -145,9 +195,11 @@ func (w *Watcher) Modes() []RootWatch { return slices.Clone(*w.modes.Load()) }
 type rootState struct {
 	root     string // As configured.
 	resolved string // Symlinks resolved: what events name.
+	mount    mount  // The filesystem it was armed on.
 	mode     WatchMode
 	reason   WatchReason
 	dirs     map[string]struct{} // Watched folders, absolute.
+	snap     map[string]uint64   // A polled root's folders, relative, by signature; nil until the first look.
 }
 
 // watchLoop is the state of one Run, owned by its goroutine.
@@ -166,9 +218,13 @@ type watchLoop struct {
 	moved    bool
 	deferred map[string]*rootState // New folders to watch once the batch settles, absolute.
 	scans    sync.WaitGroup
-	running  bool
-	done     chan scanOutcome
+	running  bool // A round of scans is running.
+	looking  bool // A poll's walk is running.
 	timer    *time.Timer
+	// back takes what a round of scans or a poll's walk found, as work for the
+	// loop's goroutine, which alone touches the loop's state. One of each runs
+	// at a time, so neither ever waits to hand it back.
+	back chan func()
 }
 
 // scanOutcome is what a round of targeted scans found.
@@ -181,8 +237,8 @@ type scanOutcome struct {
 func (w *Watcher) Run(ctx context.Context) {
 	n, err := w.opts.notify()
 	if err != nil {
-		w.log.ErrorContext(ctx, "can't watch the library folders; new music waits for a scan", "err", err)
-		return
+		w.log.WarnContext(ctx, "the OS gives no folder watcher; checking the library folders every few minutes instead", "err", err)
+		n = noNotifier{}
 	}
 	defer func() {
 		if cerr := n.Close(); cerr != nil {
@@ -191,17 +247,19 @@ func (w *Watcher) Run(ctx context.Context) {
 	}()
 	l := &watchLoop{
 		w: w, n: n, roots: map[string]*rootState{}, dirty: map[string]map[string]struct{}{},
-		deferred: map[string]*rootState{}, done: make(chan scanOutcome, 1), timer: time.NewTimer(time.Hour),
+		deferred: map[string]*rootState{}, timer: time.NewTimer(time.Hour), back: make(chan func(), backWork),
 	}
 	l.timer.Stop()
 	defer l.scans.Wait()
 	l.reroot(ctx)
-	l.loop(ctx)
+	tick := time.NewTicker(w.opts.Poll)
+	defer tick.Stop()
+	l.loop(ctx, tick.C)
 }
 
 // loop handles events, settles and scans until ctx ends. Only Close closes the
 // notifier's channels, after the loop.
-func (l *watchLoop) loop(ctx context.Context) {
+func (l *watchLoop) loop(ctx context.Context, tick <-chan time.Time) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -217,8 +275,10 @@ func (l *watchLoop) loop(ctx context.Context) {
 			l.rearm(ctx)
 		case <-l.timer.C:
 			l.startScan(ctx)
-		case out := <-l.done:
-			l.ended(ctx, out)
+		case <-tick:
+			l.tick(ctx)
+		case work := <-l.back:
+			work()
 		}
 	}
 }
@@ -280,7 +340,8 @@ func (l *watchLoop) rearm(ctx context.Context) {
 	}
 }
 
-// arm starts following rs: it watches every folder a scan reads.
+// arm starts following rs: it watches every folder a scan reads, or polls the
+// root when the OS can't report its changes.
 func (l *watchLoop) arm(ctx context.Context, rs *rootState) {
 	resolved, err := filepath.EvalSymlinks(rs.root)
 	if err == nil {
@@ -296,15 +357,35 @@ func (l *watchLoop) arm(ctx context.Context, rs *rootState) {
 		rs.mode, rs.reason = WatchOff, ReasonMissing
 		return
 	}
-	rs.resolved, rs.dirs = resolved, map[string]struct{}{}
-	l.watchTree(ctx, rs, resolved, false)
+	rs.resolved, rs.dirs, rs.snap = resolved, map[string]struct{}{}, nil
+	rs.mount, _ = mountOf(l.w.opts.mounts(), resolved)
+	if networkFS(rs.mount.fstype) {
+		l.poll(ctx, rs, ReasonNetwork)
+		return
+	}
+	if err = l.watchTree(ctx, rs, resolved, false); err != nil {
+		l.poll(ctx, rs, ReasonWatchLimit)
+		return
+	}
 	rs.mode, rs.reason = Watching, ReasonNone
 	l.w.log.InfoContext(ctx, "watching library folder", "root", rs.root, "folders", len(rs.dirs))
 }
 
+// poll makes rs a polled root, for reason, and takes its first look.
+func (l *watchLoop) poll(ctx context.Context, rs *rootState, reason WatchReason) {
+	l.release(rs)
+	rs.dirs = map[string]struct{}{}
+	rs.mode, rs.reason, rs.snap = Polling, reason, nil
+	l.w.log.InfoContext(ctx, "checking library folder every few minutes", "root", rs.root,
+		"why", reason.String(), "filesystem", rs.mount.fstype, "every", l.w.opts.Poll.String())
+	l.look(ctx)
+}
+
 // watchTree watches dir and every folder below it a scan reads. With dirty,
 // each one is marked changed too: files may have landed before its watch did.
-func (l *watchLoop) watchTree(ctx context.Context, rs *rootState, dir string, dirty bool) {
+// It returns an error, having stopped, at the OS's watch limit.
+func (l *watchLoop) watchTree(ctx context.Context, rs *rootState, dir string, dirty bool) error {
+	var limit error
 	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return filepath.SkipAll
@@ -315,16 +396,30 @@ func (l *watchLoop) watchTree(ctx context.Context, rs *rootState, dir string, di
 		if path != rs.resolved && SkipsFolder(d.Name()) {
 			return filepath.SkipDir
 		}
+		if dirty {
+			l.mark(rs, path)
+		}
 		if addErr := l.n.Add(path); addErr != nil {
+			if atWatchLimit(addErr) {
+				limit = addErr
+				return filepath.SkipAll
+			}
 			l.w.log.WarnContext(ctx, "can't watch a library folder", "root", rs.root, "err", addErr)
 			return nil
 		}
 		rs.dirs[path] = struct{}{}
-		if dirty {
-			l.mark(rs, path)
-		}
 		return nil
 	})
+	return limit
+}
+
+// watchNew watches a folder that appeared under a watched root, and all below
+// it, marked changed. At the watch limit the root falls back to polling.
+func (l *watchLoop) watchNew(ctx context.Context, rs *rootState, dir string) {
+	if err := l.watchTree(ctx, rs, dir, true); err != nil {
+		l.poll(ctx, rs, ReasonWatchLimit)
+		l.publish()
+	}
 }
 
 // release stops watching rs's folders.
@@ -398,7 +493,7 @@ func (l *watchLoop) created(ctx context.Context, rs *rootState, path string) {
 	case err == nil && info.IsDir() && l.moved:
 		l.deferred[path] = rs
 	case err == nil && info.IsDir():
-		l.watchTree(ctx, rs, path, true)
+		l.watchNew(ctx, rs, path)
 	case !IsAudio(filepath.Base(path)):
 		return
 	}
@@ -438,7 +533,7 @@ func (l *watchLoop) watchDeferred(ctx context.Context) {
 	for _, dir := range slices.Sorted(maps.Keys(l.deferred)) {
 		rs := l.deferred[dir]
 		if _, err := os.Lstat(dir); err == nil && l.roots[rs.root] == rs && rs.mode == Watching {
-			l.watchTree(ctx, rs, dir, true)
+			l.watchNew(ctx, rs, dir)
 		}
 	}
 	clear(l.deferred)
@@ -498,7 +593,10 @@ func (l *watchLoop) startScan(ctx context.Context) {
 		return
 	}
 	l.running = true
-	l.scans.Go(func() { l.done <- l.w.scanRound(ctx, batch, since, rescan) })
+	l.scans.Go(func() {
+		out := l.w.scanRound(ctx, batch, since, rescan)
+		l.back <- func() { l.ended(ctx, out) }
+	})
 }
 
 // scanRound runs the targeted scans of one settled batch, root by root. A
@@ -535,7 +633,11 @@ func (l *watchLoop) publish() {
 	modes := make([]RootWatch, 0, len(roots))
 	for _, root := range roots {
 		if rs, ok := l.roots[root]; ok {
-			modes = append(modes, RootWatch{Root: root, Mode: rs.mode, Reason: rs.reason})
+			m := RootWatch{Root: root, Mode: rs.mode, Reason: rs.reason}
+			if rs.reason == ReasonNetwork {
+				m.FSType = rs.mount.fstype
+			}
+			modes = append(modes, m)
 		}
 	}
 	if slices.Equal(modes, *l.w.modes.Load()) {

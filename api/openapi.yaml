@@ -2153,6 +2153,24 @@ components:
         path: { type: string }
         tracks: { type: integer, format: int64, description: Live tracks under it. }
         bytes: { type: integer, format: int64, description: Their size on disk. }
+        watch: { $ref: "#/components/schemas/FolderWatch" }
+    FolderWatch:
+      type: object
+      additionalProperties: false
+      description: >-
+        How the server follows the folder for new music. `watching`: the OS
+        reports every change, scanned about 10 s after it settles. `polling`: the
+        folder is looked over every 5 minutes, because it is on a network or FUSE
+        filesystem (`network`, with its `filesystem` type), or watching every
+        folder would pass the OS's limit (`watch-limit`: raise
+        fs.inotify.max_user_watches and restart). `off`: the folder is missing,
+        unreadable or empty while the library has songs there (`missing`); the
+        next scan looks again. Absent while the server hasn't looked yet.
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [watching, polling, "off"] }
+        reason: { type: string, enum: [network, watch-limit, missing] }
+        filesystem: { type: string, description: "The filesystem type, such as `cifs`, for `network`." }
     SettingSource:
       type: string
       enum: [default, web, server.toml, env, flag]

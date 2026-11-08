@@ -589,9 +589,17 @@ type AudioCount struct {
 // LibraryFolder is a library root and what it holds now: 0 and 0 until a scan
 // has read it.
 type LibraryFolder struct {
-	Path   string `json:"path"`
-	Tracks int64  `json:"tracks"`
-	Bytes  int64  `json:"bytes"`
+	Path   string       `json:"path"`
+	Tracks int64        `json:"tracks"`
+	Bytes  int64        `json:"bytes"`
+	Watch  *FolderWatch `json:"watch,omitempty"`
+}
+
+// FolderWatch is how the server follows a library folder for new music.
+type FolderWatch struct {
+	Mode       string `json:"mode"`                 // watching, polling or off.
+	Reason     string `json:"reason,omitempty"`     // network, watch-limit or missing.
+	Filesystem string `json:"filesystem,omitempty"` // For network: the filesystem's type.
 }
 
 // The values of Setting.Source. Every source but SettingDefault is stored.

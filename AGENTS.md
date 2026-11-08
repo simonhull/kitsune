@@ -206,6 +206,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   it, was read and the file is gone. It never deletes or prunes, and leaves a root that looks down
   (missing, empty, losing most of its tracks) to the full-scan rules. A running scan that walked after
   the last change absorbs it.
+- A root the OS can't report on is polled every 5 minutes instead (`poll.go`: folder mtimes and audio
+  sizes and mtimes): one on a network or FUSE filesystem, by `/proc/self/mountinfo` (`networkFS` is
+  the one list of types), or one past the watch limit (ENOSPC on add). `GET /admin/settings` says
+  each folder's mode and why.
 - Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
   wait for the file to change.
 - One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it

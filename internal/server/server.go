@@ -78,6 +78,9 @@ type Config struct {
 	// DataDir and ConfigDir are Kitsune's own folders: the picker shows them and
 	// never lets them be chosen. "" means none.
 	DataDir, ConfigDir string
+	// Watcher follows the library folders; GET /admin/settings says how. Nil
+	// means none, and no folder says.
+	Watcher *library.Watcher
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -111,6 +114,7 @@ type Server struct {
 	folderRoot    string
 	dataDir       string
 	configDir     string
+	watcher       *library.Watcher
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -156,6 +160,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		folderRoot:    cmp.Or(cfg.FolderRoot, "/"),
 		dataDir:       cfg.DataDir,
 		configDir:     cfg.ConfigDir,
+		watcher:       cfg.Watcher,
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)

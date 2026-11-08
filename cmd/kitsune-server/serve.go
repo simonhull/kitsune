@@ -295,6 +295,7 @@ func (a *app) handler(ctx context.Context, cfg *config.Config, l *launch, public
 		DataDir:        cfg.Storage.DataDir,
 		ConfigDir:      l.configDir,
 		Version:        version(),
+		Watcher:        a.watcher,
 	})
 }
 

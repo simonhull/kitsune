@@ -103,6 +103,7 @@ type testServerOptions struct {
 	SetupCode     string                   // "" means the server started with accounts.
 	FolderRoot    string                   // What the folder picker calls /. "" means the real /.
 	DataDir       string                   // Kitsune's data folder, as the picker sees it.
+	Watch         bool                     // Run a folder watcher over the roots.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -171,7 +172,16 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		tb.Cleanup(func() { cancel(); sending.Wait() }) // Before the store closes.
 	}
 	live := openSettings(tb, st)
+	var watcher *library.Watcher
+	if o.Watch {
+		watcher = library.NewWatcher(scanner, library.WatchOptions{})
+		ctx, cancel := context.WithCancel(context.WithoutCancel(tb.Context()))
+		var watching sync.WaitGroup
+		watching.Go(func() { watcher.Run(ctx) })
+		tb.Cleanup(func() { cancel(); watching.Wait() }) // Before the store closes.
+	}
 	h := New(Config{
+		Watcher:       watcher,
 		Settings:      live,
 		Listen:        testListen,
 		Version:       testVersion,
