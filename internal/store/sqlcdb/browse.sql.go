@@ -875,19 +875,20 @@ func (q *Queries) ListIndexTrackArtistsOf(ctx context.Context, albums []string) 
 
 const listIndexTrackDetails = `-- name: ListIndexTrackDetails :many
 
-SELECT id, year, format, sample_rate, bit_depth, bitrate, added_at
+SELECT id, year, format, sample_rate, bit_depth, bitrate, added_at, rg_track_gain
 FROM tracks
 WHERE missing_since IS NULL
 `
 
 type ListIndexTrackDetailsRow struct {
-	ID         int64
-	Year       *int64
-	Format     string
-	SampleRate *int64
-	BitDepth   *int64
-	Bitrate    *int64
-	AddedAt    int64
+	ID          int64
+	Year        *int64
+	Format      string
+	SampleRate  *int64
+	BitDepth    *int64
+	Bitrate     *int64
+	AddedAt     int64
+	RgTrackGain *float64
 }
 
 // What the song columns ask for, read only when they do: an index without them
@@ -909,6 +910,7 @@ func (q *Queries) ListIndexTrackDetails(ctx context.Context) ([]ListIndexTrackDe
 			&i.BitDepth,
 			&i.Bitrate,
 			&i.AddedAt,
+			&i.RgTrackGain,
 		); err != nil {
 			return nil, err
 		}
@@ -924,20 +926,21 @@ func (q *Queries) ListIndexTrackDetails(ctx context.Context) ([]ListIndexTrackDe
 }
 
 const listIndexTrackDetailsOf = `-- name: ListIndexTrackDetailsOf :many
-SELECT t.id, t.year, t.format, t.sample_rate, t.bit_depth, t.bitrate, t.added_at
+SELECT t.id, t.year, t.format, t.sample_rate, t.bit_depth, t.bitrate, t.added_at, t.rg_track_gain
 FROM albums a
 CROSS JOIN tracks t
 WHERE a.ulid IN (/*SLICE:albums*/?) AND t.album_id = a.id AND t.missing_since IS NULL
 `
 
 type ListIndexTrackDetailsOfRow struct {
-	ID         int64
-	Year       *int64
-	Format     string
-	SampleRate *int64
-	BitDepth   *int64
-	Bitrate    *int64
-	AddedAt    int64
+	ID          int64
+	Year        *int64
+	Format      string
+	SampleRate  *int64
+	BitDepth    *int64
+	Bitrate     *int64
+	AddedAt     int64
+	RgTrackGain *float64
 }
 
 func (q *Queries) ListIndexTrackDetailsOf(ctx context.Context, albums []string) ([]ListIndexTrackDetailsOfRow, error) {
@@ -967,6 +970,7 @@ func (q *Queries) ListIndexTrackDetailsOf(ctx context.Context, albums []string) 
 			&i.BitDepth,
 			&i.Bitrate,
 			&i.AddedAt,
+			&i.RgTrackGain,
 		); err != nil {
 			return nil, err
 		}

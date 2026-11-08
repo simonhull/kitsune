@@ -232,7 +232,7 @@ describe('the menu', () => {
 			{ id: 'artist', on: true },
 			{ id: 'genre', on: false }
 		]);
-		expect(list).toHaveLength(13);
+		expect(list).toHaveLength(14);
 	});
 
 	it('reorders the shown columns', () => {

@@ -1,20 +1,20 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { ColumnId } from '#lib/library/source.ts';
-	import { specOf } from './columns.ts';
+	import { numbered, specOf, type RowParts } from './columns.ts';
 
 	interface Props {
 		shown: readonly ColumnId[];
 		hiddenCount: number;
-		/** The grid the rows have. */
-		grid: string;
+		/** The parts the rows have, whose grid is the list's `--song-grid`. */
+		parts?: RowParts;
 		/** Opens the columns menu at a place, offering to hide a column if one was pointed at. */
 		openMenu: (x: number, y: number, hiding?: ColumnId) => void;
 		/** The header's box, where there's one. */
 		box?: Snippet;
 	}
 
-	let { shown, hiddenCount, grid, openMenu, box }: Props = $props();
+	let { shown, hiddenCount, parts = numbered, openMenu, box }: Props = $props();
 
 	/** The keyboard's way to the menu: the context-menu key, or Shift+F10, on a label. */
 	function onkeydown(event: KeyboardEvent, hiding?: ColumnId): void {
@@ -40,21 +40,24 @@
 	class="header"
 	role="group"
 	aria-label="Columns. On a label, the menu key or Shift+F10 chooses them."
-	style:grid-template-columns={grid}
 	oncontextmenu={(event) => {
 		oncontextmenu(event);
 	}}
 >
-	<span class="box">{@render box?.()}</span>
-	<span
-		class="label"
-		role="button"
-		aria-haspopup="menu"
-		tabindex="0"
-		onkeydown={(event) => {
-			onkeydown(event);
-		}}>#</span
-	>
+	{#if parts.handle}<span></span>{/if}
+	<span class="box pick-gutter">{@render box?.()}</span>
+	{#if parts.cover}<span></span>{/if}
+	{#if parts.number}
+		<span
+			class="label"
+			role="button"
+			aria-haspopup="menu"
+			tabindex="0"
+			onkeydown={(event) => {
+				onkeydown(event);
+			}}>#</span
+		>
+	{/if}
 	<span
 		class="label"
 		role="button"
@@ -110,6 +113,7 @@
 		height: var(--head-row, 40px);
 		box-sizing: border-box;
 		display: grid;
+		grid-template-columns: var(--song-grid);
 		align-items: center;
 		column-gap: var(--col-gap, 12px);
 		padding: 0 var(--row-pad, 14px);
@@ -140,6 +144,13 @@
 	.chip-cell {
 		display: flex;
 		align-items: center;
+	}
+
+	/* The header's gutter reaches from the edge and down the whole header, as a row's does. */
+	.box {
+		align-self: stretch;
+		margin-left: calc(-1 * var(--row-pad, 14px));
+		padding-left: var(--row-pad, 14px);
 	}
 
 	.chip-cell {

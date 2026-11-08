@@ -71,8 +71,8 @@ func TestColumnsListsEachOnce(t *testing.T) {
 		}
 		seen[c] = true
 	}
-	if len(seen) != 13 {
-		t.Errorf("%d columns, want the spec's 13", len(seen))
+	if len(seen) != 14 {
+		t.Errorf("%d columns, want the spec's 14", len(seen))
 	}
 }
 

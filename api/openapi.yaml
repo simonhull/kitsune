@@ -1425,15 +1425,16 @@ paths:
             (`albumArtists`), `genre` (`displayGenres`, spelled as albums'
             are), `year`, `composer` (`composers`), `format` (`format`,
             `sampleRate`, `bitDepth` and `bitrate`), `bitrate`, `added`
-            (`addedAt`), and the caller's own `plays`, `lastPlayed`
-            (`lastPlayedAt`) and `shuffle` rules. An unknown name is a 400.
+            (`addedAt`), `gain` (`trackGain`), and the caller's own `plays`,
+            `lastPlayed` (`lastPlayedAt`) and `shuffle` rules. An unknown name
+            is a 400.
           style: form
           explode: false
           schema:
             type: array
             items:
               type: string
-              enum: [albumArtist, genre, year, composer, format, bitrate, added, plays, lastPlayed, shuffle]
+              enum: [albumArtist, genre, year, composer, format, bitrate, added, plays, lastPlayed, gain, shuffle]
         - name: albums
           in: query
           required: false
@@ -2549,7 +2550,7 @@ components:
           description: Leave Artist empty where the track's artists are the album's.
     SongColumn:
       type: string
-      enum: [artist, albumArtist, album, genre, year, rating, heart, plays, lastPlayed, added, composer, format, bitrate]
+      enum: [artist, albumArtist, album, genre, year, rating, heart, plays, lastPlayed, added, composer, format, bitrate, gain]
     LibraryIndex:
       type: object
       additionalProperties: false
@@ -2687,6 +2688,11 @@ components:
           type: string
           format: date-time
           description: With `fields=lastPlayed`. The caller's last play. Absent when never played.
+        trackGain:
+          type: number
+          description: >-
+            With `fields=gain`: the track's ReplayGain, in dB. Absent when the
+            file has none.
         shuffle:
           type: object
           additionalProperties: false

@@ -99,13 +99,14 @@ const (
 	ColumnComposer    Column = "composer"
 	ColumnFormat      Column = "format"
 	ColumnBitrate     Column = "bitrate"
+	ColumnGain        Column = "gain"
 )
 
 // Columns lists every column a person may choose.
 func Columns() []Column {
 	return []Column{
 		ColumnArtist, ColumnAlbumArtist, ColumnAlbum, ColumnGenre, ColumnYear, ColumnRating, ColumnHeart,
-		ColumnPlays, ColumnLastPlayed, ColumnAdded, ColumnComposer, ColumnFormat, ColumnBitrate,
+		ColumnPlays, ColumnLastPlayed, ColumnAdded, ColumnComposer, ColumnFormat, ColumnBitrate, ColumnGain,
 	}
 }
 

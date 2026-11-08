@@ -1,4 +1,4 @@
-import { clock } from '#lib/library/format.ts';
+import { clock, gain } from '#lib/library/format.ts';
 import type {
 	ColumnId,
 	ColumnsPref,
@@ -130,6 +130,15 @@ export const columnSpecs: readonly ColumnSpec[] = [
 		end: true,
 		field: 'bitrate',
 		look: 'fact'
+	},
+	{
+		id: 'gain',
+		label: 'ReplayGain',
+		head: 'RG',
+		width: [64, 84],
+		end: true,
+		field: 'gain',
+		look: 'fact'
 	}
 ];
 
@@ -157,10 +166,25 @@ export function savedColumns(saved: ColumnsPref | null): ColumnsPref {
 	return { order, artistWhenDifferent: saved.artistWhenDifferent };
 }
 
+/**
+ * The parts of a row a list turns on beside the box, the title, the time and ⋯, which every row
+ * has: a queue's drag handle, a cover, and the number.
+ */
+export interface RowParts {
+	handle: boolean;
+	cover: boolean;
+	number: boolean;
+}
+
+/** The Library's and an album's: a number, and no cover or handle. */
+export const numbered: RowParts = { handle: false, cover: false, number: true };
+
 /** The columns that are always there, and the room between them, at a step. */
 export interface Frame {
 	box: number;
 	number: number;
+	handle: number;
+	cover: number;
 	time: number;
 	more: number;
 	gap: number;
@@ -170,8 +194,28 @@ export interface Frame {
 }
 
 const frames: Record<Exclude<Step, 'phone'>, Frame> = {
-	columns: { box: 20, number: 28, time: 44, more: 36, gap: 12, pad: 14, title: 200 },
-	large: { box: 24, number: 32, time: 56, more: 44, gap: 16, pad: 18, title: 200 }
+	columns: {
+		box: 20,
+		number: 28,
+		handle: 20,
+		cover: 40,
+		time: 44,
+		more: 36,
+		gap: 12,
+		pad: 14,
+		title: 200
+	},
+	large: {
+		box: 24,
+		number: 32,
+		handle: 24,
+		cover: 52,
+		time: 56,
+		more: 44,
+		gap: 16,
+		pad: 18,
+		title: 200
+	}
 };
 
 export function frameOf(step: Exclude<Step, 'phone'>): Frame {
@@ -180,6 +224,16 @@ export function frameOf(step: Exclude<Step, 'phone'>): Frame {
 
 const atStep = (widths: Widths, step: Exclude<Step, 'phone'>): number =>
 	step === 'large' ? widths[1] : widths[0];
+
+/** The tracks every row has before its columns, in order, at a step. */
+function leading(frame: Frame, parts: RowParts): number[] {
+	return [
+		...(parts.handle ? [frame.handle] : []),
+		frame.box,
+		...(parts.cover ? [frame.cover] : []),
+		...(parts.number ? [frame.number] : [])
+	];
+}
 
 export interface Fit {
 	shown: ColumnId[];
@@ -191,12 +245,20 @@ export interface Fit {
  * Finds the columns a row `width` wide has room for, taking them in the person's order and dropping
  * from the end: once one doesn't fit, nothing after it shows either. Title keeps its least width.
  */
-export function fit(order: readonly ColumnId[], width: number, step: Exclude<Step, 'phone'>): Fit {
+export function fit(
+	order: readonly ColumnId[],
+	width: number,
+	step: Exclude<Step, 'phone'>,
+	parts: RowParts = numbered
+): Fit {
 	const frame = frameOf(step);
-	// Box, number, title, time and ⋯: five tracks and the four gaps between them.
+	// What comes before the title, the title, time and ⋯, and the gaps between them.
+	const fixed = [...leading(frame, parts), frame.title, frame.time, frame.more];
 	let room =
-		width - 2 * frame.pad - frame.box - frame.number - frame.time - frame.more - 4 * frame.gap;
-	room -= frame.title;
+		width -
+		2 * frame.pad -
+		fixed.reduce((sum, each) => sum + each, 0) -
+		(fixed.length - 1) * frame.gap;
 	const shown: ColumnId[] = [];
 	for (const id of order) {
 		const spec = specOf(id);
@@ -211,7 +273,12 @@ export function fit(order: readonly ColumnId[], width: number, step: Exclude<Ste
 }
 
 /** The grid every row and the header share, for the columns shown. */
-export function template(shown: readonly ColumnId[], step: Exclude<Step, 'phone'>): string {
+export function template(
+	shown: readonly ColumnId[],
+	step: Exclude<Step, 'phone'>,
+	parts: RowParts = numbered,
+	titleLeast = frameOf(step).title
+): string {
 	const frame = frameOf(step);
 	const columns = shown.map((id) => {
 		const spec = specOf(id);
@@ -221,13 +288,44 @@ export function template(shown: readonly ColumnId[], step: Exclude<Step, 'phone'
 			: `minmax(${String(atStep(spec.least, step))}px, ${String(width)}px)`;
 	});
 	return [
-		`${String(frame.box)}px`,
-		`${String(frame.number)}px`,
-		`minmax(${String(frame.title)}px, 1fr)`,
+		...leading(frame, parts).map((each) => `${String(each)}px`),
+		`minmax(${String(titleLeast)}px, 1fr)`,
 		...columns,
 		`${String(frame.time)}px`,
 		`${String(frame.more)}px`
 	].join(' ');
+}
+
+/**
+ * Where a list stands, for the columns: the Library shows every one chosen; an album page never
+ * Album, which it is; search results come from everywhere, so they always say whose and from what.
+ */
+export type ColumnsContext = 'library' | 'album' | 'search';
+
+/** The person's columns as a list shows them, in their order. */
+export function columnsIn(order: readonly ColumnId[], context: ColumnsContext): ColumnId[] {
+	switch (context) {
+		case 'library':
+			return [...order];
+		case 'album':
+			return order.filter((id) => id !== 'album');
+		case 'search': {
+			const forced = (['artist', 'album'] as const).filter((id) => !order.includes(id));
+			return [...forced, ...order];
+		}
+	}
+}
+
+/** The Artist switch as a list applies it: an album page always leaves the album's own artist out. */
+export function artistWhenDifferentIn(pref: ColumnsPref, context: ColumnsContext): boolean {
+	switch (context) {
+		case 'library':
+			return pref.artistWhenDifferent;
+		case 'album':
+			return true;
+		case 'search':
+			return false;
+	}
 }
 
 /**
@@ -245,15 +343,19 @@ export function fieldsFor(order: readonly ColumnId[]): IndexField[] {
 		'bitrate',
 		'added',
 		'plays',
-		'lastPlayed'
+		'lastPlayed',
+		'gain'
 	];
 	return [...all.filter((field) => wanted.has(field)), 'shuffle'];
 }
 
+/** As much of an album as a song row shows. */
+export type RowAlbum = Pick<LibraryAlbum, 'id' | 'title' | 'artist' | 'year' | 'artwork'>;
+
 /** What a cell needs to say its piece. */
 export interface CellContext {
 	track: LibraryTrack;
-	album: LibraryAlbum;
+	album: RowAlbum;
 	stars: number | null;
 	hearted: boolean;
 	artistWhenDifferent: boolean;
@@ -262,7 +364,11 @@ export interface CellContext {
 }
 
 export type Cell =
-	| { look: 'name' | 'fact'; text: string }
+	| {
+			look: 'name' | 'fact';
+			text: string;
+			/** Says something is missing, in the fox. */ warn?: true;
+	  }
 	| { look: 'stars'; stars: number }
 	| { look: 'heart'; hearted: boolean };
 
@@ -310,11 +416,7 @@ export function formatCell({ format, bitDepth, sampleRate, bitrate }: LibraryTra
 }
 
 /** The track's artists as Artist shows them: nothing, under the switch, where they're the album's. */
-export function artistCell(
-	track: LibraryTrack,
-	album: LibraryAlbum,
-	whenDifferent: boolean
-): string {
+export function artistCell(track: LibraryTrack, album: RowAlbum, whenDifferent: boolean): string {
 	const named = track.artists.filter((artist) => artist !== '').join(', ');
 	return whenDifferent && named === album.artist ? '' : named;
 }
@@ -352,11 +454,15 @@ export function cellOf(id: ColumnId, context: CellContext): Cell {
 			return fact(formatCell(track));
 		case 'bitrate':
 			return fact(track.bitrate === undefined ? '' : String(track.bitrate));
+		case 'gain':
+			return track.trackGain === undefined
+				? { look: 'fact', text: 'no RG', warn: true }
+				: fact(`${gain(track.trackGain)} dB`);
 	}
 }
 
 /** Columns that say something of each song, so they're never left out for being shared. */
-const perSong = new Set<ColumnId>(['artist', 'rating', 'heart', 'plays']);
+const perSong = new Set<ColumnId>(['artist', 'rating', 'heart', 'plays', 'gain']);
 
 /**
  * What a phone row's second line says, from the person's columns in their order, before its time.
@@ -386,7 +492,7 @@ function phonePart(
 	id: ColumnId,
 	context: CellContext,
 	track: LibraryTrack,
-	album: LibraryAlbum
+	album: RowAlbum
 ): string {
 	const cell = cellOf(id, context);
 	switch (id) {
@@ -413,6 +519,8 @@ function phonePart(
 			return track.lastPlayedAt === undefined ? '' : lastWhen(track.lastPlayedAt, context.now);
 		case 'bitrate':
 			return track.bitrate === undefined ? '' : `${String(track.bitrate)} kbps`;
+		case 'gain':
+			return track.trackGain === undefined ? 'no RG' : `RG ${gain(track.trackGain)}`;
 		default:
 			return cell.look === 'name' || cell.look === 'fact' ? cell.text : '';
 	}

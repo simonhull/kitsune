@@ -18,7 +18,9 @@
 	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
 	import SelectionBar from '#lib/pages/SelectionBar.svelte';
 	import TagBar from '#lib/pages/TagBar.svelte';
+	import PickBox from '#lib/pages/PickBox.svelte';
 	import { selection } from '#lib/pages/selection.svelte.ts';
+	import { SongList } from '#lib/pages/songRow.ts';
 	import {
 		actionsFor,
 		albumsByTrack,
@@ -206,13 +208,11 @@
 		null
 	);
 
-	function pick(trackId: string, how: 'toggle' | 'range'): void {
-		if (how === 'range') {
-			selection.extend(trackId, order);
-		} else {
-			selection.toggle(trackId);
-		}
-	}
+	/** The list's rules for picking: its order, and how a row is brought into view. */
+	const list = new SongList(selection, {
+		order: () => order,
+		reveal: (trackId) => void focusRow(trackId)
+	});
 
 	/** Opens the ⋯ menu: on the picked songs, when it's opened on one of them. */
 	function openRowMenu(trackId: string, x: number, y: number): void {
@@ -269,39 +269,8 @@
 		document.querySelector<HTMLElement>(`[data-track="${CSS.escape(trackId)}"] .play`)?.focus();
 	}
 
-	/** Space picks the focused song; the arrows move, and with Shift take the songs passed. */
-	function rowKey(event: KeyboardEvent, trackId: string): void {
-		if (event.key === ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
-			event.preventDefault();
-			selection.toggle(trackId);
-			return;
-		}
-		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
-			return;
-		}
-		event.preventDefault();
-		const at = order.indexOf(trackId);
-		const next = order.at(at + (event.key === 'ArrowDown' ? 1 : -1));
-		if (at < 0 || next === undefined || (at === 0 && event.key === 'ArrowUp')) {
-			return;
-		}
-		if (event.shiftKey) {
-			selection.add(trackId);
-			selection.add(next);
-		}
-		void focusRow(next);
-	}
-
 	function onWindowKey(event: KeyboardEvent): void {
-		if (
-			event.key === 'Escape' &&
-			selection.any &&
-			menu === null &&
-			rowMenu === null &&
-			bulk === null
-		) {
-			selection.clear();
-		}
+		list.windowKey(event, menu !== null || rowMenu !== null || bulk !== null);
 	}
 
 	/** The columns menu, where it was opened, and what opened it, to go back to. */
@@ -405,16 +374,11 @@
 <svelte:window onkeydown={onWindowKey} />
 
 {#snippet headerBox()}
-	<input
-		type="checkbox"
-		class="all"
-		aria-label={box === 'all' ? 'Clear every song in view' : 'Select every song in view'}
-		checked={box === 'all'}
-		indeterminate={box === 'some'}
-		onclick={(event) => {
-			selection.toggleAll(order);
-			event.currentTarget.checked = selection.boxFor(order) === 'all';
-			event.currentTarget.indeterminate = selection.boxFor(order) === 'some';
+	<PickBox
+		state={box}
+		what="every song in view"
+		ontoggle={() => {
+			list.toggleAll();
 		}}
 	/>
 {/snippet}
@@ -425,6 +389,8 @@
 	class:stepping
 	style:--cover={`${String(view.cover)}px`}
 	style:--list-line={`${String(view.frame.line)}px`}
+	style:--song-grid={grid}
+	data-selecting={selection.any ? '' : undefined}
 >
 	<h1>Library</h1>
 
@@ -487,7 +453,6 @@
 				<SongHeader
 					shown={fitted.shown}
 					hiddenCount={fitted.hiddenCount}
-					{grid}
 					{openMenu}
 					box={headerBox}
 				/>
@@ -541,7 +506,6 @@
 									<SongHeader
 										shown={fitted.shown}
 										hiddenCount={fitted.hiddenCount}
-										{grid}
 										{openMenu}
 										box={headerBox}
 									/>
@@ -561,7 +525,6 @@
 								cover={view.cover}
 								lineChars={Math.floor((songsWidth - 96 - (selection.any ? 26 : 0)) / monoAdvance)}
 								shown={fitted.shown}
-								{grid}
 								pref={columnsView.pref}
 								{now}
 								{cuedId}
@@ -573,9 +536,17 @@
 								playDisc={(disc) => {
 									view.playDisc(album.album.id, disc);
 								}}
-								{pick}
+								{selection}
+								pick={(trackId, how) => {
+									list.pick(trackId, how);
+								}}
 								openMenu={openRowMenu}
-								{rowKey}
+								rowKey={(event, trackId) => {
+									list.key(event, trackId);
+								}}
+								rate={(trackId, stars) => {
+									library.marks.press(trackId, stars);
+								}}
 							/>
 						{/each}
 					</div>
@@ -921,21 +892,6 @@
 
 	.list {
 		position: relative;
-	}
-
-	.all {
-		width: var(--box-size, 16px);
-		height: var(--box-size, 16px);
-		margin: 0;
-		accent-color: var(--fox);
-		opacity: 0.5;
-	}
-
-	.all:checked,
-	.all:indeterminate,
-	.all:hover,
-	.all:focus-visible {
-		opacity: 1;
 	}
 
 	/* As wide as a song row: what the columns are fitted to. */

@@ -321,7 +321,7 @@ var benchShapes = []struct{ tracks, albums, artists int }{
 // The fields the song columns can ask for: every one, and what the default
 // columns need.
 const (
-	allIndexFields     = "?fields=albumArtist,genre,year,composer,format,bitrate,added,plays,lastPlayed"
+	allIndexFields     = "?fields=albumArtist,genre,year,composer,format,bitrate,added,plays,lastPlayed,gain"
 	defaultIndexFields = "?fields=genre,plays,lastPlayed,format"
 )
 

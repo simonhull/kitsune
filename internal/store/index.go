@@ -72,6 +72,7 @@ type IndexExtra struct {
 	Format                        string // The container, such as "FLAC".
 	SampleRate, BitDepth, Bitrate int    // Hz, bits and bits per second; 0 is unknown or lossy.
 	AddedAt                       time.Time
+	TrackGain                     *float64 // ReplayGain in dB; nil when the file has none.
 	AlbumArtists                  []string
 	Tags                          []Tag     // The values of IndexOptions.TagKeys, by key and then in order.
 	Plays                         int       // By the person the index was read for.
@@ -90,7 +91,7 @@ type ShuffleMark struct {
 // IndexOptions says what the index reads beyond what it always carries. The zero
 // value reads nothing more.
 type IndexOptions struct {
-	Details      bool     // Each track's year, format, sample rate, bit depth, bitrate and when it was added.
+	Details      bool     // Each track's year, format, sample rate, bit depth, bitrate, gain and when it was added.
 	AlbumArtists bool     // Each track's album artists.
 	Plays        bool     // How often the person played each track, and when last.
 	Shuffle      bool     // The person's shuffle rules on each track.
@@ -290,6 +291,7 @@ func indexExtras(rows *indexRows) map[int64]*IndexExtra {
 		e := of(r.ID)
 		e.Year, e.Format, e.SampleRate = intOr0(r.Year), r.Format, intOr0(r.SampleRate)
 		e.BitDepth, e.Bitrate, e.AddedAt = intOr0(r.BitDepth), intOr0(r.Bitrate), fromMS(r.AddedAt)
+		e.TrackGain = r.RgTrackGain
 	}
 	for i := range rows.albumArtists {
 		e := of(rows.albumArtists[i].TrackID)

@@ -524,6 +524,8 @@ type TrackFields struct {
 	AddedAt       time.Time `json:"addedAt,omitzero"`
 	Plays         int       `json:"plays,omitzero"` // The caller's.
 	LastPlayedAt  time.Time `json:"lastPlayedAt,omitzero"`
+	// TrackGain is the track's ReplayGain in dB, absent when the file has none.
+	TrackGain *float64 `json:"trackGain,omitzero"`
 	// Shuffle is the caller's shuffle rules on the track, absent with none.
 	Shuffle *ShuffleMark `json:"shuffle,omitzero"`
 }
