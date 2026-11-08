@@ -73,8 +73,7 @@ type walked struct {
 	rootErr    error    // Set when the root itself is unreadable.
 }
 
-// isAudio reports whether name has an extension the scanner reads. WAV and
-// AIFF have no audiometa parser: they surface as unsupported issues.
+// isAudio reports whether name has an extension the scanner reads.
 func isAudio(name string) bool {
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".flac", ".mp3", ".m4a", ".m4b", ".ogg", ".oga", ".opus", ".wav", ".aif", ".aiff":

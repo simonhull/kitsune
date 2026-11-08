@@ -27,13 +27,20 @@ const (
 	sampleMP3    = "sample_v24.mp3"
 	sampleMP3v23 = "sample_v23.mp3"
 	sampleM4A    = "sample.m4a"
-	bystander    = "bystander.flac"
-	sizeFLAC     = "size.flac"
-	mtimeFLAC    = "mtime.flac"
-	backFLAC     = "back.flac"
-	issueChanged = "issue-changed.wav"
-	issueSame    = "issue-same.wav"
-	aFLAC        = "a.flac"
+	// WAV with LIST/INFO only, as ffmpeg writes it; with no tags at all; and
+	// with LIST/INFO and an ID3v2.3 chunk, as taggers add one. AIFF with NAME,
+	// (c), ANNO and an ID3v2.4 chunk.
+	sampleWAVInfo = "sample_info.wav"
+	sampleWAVBare = "sample_bare.wav"
+	sampleWAVBoth = "sample_both.wav"
+	sampleAIFF    = "sample.aiff"
+	bystander     = "bystander.flac"
+	sizeFLAC      = "size.flac"
+	mtimeFLAC     = "mtime.flac"
+	backFLAC      = "back.flac"
+	issueChanged  = "issue-changed.wav"
+	issueSame     = "issue-same.wav"
+	aFLAC         = "a.flac"
 )
 
 // fakeClock is a settable clock. The scanner reads it from its writer

@@ -46,7 +46,7 @@ func readOnlyKey(key string) bool {
 // as aART.
 func ownedKey(key string) bool {
 	return slices.ContainsFunc(fields, func(f field) bool {
-		return slices.ContainsFunc([][]string{f.flac, f.mp3, f.mp3v23, f.m4a, f.dependents, f.matching}, func(keys []string) bool {
+		return slices.ContainsFunc([][]string{f.flac, f.mp3, f.mp3v23, f.m4a, f.native, f.dependents, f.matching}, func(keys []string) bool {
 			return slices.Contains(keys, key)
 		})
 	})

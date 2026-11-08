@@ -83,7 +83,7 @@ func readTags(ctx context.Context, file *store.EditFile) (TrackTags, error) {
 				tags.ReadOnly = append(tags.ReadOnly, row.name)
 			}
 		}
-		for _, key := range row.keys(fam) {
+		for _, key := range row.covers(fam) {
 			covered[key] = true
 		}
 	}

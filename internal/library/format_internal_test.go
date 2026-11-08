@@ -63,7 +63,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 				titleSort: "TSOT", artistSort: "TSOP", albumSort: "TSOA",
 				albumArtist: "TPE2", albumArtistSort: "TSO2",
 				artistMBID: keyID3ArtistID, albumArtistMBID: "MUSICBRAINZ ALBUM ARTIST ID",
-				compilation: "TCMP", albumMBID: "MUSICBRAINZ ALBUM ID", trackMBID: "MUSICBRAINZ TRACK ID",
+				compilation: keyTCMP, albumMBID: "MUSICBRAINZ ALBUM ID", trackMBID: "MUSICBRAINZ TRACK ID",
 			},
 			artistIDs: []string{mbArtist1},
 		},
@@ -215,8 +215,10 @@ func TestNewTrackWriteFromFiles(t *testing.T) {
 	t.Parallel()
 	samples := []struct{ name, sample, compilationKey, format string }{
 		{"FLAC", "sample.flac", "COMPILATION", formatFLAC},
-		{"MP3 v2.4", "sample_v24.mp3", "TCMP", "MP3"},
+		{"MP3 v2.4", "sample_v24.mp3", keyTCMP, "MP3"},
 		{formatM4A, "sample.m4a", "cpil", formatM4A},
+		{formatWAV, sampleWAVInfo, keyTCMP, formatWAV},
+		{formatAIFF, sampleAIFF, keyTCMP, formatAIFF},
 	}
 	tws := make([]store.TrackWrite, len(samples))
 	for i, tt := range samples {

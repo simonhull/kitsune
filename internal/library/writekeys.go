@@ -106,6 +106,10 @@ type field struct {
 	// flac, mp3 and m4a are the keys in each format. The first is the one
 	// written; the others are mirrors, kept in step only where they exist.
 	flac, mp3, m4a []string
+	// native are the text tags a WAV or AIFF file keeps beside its ID3 chunk
+	// (LIST/INFO, NAME, AUTH...): mirrors of mp3, read after it and kept in
+	// step only where they exist.
+	native []string
 	// mp3v23 replaces mp3 on an ID3v2.3 tag, which lacks some frames.
 	mp3v23 []string
 	// dependents are deleted on a change, in every format: they were made for the old value.
@@ -143,6 +147,7 @@ const (
 	keyTDAT    = "TDAT"
 	keyTORY    = "TORY"
 	keyComment = "COMM" // MP3: audiometa keeps it out of the raw tags.
+	keyICRD    = "ICRD" // WAV: the date in LIST/INFO.
 	keyLyrics  = "USLT" // MP3: audiometa takes it through the typed field.
 	keyTSST    = "TSST"
 	// keyDiscSubtitle is the disc's name in Vorbis and M4A, and a TXXX in ID3.
@@ -158,16 +163,16 @@ const (
 //nolint:gochecknoglobals // A fixed table, never written.
 var fields = []field{
 	{
-		name: FieldTitle, flac: keys("TITLE"), mp3: keys("TIT2"), m4a: keys("\xA9nam"), required: true,
+		name: FieldTitle, flac: keys("TITLE"), mp3: keys("TIT2"), m4a: keys("\xA9nam"), required: true, native: keys("INAM", "NAME"),
 		dependents: []string{"TITLESORT", "TITLESORTEN", "TSOT", "sonm"},
 	},
 	{
-		name: FieldAlbum, flac: keys("ALBUM"), mp3: keys("TALB"), m4a: keys("\xA9alb"),
+		name: FieldAlbum, flac: keys("ALBUM"), mp3: keys("TALB"), m4a: keys("\xA9alb"), native: keys("IPRD"),
 		dependents: []string{"ALBUMSORT", "ALBUMSORTEN", "TSOA", "soal"},
 	},
 	{
 		name: FieldArtists, flac: keys("ARTIST", "ARTISTS"), mp3: keys("TPE1", "ARTISTS"), m4a: keys("\xA9ART", "ARTISTS"),
-		multi:      true,
+		multi: true, native: keys("IART", "AUTH"),
 		dependents: slices.Concat(keysArtistSort, keysArtistMBID, keys("ARTISTS_SORT", "ARTIST_CREDIT", "ARTISTS_CREDIT", "ARTIST CREDIT")),
 	},
 	{
@@ -179,7 +184,7 @@ var fields = []field{
 		dependents: slices.Concat(keysAlbumArtistSort, keysAlbumArtistMBID, keys("ALBUMARTISTS_SORT", "ALBUMARTIST_CREDIT", "ALBUMARTISTS_CREDIT", "ALBUM ARTIST CREDIT")),
 	},
 	{name: FieldCompilation, flac: keys("COMPILATION"), mp3: keys("TCMP"), m4a: keys("cpil"), valid: validFlag},
-	number(FieldTrack, trackNumber, keys("TRACKNUMBER", "TRACK"), keys("TRCK"), keys("trkn")),
+	number(FieldTrack, trackNumber, keys("TRACKNUMBER", "TRACK"), keys("TRCK"), keys("trkn"), "ITRK", "IPRT"),
 	number(FieldTrackTotal, trackTotal, keys("TRACKTOTAL", "TOTALTRACKS", "TRACKC"), keys("TRCK"), keys("trkn")),
 	number(FieldDisc, discNumber, keys("DISCNUMBER", "DISC"), keys("TPOS"), keys("disk")),
 	number(FieldDiscTotal, discTotal, keys("DISCTOTAL", "TOTALDISCS", "DISCC"), keys("TPOS"), keys("disk")),
@@ -193,11 +198,11 @@ var fields = []field{
 	},
 	{
 		name: FieldDate, flac: keys("DATE", keyYear), mp3: keys("TDRC"), mp3v23: keys(keyTYER, keyTDAT), m4a: keys("\xA9day"),
-		dependents: []string{"TDRC", keyTYER, keyTDAT, "TIME"},
-		valid:      validReleaseDate, read: readDate, write: writeDate,
+		dependents: []string{"TDRC", keyTYER, keyTDAT, "TIME"}, native: keys(keyICRD),
+		valid: validReleaseDate, read: readDate, write: writeDate,
 	},
 	{
-		name: FieldGenres, flac: keys("GENRE"), mp3: keys("TCON"), m4a: keys("\xA9gen"), multi: true,
+		name: FieldGenres, flac: keys("GENRE"), mp3: keys("TCON"), m4a: keys("\xA9gen"), multi: true, native: keys("IGNR"),
 		dependents: []string{"gnre"},
 	},
 	{
@@ -222,8 +227,8 @@ var fields = []field{
 	{name: FieldLanguage, flac: keys("LANGUAGE"), mp3: keys("TLAN"), m4a: keys("LANGUAGE"), multi: true},
 	{name: FieldBPM, flac: keys("BPM"), mp3: keys("TBPM"), m4a: keys("tmpo"), valid: validBPM},
 	{name: FieldKey, flac: keys("INITIALKEY"), mp3: keys("TKEY"), m4a: keys("INITIALKEY")},
-	{name: FieldCopyright, flac: keys("COPYRIGHT"), mp3: keys("TCOP"), m4a: keys("cprt")},
-	{name: FieldComment, flac: keys("COMMENT", "DESCRIPTION"), mp3: keys(keyComment), m4a: keys("\xA9cmt")},
+	{name: FieldCopyright, flac: keys("COPYRIGHT"), mp3: keys("TCOP"), m4a: keys("cprt"), native: keys("ICOP", "(c) ")},
+	{name: FieldComment, flac: keys("COMMENT", "DESCRIPTION"), mp3: keys(keyComment), m4a: keys("\xA9cmt"), native: keys("ICMT", "ANNO")},
 	{
 		name: FieldLyrics, flac: keys("LYRICS"), mp3: keys(keyLyrics), m4a: keys("\xA9lyr"),
 		matching: []string{"UNSYNCEDLYRICS"}, frozen: timestamped,
@@ -258,9 +263,9 @@ func timestamped(values []string) bool {
 // a Vorbis value can be "3/12", and writes the two that keep a number and a total
 // together. Vorbis keeps them apart, under the raw keys, and audiometa reads only
 // some: a value held only by a mirror is still the field's.
-func number(name Field, pick func(*audiometa.Tags) *int, flac, mp3, m4a []string) field {
+func number(name Field, pick func(*audiometa.Tags) *int, flac, mp3, m4a []string, native ...string) field {
 	return field{
-		name: name, flac: flac, mp3: mp3, m4a: m4a, valid: validNumber,
+		name: name, flac: flac, mp3: mp3, m4a: m4a, native: native, valid: validNumber,
 		read: func(t *audiometa.Tags, keys []string) []string {
 			if n := *pick(t); n != 0 {
 				return []string{strconv.Itoa(n)}
@@ -430,13 +435,25 @@ func (f *field) keys(fam family) []string {
 	return nil
 }
 
-// values returns what the file holds. Empty values read as absent.
+// values returns what the file holds. Empty values read as absent. A WAV or
+// AIFF file's native text counts after its ID3 frames, as audiometa reads it.
 func (f *field) values(t *audiometa.Tags, fam family) []string {
 	if f.read != nil {
 		return f.read(t, f.keys(fam))
 	}
-	return firstValues(t, f.keys(fam))
+	return firstValues(t, f.covers(fam))
 }
+
+// covers returns the keys the field reads in fam, its native text included.
+func (f *field) covers(fam family) []string {
+	if isID3(fam) {
+		return slices.Concat(f.keys(fam), f.native)
+	}
+	return f.keys(fam)
+}
+
+// isID3 reports whether fam is an ID3v2 tag, an MP3's or a WAV or AIFF file's.
+func isID3(fam family) bool { return fam == id3v23 || fam == id3v24 }
 
 // check refuses values the field can't hold, whatever the file has now.
 func (f *field) check(fam family, values []string) error {
@@ -485,6 +502,13 @@ func (f *field) save(t *audiometa.Tags, fam family, old, values []string) {
 			t.Set(key, values...)
 		}
 	}
+	if isID3(fam) {
+		for _, key := range f.native {
+			if t.Get(key) != nil {
+				t.Set(key, values...)
+			}
+		}
+	}
 	if f.write != nil {
 		f.write(t, fam, f.keys(fam), values)
 		return
@@ -521,9 +545,11 @@ func familyOf(f *audiometa.File) (family, error) {
 		return vorbis, nil
 	case audiometa.FormatMP3:
 		return id3Family(f.Path)
+	case audiometa.FormatWAV, audiometa.FormatAIFF:
+		return chunkFamily(f.Path)
 	case audiometa.FormatM4A, audiometa.FormatM4B:
 		return mp4, nil
-	case audiometa.FormatUnknown, audiometa.FormatOgg, audiometa.FormatOpus, audiometa.FormatWAV, audiometa.FormatAIFF:
+	case audiometa.FormatUnknown, audiometa.FormatOgg, audiometa.FormatOpus:
 	}
 	return 0, fmt.Errorf("%s: %w", f.Format, ErrUnsupportedEdit)
 }
@@ -541,6 +567,24 @@ func id3Family(path string) (family, error) {
 		return 0, fmt.Errorf("read the ID3 version: %w", err)
 	}
 	if string(header[:3]) == "ID3" && header[3] < 4 {
+		return id3v23, nil
+	}
+	return id3v24, nil
+}
+
+// id3v24Major is the major version of an ID3v2.4 tag.
+const id3v24Major = 4
+
+// chunkFamily reads the version of a WAV or AIFF file's ID3v2 chunk. A file
+// without one gets ID3v2.4, which audiometa writes when it adds the chunk.
+func chunkFamily(path string) (family, error) {
+	version, err := chunkID3Version(path)
+	switch {
+	case errors.Is(err, errNoID3Chunk):
+		return id3v24, nil
+	case err != nil:
+		return 0, err
+	case version < id3v24Major:
 		return id3v23, nil
 	}
 	return id3v24, nil
