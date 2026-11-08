@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { staleFor } from '#lib/library/health.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import IssuesPanel from '#lib/pages/IssuesPanel.svelte';
 	import ScanPanel from '#lib/pages/ScanPanel.svelte';
@@ -27,6 +28,20 @@
 	$effect(() => {
 		void lastEnded;
 		if (admin) {
+			untrack(() => void library.loadIssues());
+		}
+	});
+
+	// A scan finds files between those asks: a list behind the counts asks again, once for each count.
+	let askedFor: string | null = null;
+	$effect(() => {
+		const issues = library.issues;
+		const stale =
+			admin && facts !== null && issues.kind === 'ready'
+				? staleFor(facts.issueCounts, issues.value.issues)
+				: null;
+		if (stale !== null && stale !== askedFor) {
+			askedFor = stale;
 			untrack(() => void library.loadIssues());
 		}
 	});

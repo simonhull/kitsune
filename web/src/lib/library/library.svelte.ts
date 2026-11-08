@@ -78,6 +78,8 @@ const decodeBoundMs = 800;
 const readyAhead = 12;
 /** How often a hidden tab looks up to see if it can deal again. */
 const hiddenRetryMs = 1000;
+/** How long a list of issues that failed to load waits before its one try again. */
+export const issuesRetryMs = 3000;
 
 export type Session = 'signed-in' | 'signed-out' | 'down';
 
@@ -239,6 +241,8 @@ export class Library {
 	#progressPoll: ReturnType<typeof setTimeout> | undefined;
 	/** Running while the spacing after the last card lasts, or a hidden tab waits. */
 	#throwing: ReturnType<typeof setTimeout> | undefined;
+	/** Waiting to ask again for a list of issues that failed to load. */
+	#issuesRetry: ReturnType<typeof setTimeout> | undefined;
 	/** Everything the feed has already handed over, so no album lands twice. */
 	readonly #seen = new SvelteSet<string>();
 	/** Found, and waiting for a decode. */
@@ -666,8 +670,16 @@ export class Library {
 		}
 	}
 
-	/** Asks what scans had trouble with. A list already here stays through a refresh. */
-	async loadIssues(): Promise<void> {
+	/**
+	 * Asks what scans had trouble with. A list already here stays through a refresh. One that
+	 * fails to load is asked for once more, a moment later.
+	 */
+	loadIssues(): Promise<void> {
+		return this.#loadIssues(true);
+	}
+
+	async #loadIssues(retry: boolean): Promise<void> {
+		clearTimeout(this.#issuesRetry);
 		const epoch = this.#epoch;
 		if (this.issues.kind !== 'ready') {
 			this.issues = { kind: 'loading' };
@@ -681,6 +693,9 @@ export class Library {
 			const lost = this.issues.kind !== 'ready' && !(error instanceof UnauthorizedError);
 			if (epoch === this.#epoch && lost) {
 				this.issues = { kind: 'unavailable' };
+				if (retry) {
+					this.#issuesRetry = setTimeout(() => void this.#loadIssues(false), issuesRetryMs);
+				}
 			}
 		}
 	}
@@ -1128,6 +1143,7 @@ export class Library {
 	/** Forgets everything the last session saw. */
 	reset(): void {
 		clearTimeout(this.#retry);
+		clearTimeout(this.#issuesRetry);
 		clearTimeout(this.#progressPoll);
 		this.#progressPoll = undefined;
 		this.#stopFollowing();

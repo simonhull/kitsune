@@ -1,4 +1,5 @@
 import { count, emptyLine, issuesNoun, plural } from './home.ts';
+import type { Load } from './library.svelte.ts';
 import type {
 	IssueCounts,
 	IssueKind,
@@ -253,4 +254,39 @@ export function issueGroups(counts: IssueCounts, files: readonly ScanIssue[]): I
 /** The note about tracks that read with warnings. They play, so this is never an alarm. */
 export function warningLine(warnings: number): string {
 	return `${plural(warnings, 'track', 'tracks')} read fine but left a note`;
+}
+
+/** What sits under a group's heading in place of its files, or that they're there. */
+export type FilesState = 'hidden' | 'loading' | 'failed' | 'shown';
+
+/**
+ * Whether a group can show its files. A list holding none of a kind the counts have is behind
+ * them, and a fresh one is on its way (see `staleFor`), so that reads as loading, not as nothing.
+ */
+export function filesState(admin: boolean, load: Load<unknown>['kind'], files: number): FilesState {
+	if (!admin) {
+		return 'hidden';
+	}
+	if (files > 0) {
+		return 'shown';
+	}
+	return load === 'loading' || load === 'ready' ? 'loading' : 'failed';
+}
+
+/**
+ * The counts a loaded list has fallen behind, as a key to ask again for once, or null. A scan
+ * finds files between loads, so the counts can have a kind the list holds none of.
+ */
+export function staleFor(counts: IssueCounts, files: readonly ScanIssue[]): string | null {
+	const kinds: IssueKind[] = ['unreadable', 'corrupted', 'unsupported'];
+	const behind = kinds.some(
+		(kind) => counts[kind] > 0 && !files.some((file) => file.kind === kind)
+	);
+	return behind ? kinds.map((kind) => String(counts[kind])).join(':') : null;
+}
+
+/** A path under a root as a list shows it: the folders it sits in, then its own name. */
+export function splitPath(path: string): { folder: string; name: string } {
+	const parts = path.split('/').filter((part) => part !== '');
+	return { folder: parts.slice(0, -1).join(' / '), name: parts.at(-1) ?? path };
 }

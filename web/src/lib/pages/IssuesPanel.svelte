@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { allClear, issueGroups, warningLine } from '#lib/library/health.ts';
+	import {
+		allClear,
+		filesState,
+		issueGroups,
+		splitPath,
+		warningLine
+	} from '#lib/library/health.ts';
 	import { library, type Load } from '#lib/library/library.svelte.ts';
 	import type { IssueKind, LibraryFacts, ScanIssues } from '#lib/library/source.ts';
 	import Icon from '#lib/shell/Icon.svelte';
@@ -39,22 +45,41 @@
 
 	{#each groups as group (group.kind)}
 		{@const shown = opened.has(group.kind) ? group.files : group.files.slice(0, shownAtFirst)}
+		{@const files = filesState(admin, issues.kind, group.files.length)}
 		<section class="group" aria-label={group.title}>
 			<div class="heading">
 				<h2>{group.title}</h2>
 				<span class="tally">{group.tally}</span>
 			</div>
+			{#if files === 'loading'}
+				<p class="files-status" role="status">Finding which files…</p>
+			{:else if files === 'failed'}
+				<p class="files-status unavailable" role="status">
+					Couldn't load the list of files.
+					<button type="button" class="more" onclick={() => void library.loadIssues()}
+						>Try again</button
+					>
+				</p>
+			{/if}
 			<p class="note">{group.note}</p>
 			{#if shown.length > 0}
 				<ul>
 					<!-- Two roots can hold the same relative path, so a path is no key. -->
 					{#each shown as file, index (index)}
-						<li>
-							<span class="path" title={file.path}>{file.path}</span>
-							{#if file.kind !== 'unsupported'}
+						{#if file.kind === 'unsupported'}
+							{@const { folder, name } = splitPath(file.path)}
+							<li class="stacked" title={file.path}>
+								{#if folder !== ''}
+									<span class="folder">{folder}</span>
+								{/if}
+								<span class="path">{name}</span>
+							</li>
+						{:else}
+							<li>
+								<span class="path" title={file.path}>{file.path}</span>
 								<span class="message" title={file.message}>{file.message}</span>
-							{/if}
-						</li>
+							</li>
+						{/if}
 					{/each}
 				</ul>
 			{/if}
@@ -70,7 +95,7 @@
 		<p class="note">An admin can see which files.</p>
 	{/if}
 
-	{#if admin && issues.kind === 'unavailable'}
+	{#if admin && issues.kind === 'unavailable' && groups.length === 0}
 		<p class="note unavailable" role="status">
 			The list of files couldn't be loaded.
 			<button type="button" class="more" onclick={() => void library.loadIssues()}>Try again</button
@@ -179,6 +204,22 @@
 		font-size: 14px;
 	}
 
+	/* Where the list goes, until it's there: quiet, since the heading has already said how many. */
+	.files-status {
+		margin-top: 8px;
+		font-size: 14px;
+		color: var(--text-meta);
+	}
+
+	.folder {
+		min-width: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-size: 12px;
+		color: var(--text-meta);
+	}
+
 	.unavailable {
 		display: flex;
 		flex-wrap: wrap;
@@ -264,6 +305,7 @@
 		}
 
 		.path,
+		.folder,
 		.message {
 			flex: none;
 			white-space: normal;
