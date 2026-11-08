@@ -11,8 +11,10 @@
 	import { appliedGain } from '#lib/player/gain.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import { reserveIslandSlot } from '#lib/shell/slot.svelte.ts';
-	import { shuffles } from '#lib/shuffle/session.svelte.ts';
+	import { shuffles, type UpNextItem } from '#lib/shuffle/session.svelte.ts';
 	import UpNext from '#lib/shuffle/UpNext.svelte';
+	import Why from '#lib/shuffle/Why.svelte';
+	import { whyShown } from '#lib/shuffle/why.ts';
 
 	const playing = $derived(library.playing);
 	/** The shuffle playing, if one is: then Up next is its list, and says what it shuffles. */
@@ -44,6 +46,8 @@
 		}
 	}
 </script>
+
+{#snippet reason(item: UpNextItem)}<Why {item} />{/snippet}
 
 <svelte:head>
 	<title>{playing?.track.title ?? 'Now playing'} · Kitsune</title>
@@ -122,7 +126,12 @@
 
 			{#if shuffle !== null}
 				<div class="up-next-slot" data-morph-part="panel">
-					<UpNext items={shuffle.upNext} mode={shuffle.source.mode} songs={shuffle.songs} />
+					<UpNext
+						items={shuffle.upNext}
+						mode={shuffle.source.mode}
+						songs={shuffle.songs}
+						why={whyShown ? reason : undefined}
+					/>
 				</div>
 			{:else if playing.upNext.length > 0}
 				<section aria-label="Up next" class="next" data-morph-part="panel">

@@ -35,7 +35,7 @@
 	{:else}
 		<ol>
 			{#each items as item (item.key)}
-				<li>
+				<li class:has-why={why !== undefined}>
 					<span class="cover"
 						><Cover albumId={item.album.id} entry={item.album} place="small" /></span
 					>
@@ -157,6 +157,29 @@
 			gap: 12px;
 			border-radius: 0;
 			border-bottom: 1px solid var(--edge);
+		}
+
+		/* What a row says of itself takes the artist's line, with the artist in it, and a ⋯ at the end. */
+		li.has-why {
+			display: grid;
+			grid-template-columns: 44px minmax(0, 1fr) auto;
+			grid-template-rows: auto auto;
+			column-gap: 12px;
+			row-gap: 3px;
+		}
+
+		.has-why .cover {
+			grid-row: 1 / span 2;
+		}
+
+		.has-why .names {
+			grid-column: 2;
+			grid-row: 1;
+			align-self: end;
+		}
+
+		.has-why .artist {
+			display: none;
 		}
 	}
 
