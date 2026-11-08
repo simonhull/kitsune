@@ -51,6 +51,49 @@ func TestIndexFollowsEveryLibraryWrite(t *testing.T) {
 	want("Album Renamed")
 }
 
+// indexHead returns the index's first artist, who has an album.
+func indexHead(t *testing.T, s *store.Store) store.IndexArtist {
+	t.Helper()
+	index, err := s.LibraryIndex(t.Context(), 0, &store.IndexOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(index.Artists) == 0 || len(index.Artists[0].Albums) == 0 {
+		t.Fatal("the index is empty")
+	}
+	return index.Artists[0]
+}
+
+// The writes an edit makes beside its batch change what the index shows too, so
+// none may leave it showing what was kept from before them.
+func TestIndexFollowsEveryEditWrite(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	w := newWrite(0)
+	w.Year = 1999
+	writeAll(t, s, w)
+	if head := indexHead(t, s); head.Name != "Artist 0" || head.Albums[0].Year != 0 {
+		t.Fatalf("index = %s, %d; want Artist 0, 0", head.Name, head.Albums[0].Year)
+	}
+	albums, err := s.TrackAlbumRows(t.Context(), []int64{idOf(t, s, &w)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SettleAlbums(t.Context(), albums); err != nil {
+		t.Fatal(err)
+	}
+	if year := indexHead(t, s).Albums[0].Year; year != 1999 {
+		t.Errorf("year after SettleAlbums = %d, want 1999", year)
+	}
+	_, err = s.RenameArtists(t.Context(), []store.ArtistRename{{From: "artist-0", To: "artist-renamed", Name: "Renamed"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name := indexHead(t, s).Name; name != "Renamed" {
+		t.Errorf("artist after RenameArtists = %s, want Renamed", name)
+	}
+}
+
 func TestIndexIsWholeWhileTheLibraryChanges(t *testing.T) {
 	t.Parallel()
 	s := openUsers(t)

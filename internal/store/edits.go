@@ -75,7 +75,7 @@ func (s *Store) RenameArtists(ctx context.Context, renames []ArtistRename) ([]Ar
 		return nil, nil
 	}
 	var undo []ArtistRename
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
 		undo = undo[:0]
 		for i := range renames {
 			back, err := renameArtist(ctx, q, &renames[i])
@@ -144,7 +144,7 @@ type AlbumMove struct {
 // It returns how many albums it merged.
 func (s *Store) MergeEmptied(ctx context.Context, moves []AlbumMove) (int, error) {
 	merged := 0
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
 		merged = 0
 		for i := range moves {
 			into, err := mergeTarget(ctx, q, &moves[i])
@@ -222,7 +222,7 @@ func (s *Store) SettleAlbums(ctx context.Context, albums []int64) error {
 	if len(albums) == 0 {
 		return nil
 	}
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
 		for _, album := range albums {
 			if err := q.SettleAlbum(ctx, album); err != nil {
 				return fmt.Errorf("album %d: %w", album, err)
@@ -261,7 +261,7 @@ func (s *Store) SetAlbumArtwork(ctx context.Context, album int64, art *ArtworkWr
 	if err := art.validate(); err != nil {
 		return fmt.Errorf("album %d artwork: %w", album, err)
 	}
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
 		err := q.UpsertArtwork(ctx, sqlcdb.UpsertArtworkParams{
 			Hash: art.Hash[:], Width: int64(art.Width), Height: int64(art.Height),
 			Accent: art.Accent, Ground: art.Ground, Source: string(art.Source),
