@@ -255,10 +255,12 @@ func TestCrashLoopKeepsGoodBackups(t *testing.T) {
 func TestSuccessPrunes(t *testing.T) {
 	t.Parallel()
 	d, steps := seededDB(t)
+	// Three older from-versions than the one this upgrade backs up, whatever it is.
+	from := int64(len(steps))
 	touchBackups(t, d.path,
-		".v7.20260101T000000Z.bak",
-		".v8.20260201T000000Z.bak",
-		".v9.20260301T000000Z.bak",
+		fmt.Sprintf(".v%d.20260101T000000Z.bak", from-3),
+		fmt.Sprintf(".v%d.20260201T000000Z.bak", from-2),
+		fmt.Sprintf(".v%d.20260301T000000Z.bak", from-1),
 	)
 	if err := settleSchemaWith(t.Context(), d.w, d.path, withStep(steps, "next", nextStep), testUpgrade()); err != nil {
 		t.Fatal(err)
@@ -267,8 +269,8 @@ func TestSuccessPrunes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(backups) != backupsKept || backups[backupsKept-1].from != 8 {
-		t.Errorf("backups = %+v, want the v7 one gone", backups)
+	if len(backups) != backupsKept || backups[0].from != from || backups[backupsKept-1].from != from-2 {
+		t.Errorf("backups = %+v, want the v%d one gone", backups, from-3)
 	}
 }
 

@@ -454,6 +454,35 @@ type TrackFields struct {
 	AddedAt       time.Time `json:"addedAt,omitzero"`
 	Plays         int       `json:"plays,omitzero"` // The caller's.
 	LastPlayedAt  time.Time `json:"lastPlayedAt,omitzero"`
+	// Shuffle is the caller's shuffle rules on the track, absent with none.
+	Shuffle *ShuffleMark `json:"shuffle,omitzero"`
+}
+
+// ShuffleMark is what the caller's shuffle rules say of a track: the run it
+// plays in, if any, and whether shuffle leaves it out.
+type ShuffleMark struct {
+	Run      string `json:"run,omitzero"`
+	Position int    `json:"position,omitzero"` // From 1.
+	Length   int    `json:"length,omitzero"`
+	Excluded bool   `json:"excluded,omitzero"`
+}
+
+// ShuffleRules is the response to GET /me/shuffle/rules.
+type ShuffleRules struct {
+	Runs     []ShuffleRun `json:"runs"`
+	Excluded []string     `json:"excluded"`
+}
+
+// ShuffleRun is songs that always play together in shuffle, in order.
+type ShuffleRun struct {
+	ID     string   `json:"id"`
+	Tracks []string `json:"tracks"`
+}
+
+// ShuffleTracks is the body of PUT /me/shuffle/runs and of PUT and DELETE
+// /me/shuffle/excluded.
+type ShuffleTracks struct {
+	Tracks []string `json:"tracks"`
 }
 
 // LibraryFacts is the response to GET /library.

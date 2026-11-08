@@ -104,6 +104,26 @@ type Setting struct {
 	UpdatedAt int64
 }
 
+type ShuffleExcluded struct {
+	UserID     int64
+	TrackID    int64
+	ExcludedAt int64
+}
+
+type ShuffleRun struct {
+	ID        int64
+	Ulid      string
+	UserID    int64
+	CreatedAt int64
+}
+
+type ShuffleRunTrack struct {
+	RunID    int64
+	UserID   int64
+	Position int64
+	TrackID  int64
+}
+
 type Track struct {
 	ID           int64
 	Ulid         string
