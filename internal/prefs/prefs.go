@@ -49,6 +49,15 @@ const (
 	LibraryColumns = "library.columns"
 	// UITheme is the key of the web client's theme, a [Theme].
 	UITheme = "ui.theme"
+	// ShuffleRatings is how much ratings and hearts matter to shuffle, an
+	// amount from 0 to 1.
+	ShuffleRatings = "shuffle.ratings"
+	// ShuffleFlow is how much shuffle leans a next song toward one like the
+	// last, an amount from 0 to 1.
+	ShuffleFlow = "shuffle.flow"
+	// ShuffleMemory is whether shuffle learns from skips and listen time, a
+	// boolean.
+	ShuffleMemory = "shuffle.memory"
 )
 
 // keys are every preference there is, by name.
@@ -57,6 +66,9 @@ const (
 var keys = map[string]Key{
 	LibraryColumns: {name: LibraryColumns, check: checkColumns},
 	UITheme:        {name: UITheme, check: checkTheme},
+	ShuffleRatings: {name: ShuffleRatings, check: checkAmount},
+	ShuffleFlow:    {name: ShuffleFlow, check: checkAmount},
+	ShuffleMemory:  {name: ShuffleMemory, check: checkSwitch},
 }
 
 // Lookup returns the key named name, or an error wrapping [ErrUnknownKey].
@@ -165,6 +177,37 @@ func checkTheme(value []byte) ([]byte, error) {
 		return nil, fmt.Errorf("%q: %w", theme, errTheme)
 	}
 	b, err := json.Marshal(theme)
+	if err != nil {
+		return nil, fmt.Errorf("encode: %w", err)
+	}
+	return b, nil
+}
+
+var errAmount = errors.New("not a number from 0 to 1")
+
+// checkAmount accepts a JSON number from 0 to 1.
+func checkAmount(value []byte) ([]byte, error) {
+	var amount float64
+	if err := json.Unmarshal(value, &amount); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	if !(amount >= 0 && amount <= 1) {
+		return nil, errAmount
+	}
+	b, err := json.Marshal(amount)
+	if err != nil {
+		return nil, fmt.Errorf("encode: %w", err)
+	}
+	return b, nil
+}
+
+// checkSwitch accepts a JSON boolean.
+func checkSwitch(value []byte) ([]byte, error) {
+	var on bool
+	if err := json.Unmarshal(value, &on); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	b, err := json.Marshal(on)
 	if err != nil {
 		return nil, fmt.Errorf("encode: %w", err)
 	}

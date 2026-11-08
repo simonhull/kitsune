@@ -578,6 +578,90 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
+  /me/shuffles:
+    post:
+      operationId: postShuffle
+      summary: Start a shuffle, and return its first page.
+      description: >-
+        A shuffle is a session the caller can continue on any device: by its
+        `id`, `GET /me/shuffles/{id}/next` gives the page after any position it
+        has reached. `finite` plays every unit once (a unit is a song, or a run
+        of combined songs, which plays whole from its first song); `endless`
+        goes on page by page, each worked out from what the caller's listening
+        says by then. Songs excluded from shuffle are never picked, but a run
+        holding one plays it. A run holding a song in scope plays whole, even
+        into another album. `first` leads, even an excluded song: it is the
+        song the client chose to start from, and may already be playing. An
+        unknown `first` leads nothing. A scope with nothing to pick is a
+        session with no picks. An unknown album or artist is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShuffleStart" }
+      responses:
+        "201":
+          description: The session, with its first page.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShufflePage" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /me/shuffles/{id}/next:
+    get:
+      operationId: getShuffleNext
+      summary: Return a shuffle's page after a position.
+      description: >-
+        `after` is usually the last page's `to`, and then the shuffle moves on:
+        an endless page is worked out now, from what the caller's listening
+        says. A device that is behind gets what was given from `after` on,
+        while the session keeps it (its last few pages); past that, the oldest
+        it keeps, whose `from` says where it starts. A position the shuffle
+        hasn't reached is a 400. Another person's shuffle is a 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: after
+          in: query
+          required: true
+          schema: { type: integer, format: int64, minimum: 0 }
+      responses:
+        "200":
+          description: The page.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShufflePage" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
   /me/lastfm:
     get:
       operationId: getLastfm
@@ -767,7 +851,8 @@ paths:
         administrators only) and `ready`/`resync` (`EventStream`) go to
         everyone; `fingerprints` (`FingerprintStatus`) and `settings`
         (`EventSettings`) to administrators; `marks` (`EventMarks`), `prefs`
-        (`EventPrefs`), `shuffle-rules` (`EventShuffleRules`), `listening`
+        (`EventPrefs`), `shuffle-rules` (`EventShuffleRules`), `shuffle`
+        (`EventShuffle`), `listening`
         (`EventListening`) and `lastfm` (`EventLastfm`) to the person they are
         about, on every device. The stream opens with `ready`, whose id is
         where it stands. Sent back as `Last-Event-ID`, an id gets what was
@@ -1563,8 +1648,9 @@ components:
       in: path
       required: true
       description: >-
-        The preference: `library.columns` or `ui.theme`. The server knows
-        which keys there are.
+        The preference: `library.columns`, `ui.theme`, `shuffle.ratings`,
+        `shuffle.flow` or `shuffle.memory`. The server knows which keys there
+        are.
       schema: { type: string }
     ItemID:
       name: id
@@ -1798,6 +1884,14 @@ components:
       type: object
       additionalProperties: false
       description: The person's shuffle rules changed.
+    EventShuffle:
+      type: object
+      additionalProperties: false
+      description: "One of the person's shuffles moved on, on one of their devices; `GET /me/shuffles/{id}/next` reads it."
+      required: [id, to]
+      properties:
+        id: { type: string }
+        to: { type: integer, format: int64 }
     EventListening:
       type: object
       additionalProperties: false
@@ -2045,6 +2139,102 @@ components:
         tracks:
           type: array
           items: { $ref: "#/components/schemas/TrackTagEdit" }
+    ShuffleStart:
+      type: object
+      additionalProperties: false
+      required: [scope, mode]
+      properties:
+        scope: { $ref: "#/components/schemas/ShuffleScope" }
+        mode: { type: string, enum: [finite, endless] }
+        first:
+          type: string
+          minLength: 1
+          description: The song to lead with, which the client may already be playing.
+        seed:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          description: Repeats a shuffle of the same songs. Absent for a new one.
+    ShuffleScope:
+      type: object
+      additionalProperties: false
+      description: >-
+        What a shuffle draws from. `library` is every song; `hearted` and
+        `rated` are the Library list's Hearted and 4★-and-up filters; `album`
+        and `artist` take `id`; `tracks` names from 1 to 10,000 songs, such as
+        a selection. Nothing else may be given.
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [library, hearted, rated, album, artist, tracks] }
+        id: { type: string, minLength: 1 }
+        tracks:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          items: { type: string, minLength: 1 }
+    ShufflePage:
+      type: object
+      additionalProperties: false
+      required: [id, mode, from, to, songs, done, picks]
+      properties:
+        id: { type: string }
+        mode: { type: string, enum: [finite, endless] }
+        from:
+          type: integer
+          format: int64
+          description: The position the page starts at.
+        to:
+          type: integer
+          format: int64
+          description: The position after it, which the next page is asked for after.
+        songs:
+          type: integer
+          description: How many songs shuffle may pick from.
+        done:
+          type: boolean
+          description: A finite shuffle has nothing after this page.
+        picks:
+          type: array
+          items: { $ref: "#/components/schemas/ShufflePick" }
+    ShufflePick:
+      type: object
+      additionalProperties: false
+      required: [songs, why]
+      properties:
+        songs:
+          type: array
+          description: The song, or the songs combined, in the order they play.
+          items: { $ref: "#/components/schemas/TrackHit" }
+        why: { $ref: "#/components/schemas/ShuffleWhy" }
+    ShuffleWhy:
+      type: object
+      additionalProperties: false
+      description: >-
+        Why a pick came up: its weight's factors, each a multiplier, and what
+        they come from. The client words them. With `memory` off, skips and
+        listen time count for nothing and their factors are 1.
+      required: [stars, rating, hearted, heart, played, sinceDays, recency, memory, earlySkips, skipMemory, starts, skips, skipRate, listens, heard, listen, flow]
+      properties:
+        stars: { type: number, minimum: 0, maximum: 5, description: "The mean of its rated songs; 0 unrated." }
+        rating: { type: number }
+        hearted: { type: boolean }
+        heart: { type: number }
+        played: { type: boolean, description: "Whether it has come up before, played or skipped." }
+        sinceDays: { type: integer, minimum: 0, description: "Days since it last came up." }
+        recency: { type: number }
+        memory: { type: boolean, description: "Whether skips and listen time count." }
+        earlySkips: { type: integer, minimum: 0, description: "Its skips in the first 30 seconds this week." }
+        skipMemory: { type: number }
+        starts: { type: integer, minimum: 0, description: "Its starts in shuffle that played or were skipped." }
+        skips: { type: integer, minimum: 0 }
+        skipRate: { type: number }
+        listens: { type: integer, minimum: 0, description: "Its listens that played or were skipped." }
+        heard: { type: number, minimum: 0, maximum: 1, description: "How much of it those heard, on average." }
+        listen: { type: number }
+        flow: { type: number, description: "Flow's factor, 1 for none." }
+        after: { $ref: "#/components/schemas/ArtistLink" }
+        similarity: { type: number, minimum: 0, maximum: 1, description: "How alike it is to `after`." }
     ShuffleTracks:
       type: object
       additionalProperties: false
@@ -2316,12 +2506,28 @@ components:
       oneOf:
         - $ref: "#/components/schemas/LibraryColumns"
         - $ref: "#/components/schemas/UITheme"
+        - $ref: "#/components/schemas/ShuffleAmount"
+        - $ref: "#/components/schemas/ShuffleMemory"
     UITheme:
       type: string
       description: >-
         `ui.theme`: how the web client looks. `system` follows the light or
         dark the device shows, and changes when it does.
       enum: [system, light, dark]
+    ShuffleAmount:
+      type: number
+      minimum: 0
+      maximum: 1
+      description: >-
+        `shuffle.ratings`: how much ratings and hearts matter to shuffle, from
+        0 (not at all) to 1; 0.5 when never set. `shuffle.flow`: how much the
+        next song leans toward one that suits the last, from 0 (anything next)
+        to 1; 0.3 when never set.
+    ShuffleMemory:
+      type: boolean
+      description: >-
+        `shuffle.memory`: whether shuffle learns from what the person skips and
+        how much of a song they hear. True when never set.
     LibraryColumns:
       type: object
       additionalProperties: false

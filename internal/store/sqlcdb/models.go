@@ -135,6 +135,19 @@ type ShuffleRunTrack struct {
 	TrackID  int64
 }
 
+type ShuffleSession struct {
+	ID        int64
+	Ulid      string
+	UserID    int64
+	Scope     string
+	Mode      string
+	Seed      int64
+	Position  int64
+	State     []byte
+	CreatedAt int64
+	UpdatedAt int64
+}
+
 type Track struct {
 	ID           int64
 	Ulid         string

@@ -48,7 +48,7 @@ func TestPostListenJoinsItsStartAndEnd(t *testing.T) {
 	ts, sess := playFixture(t)
 	at := ts.Clock.Now().Add(-time.Minute)
 	start := listenBody(t, &api.ListenReport{ClientID: "l1", StartedAt: at, Shuffle: "s1"})
-	end := listenBody(t, &api.ListenReport{ClientID: "l1", StartedAt: at, Shuffle: "s1", Ended: "skipped", ListenedMs: 9000})
+	end := listenBody(t, &api.ListenReport{ClientID: "l1", StartedAt: at, Shuffle: "s1", Ended: endSkipped, ListenedMs: 9000})
 
 	for _, body := range []string{start, start, end, end, start} {
 		wantNoContent(t, ts.postListen(t, sess.token, body))

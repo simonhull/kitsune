@@ -251,6 +251,22 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Scans remove audiometa's temp files (`isWriteTemp`), and only with `library.tag_writes` on: off,
   nothing under a root ever changes.
 
+## Shuffle
+- `internal/shuffle` is the pure engine: units, weights, a finite order and an endless stream, given
+  plain values. It knows nothing of the store. Its bench (`internal/shuffle/bench`, `BASELINE.md`) is
+  how a change to it is judged: hard rules fail the report, and a change lands only when no metric
+  is worse and one is better.
+- `internal/shuffler` feeds it: it builds a pool from the store (the scope's songs, the person's
+  marks, Combine and Exclude, and their listening), and keeps each session's state
+  (`shuffle_sessions`, opaque to the store) so `GET /me/shuffles/{id}/next` continues it on any
+  device. A run holding a song in scope plays whole, even into another album. A person's history is
+  kept in memory and dropped by their own listens and plays (`Service.Forget`). Flow's similarity is
+  genre overlap and co-listening from listens outside shuffle only, so flow never learns from itself;
+  with nothing known it is off.
+- A pick's `why` is structured factors, never prose: the client words them.
+- The web client starts every shuffle without waiting: it picks the first song from what it holds
+  and plays it, and asks `POST /me/shuffles` with it as `first` at the same time.
+
 ## Artwork
 - `internal/artwork` renders covers during the scan and knows nothing of the store or the
   scanner. Renditions are JPEGs at `<data_dir>/artwork/<hh>/<hash>-<size>.jpg`, named by the

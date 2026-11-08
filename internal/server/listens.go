@@ -30,6 +30,7 @@ func (s *Server) postListen(w http.ResponseWriter, r *http.Request) {
 	}
 	switch err := s.library.RecordListen(r.Context(), &listen); {
 	case err == nil:
+		s.shuffles.Forget(user.ID)
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, store.ErrNotFound):
 		writeProblem(w, r, http.StatusNotFound, "no such track")

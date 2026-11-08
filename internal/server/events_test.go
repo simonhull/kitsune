@@ -31,6 +31,7 @@ var eventSchemas = map[string]string{ //nolint:gochecknoglobals // A read-only t
 	string(events.Marks):        "EventMarks",
 	string(events.Prefs):        "EventPrefs",
 	string(events.ShuffleRules): "EventShuffleRules",
+	string(events.Shuffle):      "EventShuffle",
 	string(events.Listening):    "EventListening",
 	string(events.Lastfm):       "EventLastfm",
 	string(events.Settings):     "EventSettings",
@@ -366,6 +367,7 @@ func TestNoEventHoldsASecret(t *testing.T) {
 	fx.send(t, rateCall(token, fx.album.Tracks[0].ID, stars(3)))
 	fx.send(t, call{method: http.MethodPost, path: nowPlayingPath, body: `{"trackId":"` + fx.album.Tracks[0].ID + `"}`, header: jsonHeader(token)})
 	fx.send(t, fx.postCall(fx.editsPath(), fx.album.Etag, `{"all":{"set":{"title":["Renamed"]}}}`))
+	fx.startShuffle(t, token, &api.ShuffleStart{Scope: api.ShuffleScope{Kind: scopeLibrary}, Mode: modeEndless})
 	if _, err := fx.Scanner.Scan(t.Context(), library.Full); err != nil {
 		t.Fatal(err)
 	}

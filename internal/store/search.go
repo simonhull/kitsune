@@ -217,6 +217,18 @@ func (s *Store) trackHits(ctx context.Context, ids []int64) ([]TrackHit, error) 
 	if len(ids) == 0 {
 		return nil, nil
 	}
+	byID, err := s.trackHitsByRow(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	return inOrder(ids, byID), nil
+}
+
+// trackHitsByRow fetches what the tracks with the given IDs show, by ID.
+func (s *Store) trackHitsByRow(ctx context.Context, ids []int64) (map[int64]TrackHit, error) {
+	if len(ids) == 0 {
+		return map[int64]TrackHit{}, nil
+	}
 	encoded, err := json.Marshal(ids)
 	if err != nil {
 		return nil, fmt.Errorf("encode IDs: %w", err)
@@ -242,5 +254,5 @@ func (s *Store) trackHits(ctx context.Context, ids []int64) ([]TrackHit, error) 
 			Cover:    cover(r.ArtworkHash, r.ArtworkWidth, r.ArtworkHeight, r.ArtworkAccent, r.ArtworkGround),
 		}
 	}
-	return inOrder(ids, byID), nil
+	return byID, nil
 }

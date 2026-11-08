@@ -31,6 +31,7 @@ const (
 	Marks        Kind = "marks"         // A person's hearts and stars.
 	Prefs        Kind = "prefs"         // A person's preference changed.
 	ShuffleRules Kind = "shuffle-rules" // A person's shuffle rules changed.
+	Shuffle      Kind = "shuffle"       // One of a person's shuffles moved on.
 	Listening    Kind = "listening"     // What a person's devices are playing.
 	Lastfm       Kind = "lastfm"        // A person's Last.fm connection changed.
 	Settings     Kind = "settings"      // Server settings changed, by key: admins.

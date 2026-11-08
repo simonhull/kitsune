@@ -24,6 +24,7 @@ import (
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/settings"
+	"github.com/simonhull/kitsune/internal/shuffler"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -121,6 +122,7 @@ type Server struct {
 	configDir     string
 	watcher       *library.Watcher
 	events        *events.Hub
+	shuffles      *shuffler.Service
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -187,6 +189,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 	if s.genres == nil {
 		s.genres = library.NewGenres(cfg.Library)
 	}
+	s.shuffles = shuffler.New(cfg.Library, s.genres, s.now)
 	s.outside = http.NotFoundHandler()
 	if cfg.Web != nil && cfg.BasePath == "" {
 		s.outside = webHandler(cfg.Web)
@@ -275,6 +278,8 @@ func (s *Server) routes() []route {
 		{pattern: "DELETE /me/shuffle/runs/{id}", handle: s.deleteShuffleRun},
 		{pattern: "PUT /me/shuffle/excluded", handle: s.putShuffleExcluded},
 		{pattern: "DELETE /me/shuffle/excluded", handle: s.deleteShuffleExcluded},
+		{pattern: "POST /me/shuffles", handle: s.postShuffle},
+		{pattern: "GET /me/shuffles/{id}/next", handle: s.getShuffleNext},
 		{pattern: "GET /me/lastfm", handle: s.getLastfm},
 		{pattern: "PATCH /me/lastfm", handle: s.patchLastfm},
 		{pattern: "DELETE /me/lastfm", handle: s.deleteLastfm},

@@ -361,6 +361,37 @@ CREATE INDEX shuffle_runs_user ON shuffle_runs (user_id);
 --   key seqno=0 cid=2 name=user_id desc=0 coll=BINARY key=1
 --   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
 
+-- table shuffle_sessions
+CREATE TABLE shuffle_sessions (
+	id         INTEGER PRIMARY KEY,
+	ulid       TEXT    NOT NULL UNIQUE CHECK (length(ulid) = 26), -- public ID
+	user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	scope      TEXT    NOT NULL, -- JSON: what was shuffled, as the request named it
+	mode       TEXT    NOT NULL CHECK (mode IN ('finite', 'endless')),
+	seed       INTEGER NOT NULL, -- the 64-bit seed's bits
+	position   INTEGER NOT NULL CHECK (position >= 0), -- how many units it has given
+	state      BLOB    NOT NULL,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=ulid type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=scope type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=mode type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=seed type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=position type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=state type=BLOB notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=8 name=created_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=9 name=updated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index shuffle_sessions_user
+CREATE INDEX shuffle_sessions_user ON shuffle_sessions (user_id, updated_at);
+--   key seqno=0 cid=2 name=user_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=9 name=updated_at desc=0 coll=BINARY key=1
+--   key seqno=2 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
 -- table track_artists
 CREATE TABLE track_artists (
 	track_id  INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
