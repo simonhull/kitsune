@@ -250,12 +250,15 @@
 		overflow: hidden;
 	}
 
-	/* As many covers as one row holds: the rest wrap out of sight below it. */
+	/*
+	 * As many whole covers as one row holds, spread to both edges: the rest wrap out of sight below.
+	 */
 	.recent-row {
 		--recent-size: calc(112px * var(--step));
 
 		display: grid;
 		grid-template-columns: repeat(auto-fill, var(--recent-size));
+		justify-content: space-between;
 		grid-template-rows: var(--recent-size);
 		grid-auto-rows: var(--recent-size);
 		gap: var(--recent-size) calc(14px * var(--step));
@@ -312,6 +315,7 @@
 
 		.recent-row {
 			display: flex;
+			justify-content: start;
 			gap: 14px;
 			height: auto;
 			overflow-x: auto;
