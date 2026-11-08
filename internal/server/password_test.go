@@ -56,15 +56,25 @@ func (ts *testServer) signsIn(t *testing.T, password string) bool {
 // noSecretIn fails the test if any of secrets is in the response or the log.
 func (ts *testServer) noSecretIn(t *testing.T, resp response, secrets ...string) {
 	t.Helper()
+	noSecretInResponse(t, resp, secrets...)
+	for _, s := range secrets {
+		if strings.Contains(ts.Log.String(), s) {
+			t.Errorf("the log holds %q", s)
+		}
+	}
+}
+
+// noSecretInResponse fails the test if any of secrets is in resp's body or headers.
+func noSecretInResponse(t *testing.T, resp response, secrets ...string) {
+	t.Helper()
 	var all strings.Builder
 	all.Write(resp.Body)
 	for k, vs := range resp.Header {
 		all.WriteString(k + ": " + strings.Join(vs, ",") + "\n")
 	}
-	all.WriteString(ts.Log.String())
 	for _, s := range secrets {
 		if strings.Contains(all.String(), s) {
-			t.Errorf("the response or the log holds %q", s)
+			t.Errorf("the response holds %q", s)
 		}
 	}
 }

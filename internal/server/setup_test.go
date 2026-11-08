@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -72,7 +73,7 @@ func (ts *testServer) setupStatus(t *testing.T, ip string) api.SetupStatus {
 // of the spellings it is accepted in.
 func noSetupCode(t *testing.T, resp response) {
 	t.Helper()
-	spellings := []string{setupCode, normalizeSetupCode(setupCode), strings.ToUpper(setupCode)}
+	spellings := []string{setupCode, auth.NormalizeCode(setupCode), strings.ToUpper(setupCode)}
 	var headers strings.Builder
 	for k, vs := range resp.Header {
 		headers.WriteString(k + ": " + strings.Join(vs, ",") + "\n")
@@ -171,7 +172,7 @@ func TestSetupFromOutside(t *testing.T) {
 	if got := ts.setupStatus(t, publicIP); got != (api.SetupStatus{}) {
 		t.Errorf("status after setup = %+v, want not needed", got)
 	}
-	if strings.Contains(ts.Log.String(), normalizeSetupCode(setupCode)) || strings.Contains(ts.Log.String(), setupCode) {
+	if strings.Contains(ts.Log.String(), auth.NormalizeCode(setupCode)) || strings.Contains(ts.Log.String(), setupCode) {
 		t.Error("the server logged the setup code")
 	}
 }

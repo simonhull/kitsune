@@ -61,6 +61,62 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /auth/reset:
+    post:
+      operationId: requestPasswordReset
+      summary: Ask for a code that sets a new password.
+      description: >-
+        Kitsune sends no email: for a real account, the server makes a reset
+        code and writes it once to its log, at WARN, naming the account, so
+        only whoever runs the server can pass it on. The code works once, for
+        15 minutes, and asking again replaces it. Codes live in memory, so a
+        restart voids them. The answer is the same whether or not the account
+        exists. Requests are rate limited per client IP and per name.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetRequest" }
+      responses:
+        "202":
+          description: If the account exists, a code is in the server's log.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/reset/confirm:
+    post:
+      operationId: confirmPasswordReset
+      summary: Set a new password with a reset code, and sign in.
+      description: >-
+        On success the account's sessions all end and a new one starts, as at
+        login. A wrong code counts against the login rate limit, per client IP
+        and per account; a wrong code, an expired or used one and an unknown
+        name are the same 403.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetConfirm" }
+      responses:
+        "200":
+          description: >-
+            The new session. With `cookie: true` it is also set as the
+            kitsune_session cookie and the body carries no token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: The code is wrong, expired or used, or no account has the name.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
   /setup:
     get:
       operationId: getSetup
@@ -1978,6 +2034,24 @@ components:
       properties:
         current: { type: string, minLength: 1 }
         new: { type: string, minLength: 1 }
+    ResetRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+    ResetConfirm:
+      type: object
+      additionalProperties: false
+      required: [name, code, new]
+      properties:
+        name: { type: string, minLength: 1 }
+        code:
+          type: string
+          minLength: 1
+          description: The reset code from the server's log, in any case, with or without its dashes.
+        new: { type: string, minLength: 1 }
+        cookie: { type: boolean, default: false }
     SetupStatus:
       type: object
       additionalProperties: false

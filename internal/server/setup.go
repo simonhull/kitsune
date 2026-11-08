@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/netip"
-	"strings"
 	"sync/atomic"
 
 	"github.com/simonhull/kitsune/api"
@@ -36,7 +35,7 @@ type setupState struct {
 // gives. With no code, setup is done from the start.
 func newSetupState(code string) *setupState {
 	s := &setupState{}
-	if n := normalizeSetupCode(code); n != "" {
+	if n := auth.NormalizeCode(code); n != "" {
 		s.code = []byte(n)
 	} else {
 		s.done.Store(true)
@@ -44,27 +43,10 @@ func newSetupState(code string) *setupState {
 	return s
 }
 
-// normalizeSetupCode lower-cases code and drops dashes and spaces, so it may be
-// typed in any case and grouping. As Crockford's base32 decodes, o reads as 0
-// and i and l as 1: the code never holds the letters, so nothing else can match.
-func normalizeSetupCode(code string) string {
-	return strings.Map(func(r rune) rune {
-		switch r {
-		case '-', ' ':
-			return -1
-		case 'o':
-			return '0'
-		case 'i', 'l':
-			return '1'
-		}
-		return r
-	}, strings.ToLower(code))
-}
-
 // matches reports whether code is the setup code, in constant time for codes
 // of its length. The length is not a secret: every code has the same one.
 func (s *setupState) matches(code string) bool {
-	return s.code != nil && subtle.ConstantTimeCompare([]byte(normalizeSetupCode(code)), s.code) == 1
+	return s.code != nil && subtle.ConstantTimeCompare([]byte(auth.NormalizeCode(code)), s.code) == 1
 }
 
 // isLocal reports whether addr is in the server's network: loopback, a

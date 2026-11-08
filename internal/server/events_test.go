@@ -378,12 +378,15 @@ func TestNoEventHoldsASecret(t *testing.T) {
 		t.Fatal(err)
 	}
 	fx.send(t, changeCall(t, token, api.PasswordChange{Current: "a password", New: newPassword}))
+	fx.requestReset(t, "user-admin")
+	code := fx.lastCode(t)
+	fx.send(t, jsonCall(t, confirmPath, "", api.ResetConfirm{Name: "user-admin", Code: code, New: testPassword}))
 	heard := drainTap(tap)
 	if len(heard) < 8 {
 		t.Fatalf("heard %d events, want every kind: %v", len(heard), heard)
 	}
 	for _, ev := range heard {
-		for _, secret := range []string{secretValue, token, testPassword, newPassword, fx.root} {
+		for _, secret := range []string{secretValue, token, testPassword, newPassword, code, fx.root} {
 			if strings.Contains(ev, secret) {
 				t.Errorf("event %s holds %q", ev, secret)
 			}

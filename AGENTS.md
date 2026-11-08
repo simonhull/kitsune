@@ -192,6 +192,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Tests hash with cheap parameters (`auth.Params{Time: 1, MemoryKiB: 64, Threads: 1}`);
   only benchmarks use `auth.DefaultParams()`.
 - Changing `DefaultParams` is safe: hashes carry their parameters, and logins rehash.
+- A new password goes through `Service.SetPassword`, which ends sessions in the same write as the hash,
+  as its `SignOut` says: `POST /me/password` keeps the caller's session and ends the others (the
+  current password is checked, and wrong ones count against the login limiter); a reset and
+  `users passwd` end them all (`-keep-sessions` keeps them); an administrator's `POST
+  /admin/users/{id}/password` ends them all and refuses the caller's own account.
+- `kitsune-server users passwd NAME` sets a password from the command line, while a server runs
+  on the database, and `users list` prints names and roles. Like `users add`, both refuse a database
+  with migrations pending and never create one. In the image: `docker exec -it kitsune
+  /kitsune-server users passwd NAME`.
 
 ## Library
 - `internal/library` turns audiometa files into store writes. Identity keys always go
@@ -303,6 +312,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   once, in the startup WARN line: the one secret ever written to a log, on purpose, since whoever
   reads the log runs the server. The code lives in memory only (`server.Config.SetupCode`) and never
   appears in a response.
+- A forgotten password is reset with a code from the log, since Kitsune sends no email.
+  `POST /auth/reset` answers 202 whether or not the name exists; for a real one `auth` makes a code
+  (`auth.NewCode`, the setup code's shape) and the server logs it once, in a WARN line naming the
+  user: the only other secret ever written to a log, on purpose. Codes live in `auth.Service`'s
+  memory, one per person (a new request replaces the old), for `auth.ResetCodeTTL` (15 minutes), and
+  a restart voids them. Requests are limited per IP and per name on their own limiter, so asking
+  never locks anyone out. `POST /auth/reset/confirm` compares the normalized code in constant time;
+  wrong codes count against the login limiter, and a wrong, expired or used code and an unknown name
+  are one 403. Success ends every session of that person and signs them in, as login does.
 - `KITSUNE_LASTFM_URL`, read only in `cmd/`, points the server at a stand-in Last.fm (its API at
   `/2.0/`, its approval page at `/api/auth/`) for manual checks; production never sets it. Tests use
   `internal/lastfm/lastfmtest` and nothing ever talks to the real Last.fm.

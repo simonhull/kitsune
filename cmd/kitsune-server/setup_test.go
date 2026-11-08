@@ -173,21 +173,6 @@ func TestServeWithAccountsLogsNoCode(t *testing.T) { //nolint:paralleltest // ov
 	}
 }
 
-func TestNewSetupCode(t *testing.T) {
-	t.Parallel()
-	seen := map[string]bool{}
-	for range 100 {
-		code := newSetupCode()
-		if !setupCodeShape.MatchString(code) {
-			t.Fatalf("code %q has the wrong shape", code)
-		}
-		if seen[code] {
-			t.Fatalf("code %q came up twice", code)
-		}
-		seen[code] = true
-	}
-}
-
 func TestSetupURL(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

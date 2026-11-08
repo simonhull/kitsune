@@ -72,6 +72,21 @@ type PasswordChange struct {
 	New     string `json:"new"`
 }
 
+// ResetRequest is the body of POST /auth/reset.
+type ResetRequest struct {
+	Name string `json:"name"`
+}
+
+// ResetConfirm is the body of POST /auth/reset/confirm.
+type ResetConfirm struct {
+	Name string `json:"name"`
+	// Code is the reset code from the server's log.
+	Code string `json:"code"`
+	New  string `json:"new"`
+	// Cookie asks for the session in a cookie instead of in the response body.
+	Cookie bool `json:"cookie,omitzero"`
+}
+
 // User is an account as the API shows it. It has no password-hash field.
 type User struct {
 	ID        int64     `json:"id"`
