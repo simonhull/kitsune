@@ -1,4 +1,4 @@
-import type { Album, AlbumEntry, ArtistDetail, Track } from './source.ts';
+import type { Album, AlbumEntry, ArtistDetail, Disc, Track } from './source.ts';
 
 /** Formats seconds as m:ss. */
 export function clock(totalSeconds: number): string {
@@ -33,6 +33,70 @@ export function balancedLines(title: string): [string, string] {
 /** Reports whether an album's tracks span more than one disc. An unset disc counts as disc 1. */
 export function isMultiDisc(tracks: readonly Pick<Track, 'discNo'>[]): boolean {
 	return new Set(tracks.map((track) => track.discNo ?? 1)).size > 1;
+}
+
+/**
+ * An album's discs, as the server works them out: in the order the tracks first reach each, named
+ * by the first track on it with a name. Only a stand-in for the server needs it.
+ */
+export function discsOf(
+	tracks: readonly Pick<Track, 'discNo' | 'discSubtitle' | 'durationMs'>[]
+): Disc[] {
+	const discs: Disc[] = [];
+	for (const { discNo, discSubtitle, durationMs } of tracks) {
+		const no = Math.max(discNo ?? 1, 1);
+		let disc = discs.find((each) => each.no === no);
+		if (disc === undefined) {
+			disc = { no, songs: 0, durationMs: 0 };
+			discs.push(disc);
+		}
+		disc.songs += 1;
+		disc.durationMs += durationMs;
+		if (disc.name === undefined && discSubtitle !== undefined && discSubtitle !== '') {
+			disc.name = discSubtitle;
+		}
+	}
+	return discs;
+}
+
+/**
+ * Where an album's disc headings go: each disc by the index of its first track. Only an album on
+ * more than one disc has any; one disc stays as it is, named or not.
+ */
+export function discHeads({
+	tracks,
+	discs
+}: {
+	tracks: readonly Pick<Track, 'discNo'>[];
+	discs: readonly Disc[];
+}): Map<number, Disc> {
+	const heads = new Map<number, Disc>();
+	if (discs.length < 2) {
+		return heads;
+	}
+	const byNo = new Map(discs.map((disc) => [disc.no, disc]));
+	let last: number | undefined;
+	for (const [index, { discNo }] of tracks.entries()) {
+		const no = Math.max(discNo ?? 1, 1);
+		const disc = byNo.get(no);
+		if (no !== last && disc !== undefined) {
+			heads.set(index, disc);
+		}
+		last = no;
+	}
+	return heads;
+}
+
+/** What a disc's heading says beside its name: `5 SONGS` and `19 MIN`, never under a minute. */
+export function discFacts({ songs, durationMs }: Pick<Disc, 'songs' | 'durationMs'>): {
+	songs: string;
+	length: string;
+} {
+	const minutes = Math.max(1, Math.round(durationMs / 60_000));
+	return {
+		songs: plural(songs, 'SONG', 'SONGS'),
+		length: `${minutes.toLocaleString('en-US')} MIN`
+	};
 }
 
 /** A track's number as tagged: `03`, `2-03` on a multi-disc album, or a dash with no number. */

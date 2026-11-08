@@ -41,6 +41,7 @@ type indexAlbum struct {
 type indexTrack struct {
 	title         string
 	disc, trackNo int
+	discName      string
 	artists       []store.ArtistWrite
 }
 
@@ -66,7 +67,7 @@ func (ts *testServer) seedIndex(tb testing.TB, albums ...indexAlbum) {
 				Digest:  new(sha256.Sum256(fmt.Appendf(nil, "%d/%d", a.n, i))),
 				Format:  flacFormat, Codec: flacFormat,
 				Duration: time.Minute,
-				Title:    t.title, DiscNo: t.disc, TrackNo: t.trackNo,
+				Title:    t.title, DiscNo: t.disc, TrackNo: t.trackNo, DiscSubtitle: t.discName,
 				Artists: t.artists, AlbumArtists: a.owners,
 				Album: store.AlbumWrite{
 					GroupKey: fmt.Sprintf("g%d", a.n), ULID: albumULID(a.n), Name: a.title, SortName: a.title,
@@ -341,10 +342,12 @@ func (ts *testServer) seedBench(b *testing.B, tracks, albums, artists int) strin
 			SortName: fmt.Sprintf("Album %d", i), Artist: artist.Name, Year: 1960 + i%60,
 		}
 		for t := range count {
+			disc := benchDisc(i, t, count)
 			tws = append(tws, store.TrackWrite{
 				ULID: fmt.Sprintf("01J%020d%03d", i+1, t), Root: musicBase, RelPath: fmt.Sprintf("a%d/%d.flac", i+1, t),
 				Format: streamFormat, Codec: flacFormat, Duration: 4 * time.Minute, SampleRate: 44100, BitDepth: 16,
-				Bitrate: 900_000 + t*1000, Lossless: true, Title: fmt.Sprintf("Track %d", t), TrackNo: t + 1,
+				Bitrate: 900_000 + t*1000, Lossless: true, Title: fmt.Sprintf("Track %d", t), TrackNo: disc.trackNo,
+				DiscNo: disc.disc, DiscSubtitle: disc.discName,
 				Year: album.Year, Album: album, Artists: []store.ArtistWrite{artist}, AlbumArtists: []store.ArtistWrite{artist},
 				Tags: []store.Tag{
 					{Key: library.GenreKeys()[0], Value: fmt.Sprintf("Genre %d", i%30)},
@@ -364,6 +367,23 @@ func (ts *testServer) seedBench(b *testing.B, tracks, albums, artists int) strin
 		}
 	}
 	return sess.token
+}
+
+// benchDisc places track t of album i, of count, on a disc: one album in five
+// has two, numbered afresh on each, and half of those name them. The rest have
+// one disc and no disc number.
+func benchDisc(i, t, count int) indexTrack {
+	if i%5 != 0 || count < 2 {
+		return indexTrack{trackNo: t + 1}
+	}
+	tr := indexTrack{disc: 1, trackNo: t + 1}
+	if half := count / 2; t >= half {
+		tr.disc, tr.trackNo = 2, t-half+1
+	}
+	if i%10 == 0 {
+		tr.discName = fmt.Sprintf("Part %d", tr.disc)
+	}
+	return tr
 }
 
 // BenchmarkLibraryIndex times GET /library/index, gzipped, and reports the

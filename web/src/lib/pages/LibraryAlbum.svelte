@@ -4,7 +4,7 @@
 	import { ownColor, paletteFor } from '#lib/cover/palette.ts';
 	import { theme } from '#lib/theme/theme.svelte.ts';
 	import { albumStars } from '#lib/library/albumStars.ts';
-	import { albumHoldings, trackLabel } from '#lib/library/format.ts';
+	import { albumHoldings, discFacts, trackLabel } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { ColumnId, ColumnsPref, ShuffleMark } from '#lib/library/source.ts';
 	import { runJoins } from '#lib/library/shuffleRules.ts';
@@ -48,6 +48,8 @@
 		/** A tap on this album couldn't be played. */
 		trouble: boolean;
 		play: (trackId: string) => void;
+		/** Plays one disc of the album. */
+		playDisc: (disc: number) => void;
 		/** A box clicked, or a row with Shift, Ctrl or Cmd. */
 		pick: (trackId: string, how: 'toggle' | 'range') => void;
 		/** Opens the ⋯ menu for a song, at a place. */
@@ -73,6 +75,7 @@
 		sounding,
 		trouble,
 		play,
+		playDisc,
 		pick,
 		openMenu,
 		rowKey
@@ -119,6 +122,8 @@
 	}
 
 	const album = $derived(block.album);
+	/** What the index says of each disc: its name, count and length. */
+	const discs = $derived(new Map((album.discs ?? []).map((disc) => [disc.no, disc])));
 	const hearted = $derived(library.marks.hearted('albums', album.id));
 	const stars = $derived(albumStars(album.tracks, library.marks));
 	/**
@@ -236,9 +241,38 @@
 		{#each rows as row (row.kind === 'song' ? row.trackIndex : `disc-${String(row.disc)}`)}
 			{@const at = `${String(row.top - block.top - head)}px`}
 			{#if row.kind === 'disc'}
-				<p class="disc" style:top={at} style:height={`${String(row.height)}px`}>
-					DISC {row.disc}
-				</p>
+				{@const disc = discs.get(row.disc)}
+				{@const facts = disc === undefined ? undefined : discFacts(disc)}
+				<div
+					class="disc"
+					class:first={row.first}
+					style:top={at}
+					style:height={`${String(row.height)}px`}
+				>
+					<span class="disc-line">
+						<h3 class="disc-no">DISC {row.disc}</h3>
+						{#if disc?.name !== undefined}
+							<span class="disc-name" title={disc.name}>{disc.name}</span>
+						{/if}
+						{#if facts !== undefined}
+							<span class="disc-facts"
+								>{#if !phone}{`${facts.songs} · `}{/if}{facts.length}</span
+							>
+						{/if}
+					</span>
+					<button
+						type="button"
+						class="disc-play"
+						aria-label={disc?.name === undefined
+							? `Play disc ${String(row.disc)} of ${album.title}`
+							: `Play disc ${String(row.disc)}, ${disc.name}`}
+						onclick={() => {
+							playDisc(row.disc);
+						}}
+					>
+						<Icon name="play" size={10} />
+					</button>
+				</div>
 			{:else}
 				{@const track = album.tracks.at(row.trackIndex)}
 				{#if track !== undefined}
@@ -484,17 +518,85 @@
 		right: 0;
 	}
 
+	/* A disc's heading: quiet, for scanning, with a play that shows on hover and focus. */
 	.disc {
 		position: absolute;
 		left: 0;
 		right: 0;
+		box-sizing: border-box;
 		display: flex;
 		align-items: flex-end;
-		padding: 0 14px 6px;
+		gap: 14px;
+		padding: 0 var(--row-pad, 14px) 8px;
+		border-bottom: 1px solid var(--edge-field);
+	}
+
+	/* Number, name and facts share one baseline, at the foot of the heading. */
+	.disc-line {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: baseline;
+		gap: 14px;
+	}
+
+	.disc-no {
+		flex: none;
+		margin: 0;
 		font-family: var(--font-mono);
 		font-size: var(--type-mono);
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		color: var(--text);
+	}
+
+	.disc-name {
+		min-width: 0;
+		overflow: hidden;
+		font-size: calc(var(--type-mono) + 2px);
+		font-weight: 600;
+		line-height: 1.2;
+		color: var(--text-secondary);
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	.disc-facts {
+		flex: none;
+		margin-left: auto;
+		font-family: var(--font-mono);
+		font-size: calc(var(--type-mono) - 1px);
 		letter-spacing: 0.08em;
 		color: var(--text-meta);
+	}
+
+	.disc-play {
+		flex: none;
+		width: 32px;
+		height: 32px;
+		margin: 0 0 -4px;
+		display: grid;
+		place-items: center;
+		border: 1px solid var(--edge-strong);
+		border-radius: var(--radius-pill);
+		background: none;
+		color: var(--text);
+		opacity: 0;
+	}
+
+	.disc:hover .disc-play,
+	.disc-play:focus-visible {
+		opacity: 1;
+	}
+
+	/* Without hover, a play nobody can find isn't there: it shows, and a finger gets its 44. */
+	@media (hover: none) {
+		.disc-play {
+			opacity: 1;
+			width: var(--target);
+			height: var(--target);
+			margin-bottom: -8px;
+		}
 	}
 
 	/* The grid is the header's: every cell sits under its label. */

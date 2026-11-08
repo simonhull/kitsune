@@ -24,7 +24,7 @@ const (
 func (ts *testServer) fieldsLibrary(t *testing.T) {
 	t.Helper()
 	ann, bob := person(1, annName), person(2, "Bob")
-	album := store.AlbumWrite{GroupKey: "g1", ULID: albumULID(1), Name: "Glasshouse", SortName: "Glasshouse", Artist: annName, Year: 2021}
+	album := store.AlbumWrite{GroupKey: "g1", ULID: albumULID(1), Name: glasshouse, SortName: glasshouse, Artist: annName, Year: 2021}
 	write := func(i int, title string) store.TrackWrite {
 		return store.TrackWrite{
 			ULID: fmt.Sprintf("01J%020d%03d", 1, i), Root: musicBase, RelPath: fmt.Sprintf("a1/%d.flac", i),

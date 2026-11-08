@@ -46,6 +46,7 @@ const pageOrder: readonly TagField[] = [
 	'title',
 	'trackTotal',
 	'discTotal',
+	'discSubtitle',
 	'date',
 	'genres',
 	'composers',
@@ -95,11 +96,12 @@ export const tagGroups: readonly { name: string; fields: readonly FieldSpec[] }[
 			{ field: 'albumArtists', label: 'Album artist', span: 2 },
 			{ field: 'track', label: 'Track', span: 1, kind: 'number' },
 			{ field: 'trackTotal', label: 'of', name: 'Track total', span: 1, kind: 'number' },
+			{ field: 'genres', label: 'Genres', span: 2 },
 			{ field: 'disc', label: 'Disc', span: 1, kind: 'number' },
 			{ field: 'discTotal', label: 'of', name: 'Disc total', span: 1, kind: 'number' },
-			{ field: 'date', label: 'Date', span: 1 },
-			{ field: 'genres', label: 'Genres', span: 2 },
-			{ field: 'compilation', label: 'Compilation', span: 1, locked: true }
+			{ field: 'discSubtitle', label: 'Disc name', span: 2 },
+			{ field: 'date', label: 'Date', span: 2 },
+			{ field: 'compilation', label: 'Compilation', span: 2, locked: true }
 		]
 	},
 	{

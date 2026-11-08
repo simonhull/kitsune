@@ -38,7 +38,7 @@ func TestRawKeysAFormatRefuses(t *testing.T) {
 	t.Parallel()
 	// Keys a field owns in any format, which a scan may read, and what isn't a person's.
 	everywhere := slices.Concat(
-		tableKeys(), keysAlbumArtist, keysCompilation, keysGenre, structureKeys,
+		tableKeys(), keysAlbumArtist, keysCompilation, keysGenre, keysDiscSubtitle, structureKeys,
 		[]string{"", " ", " LEADING", "TRAILING ", "lower", "Mixed", strings.Repeat("A", maxRawKey+1)},
 		[]string{keyGain, "REPLAYGAIN_ALBUM_PEAK", "R128_TRACK_GAIN", keyFingerprint, "ACOUSTID_ID", "ITUNNORM", "CHAPTER001", "CHAPTER001NAME"},
 	)

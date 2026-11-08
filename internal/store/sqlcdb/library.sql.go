@@ -79,13 +79,13 @@ const insertTrack = `-- name: InsertTrack :one
 INSERT INTO tracks (
     ulid, root, rel_path, size, mtime, audio_digest, album_id,
     format, codec, duration_ms, sample_rate, bit_depth, channels, bitrate, lossless,
-    title, sort_title, track_no, track_total, disc_no, disc_total, year, original_year,
+    title, sort_title, track_no, track_total, disc_no, disc_total, disc_subtitle, year, original_year,
     compilation, rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak,
     scan_warnings, added_at
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?, ?,
-    ?, ?, ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?,
     ?, ?
 )
@@ -114,6 +114,7 @@ type InsertTrackParams struct {
 	TrackTotal   *int64
 	DiscNo       *int64
 	DiscTotal    *int64
+	DiscSubtitle *string
 	Year         *int64
 	OriginalYear *int64
 	Compilation  int64
@@ -148,6 +149,7 @@ func (q *Queries) InsertTrack(ctx context.Context, arg InsertTrackParams) (int64
 		arg.TrackTotal,
 		arg.DiscNo,
 		arg.DiscTotal,
+		arg.DiscSubtitle,
 		arg.Year,
 		arg.OriginalYear,
 		arg.Compilation,
@@ -513,13 +515,13 @@ UPDATE tracks SET
     bitrate = ?13, lossless = ?14,
     title = ?15, sort_title = ?16,
     track_no = ?17, track_total = ?18,
-    disc_no = ?19, disc_total = ?20,
-    year = ?21, original_year = ?22,
-    compilation = ?23,
-    rg_track_gain = ?24, rg_track_peak = ?25,
-    rg_album_gain = ?26, rg_album_peak = ?27,
-    scan_warnings = ?28, missing_since = NULL
-WHERE id = ?29
+    disc_no = ?19, disc_total = ?20, disc_subtitle = ?21,
+    year = ?22, original_year = ?23,
+    compilation = ?24,
+    rg_track_gain = ?25, rg_track_peak = ?26,
+    rg_album_gain = ?27, rg_album_peak = ?28,
+    scan_warnings = ?29, missing_since = NULL
+WHERE id = ?30
 `
 
 type UpdateTrackParams struct {
@@ -543,6 +545,7 @@ type UpdateTrackParams struct {
 	TrackTotal   *int64
 	DiscNo       *int64
 	DiscTotal    *int64
+	DiscSubtitle *string
 	Year         *int64
 	OriginalYear *int64
 	Compilation  int64
@@ -576,6 +579,7 @@ func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (int64
 		arg.TrackTotal,
 		arg.DiscNo,
 		arg.DiscTotal,
+		arg.DiscSubtitle,
 		arg.Year,
 		arg.OriginalYear,
 		arg.Compilation,

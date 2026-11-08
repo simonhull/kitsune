@@ -44,6 +44,9 @@ var (
 	keysGenre           = []string{"GENRE", "TCON", "\xA9gen"}
 	keysDate            = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day"}
 	keysOriginalDate    = []string{"TDOR", "TORY", "ORIGINALDATE"}
+	// keysDiscSubtitle hold a disc's name. ID3v2.4 has a frame for it, which
+	// ID3v2.3 lacks: there, and in Vorbis and M4A, it is a DISCSUBTITLE text.
+	keysDiscSubtitle = []string{"TSST", "DISCSUBTITLE"}
 	// keysID3v2Names hold the two fields whose absence makes the MP3 reader fall
 	// back to an ID3v1 trailer.
 	keysID3v2Names = []string{"TIT2", "TPE1"}

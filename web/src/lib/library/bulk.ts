@@ -3,7 +3,7 @@ import type { AlbumTags, TagEdit, TagField, TrackTags, TracksEdit } from './sour
 /** What the server takes: M4A holds a track or disc number in 16 bits. */
 const mostNumber = 65_535;
 
-/** A field of many songs at once: board D's eleven, in its order. */
+/** A field of many songs at once: board D's eleven, in its order, and the disc's name. */
 export type BulkKey =
 	| 'title'
 	| 'album'
@@ -14,6 +14,7 @@ export type BulkKey =
 	| 'year'
 	| 'track'
 	| 'disc'
+	| 'discSubtitle'
 	| 'label'
 	| 'comment';
 
@@ -33,7 +34,7 @@ function spec(key: BulkKey, label: string, more: Partial<BulkSpec> = {}): BulkSp
 	return { key, field: key as TagField, label, span: 1, multi: false, number: false, ...more };
 }
 
-/** Board D's fields, exactly. */
+/** Board D's fields, and the disc's name beside its number. */
 export const bulkFields: readonly BulkSpec[] = [
 	spec('title', 'Title', { span: 2 }),
 	spec('album', 'Album'),
@@ -44,6 +45,7 @@ export const bulkFields: readonly BulkSpec[] = [
 	spec('year', 'Year', { field: 'date' }),
 	spec('track', 'Track', { number: true }),
 	spec('disc', 'Disc', { number: true }),
+	spec('discSubtitle', 'Disc name', { span: 2 }),
 	spec('label', 'Label', { multi: true }),
 	spec('comment', 'Comment')
 ];

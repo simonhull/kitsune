@@ -36,6 +36,7 @@ const album: Album = {
 			hearted: false
 		}
 	],
+	discs: [],
 	durationMs: 300_000,
 	formats: ['FLAC'],
 	addedAt: '2026-10-12T18:00:00Z',

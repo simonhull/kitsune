@@ -292,7 +292,7 @@ func (q *Queries) ListAlbumTrackArtists(ctx context.Context, albumID int64) ([]L
 
 const listAlbumTracks = `-- name: ListAlbumTracks :many
 SELECT
-    id, ulid, title, disc_no, disc_total, track_no, track_total, year, duration_ms, format,
+    id, ulid, title, disc_no, disc_total, disc_subtitle, track_no, track_total, year, duration_ms, format,
     sample_rate, bit_depth, rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak,
     size, mtime
 FROM tracks
@@ -301,24 +301,25 @@ ORDER BY coalesce(disc_no, 1), track_no NULLS LAST, title, id
 `
 
 type ListAlbumTracksRow struct {
-	ID          int64
-	Ulid        string
-	Title       string
-	DiscNo      *int64
-	DiscTotal   *int64
-	TrackNo     *int64
-	TrackTotal  *int64
-	Year        *int64
-	DurationMs  int64
-	Format      string
-	SampleRate  *int64
-	BitDepth    *int64
-	RgTrackGain *float64
-	RgTrackPeak *float64
-	RgAlbumGain *float64
-	RgAlbumPeak *float64
-	Size        int64
-	Mtime       int64
+	ID           int64
+	Ulid         string
+	Title        string
+	DiscNo       *int64
+	DiscTotal    *int64
+	DiscSubtitle *string
+	TrackNo      *int64
+	TrackTotal   *int64
+	Year         *int64
+	DurationMs   int64
+	Format       string
+	SampleRate   *int64
+	BitDepth     *int64
+	RgTrackGain  *float64
+	RgTrackPeak  *float64
+	RgAlbumGain  *float64
+	RgAlbumPeak  *float64
+	Size         int64
+	Mtime        int64
 }
 
 func (q *Queries) ListAlbumTracks(ctx context.Context, albumID int64) ([]ListAlbumTracksRow, error) {
@@ -336,6 +337,7 @@ func (q *Queries) ListAlbumTracks(ctx context.Context, albumID int64) ([]ListAlb
 			&i.Title,
 			&i.DiscNo,
 			&i.DiscTotal,
+			&i.DiscSubtitle,
 			&i.TrackNo,
 			&i.TrackTotal,
 			&i.Year,
@@ -1089,20 +1091,21 @@ func (q *Queries) ListIndexTrackTagsOf(ctx context.Context, arg ListIndexTrackTa
 }
 
 const listIndexTracks = `-- name: ListIndexTracks :many
-SELECT id, album_id, ulid, title, disc_no, track_no, duration_ms
+SELECT id, album_id, ulid, title, disc_no, disc_subtitle, track_no, duration_ms
 FROM tracks
 WHERE missing_since IS NULL
 ORDER BY album_id, coalesce(disc_no, 1), track_no NULLS LAST, title, id
 `
 
 type ListIndexTracksRow struct {
-	ID         int64
-	AlbumID    int64
-	Ulid       string
-	Title      string
-	DiscNo     *int64
-	TrackNo    *int64
-	DurationMs int64
+	ID           int64
+	AlbumID      int64
+	Ulid         string
+	Title        string
+	DiscNo       *int64
+	DiscSubtitle *string
+	TrackNo      *int64
+	DurationMs   int64
 }
 
 func (q *Queries) ListIndexTracks(ctx context.Context) ([]ListIndexTracksRow, error) {
@@ -1120,6 +1123,7 @@ func (q *Queries) ListIndexTracks(ctx context.Context) ([]ListIndexTracksRow, er
 			&i.Ulid,
 			&i.Title,
 			&i.DiscNo,
+			&i.DiscSubtitle,
 			&i.TrackNo,
 			&i.DurationMs,
 		); err != nil {
@@ -1138,7 +1142,7 @@ func (q *Queries) ListIndexTracks(ctx context.Context) ([]ListIndexTracksRow, er
 
 const listIndexTracksOf = `-- name: ListIndexTracksOf :many
 
-SELECT t.id, t.album_id, t.ulid, t.title, t.disc_no, t.track_no, t.duration_ms
+SELECT t.id, t.album_id, t.ulid, t.title, t.disc_no, t.disc_subtitle, t.track_no, t.duration_ms
 FROM albums a
 CROSS JOIN tracks t
 WHERE a.ulid IN (/*SLICE:albums*/?) AND t.album_id = a.id AND t.missing_since IS NULL
@@ -1146,13 +1150,14 @@ ORDER BY t.album_id, coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.i
 `
 
 type ListIndexTracksOfRow struct {
-	ID         int64
-	AlbumID    int64
-	Ulid       string
-	Title      string
-	DiscNo     *int64
-	TrackNo    *int64
-	DurationMs int64
+	ID           int64
+	AlbumID      int64
+	Ulid         string
+	Title        string
+	DiscNo       *int64
+	DiscSubtitle *string
+	TrackNo      *int64
+	DurationMs   int64
 }
 
 // The same, for some albums only, by public ID: what a change to them needs.
@@ -1185,6 +1190,7 @@ func (q *Queries) ListIndexTracksOf(ctx context.Context, albums []string) ([]Lis
 			&i.Ulid,
 			&i.Title,
 			&i.DiscNo,
+			&i.DiscSubtitle,
 			&i.TrackNo,
 			&i.DurationMs,
 		); err != nil {
