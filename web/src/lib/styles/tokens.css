@@ -1,11 +1,19 @@
-/* Direction B "Immersive", copied from the B-System board. */
-:root {
+/*
+ * Direction B "Immersive", copied from the B-System board. A theme is one set of values for the
+ * color tokens below; every component reads tokens, never raw colors (`rawColors.test.ts`).
+ * `data-theme` is set on the root before the first paint, by `app.html`, and then by `lib/theme`. An
+ * element may set it too, to show a theme inside another, as the You page's previews do.
+ */
+
+/* Dark: the first look, and what a page without data-theme gets. */
+:root,
+[data-theme='dark'] {
 	color-scheme: dark;
 
 	/* Frame: amber for navigation, playback, focus and system state. */
 	--fox: #f28c28;
 	--fox-ink: #1a0f05;
-	--tint: #2a1c10;
+	--on-fox-ink: #f5f1ec;
 	--card: #151311;
 	--ground: #0a0908;
 
@@ -19,18 +27,112 @@
 	--text-meta: #a39b93;
 	--text-label: #8c857d;
 
+	/* The fox as words, icons, carets and rings: it has to read on the ground. Fills stay --fox. */
+	--fox-text: #f28c28;
+	/* The fox as a line: focus rings, a chosen tile's ring, an underline being typed on. */
+	--fox-line: #f28c28;
+
+	/* Marks: stars and hearts that are on, and the empty ones in a list and on art. */
+	--star: #f28c28;
+	--star-off: rgb(255 255 255 / 16%);
+	--star-empty: rgb(255 255 255 / 28%);
+
 	/* Hairlines. */
 	--edge: rgb(255 255 255 / 8%);
 	--edge-card: rgb(255 255 255 / 6%);
+	--edge-raised: rgb(255 255 255 / 10%);
+	--edge-field: rgb(255 255 255 / 14%);
 	--edge-strong: rgb(255 255 255 / 20%);
+	--edge-hover: rgb(255 255 255 / 32%);
+
+	/* Fills that say what a control is doing, over the ground or a card. */
+	--input: rgb(255 255 255 / 6%);
+	--input-solid: #1d1b19;
+	--hover: rgb(255 255 255 / 8%);
+	--fill: rgb(255 255 255 / 10%);
+	--pressed: rgb(255 255 255 / 14%);
+	--rail: rgb(255 255 255 / 16%);
+	--card-raised: #1d1a17;
 
 	/* Glass: the islands float above the art. */
 	--glass-fill: rgb(24 22 20 / 72%);
 	--glass-fill-player: rgb(24 22 20 / 78%);
-	--glass-blur: blur(24px) saturate(1.4);
-	--glass-blur-player: blur(28px) saturate(1.5);
+	--glass-solid: rgb(24 22 20 / 94%);
 	--glass-shadow: 0 16px 40px rgb(0 0 0 / 45%);
 	--glass-shadow-player: 0 24px 60px rgb(0 0 0 / 55%);
+
+	/* Art: its ring, how strongly a cover glows in its own color, and shadows that lengthen as it nears. */
+	--cover-edge: rgb(255 255 255 / 6%);
+	--cover-glow-alpha: 45%;
+	--shadow-deck: 0 12px 28px rgb(0 0 0 / 32%);
+	--shadow-tile: 0 30px 60px rgb(0 0 0 / 45%);
+	--shadow-hero: 0 40px 90px rgb(0 0 0 / 50%);
+	--shadow-poster: 0 60px 120px rgb(0 0 0 / 55%);
+	--shadow-float: 0 24px 64px rgb(0 0 0 / 60%);
+}
+
+/*
+ * Light: warm paper, from the Tokens board. Every text token passes 4.5:1 on ground, card and glass.
+ * The fox stays the fill; as words it turns rust (--fox-text), since the orange is 2.2:1 on paper.
+ * Shadows are warm and short, and edges are ink at low alpha.
+ */
+[data-theme='light'] {
+	color-scheme: light;
+
+	--fox: #f28c28;
+	--fox-ink: #1a0f05;
+	--on-fox-ink: #f5f1ec;
+	--card: #fbf8f3;
+	--ground: #f4efe8;
+
+	--problem: #b0263f;
+	--problem-edge: #c43a55;
+
+	--text: #16120e;
+	--text-secondary: #3f3832;
+	--text-meta: #655c53;
+	--text-label: #6f665d;
+
+	--fox-text: #a64b00;
+	--fox-line: #c8640a;
+
+	--star: #c8640a;
+	--star-off: rgb(22 18 14 / 16%);
+	--star-empty: rgb(22 18 14 / 28%);
+
+	--edge: rgb(22 18 14 / 8%);
+	--edge-card: rgb(22 18 14 / 8%);
+	--edge-raised: rgb(22 18 14 / 10%);
+	--edge-field: rgb(22 18 14 / 20%);
+	--edge-strong: rgb(22 18 14 / 14%);
+	--edge-hover: rgb(22 18 14 / 28%);
+
+	--input: rgb(22 18 14 / 4%);
+	--input-solid: #ebe6df;
+	--hover: rgb(22 18 14 / 5%);
+	--fill: rgb(22 18 14 / 8%);
+	--pressed: rgb(22 18 14 / 11%);
+	--rail: rgb(22 18 14 / 14%);
+	--card-raised: #fffdf9;
+
+	--glass-fill: rgb(251 248 243 / 86%);
+	--glass-fill-player: rgb(251 248 243 / 92%);
+	--glass-solid: rgb(251 248 243 / 94%);
+	--glass-shadow: 0 16px 40px -20px rgb(60 40 20 / 28%);
+	--glass-shadow-player: 0 18px 48px -20px rgb(60 40 20 / 35%);
+
+	--cover-edge: rgb(22 18 14 / 8%);
+	--cover-glow-alpha: 55%;
+	--shadow-deck: 0 12px 28px -10px rgb(60 40 20 / 30%);
+	--shadow-tile: 0 30px 60px -26px rgb(60 40 20 / 40%);
+	--shadow-hero: 0 40px 90px -34px rgb(60 40 20 / 45%);
+	--shadow-poster: 0 60px 120px -46px rgb(60 40 20 / 50%);
+	--shadow-float: 0 24px 64px -24px rgb(60 40 20 / 35%);
+}
+
+:root {
+	--glass-blur: blur(24px) saturate(1.4);
+	--glass-blur-player: blur(28px) saturate(1.5);
 
 	/* Radii. Covers: card 20, hero 24, poster 28 (the page boards win over B-System's note). */
 	--radius-12: 12px;

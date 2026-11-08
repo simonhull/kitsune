@@ -589,7 +589,7 @@
 		padding: 0;
 		border: 0;
 		background: none;
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.veil {
@@ -760,12 +760,12 @@
 	}
 
 	h2 a:hover {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	/* Amber: the artist is the frame's, not a cover's. */
 	.facts {
-		--heart-on: var(--fox);
+		--heart-on: var(--star);
 		--heart-off: var(--text-secondary);
 
 		margin-top: 14px;

@@ -211,7 +211,7 @@
 		height: 40px;
 		padding: 0;
 		border: 0;
-		border-bottom: 1px solid rgb(255 255 255 / 14%);
+		border-bottom: 1px solid var(--edge-field);
 		outline: none;
 		background: transparent;
 		color: var(--text);
@@ -230,7 +230,7 @@
 	}
 
 	.changed .title {
-		border-bottom-color: var(--fox);
+		border-bottom-color: var(--fox-line);
 	}
 
 	.invalid .title {
@@ -282,7 +282,7 @@
 	}
 
 	.more:hover {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.quiet {

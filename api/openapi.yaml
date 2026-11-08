@@ -336,15 +336,13 @@ paths:
         - $ref: "#/components/parameters/PrefKey"
       responses:
         "200":
-          description: >-
-            The value, as its key's schema has it. `library.columns` is the
-            only key yet; with a second, this becomes a choice by key.
+          description: The value, as its key's schema has it.
           headers:
             Cache-Control:
               schema: { type: string }
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/LibraryColumns" }
+              schema: { $ref: "#/components/schemas/PrefValue" }
         "401":
           description: Credentials are missing, invalid or expired.
           headers:
@@ -368,7 +366,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/LibraryColumns" }
+            schema: { $ref: "#/components/schemas/PrefValue" }
       responses:
         "204":
           description: Kept.
@@ -1150,8 +1148,8 @@ components:
       in: path
       required: true
       description: >-
-        The preference, such as `library.columns`. The server knows which keys
-        there are.
+        The preference: `library.columns` or `ui.theme`. The server knows
+        which keys there are.
       schema: { type: string }
     ItemID:
       name: id
@@ -1715,6 +1713,17 @@ components:
         album: { type: string }
         durationMs: { type: integer, format: int64 }
         artwork: { $ref: "#/components/schemas/Artwork" }
+    PrefValue:
+      description: A preference's value. Its key decides which of these it is.
+      oneOf:
+        - $ref: "#/components/schemas/LibraryColumns"
+        - $ref: "#/components/schemas/UITheme"
+    UITheme:
+      type: string
+      description: >-
+        `ui.theme`: how the web client looks. `system` follows the light or
+        dark the device shows, and changes when it does.
+      enum: [system, light, dark]
     LibraryColumns:
       type: object
       additionalProperties: false

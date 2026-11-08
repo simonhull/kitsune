@@ -115,7 +115,7 @@
 		flex: 1;
 		height: 8px;
 		border-radius: 4px;
-		background: rgb(255 255 255 / 16%);
+		background: var(--rail);
 		cursor: pointer;
 		touch-action: none;
 	}

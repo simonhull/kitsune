@@ -49,6 +49,11 @@ type Contract struct {
 	validator validator.Validator
 	paths     *config.ValidationOptions // For resolving request paths; see [Contract.record].
 
+	// validating serializes the validator: in strict mode it compiles a
+	// oneOf's variants on first use and writes into the shared model while
+	// doing so, which races when two tests meet the same oneOf at once.
+	validating sync.Mutex
+
 	mu   sync.Mutex
 	seen map[string]bool // Response keys exercised so far; see [Contract.Unexercised].
 }
@@ -230,7 +235,9 @@ func (tr *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 // by [ExpectInvalidRequest].
 func (tr *Transport) checkRequest(req *http.Request) {
 	wantInvalid, _ := req.Context().Value(expectInvalidKey{}).(bool) // Absent means false.
+	tr.contract.validating.Lock()
 	ok, errs := tr.contract.validator.ValidateHttpRequestSync(req)
+	tr.contract.validating.Unlock()
 	switch {
 	case ok && wantInvalid:
 		tr.tb.Errorf("openapitest: %s %s was expected to break the contract but is valid", req.Method, req.URL)
@@ -247,7 +254,10 @@ func (tr *Transport) checkResponse(resp *http.Response, body []byte) {
 
 	clone := *resp
 	clone.Body = io.NopCloser(bytes.NewReader(body))
-	if ok, errs := tr.contract.validator.ValidateHttpResponse(resp.Request, &clone); !ok {
+	tr.contract.validating.Lock()
+	ok, errs := tr.contract.validator.ValidateHttpResponse(resp.Request, &clone)
+	tr.contract.validating.Unlock()
+	if !ok {
 		tr.tb.Errorf("openapitest: response %d to %s %s breaks the contract:\n%s",
 			resp.StatusCode, resp.Request.Method, resp.Request.URL, describe(errs))
 		return

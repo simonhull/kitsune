@@ -190,7 +190,7 @@
 		margin-top: 10px;
 		height: 8px;
 		border-radius: 4px;
-		background: rgb(26 15 5 / 20%);
+		background: color-mix(in srgb, var(--fox-ink) 20%, transparent);
 		overflow: hidden;
 	}
 
@@ -217,7 +217,7 @@
 		padding: 12px 16px;
 		border-radius: var(--radius-16);
 		background: var(--fox-ink);
-		color: var(--text);
+		color: var(--on-fox-ink);
 		font-size: 14px;
 		font-weight: 600;
 		line-height: 1.35;
@@ -252,7 +252,7 @@
 	.solid {
 		border: 0;
 		background: var(--fox-ink);
-		color: var(--text);
+		color: var(--on-fox-ink);
 	}
 
 	.solid:hover:enabled {
@@ -266,7 +266,7 @@
 	}
 
 	.ghost:hover:enabled {
-		background: rgb(26 15 5 / 12%);
+		background: color-mix(in srgb, var(--fox-ink) 12%, transparent);
 	}
 
 	.help {

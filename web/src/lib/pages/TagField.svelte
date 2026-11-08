@@ -111,7 +111,7 @@
 		grid-column: span var(--span);
 		min-width: 0;
 		padding-bottom: 4px;
-		border-bottom: 1px solid rgb(255 255 255 / 14%);
+		border-bottom: 1px solid var(--edge-field);
 		transition: border-color var(--morph-fast) var(--curve-morph);
 	}
 
@@ -120,7 +120,7 @@
 	}
 
 	.changed {
-		border-bottom-color: var(--fox);
+		border-bottom-color: var(--fox-line);
 	}
 
 	.invalid {

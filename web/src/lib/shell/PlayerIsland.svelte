@@ -190,8 +190,8 @@
 	}
 
 	.expanded .glass {
-		background: rgb(10 9 8 / 40%);
-		border-color: rgb(255 255 255 / 10%);
+		background: color-mix(in srgb, var(--ground) 40%, transparent);
+		border-color: var(--edge-raised);
 		box-shadow: none;
 	}
 
@@ -319,7 +319,7 @@
 
 	/* The shell's, so amber; on Now playing it stands on the art, and wears the accent. */
 	.favorite {
-		--heart-on: var(--fox);
+		--heart-on: var(--star);
 		--heart-off: var(--text-secondary);
 
 		display: flex;

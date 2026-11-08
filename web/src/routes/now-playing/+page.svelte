@@ -152,7 +152,7 @@
 		min-height: var(--target);
 		display: flex;
 		align-items: center;
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	/* The cover and the title behind it share a center, so they can't drift apart with height. */
@@ -200,8 +200,8 @@
 		width: var(--target);
 		height: var(--target);
 		border-radius: 50%;
-		background: rgb(10 9 8 / 30%);
-		border: 1px solid rgb(255 255 255 / 12%);
+		background: color-mix(in srgb, var(--ground) 30%, transparent);
+		border: 1px solid var(--edge-raised);
 		backdrop-filter: blur(20px);
 		display: flex;
 		align-items: center;
@@ -257,8 +257,8 @@
 	.chip {
 		padding: 6px 12px;
 		border-radius: var(--radius-pill);
-		background: rgb(10 9 8 / 30%);
-		border: 1px solid rgb(255 255 255 / 12%);
+		background: color-mix(in srgb, var(--ground) 30%, transparent);
+		border: 1px solid var(--edge-raised);
 	}
 
 	.center {
@@ -280,8 +280,8 @@
 		border-radius: var(--radius-28);
 		overflow: hidden;
 		box-shadow:
-			0 60px 120px rgb(0 0 0 / 55%),
-			0 0 0 1px rgb(255 255 255 / 8%);
+			var(--shadow-poster),
+			0 0 0 1px var(--cover-edge);
 	}
 
 	/* Positioned, so the cover's long shadow falls behind the words and not across them. */
@@ -362,8 +362,8 @@
 		gap: 10px;
 		padding: 6px 14px 6px 6px;
 		border-radius: var(--radius-pill);
-		background: rgb(10 9 8 / 35%);
-		border: 1px solid rgb(255 255 255 / 10%);
+		background: color-mix(in srgb, var(--ground) 35%, transparent);
+		border: 1px solid var(--edge-raised);
 	}
 
 	.dot {

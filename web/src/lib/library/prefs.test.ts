@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPrefs, prefsQuietMs, type PrefsServer } from './prefs.ts';
-import { ServerError, type ColumnsPref } from './source.ts';
+import { ServerError, type ColumnsPref, type Prefs } from './source.ts';
 
 const columns = (order: ColumnsPref['order']): ColumnsPref => ({
 	order,
 	artistWhenDifferent: true
 });
 
-function server(saved: ColumnsPref | null = null): PrefsServer & { sent: ColumnsPref[] } {
-	const sent: ColumnsPref[] = [];
+function server(saved: ColumnsPref | null = null): PrefsServer & { sent: Prefs[keyof Prefs][] } {
+	const sent: Prefs[keyof Prefs][] = [];
 	return {
 		sent,
 		pref: () => Promise.resolve(saved) as never,

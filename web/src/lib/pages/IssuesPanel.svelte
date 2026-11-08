@@ -125,7 +125,7 @@
 		position: absolute;
 		right: -60px;
 		bottom: -80px;
-		color: var(--fox);
+		color: var(--fox-text);
 		opacity: 0.18;
 	}
 
@@ -241,7 +241,7 @@
 	}
 
 	.more:hover {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.warned {

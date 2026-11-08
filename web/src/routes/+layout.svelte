@@ -8,6 +8,7 @@
 	import { goto, onNavigate, preloadCode } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { paletteFor } from '#lib/cover/palette.ts';
+	import { theme } from '#lib/theme/theme.svelte.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { loginPath } from '#lib/library/session.ts';
 	import { morphsKey, startMorphs } from '#lib/morph/engine.ts';
@@ -49,7 +50,7 @@
 	});
 
 	const stageEntry = $derived(stageAlbum === null ? undefined : library.entry(stageAlbum));
-	const palette = $derived(stageAlbum === null ? null : paletteFor(stageEntry));
+	const palette = $derived(stageAlbum === null ? null : paletteFor(stageEntry, theme.current));
 
 	const edit = $derived(onAlbum && stageAlbum !== null ? tagEdits.of(stageAlbum) : undefined);
 
@@ -104,9 +105,11 @@
 		void Promise.all(routeIds.map((route) => preloadCode(route)));
 		const leaveSession = followMediaSession(player);
 		const stopWatching = watchInput();
+		const stopFollowing = theme.follow();
 		return () => {
 			leaveSession();
 			stopWatching();
+			stopFollowing();
 		};
 	});
 </script>

@@ -200,7 +200,7 @@
 		display: flex;
 		flex-direction: column;
 		justify-content: flex-end;
-		border-bottom: 2px solid var(--fox);
+		border-bottom: 2px solid var(--fox-line);
 		font-size: clamp(var(--smallest), var(--fit), var(--largest));
 		font-weight: 900;
 		letter-spacing: -0.06em;
@@ -235,7 +235,7 @@
 		outline: none;
 		background: transparent;
 		color: var(--text);
-		caret-color: var(--fox);
+		caret-color: var(--fox-line);
 		font: inherit;
 		letter-spacing: inherit;
 		overflow: hidden;
@@ -282,14 +282,14 @@
 		padding: 0 18px;
 		border: 1px solid var(--edge-strong);
 		border-radius: var(--radius-pill);
-		background: rgb(10 9 8 / 30%);
+		background: color-mix(in srgb, var(--ground) 30%, transparent);
 		font-size: 14px;
 		font-weight: 600;
 		letter-spacing: normal;
 	}
 
 	.line button:hover {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	/* One grid, so albums past the first row come back under the Top result. */
@@ -371,7 +371,7 @@
 	}
 
 	.artist:hover {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	@media (max-width: 1160px) {

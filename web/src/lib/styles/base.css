@@ -12,7 +12,7 @@ html {
 	-webkit-font-smoothing: antialiased;
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
-	scrollbar-color: rgb(255 255 255 / 16%) transparent;
+	scrollbar-color: var(--rail) transparent;
 	/* A short page growing a scrollbar would shift whatever is meant to stay still, like the greeting. */
 	scrollbar-gutter: stable;
 }
@@ -46,7 +46,7 @@ button {
 }
 
 :focus-visible {
-	outline: 2px solid var(--fox);
+	outline: 2px solid var(--fox-line);
 	outline-offset: 2px;
 }
 
@@ -71,4 +71,11 @@ button {
 /* A shared element under its flier: unseen, but already the real thing, so it takes the click. */
 [data-morph-hidden] {
 	opacity: 0 !important;
+}
+
+/* A change of theme: a picture of the page crossfades into the next (lib/theme). Never on load. */
+:root.theme-fading::view-transition-old(root),
+:root.theme-fading::view-transition-new(root) {
+	animation-duration: 200ms;
+	animation-timing-function: var(--curve-morph);
 }

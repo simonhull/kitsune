@@ -186,7 +186,7 @@
 
 	.item:hover,
 	.item:focus-visible {
-		background: rgb(255 255 255 / 8%);
+		background: var(--hover);
 	}
 
 	.quiet {
@@ -200,8 +200,8 @@
 	}
 
 	.with-icon.on path {
-		fill: var(--fox);
-		stroke: var(--fox);
+		fill: var(--fox-text);
+		stroke: var(--fox-text);
 	}
 
 	.rule {
@@ -231,15 +231,15 @@
 		border-radius: 8px;
 		background: transparent;
 		font-size: 16px;
-		color: rgb(255 255 255 / 20%);
+		color: var(--star-off);
 	}
 
 	.star.on {
-		color: var(--fox);
+		color: var(--star);
 	}
 
 	.star:hover,
 	.star:has(~ .star:hover) {
-		color: color-mix(in srgb, var(--fox) 75%, transparent);
+		color: color-mix(in srgb, var(--star) 75%, transparent);
 	}
 </style>

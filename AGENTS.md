@@ -239,6 +239,17 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `internal/lastfm/lastfmtest` and nothing ever talks to the real Last.fm.
 - `Config.Ready` backs `/readyz`; new readiness conditions join it there (today: the first scan has finished, then the database answers).
 
+## Web client
+- A theme is one set of values for the color tokens in `web/src/lib/styles/tokens.css`, under
+  `[data-theme]`. Components read tokens, never raw colors: `rawColors.test.ts` fails on a hex,
+  `rgb()` or `hsl()` in a component's style, unless a `raw-color:` comment on or above the line says
+  why. Cover colors come from data, through `style:` bindings. The fox is `--fox` as a fill,
+  `--fox-text` as words and `--fox-line` as a ring or underline: on light the orange itself fails.
+- An album's colors come from `paletteFor(entry, theme.current)`; each theme has its own rules.
+- `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
+  system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
+  is the `ui.theme` pref, read after sign-in and forgotten at sign-out.
+
 ## Lint policy
 - golangci-lint runs with `default: all`. Every disabled linter in `.golangci.yml` has
   its reason next to it; do not add to that list without one.

@@ -92,7 +92,7 @@
 		padding: 0 10px 0 12px;
 		border: 0;
 		border-radius: var(--radius-pill);
-		background: rgb(255 255 255 / 14%);
+		background: var(--pressed);
 		font-size: 14px;
 		font-weight: 600;
 		white-space: nowrap;

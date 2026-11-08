@@ -177,7 +177,7 @@
 
 	.item:hover,
 	.item:focus-visible {
-		background: rgb(255 255 255 / 8%);
+		background: var(--hover);
 	}
 
 	.quiet {
@@ -248,11 +248,11 @@
 
 	.column:hover,
 	.column:focus-within {
-		background: rgb(255 255 255 / 6%);
+		background: var(--hover);
 	}
 
 	.column.dragging {
-		background: rgb(242 140 40 / 16%);
+		background: color-mix(in srgb, var(--fox) 16%, transparent);
 	}
 
 	input {

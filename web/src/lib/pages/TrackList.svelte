@@ -116,8 +116,8 @@
 		min-height: 560px;
 		padding: 16px;
 		border-radius: var(--radius-32);
-		background: rgb(21 19 17 / 82%);
-		border: 1px solid rgb(255 255 255 / 7%);
+		background: color-mix(in srgb, var(--card) 82%, transparent);
+		border: 1px solid var(--edge);
 		backdrop-filter: blur(24px);
 		transition:
 			margin-top var(--morph-slow) var(--curve-settle),
@@ -157,7 +157,7 @@
 		padding: 0;
 		border: 0;
 		background: none;
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.rows {
@@ -218,7 +218,7 @@
 
 	@media (hover: hover) {
 		.row:not(.cued):hover {
-			background: rgb(255 255 255 / 8%);
+			background: var(--hover);
 		}
 
 		.row:hover :global(.stars),
@@ -274,7 +274,7 @@
 	}
 
 	.gain.missing {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.length {

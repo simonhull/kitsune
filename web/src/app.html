@@ -4,8 +4,25 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="text-scale" content="scale" />
-		<meta name="theme-color" content="#0A0908" />
-		<meta name="color-scheme" content="dark" />
+		<meta name="theme-color" content="#0a0908" />
+		<meta name="color-scheme" content="dark light" />
+		<script>
+			// The theme, before the first paint: the choice this browser keeps, or else the system's.
+			// lib/theme/theme.svelte.ts has the same rule; change both together.
+			(function () {
+				var choice = null;
+				try {
+					choice = localStorage.getItem('kitsune.theme');
+				} catch (e) {}
+				var light =
+					choice === 'light' ||
+					(choice !== 'dark' && matchMedia('(prefers-color-scheme: light)').matches);
+				document.documentElement.dataset.theme = light ? 'light' : 'dark';
+				if (light) {
+					document.querySelector('meta[name="theme-color"]').content = '#f4efe8';
+				}
+			})();
+		</script>
 		<title>Kitsune</title>
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
 		%sveltekit.head%

@@ -184,8 +184,8 @@
 		gap: 6px;
 		border-radius: var(--radius-28);
 		background: var(--card);
-		border: 1px solid rgb(242 140 40 / 50%);
-		box-shadow: 0 24px 64px rgb(0 0 0 / 60%);
+		border: 1px solid color-mix(in srgb, var(--fox) 50%, transparent);
+		box-shadow: var(--shadow-float);
 		animation: bar-in var(--morph-fast) var(--curve-settle);
 	}
 
@@ -238,7 +238,7 @@
 
 	.text:hover,
 	.icon:hover {
-		background: rgb(255 255 255 / 8%);
+		background: var(--hover);
 	}
 
 	.icon {
@@ -254,8 +254,8 @@
 	}
 
 	.icon.on path {
-		fill: var(--fox);
-		stroke: var(--fox);
+		fill: var(--fox-text);
+		stroke: var(--fox-text);
 	}
 
 	.clear {
@@ -263,7 +263,7 @@
 		width: 48px;
 		display: grid;
 		place-items: center;
-		background: rgb(255 255 255 / 8%);
+		background: var(--hover);
 	}
 
 	.pop {
@@ -273,8 +273,8 @@
 		padding: 8px;
 		border-radius: var(--radius-20);
 		background: var(--card);
-		border: 1px solid rgb(255 255 255 / 10%);
-		box-shadow: 0 24px 64px rgb(0 0 0 / 60%);
+		border: 1px solid var(--edge-raised);
+		box-shadow: var(--shadow-float);
 	}
 
 	.stars {
@@ -286,12 +286,12 @@
 		width: 40px;
 		height: 44px;
 		font-size: 20px;
-		color: rgb(255 255 255 / 28%);
+		color: var(--star-empty);
 	}
 
 	.stars button:hover,
 	.stars button:has(~ button:not(.clear-stars):hover) {
-		color: var(--fox);
+		color: var(--star);
 	}
 
 	.stars .clear-stars {

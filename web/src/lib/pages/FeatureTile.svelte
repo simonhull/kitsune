@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { paletteFor } from '#lib/cover/palette.ts';
+	import { theme } from '#lib/theme/theme.svelte.ts';
 	import { emWidth } from '#lib/library/fit.ts';
 	import type { AlbumEntry } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
@@ -13,7 +14,7 @@
 
 	let { album }: Props = $props();
 
-	const palette = $derived(paletteFor(album));
+	const palette = $derived(paletteFor(album, theme.current));
 </script>
 
 <a
@@ -64,7 +65,7 @@
 		height: 220px;
 		border-radius: 18px;
 		overflow: hidden;
-		box-shadow: 0 30px 60px rgb(0 0 0 / 45%);
+		box-shadow: var(--shadow-tile);
 		transform: rotate(4deg);
 	}
 

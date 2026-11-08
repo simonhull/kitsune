@@ -1,5 +1,7 @@
 /** The contract's types, by name: see `api/openapi.yaml`. Real tags are messy, so much is optional. */
 
+import type { ThemeChoice } from '#lib/theme/theme.svelte.ts';
+
 export interface User {
 	id: number;
 	name: string;
@@ -255,6 +257,7 @@ export type IndexField =
 /** The preferences a person keeps on the server, by key, with what each holds. */
 export interface Prefs {
 	'library.columns': ColumnsPref;
+	'ui.theme': ThemeChoice;
 }
 
 export type PrefKey = keyof Prefs;

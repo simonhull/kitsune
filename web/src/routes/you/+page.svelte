@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { palettes } from '#lib/cover/cover.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { LastfmSwitches, Listening } from '#lib/library/source.ts';
 	import {
@@ -16,6 +17,7 @@
 		roleLine,
 		type ConnectResult
 	} from '#lib/pages/you.ts';
+	import { theme, themeChoices, type Theme, type ThemeChoice } from '#lib/theme/theme.svelte.ts';
 
 	/** How often the words that depend on the clock are worked out again. */
 	const tickMs = 15_000;
@@ -120,6 +122,28 @@
 		}
 	}
 
+	const themeNames: Record<ThemeChoice, string> = {
+		system: 'System',
+		light: 'Light',
+		dark: 'Dark'
+	};
+	/** Each tile is a small page in its theme; System's is both, split down the middle. */
+	const themeLayers: Record<ThemeChoice, readonly Theme[]> = {
+		system: ['light', 'dark'],
+		light: ['light'],
+		dark: ['dark']
+	};
+	/** The previews' album: a generated cover's ground, so it is the same in every theme. */
+	const sampleArt = palettes.at(0)?.base;
+	const chosen = $derived(theme.choice ?? 'system');
+
+	function pickTheme(choice: ThemeChoice): void {
+		theme.choose(choice);
+		library.prefs.put('ui.theme', choice);
+		// One click is the whole change: nothing to wait for.
+		void library.prefs.flush();
+	}
+
 	async function signOut(): Promise<void> {
 		try {
 			await library.signOut();
@@ -143,6 +167,44 @@
 			</p>
 			<button type="button" class="ghost" onclick={() => void signOut()}>Sign out</button>
 		</div>
+
+		<section aria-labelledby="looks" class="looks" data-morph-part="panel">
+			<h2 id="looks" class="mono">HOW KITSUNE LOOKS</h2>
+			<div class="appearance">
+				<h3 id="theme">Theme</h3>
+				<div class="tiles" role="radiogroup" aria-labelledby="theme">
+					{#each themeChoices as choice (choice)}
+						<label class="tile" class:on={chosen === choice}>
+							<input
+								type="radio"
+								name="theme"
+								value={choice}
+								checked={chosen === choice}
+								onchange={() => {
+									pickTheme(choice);
+								}}
+							/>
+							<span class="preview" aria-hidden="true">
+								{#each themeLayers[choice] as layer, index (layer)}
+									<span class="layer" class:split={index > 0} data-theme={layer}>
+										<span class="art" style:background={sampleArt}></span>
+										<span class="line"></span>
+										<span class="line short"></span>
+										<span class="bar"></span>
+									</span>
+								{/each}
+							</span>
+							<span class="choice"><span class="dot"></span>{themeNames[choice]}</span>
+						</label>
+					{/each}
+				</div>
+				<p class="note">
+					System follows this device, and switches when it does. Right now that’s {theme.prefersLight
+						? 'light'
+						: 'dark'}.
+				</p>
+			</div>
+		</section>
 
 		<section aria-labelledby="where" class="where" data-morph-part="panel">
 			<div class="where-head">
@@ -318,7 +380,7 @@
 	}
 
 	.ghost:hover:not(:disabled) {
-		border-color: rgb(255 255 255 / 36%);
+		border-color: var(--edge-hover);
 	}
 
 	.solid {
@@ -345,7 +407,7 @@
 	/* Comes in, stays, and goes on its own: three steps forward, nothing played back. */
 	.result {
 		font-size: 13px;
-		color: var(--fox);
+		color: var(--fox-text);
 		animation: said 4200ms var(--curve-morph) forwards;
 	}
 
@@ -382,7 +444,7 @@
 	}
 
 	.card[data-card='reconnect'] {
-		border-color: var(--fox);
+		border-color: var(--fox-line);
 	}
 
 	.card[data-card='unset'] {
@@ -411,7 +473,7 @@
 	}
 
 	.state.on {
-		color: var(--fox);
+		color: var(--fox-text);
 	}
 
 	.as {
@@ -494,7 +556,7 @@
 		width: 44px;
 		height: 26px;
 		border-radius: var(--radius-pill);
-		background: rgb(255 255 255 / 14%);
+		background: var(--rail);
 		transition: background var(--morph-fast) var(--curve-morph);
 	}
 
@@ -521,7 +583,7 @@
 	}
 
 	input:focus-visible + .track {
-		outline: 2px solid var(--fox);
+		outline: 2px solid var(--fox-line);
 		outline-offset: 2px;
 	}
 
@@ -551,6 +613,152 @@
 
 	.trouble:empty {
 		display: none;
+	}
+
+	/* The Appearance board: how Kitsune looks heads the right column, and Last.fm follows it. */
+	.who {
+		grid-row: span 2;
+	}
+
+	.looks,
+	.where {
+		grid-column: 2;
+	}
+
+	.appearance {
+		margin-top: 16px;
+		padding: 32px;
+		border-radius: var(--radius-28);
+		background: var(--card);
+		border: 1px solid var(--edge-card);
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+	}
+
+	h3 {
+		margin: 0;
+		font-size: var(--type-section);
+		font-weight: 800;
+		letter-spacing: var(--tracking-section);
+	}
+
+	.tiles {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 16px;
+	}
+
+	.tile {
+		position: relative;
+		padding: 12px 12px 16px;
+		border: 2px solid var(--edge-strong);
+		border-radius: 22px;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		font-size: var(--type-body);
+		font-weight: 600;
+		cursor: pointer;
+		transition: border-color var(--morph-fast) var(--curve-morph);
+	}
+
+	.tile:hover {
+		border-color: var(--edge-hover);
+	}
+
+	.tile.on {
+		border-color: var(--fox-line);
+	}
+
+	.tile:has(input:focus-visible) {
+		outline: 2px solid var(--fox-line);
+		outline-offset: 2px;
+	}
+
+	.preview {
+		position: relative;
+		display: block;
+		height: 120px;
+		border-radius: 14px;
+		overflow: hidden;
+		border: 1px solid var(--edge-raised);
+	}
+
+	/* A theme inside the page's: data-theme gives the layer that theme's tokens. */
+	.layer {
+		position: absolute;
+		inset: 0;
+		background: var(--ground);
+	}
+
+	.layer.split {
+		clip-path: inset(0 0 0 50%);
+	}
+
+	.layer span {
+		position: absolute;
+	}
+
+	.art {
+		left: 14px;
+		top: 16px;
+		width: 44px;
+		height: 44px;
+		border-radius: 10px;
+	}
+
+	.line {
+		left: 70px;
+		right: 14px;
+		top: 20px;
+		height: 8px;
+		border-radius: 4px;
+		background: var(--text-secondary);
+	}
+
+	.line.short {
+		top: 38px;
+		right: calc(14px + (100% - 84px) / 3);
+		opacity: 0.5;
+	}
+
+	.bar {
+		left: 14px;
+		right: 14px;
+		bottom: 14px;
+		height: 22px;
+		border-radius: 8px;
+		background: var(--fox);
+	}
+
+	.choice {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 0 4px;
+	}
+
+	.dot {
+		flex: none;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		border: 2px solid var(--edge-strong);
+		transition:
+			border-color var(--morph-fast) var(--curve-morph),
+			background var(--morph-fast) var(--curve-morph);
+	}
+
+	.on .dot {
+		border-color: var(--fox-line);
+		background: var(--fox);
+	}
+
+	.note {
+		font-size: 14px;
+		line-height: 1.55;
+		color: var(--text-meta);
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -585,11 +793,74 @@
 		h1 {
 			font-size: clamp(72px, 18vw, var(--type-hero));
 		}
+
+		.who,
+		.looks,
+		.where {
+			grid-row: auto;
+			grid-column: auto;
+		}
 	}
 
 	@media (max-width: 720px) {
 		.you {
 			padding: 98px 16px 140px;
+		}
+
+		.appearance {
+			padding: 20px;
+		}
+
+		.tiles {
+			gap: 10px;
+		}
+
+		.tile {
+			padding: 8px 8px 12px;
+			border-radius: 18px;
+		}
+
+		.preview {
+			height: 88px;
+			border-radius: 10px;
+		}
+
+		.art {
+			left: 10px;
+			top: 10px;
+			width: 30px;
+			height: 30px;
+			border-radius: 8px;
+		}
+
+		.line {
+			left: 48px;
+			right: 10px;
+			top: 13px;
+		}
+
+		.line.short {
+			top: 27px;
+			right: calc(10px + (100% - 58px) / 3);
+		}
+
+		.bar {
+			left: 10px;
+			right: 10px;
+			bottom: 10px;
+			height: 16px;
+			border-radius: 6px;
+		}
+
+		.choice {
+			gap: 6px;
+			padding: 0;
+			font-size: 14px;
+		}
+
+		.dot {
+			width: 14px;
+			height: 14px;
 		}
 	}
 </style>
