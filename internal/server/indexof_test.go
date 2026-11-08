@@ -52,9 +52,9 @@ func patchIndex(whole *api.LibraryIndex, ids []string, part *api.LibraryIndex) (
 		}
 	}
 	for _, heading := range part.Artists {
-		for _, album := range heading.Albums {
+		for i := range heading.Albums {
 			var ok bool
-			if out, ok = placeAlbum(out, &heading, &album); !ok {
+			if out, ok = placeAlbum(out, &heading, &heading.Albums[i]); !ok {
 				return nil, false
 			}
 		}

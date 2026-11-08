@@ -2302,7 +2302,7 @@ components:
     LibraryAlbum:
       type: object
       additionalProperties: false
-      required: [id, title, artist, compilation, hearted, tracks, discs]
+      required: [id, title, artist, compilation, hearted, tracks]
       properties:
         id: { type: string }
         title: { type: string }
@@ -2317,7 +2317,12 @@ components:
           type: array
           items: { $ref: "#/components/schemas/LibraryTrack" }
         discs:
+          description: >-
+            The album's discs, only when they say what its tracks don't: when
+            it has more than one, or its one disc has a name. Absent otherwise,
+            so an album on one unnamed disc costs what it did.
           type: array
+          minItems: 1
           items: { $ref: "#/components/schemas/Disc" }
         after:
           type: string

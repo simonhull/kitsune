@@ -44,7 +44,9 @@ type IndexAlbum struct {
 	Hearted     bool   // By the person the index was read for.
 	Cover       *Cover // Nil when the album has no cover.
 	Tracks      []IndexTrack
-	Discs       []Disc // Of Tracks, in disc order; one, for an album on one disc.
+	// Discs are those of Tracks, in disc order, and nil unless they say what the
+	// tracks don't: when the album has more than one, or one with a name.
+	Discs []Disc
 	// After is, in a partial index, the album just before this one in the whole
 	// index, by public ID; "" when it comes first.
 	After string
@@ -216,19 +218,15 @@ func indexGroups(rows *indexRows) []IndexArtist {
 	}
 	extras := indexExtras(rows)
 	tracks := make(map[int64][]IndexTrack, len(rows.albums))
-	albumDiscs := make(map[int64]discs, len(rows.albums))
+	albumDiscs := indexDiscs(rows.tracks)
 	for i := range rows.tracks {
 		t := &rows.tracks[i]
-		track := IndexTrack{
+		tracks[t.AlbumID] = append(tracks[t.AlbumID], IndexTrack{
 			ID: t.Ulid, Title: t.Title, Artists: names[t.ID], DiscNo: intOr0(t.DiscNo), TrackNo: intOr0(t.TrackNo),
 			Duration: time.Duration(t.DurationMs) * time.Millisecond,
 			Marks:    Marks{Hearted: rows.marks.tracks[t.Ulid], Stars: rows.marks.stars[t.Ulid]},
 			Extra:    extras[t.ID],
-		}
-		tracks[t.AlbumID] = append(tracks[t.AlbumID], track)
-		ds := albumDiscs[t.AlbumID]
-		ds.add(track.DiscNo, strOrEmpty(t.DiscSubtitle), track.Duration)
-		albumDiscs[t.AlbumID] = ds
+		})
 	}
 	groups := make([]IndexArtist, 0, len(rows.albums))
 	byKey := make(map[string]int, len(rows.albums))

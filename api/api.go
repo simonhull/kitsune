@@ -458,7 +458,9 @@ type LibraryAlbum struct {
 	Year        int            `json:"year,omitzero"`
 	Artwork     *Artwork       `json:"artwork,omitzero"`
 	Tracks      []LibraryTrack `json:"tracks"`
-	Discs       []Disc         `json:"discs"`
+	// Discs are the album's discs only when they say what the tracks don't:
+	// when there is more than one, or one with a name. Otherwise nil.
+	Discs []Disc `json:"discs,omitzero"`
 	// After is, in an index of some albums, the album before this one in the
 	// whole index; "" when it comes first. Nil in the whole index.
 	After *string `json:"after,omitzero"`

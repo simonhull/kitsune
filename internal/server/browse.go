@@ -250,7 +250,10 @@ func toAPILibraryIndex(index *store.LibraryIndex, fields *fieldWriter) api.Libra
 func toAPILibraryAlbum(a *store.IndexAlbum, fields *fieldWriter) api.LibraryAlbum {
 	out := api.LibraryAlbum{
 		ID: a.ID, Title: a.Title, Artist: a.Artist, Compilation: a.Compilation, Hearted: a.Hearted, Year: a.Year,
-		Artwork: toAPIArtwork(a.Cover), Tracks: make([]api.LibraryTrack, len(a.Tracks)), Discs: toAPIDiscs(a.Discs),
+		Artwork: toAPIArtwork(a.Cover), Tracks: make([]api.LibraryTrack, len(a.Tracks)),
+	}
+	if a.Discs != nil {
+		out.Discs = toAPIDiscs(a.Discs)
 	}
 	for i := range a.Tracks {
 		t := &a.Tracks[i]

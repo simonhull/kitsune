@@ -147,12 +147,12 @@ func TestRawKeysPerFormat(t *testing.T) {
 // through the candidates. Only ID3v2.4 has a frame for it.
 func TestDiscSubtitleKeysPerFormat(t *testing.T) {
 	t.Parallel()
-	const name = "The Electric Set"
+	const name = discOne
 	tests := []struct{ sample, key string }{
-		{sampleFLAC, "DISCSUBTITLE"},
-		{sampleMP3, "TSST"},
-		{sampleMP3v23, "DISCSUBTITLE"}, // A TXXX: audiometa writes no TSST to ID3v2.3.
-		{sampleM4A, "DISCSUBTITLE"},    // The freeform ----:com.apple.iTunes:DISCSUBTITLE.
+		{sampleFLAC, keyDiscSubtitle},
+		{sampleMP3, keyTSST},
+		{sampleMP3v23, keyDiscSubtitle}, // A TXXX: audiometa writes no TSST to ID3v2.3.
+		{sampleM4A, keyDiscSubtitle},    // The freeform ----:com.apple.iTunes:DISCSUBTITLE.
 	}
 	for _, tt := range tests {
 		t.Run(tt.sample, func(t *testing.T) {

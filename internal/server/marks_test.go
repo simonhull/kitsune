@@ -77,8 +77,8 @@ func (ts *testServer) trackMarks(t *testing.T, token string) map[string]store.Ma
 	}
 	index := map[string]store.Marks{}
 	for _, a := range ts.indexAs(t, token).Artists {
-		for _, al := range a.Albums {
-			for _, tr := range al.Tracks {
+		for i := range a.Albums {
+			for _, tr := range a.Albums[i].Tracks {
 				index[tr.ID] = store.Marks{Hearted: tr.Hearted, Stars: tr.Stars}
 			}
 		}

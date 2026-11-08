@@ -34,7 +34,7 @@ type TrackWrite struct {
 	Lossless                                bool
 
 	Title, SortTitle                                           string
-	TrackNo, TrackTotal, DiscNo, DiscTotal, Year, OriginalYear int // 0 is unknown.
+	TrackNo, TrackTotal, DiscNo, DiscTotal, Year, OriginalYear int    // 0 is unknown.
 	DiscSubtitle                                               string // The disc's name; empty is untagged.
 	Compilation                                                bool
 	ReplayGain                                                 ReplayGain

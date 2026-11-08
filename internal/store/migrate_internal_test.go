@@ -20,6 +20,8 @@ import (
 const (
 	tracksTable = "tracks"
 	movedAside  = "move the file aside"
+	// keyDiscSubtitle is the raw key of a disc's name, outside ID3v2.4.
+	keyDiscSubtitle = "DISCSUBTITLE"
 )
 
 // seedWords are the tracks seedLibrary writes, one each, ULIDs ascending.
@@ -856,10 +858,10 @@ func TestDiscSubtitleBackfillsFromRawTags(t *testing.T) {
 		track      int
 		key, value string
 	}{
-		{1, "DISCSUBTITLE", "  The Electric Set\t"},
+		{1, keyDiscSubtitle, "  The Electric Set\t"},
 		{2, "TSST", "The Room Recordings"},
-		{2, "DISCSUBTITLE", "Not this one"},
-		{3, "DISCSUBTITLE", "   "},
+		{2, keyDiscSubtitle, "Not this one"},
+		{3, keyDiscSubtitle, "   "},
 	} {
 		if _, err := d.w.ExecContext(t.Context(), "INSERT INTO track_tags (track_id, key, ord, value) VALUES (?, ?, 0, ?)",
 			tag.track, tag.key, tag.value); err != nil {

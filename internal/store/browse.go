@@ -77,7 +77,7 @@ type Track struct {
 	ID                    string // The track's ULID.
 	Title                 string
 	Artists               []string
-	DiscNo, TrackNo       int // 0 is unknown.
+	DiscNo, TrackNo       int    // 0 is unknown.
 	DiscTotal, TrackTotal int    // 0 is unknown.
 	DiscSubtitle          string // The disc's name as this track is tagged; empty is untagged.
 	Year                  int    // 0 is unknown.
@@ -394,7 +394,7 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 			DiscNo: intOr0(t.DiscNo), TrackNo: intOr0(t.TrackNo),
 			DiscTotal: intOr0(t.DiscTotal), TrackTotal: intOr0(t.TrackTotal), Year: intOr0(t.Year),
 			DiscSubtitle: strOrEmpty(t.DiscSubtitle),
-			Duration: time.Duration(t.DurationMs) * time.Millisecond, Format: t.Format,
+			Duration:     time.Duration(t.DurationMs) * time.Millisecond, Format: t.Format,
 			SampleRate: intOr0(t.SampleRate), BitDepth: intOr0(t.BitDepth),
 			ReplayGain: ReplayGain{
 				TrackGain: floatOr0(t.RgTrackGain), TrackPeak: floatOr0(t.RgTrackPeak),
