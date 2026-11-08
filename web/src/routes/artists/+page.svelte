@@ -16,7 +16,7 @@
 	<title>Artists · Kitsune</title>
 </svelte:head>
 
-<div class="artists">
+<div class="page-frame artists">
 	<div class="intro">
 		<h1>Artists</h1>
 		{#if load.kind === 'ready' && load.value.length > 0}
@@ -47,12 +47,9 @@
 
 <style>
 	.artists {
-		max-width: 1400px;
-		margin: 0 auto;
-		padding: 106px 32px 140px;
 		display: flex;
 		flex-direction: column;
-		gap: 40px;
+		gap: calc(40px * var(--step));
 	}
 
 	.intro {
@@ -71,7 +68,7 @@
 
 	.summary {
 		font-family: var(--font-mono);
-		font-size: 13px;
+		font-size: calc(13px * var(--step));
 		color: var(--text-meta);
 	}
 
@@ -97,8 +94,8 @@
 		padding: 0;
 		list-style: none;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-		gap: 0 24px;
+		grid-template-columns: repeat(auto-fill, minmax(calc(280px * var(--step)), 1fr));
+		gap: 0 calc(24px * var(--step));
 	}
 
 	a {
@@ -131,14 +128,13 @@
 
 	.count {
 		font-family: var(--font-mono);
-		font-size: 13px;
+		font-size: calc(13px * var(--step));
 		font-variant-numeric: tabular-nums;
 		color: var(--text-label);
 	}
 
 	@media (max-width: 720px) {
 		.artists {
-			padding: 98px 16px 128px;
 			gap: 24px;
 		}
 	}

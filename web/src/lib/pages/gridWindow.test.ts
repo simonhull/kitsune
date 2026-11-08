@@ -118,6 +118,28 @@ describe('gridWindow', () => {
 		expect(gridWindow.measure).not.toBeNull();
 	});
 
+	it('rounds a page up to whole rows, so a wide screen never cuts one short at a seam', () => {
+		gridWindow.measure = { columns: 7, rowHeight: 300, rowGap: 20 };
+		expect(gridWindow.pageSize).toBe(63);
+		expect(gridWindow.pageCount).toBe(15);
+		// Nine whole rows a page.
+		expect(gridWindow.height(0)).toBe(9 * 300 + 8 * 20);
+		expect(gridWindow.offsetOf(63)).toBe(9 * 320);
+		gridWindow.reset();
+		expect(gridWindow.pageSize).toBe(60);
+	});
+
+	it('keeps the album it aims at mounted when a measure changes the page size', () => {
+		gridWindow.reset();
+		gridWindow.aim('a125');
+		expect(gridWindow.mounted(2)).toBe(true);
+		gridWindow.measure = { columns: 7, rowHeight: 300, rowGap: 20 };
+		// 125 is on the second page of 63.
+		expect(gridWindow.mounted(1)).toBe(true);
+		gridWindow.track(-1e7, 0);
+		expect(gridWindow.mounted(1)).toBe(false);
+	});
+
 	it('aims at the page holding an album', () => {
 		gridWindow.aim('a130');
 		expect([gridWindow.first, gridWindow.last]).toEqual([2, 2]);

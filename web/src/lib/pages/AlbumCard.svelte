@@ -36,7 +36,7 @@
 	.card {
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: calc(12px * var(--step));
 		min-width: 0;
 	}
 
@@ -81,7 +81,7 @@
 	}
 
 	.artist {
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		color: var(--text-meta);
 	}
 </style>

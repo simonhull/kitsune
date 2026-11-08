@@ -75,7 +75,7 @@
 	<title>Albums · Kitsune</title>
 </svelte:head>
 
-<div class="albums">
+<div class="page-frame albums">
 	<div class="intro">
 		<h1>Albums</h1>
 		{#if total > 0}
@@ -172,14 +172,14 @@
 {/if}
 
 <style>
-	/* The rail stands in the right gutter, so the covers never run under it. */
+	/* The rail stands in the right gutter, widened for it, so the covers never run under it. */
 	.albums {
-		max-width: 1440px;
-		margin: 0 auto;
-		padding: 96px 136px 140px 64px;
+		--frame-top: 96px;
+
+		padding-right: max(var(--gutter), 104px);
 		display: flex;
 		flex-direction: column;
-		gap: 21px;
+		gap: calc(21px * var(--step));
 	}
 
 	.intro {
@@ -225,9 +225,9 @@
 	.all {
 		height: var(--target);
 		flex: none;
-		max-width: 240px;
+		max-width: calc(240px * var(--step));
 		border-radius: var(--radius-pill);
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		font-weight: 600;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -235,7 +235,7 @@
 	}
 
 	.sort {
-		padding: 0 18px;
+		padding: 0 calc(18px * var(--step));
 		border: 1px solid var(--edge-strong);
 		background: transparent;
 	}
@@ -254,7 +254,7 @@
 	}
 
 	.chip {
-		padding: 0 16px;
+		padding: 0 calc(16px * var(--step));
 		border: 0;
 		background: var(--edge);
 	}
@@ -322,7 +322,7 @@
 
 	@media (max-width: 1100px) {
 		.albums {
-			padding-inline: 32px 84px;
+			padding-right: max(var(--gutter), 84px);
 		}
 
 		.rule {
@@ -333,7 +333,9 @@
 	/* The chips run off the edge and scroll, and All genres stays in reach beside them. */
 	@media (max-width: 720px) {
 		.albums {
-			padding: 98px 36px 128px 16px;
+			--frame-top: 98px;
+
+			padding-right: 36px;
 			gap: 20px;
 		}
 

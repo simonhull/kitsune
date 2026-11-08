@@ -50,6 +50,37 @@ button {
 	outline-offset: 2px;
 }
 
+/*
+ * A page's frame: the whole window less the gutter, clear of both islands. A page puts its own
+ * layout inside, and grows by columns.
+ */
+.page-frame {
+	padding: calc(var(--frame-top) * var(--step)) var(--gutter) var(--frame-bottom);
+}
+
+/*
+ * The step, for what a frame holds, or a page that draws its own stage: the type, radii and targets
+ * every component reads go one size up. The Library has steps of its own, and the islands stay put.
+ */
+@media (min-width: 2560px) {
+	.page-frame,
+	.stepped {
+		--type-hero: calc(168px * var(--step));
+		--type-display: calc(88px * var(--step));
+		--type-section: calc(40px * var(--step));
+		--type-title: calc(17px * var(--step));
+		--type-body: calc(15px * var(--step));
+		--type-mono: calc(12px * var(--step));
+		--radius-12: calc(12px * var(--step));
+		--radius-16: calc(16px * var(--step));
+		--radius-20: calc(20px * var(--step));
+		--radius-24: calc(24px * var(--step));
+		--radius-28: calc(28px * var(--step));
+		--radius-32: calc(32px * var(--step));
+		--target: calc(44px * var(--step));
+	}
+}
+
 /* Read out and never seen: a real label where the layout already says it. */
 .visually-hidden {
 	position: absolute;

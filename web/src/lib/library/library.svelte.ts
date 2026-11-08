@@ -68,8 +68,8 @@ import {
 export const albumPageSize = 60;
 /** How much of the library one request brings, when all of it is wanted. */
 const wholeListPageSize = 200;
-/** The feature tile and the five beside it. */
-const recentCount = 6;
+/** The feature tile and the covers beside it: as many as a 4K screen's row holds, and some. */
+const recentCount = 25;
 /** How long to leave a server that isn't answering, or a library still empty. */
 const retryMs = 5000;
 /** How often a broken cover may ask whether the session is still good. */

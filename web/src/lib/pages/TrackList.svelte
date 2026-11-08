@@ -62,7 +62,7 @@
 	const discLabels = $derived(multiDisc && heads.size === 0);
 </script>
 
-<section aria-label="Tracks" class="panel" class:editing class:one data-morph-part="panel">
+<section aria-label="Tracks" class="panel stepped" class:editing class:one data-morph-part="panel">
 	{#if album !== undefined && editor !== undefined}
 		{@render editor(album)}
 	{:else if gone}
@@ -154,27 +154,26 @@
 </section>
 
 <style>
+	/* Under the stage, in line with its words: the hero's gutter on each side. */
 	.panel {
 		position: relative;
-		margin: -72px auto 0;
-		width: calc(100% - 128px);
-		max-width: 1312px;
-		min-height: 560px;
-		padding: 16px;
+		margin: calc(-72px * var(--step)) auto 0;
+		width: calc(100% - 2 * max(64px, var(--gutter)));
+		min-height: calc(560px * var(--step));
+		padding: calc(16px * var(--step));
 		border-radius: var(--radius-32);
 		background: color-mix(in srgb, var(--card) 82%, transparent);
 		border: 1px solid var(--edge);
 		backdrop-filter: blur(24px);
 		transition:
 			margin-top var(--morph-slow) var(--curve-settle),
-			width var(--morph-slow) var(--curve-settle),
-			max-width var(--morph-slow) var(--curve-settle);
+			width var(--morph-slow) var(--curve-settle);
 	}
 
+	/* Editing, it reaches 32 past the words on each side. */
 	.editing {
 		margin-top: -34px;
-		width: calc(100% - 64px);
-		max-width: 1376px;
+		width: calc(100% - 2 * max(32px, var(--gutter) - 32px));
 		padding: 12px 24px;
 		border-radius: var(--radius-28);
 		background: var(--card);
@@ -222,8 +221,8 @@
 	.disc {
 		display: flex;
 		align-items: flex-end;
-		gap: 20px;
-		padding: 40px 16px 14px;
+		gap: calc(20px * var(--step));
+		padding: calc(40px * var(--step)) calc(16px * var(--step)) calc(14px * var(--step));
 		margin-bottom: 4px;
 		border-bottom: 1px solid var(--edge-strong);
 	}
@@ -252,7 +251,7 @@
 		min-width: 0;
 		overflow: hidden;
 		padding-bottom: 2px;
-		font-size: 20px;
+		font-size: calc(20px * var(--step));
 		font-weight: 600;
 		color: var(--text-secondary);
 		white-space: nowrap;
@@ -279,7 +278,7 @@
 		border-radius: var(--radius-pill);
 		background: none;
 		color: var(--text);
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		font-weight: 600;
 	}
 
@@ -295,22 +294,22 @@
 		--heart-off: var(--text-secondary);
 
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto 44px 80px;
+		grid-template-columns: minmax(0, 1fr) auto var(--target) calc(80px * var(--step));
 		align-items: center;
 		width: 100%;
-		min-height: 60px;
-		padding: 0 16px;
-		border-radius: 18px;
+		min-height: calc(60px * var(--step));
+		padding: 0 calc(16px * var(--step));
+		border-radius: calc(18px * var(--step));
 	}
 
 	.play {
 		display: grid;
-		grid-template-columns: 56px minmax(0, 1fr) 160px;
-		gap: 16px;
+		grid-template-columns: calc(56px * var(--step)) minmax(0, 1fr) calc(160px * var(--step));
+		gap: calc(16px * var(--step));
 		align-items: center;
 		min-width: 0;
-		min-height: 60px;
-		padding: 0 16px 0 0;
+		min-height: calc(60px * var(--step));
+		padding: 0 calc(16px * var(--step)) 0 0;
 		border: 0;
 		background: none;
 		color: inherit;
@@ -371,7 +370,7 @@
 	}
 
 	.title {
-		font-size: 16px;
+		font-size: calc(16px * var(--step));
 		font-weight: 500;
 	}
 
@@ -381,7 +380,7 @@
 	}
 
 	.featuring {
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		color: var(--text-meta);
 	}
 

@@ -26,14 +26,14 @@
 		position: relative;
 		display: block;
 		flex: none;
-		width: 112px;
-		height: 112px;
+		width: var(--recent-size, 112px);
+		height: var(--recent-size, 112px);
 	}
 
 	.art {
 		position: absolute;
 		inset: 0;
-		border-radius: 14px;
+		border-radius: calc(14px * var(--step));
 		overflow: hidden;
 	}
 </style>

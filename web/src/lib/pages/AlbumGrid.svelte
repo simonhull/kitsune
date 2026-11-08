@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { albumPageSize } from '#lib/library/library.svelte.ts';
 	import { whenSettled } from '#lib/morph/settled.ts';
 	import AlbumCard from './AlbumCard.svelte';
 	import { clearLine, type GridWindow } from './gridWindow.svelte.ts';
@@ -21,7 +20,8 @@
 	const pages = $derived(Array.from({ length: grid.pageCount }, (_, index) => index));
 
 	function sliceOf(page: number) {
-		return grid.entries.slice(page * albumPageSize, (page + 1) * albumPageSize);
+		const size = grid.pageSize;
+		return grid.entries.slice(page * size, (page + 1) * size);
 	}
 
 	/** Reads the layout from a mounted page. Every card has one height, so one page tells all. */
@@ -121,13 +121,14 @@
 	.pages {
 		display: flex;
 		flex-direction: column;
-		gap: 24px;
+		gap: calc(24px * var(--step));
 	}
 
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-		gap: 24px;
+		/* More covers on a wider screen, at the card's size for the step: never bigger ones. */
+		grid-template-columns: repeat(auto-fill, minmax(calc(220px * var(--step)), 1fr));
+		gap: calc(24px * var(--step));
 	}
 
 	@media (max-width: 720px) {

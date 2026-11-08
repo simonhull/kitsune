@@ -28,7 +28,7 @@
 </svelte:head>
 
 {#if facts !== null}
-	<div class="home">
+	<div class="page-frame home">
 		<div class="intro" data-morph-part="intro" data-morph-key="intro">
 			<h1>{greeting(new Date().getHours(), name)}</h1>
 			{#if facts.albums > 0 && (!library.deck || library.dealing === 'dealt')}
@@ -94,12 +94,9 @@
 
 <style>
 	.home {
-		max-width: 1400px;
-		margin: 0 auto;
-		padding: 106px 32px 140px;
 		display: flex;
 		flex-direction: column;
-		gap: 56px;
+		gap: calc(56px * var(--step));
 	}
 
 	.intro {
@@ -119,7 +116,7 @@
 
 	.summary {
 		font-family: var(--font-mono);
-		font-size: 13px;
+		font-size: calc(13px * var(--step));
 		color: var(--text-meta);
 	}
 
@@ -141,11 +138,21 @@
 		color: var(--text-secondary);
 	}
 
+	/*
+	 * The hero row spans the frame: Just added takes two columns and two rows, and the rest share
+	 * what's left, Recently added across the second row. A wider screen gives the rest more columns.
+	 */
 	.overview {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-		grid-auto-rows: 200px;
-		gap: 16px;
+		grid-auto-rows: calc(200px * var(--step));
+		gap: calc(16px * var(--step));
+	}
+
+	@media (min-width: 1280px) {
+		.overview {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+		}
 	}
 
 	.health,
@@ -153,7 +160,7 @@
 		position: relative;
 		overflow: hidden;
 		border-radius: var(--radius-28);
-		padding: 24px;
+		padding: calc(24px * var(--step));
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
@@ -184,7 +191,7 @@
 
 	.label,
 	.recent h2 {
-		font-size: 13px;
+		font-size: calc(13px * var(--step));
 		font-weight: 600;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -211,14 +218,14 @@
 	}
 
 	.number {
-		font-size: 72px;
+		font-size: calc(72px * var(--step));
 		font-weight: 900;
 		letter-spacing: -0.05em;
 		line-height: 0.85;
 	}
 
 	.week .number {
-		font-size: 56px;
+		font-size: calc(56px * var(--step));
 		font-weight: 800;
 		line-height: 0.9;
 	}
@@ -236,22 +243,30 @@
 	.recent {
 		grid-column: span 2;
 		border-radius: var(--radius-28);
-		padding: 24px;
+		padding: calc(24px * var(--step));
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
+		gap: calc(16px * var(--step));
 		overflow: hidden;
 	}
 
+	/* As many covers as one row holds: the rest wrap out of sight below it. */
 	.recent-row {
-		display: flex;
-		gap: 14px;
+		--recent-size: calc(112px * var(--step));
+
+		display: grid;
+		grid-template-columns: repeat(auto-fill, var(--recent-size));
+		grid-template-rows: var(--recent-size);
+		grid-auto-rows: var(--recent-size);
+		gap: var(--recent-size) calc(14px * var(--step));
+		height: var(--recent-size);
+		overflow: hidden;
 	}
 
 	.repeat {
 		display: flex;
 		flex-direction: column;
-		gap: 20px;
+		gap: calc(20px * var(--step));
 	}
 
 	.repeat h2 {
@@ -260,9 +275,24 @@
 		letter-spacing: var(--tracking-section);
 	}
 
+	/* After the cards' own rules, which it overrides. */
+	@media (min-width: 2560px) {
+		.overview {
+			grid-template-columns: repeat(6, minmax(0, 1fr));
+		}
+
+		.health,
+		.week {
+			grid-column: span 2;
+		}
+
+		.recent {
+			grid-column: 3 / -1;
+		}
+	}
+
 	@media (max-width: 720px) {
 		.home {
-			padding: 98px 16px 128px;
 			gap: 40px;
 		}
 
@@ -281,6 +311,9 @@
 		}
 
 		.recent-row {
+			display: flex;
+			gap: 14px;
+			height: auto;
 			overflow-x: auto;
 			margin-right: -24px;
 			padding-right: 24px;

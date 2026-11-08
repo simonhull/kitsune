@@ -68,7 +68,7 @@
 </svelte:head>
 
 {#if facts !== null}
-	<div class="health">
+	<div class="page-frame health">
 		<ScanPanel {facts} {admin} down={library.down} {now} />
 		<IssuesPanel {facts} {admin} issues={library.issues} {gaveUp} {retry} />
 	</div>
@@ -76,15 +76,17 @@
 
 <style>
 	.health {
-		--panel-height: clamp(560px, calc(100dvh - 200px), 700px);
+		--frame-top: 96px;
+		--panel-height: clamp(
+			calc(560px * var(--step)),
+			calc(100dvh - 200px * var(--step)),
+			max(calc(700px * var(--step)), 65dvh)
+		);
 
-		max-width: 1440px;
-		margin: 0 auto;
-		padding: 96px 32px 140px;
 		display: grid;
 		grid-template-columns: minmax(0, 552fr) minmax(0, 800fr);
 		align-items: start;
-		gap: 24px;
+		gap: calc(24px * var(--step));
 	}
 
 	@media (max-width: 900px) {
@@ -98,7 +100,7 @@
 
 	@media (max-width: 720px) {
 		.health {
-			padding: 98px 16px 128px;
+			--frame-top: 98px;
 		}
 	}
 </style>

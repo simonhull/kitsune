@@ -185,7 +185,8 @@
 
 <style>
 	.shell {
-		--hero-height: 680px;
+		/* An album's stage takes the step with its cover and words. */
+		--hero-height: calc(680px * var(--step));
 		--accent: var(--fox);
 		--on-accent: var(--fox-ink);
 		--wash: var(--text-secondary);
