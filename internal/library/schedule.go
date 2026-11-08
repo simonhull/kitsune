@@ -8,12 +8,17 @@ import (
 )
 
 // Run scans [Quick] at once, calls ready when that scan ends, whatever its
-// outcome, then scans again every day at hour:minute local time, until ctx
-// ends. A failed scan is logged and does not stop the schedule: a broken scan
-// should not take down a library that plays fine.
-func (s *Scanner) Run(ctx context.Context, hour, minute int, ready func()) {
-	runDaily(ctx, s.now, hour, minute, s.scheduled, ready)
+// outcome, then scans again every day at [Options.QuickScan] local time, or the
+// time [Scanner.SetDaily] last set, until ctx ends. A failed scan is logged and
+// does not stop the schedule: a broken scan should not take down a library that
+// plays fine.
+func (s *Scanner) Run(ctx context.Context, ready func()) {
+	runDaily(ctx, s.now, func() Daily { return *s.daily.Load() }, s.redaily, s.scheduled, ready)
 }
+
+// ScanWhenFree runs one Quick scan now, or, when one is running, once that one
+// ends, so a change it can't see yet is still scanned.
+func (s *Scanner) ScanWhenFree(ctx context.Context) { s.scheduled(ctx) }
 
 // scheduled runs one quick scan. One that meets a running scan retries once,
 // when that scan ends, so a long Full scan never costs the day's scan.
@@ -49,18 +54,21 @@ func (s *Scanner) logScan(ctx context.Context, mode Mode, stats *Stats, err erro
 	}
 }
 
-// runDaily calls scan, then ready, then scan again at every hour:minute until
-// ctx ends.
-func runDaily(ctx context.Context, now func() time.Time, hour, minute int, scan func(context.Context), ready func()) {
+// runDaily calls scan, then ready, then scan again every day at the time at
+// gives, until ctx ends. A receive on moved means at has changed: the wait
+// starts over for the new time.
+func runDaily(ctx context.Context, now func() time.Time, at func() Daily, moved <-chan struct{}, scan func(context.Context), ready func()) {
 	scan(ctx)
 	ready()
 	for {
-		at := now()
-		timer := time.NewTimer(nextDaily(at, hour, minute).Sub(at))
+		t, d := now(), at()
+		timer := time.NewTimer(nextDaily(t, d.Hour, d.Minute).Sub(t))
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			return
+		case <-moved:
+			timer.Stop()
 		case <-timer.C:
 			scan(ctx)
 		}

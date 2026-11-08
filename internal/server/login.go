@@ -31,7 +31,7 @@ func toAPIUser(u *store.User) api.User {
 func (s *Server) getMe(w http.ResponseWriter, r *http.Request) {
 	u, _ := currentUser(r.Context()) // authenticate ran, so ok.
 	w.Header().Set("Cache-Control", "no-store")
-	body := api.Me{User: toAPIUser(&u), CanEditTags: s.tagWrites && u.Role == store.RoleAdmin}
+	body := api.Me{User: toAPIUser(&u), CanEditTags: s.scanner.TagWrites() && u.Role == store.RoleAdmin}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
 

@@ -40,9 +40,7 @@ type Config struct {
 	Ready         func(context.Context) error // Nil means always ready. Backs GET /readyz.
 	Artwork       *artwork.Cache              // Nil means every GET /artwork/{hash} is a 404.
 	Library       *store.Store                // Required; New panics if nil. Backs the browse routes.
-	Roots         int                         // The number of configured library roots, reported by GET /library.
-	TagWrites     bool                        // Administrators may edit tags. Off leaves every file alone.
-	Scanner       *library.Scanner            // Required; New panics if nil. Applies tag edits and reports scans.
+	Scanner       *library.Scanner            // Required; New panics if nil. Applies tag edits, reports scans, and owns the live roots and tag writes.
 	// StartScan claims a scan and runs it in the background; required, New panics if
 	// nil. It returns [library.ErrScanRunning] while one runs, and another error when
 	// the server is stopping.
@@ -90,8 +88,6 @@ type Server struct {
 	ready         func(context.Context) error
 	artwork       *artwork.Cache
 	library       *store.Store
-	roots         int
-	tagWrites     bool
 	scanner       *library.Scanner
 	startScan     func(library.Mode) error
 	genres        *library.Genres
@@ -134,8 +130,6 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		ready:         cfg.Ready,
 		artwork:       cfg.Artwork,
 		library:       cfg.Library,
-		roots:         cfg.Roots,
-		tagWrites:     cfg.TagWrites,
 		scanner:       cfg.Scanner,
 		startScan:     cfg.StartScan,
 		genres:        cfg.Genres,

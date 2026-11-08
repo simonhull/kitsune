@@ -93,7 +93,7 @@ type testServerOptions struct {
 	Ready         func(context.Context) error
 	LogLevel      slog.Level // The zero value is Info.
 	Artwork       *artwork.Cache
-	Roots         int
+	Roots         int // Empty library roots to configure, beside LibraryRoot.
 	TagWrites     bool
 	LibraryRoot   string                   // "" means a scanner with no roots.
 	Write         library.WriteFunc        // Nil means real writes.
@@ -140,10 +140,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	if err != nil {
 		tb.Fatalf("auth.New: %v", err)
 	}
-	var roots []string
-	if o.LibraryRoot != "" {
-		roots = []string{o.LibraryRoot}
-	}
+	roots := testRoots(tb, &o)
 	scanner := library.NewScanner(st, library.Options{
 		Roots: roots, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
 	})
@@ -185,8 +182,6 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		Ready:         o.Ready,
 		Artwork:       o.Artwork,
 		Library:       st,
-		Roots:         o.Roots,
-		TagWrites:     o.TagWrites,
 		Scanner:       scanner,
 		StartScan:     o.StartScan,
 		Web:           o.Web,
@@ -203,6 +198,20 @@ const (
 	testListen  = ":4533"
 	testVersion = "v0.0.0-test"
 )
+
+// testRoots returns the library roots o asks for: its LibraryRoot, then
+// o.Roots empty folders.
+func testRoots(tb testing.TB, o *testServerOptions) []string {
+	tb.Helper()
+	var roots []string
+	if o.LibraryRoot != "" {
+		roots = append(roots, o.LibraryRoot)
+	}
+	for range o.Roots {
+		roots = append(roots, tb.TempDir())
+	}
+	return roots
+}
 
 // openSettings opens the settings kept in st.
 func openSettings(tb testing.TB, st *store.Store) *settings.Service {

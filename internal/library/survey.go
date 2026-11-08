@@ -95,7 +95,7 @@ func isWriteTemp(name string) bool {
 func (s *Scanner) survey(ctx context.Context, mode Mode) (*surveyed, error) {
 	sv := &surveyed{IssueDeletes: map[string][]string{}}
 	audible := 0 // Roots that were walked and held audio.
-	for _, root := range s.roots {
+	for _, root := range s.live().Roots {
 		r, err := s.surveyRoot(ctx, root, mode)
 		if err != nil {
 			return nil, err
@@ -115,7 +115,7 @@ func (s *Scanner) survey(ctx context.Context, mode Mode) (*surveyed, error) {
 			audible++
 		}
 	}
-	if err := s.removedRoots(ctx, sv, audible == len(s.roots)); err != nil {
+	if err := s.removedRoots(ctx, sv, audible == len(s.live().Roots)); err != nil {
 		return nil, err
 	}
 	return sv, nil
@@ -138,7 +138,7 @@ func (s *Scanner) surveyRoot(ctx context.Context, root string, mode Mode) (rootS
 	}
 	if len(w.files) == 0 && countTracks(states) > 0 {
 		s.log.ErrorContext(ctx, "library root holds no audio files but the database has tracks under it; "+
-			"is a disk unmounted? skipping it. If you emptied it on purpose, remove it from library.roots",
+			"is a disk unmounted? skipping it. If you emptied it on purpose, remove it on the Server page",
 			"root", root, "tracks", countTracks(states))
 		return skipped(states), nil
 	}
@@ -147,7 +147,7 @@ func (s *Scanner) surveyRoot(ctx context.Context, root string, mode Mode) (rootS
 	r.temps = w.temps
 	if massDisappearance(d.absent, d.live, countNew(r.jobs)) {
 		s.log.ErrorContext(ctx, "most of a library root's tracks vanished; is a folder or pool member unmounted? skipping it. "+
-			"If that is deliberate, remove the root from library.roots, restart, then add it back; "+
+			"If that is deliberate, remove the folder on the Server page, let that scan run, then add it back; "+
 			"files still present reappear and keep their IDs",
 			"root", root, "vanished", d.absent, "live", d.live, "newFiles", countNew(r.jobs))
 		return skipped(states), nil
@@ -381,7 +381,7 @@ func (s *Scanner) removedRoots(ctx context.Context, sv *surveyed, everyRootWalke
 	if err != nil {
 		return fmt.Errorf("known roots: %w", err)
 	}
-	removed := slices.DeleteFunc(known, func(k string) bool { return slices.Contains(s.roots, k) })
+	removed := slices.DeleteFunc(known, func(k string) bool { return slices.Contains(s.live().Roots, k) })
 	if len(removed) == 0 {
 		return nil
 	}
@@ -428,7 +428,7 @@ func (s *Scanner) applySurvey(ctx context.Context, sv *surveyed, stats *Stats) e
 // leaves them: a library the server may not write to is not its to tidy. A
 // failure is logged, because leftover files cost disk, never a scan.
 func (s *Scanner) sweep(ctx context.Context, temps []string, stats *Stats) {
-	if !s.tagWrites {
+	if !s.live().TagWrites {
 		return
 	}
 	for _, path := range temps {

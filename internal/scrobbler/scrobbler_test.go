@@ -402,10 +402,43 @@ func TestNotConfiguredDoesNothing(t *testing.T) {
 	s = scrobbler.New(nil, scrobbler.Options{})
 	s.Poke()
 	s.NowPlaying(1, "x")
-	s.Run(t.Context()) // Returns at once.
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	s.Run(ctx) // Returns as soon as ctx ends, having sent nothing.
 	if s.Configured() || s.AuthURL("http://x/") != "" {
 		t.Error("a scrobbler without a client says it is set up")
 	}
+	if _, err := s.Session(t.Context(), "token"); err == nil {
+		t.Error("a session without a client")
+	}
+}
+
+// TestSetClientTurnsLastfmOnAndOff is an administrator adding a key while the
+// server runs, and later clearing it.
+func TestSetClientTurnsLastfmOnAndOff(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t)
+		client := f.fake.InMemoryClient()
+		f.s.SetClient(nil)
+		f.run(t)
+		f.play(t, 1, time.Now())
+		synctest.Wait()
+		if n := len(f.fake.Calls()); n != 0 || f.s.Configured() {
+			t.Fatalf("calls = %d with no key, want none", n)
+		}
+		f.s.SetClient(client)
+		synctest.Wait()
+		if n := len(f.fake.Calls()); n != 1 || !f.s.Configured() {
+			t.Errorf("calls = %d after a key arrived, want the waiting scrobble", n)
+		}
+		f.s.SetClient(nil)
+		f.play(t, 2, time.Now())
+		synctest.Wait()
+		if n := len(f.fake.Calls()); n != 1 {
+			t.Errorf("calls = %d after the key went, want no more", n)
+		}
+	})
 }
 
 func TestNoSecretsInTheLog(t *testing.T) {
