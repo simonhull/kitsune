@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { ownColor, paletteFor } from '#lib/cover/palette.ts';
+	import { theme } from '#lib/theme/theme.svelte.ts';
 	import { albumStars } from '#lib/library/albumStars.ts';
 	import { albumHoldings, trackLabel } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
@@ -124,7 +125,7 @@
 	 * its ground lifted, so it glows its own way and not the frame's amber.
 	 */
 	const glow = $derived.by(() => {
-		const palette = paletteFor(album);
+		const palette = paletteFor(album, theme.current);
 		return ownColor(album.artwork)
 			? `color-mix(in srgb, ${palette.accent} var(--cover-glow-alpha), transparent)`
 			: `color-mix(in srgb, ${palette.wash} 22%, transparent)`;

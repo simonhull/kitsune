@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { paletteFor } from '#lib/cover/palette.ts';
+	import { theme } from '#lib/theme/theme.svelte.ts';
 	import { emWidth } from '#lib/library/fit.ts';
 	import { balancedLines } from '#lib/library/format.ts';
 	import { artistLine, colorSource, type TopHit } from '#lib/library/search.svelte.ts';
@@ -41,7 +42,7 @@
 		}
 	});
 
-	const palette = $derived(paletteFor(colorSource(top, results)));
+	const palette = $derived(paletteFor(colorSource(top, results), theme.current));
 	/** It sets on two lines, so the longer of them is what has to fit. */
 	const longest = $derived(
 		Math.max(...balancedLines(shown.name).map((line) => emWidth(line, 900, -0.05)))
