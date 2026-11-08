@@ -1,6 +1,7 @@
 package library
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -61,6 +62,9 @@ type Options struct {
 	Genres       *Genres          // Refreshed after scans and edits. Nil means a private one.
 	QuickScan    Daily            // When Run scans every day.
 	Notify       Notifier         // Hears what the scanner changes. Nil hears nothing.
+	// Reader names the tag reader, stamped on the issues it raises so that a
+	// newer one reads their files again. Empty means audiometa's version.
+	Reader string
 }
 
 // WriteFunc saves edit to the audio file at path, as [audiometa.WriteContext] does.
@@ -81,6 +85,7 @@ type Stats struct {
 // concurrent use, but runs one scan at a time.
 type Scanner struct {
 	st        *store.Store
+	reader    string // The tag reader's version: see [Options.Reader].
 	workers   int
 	batchSize int // Tracks plus issues per write; tests lower it.
 	log       *slog.Logger
@@ -112,7 +117,7 @@ type Scanner struct {
 // NewScanner returns a scanner that writes to st.
 func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // hugeParam: Options is built once at startup; a value keeps every caller a plain literal.
 	s := &Scanner{
-		st: st, workers: opts.Workers,
+		st: st, reader: cmp.Or(opts.Reader, audiometa.GetVersion()), workers: opts.Workers,
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
 		write: opts.Write, genres: opts.Genres, claim: newLibraryLock(), lock: newLibraryLock(),
 		fingerprint: readFingerprint, wantPass: make(chan struct{}, 1), redaily: make(chan struct{}, 1),

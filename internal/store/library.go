@@ -109,6 +109,9 @@ type ScanIssue struct {
 	Message       string
 	Size          int64
 	MTime         time.Time
+	// Reader is the version of the tag reader that judged the file. A scan reads
+	// the file again when its own reader differs.
+	Reader string
 }
 
 // Batch is one transaction's worth of scan results.
@@ -125,6 +128,7 @@ type FileState struct {
 	MTime   time.Time // Millisecond precision: compare with a truncated stat time.
 	Missing bool      // The track's missing_since is set.
 	Issue   bool      // The path is a scan issue, not a track.
+	Reader  string    // The issue's [ScanIssue.Reader].
 }
 
 // ulidLen is the length of a ULID's text form.
@@ -647,6 +651,7 @@ func writeIssue(ctx context.Context, q *sqlcdb.Queries, is *ScanIssue, now time.
 		Size:    is.Size,
 		Mtime:   ms(is.MTime),
 		SeenAt:  ms(now),
+		Reader:  is.Reader,
 	})
 	if err != nil {
 		return fmt.Errorf("upsert scan issue %s: %w", is.RelPath, err)
@@ -675,7 +680,7 @@ func (s *Store) FileStates(ctx context.Context, root string) (map[string]FileSta
 	for i := range issues {
 		is := &issues[i]
 		st := out[is.RelPath]
-		st.Size, st.MTime, st.Issue = is.Size, fromMS(is.Mtime), true
+		st.Size, st.MTime, st.Issue, st.Reader = is.Size, fromMS(is.Mtime), true, is.Reader
 		out[is.RelPath] = st
 	}
 	return out, nil

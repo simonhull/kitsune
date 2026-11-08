@@ -53,7 +53,7 @@ func (s *Scanner) read(ctx context.Context, jobs []job, stats *Stats) (bool, err
 	}
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
-	rd := &reader{covers: newCovers(s.artwork, s.log), hashNew: hashNew}
+	rd := &reader{covers: newCovers(s.artwork, s.log), hashNew: hashNew, version: s.reader}
 	w := &writer{s: s, stats: stats, covers: rd.covers, claimed: claimedBy(jobs)}
 	for r := range s.startWorkers(work, jobs, rd) {
 		if w.step(ctx, work, &r) {
@@ -121,6 +121,7 @@ func (s *Scanner) startWorkers(work context.Context, jobs []job, rd *reader) <-c
 type reader struct {
 	covers  *covers // Nil leaves album art out, so an album keeps the cover it has.
 	hashNew bool    // Fingerprint the files that have no track at their path.
+	version string  // The tag reader's, stamped on the issues it raises.
 	hashed  atomic.Int64
 }
 
@@ -132,7 +133,7 @@ func (rd *reader) readJob(ctx context.Context, j *job) (result, bool) {
 		if ctx.Err() != nil {
 			return result{}, false
 		}
-		is := issueFor(j, err)
+		is := issueFor(j, err, rd.version)
 		return result{job: j, issue: &is}, true
 	}
 	return result{job: j, track: tw}, true
@@ -194,13 +195,14 @@ func (s *Scanner) reindex(ctx context.Context, id int64, root, relPath string) e
 }
 
 // issueFor turns a failed read into a scan issue. Corrupt and unsupported
-// files keep the job's size and mtime, so a quick scan leaves them alone until
-// they change. Anything else may be a permissions slip or an I/O blip, so it
-// gets [retrySize] and is tried again every scan.
-func issueFor(j *job, err error) store.ScanIssue {
+// files keep the job's size and mtime, and the version of the reader that
+// judged them, so a scan leaves them alone until they change or another reader
+// comes: a newer one may take them. Anything else may be a permissions slip or
+// an I/O blip, so it gets [retrySize] and is tried again every scan.
+func issueFor(j *job, err error, version string) store.ScanIssue {
 	is := store.ScanIssue{
 		Root: j.Root, RelPath: j.RelPath, Size: j.Size, MTime: j.MTime,
-		Message: strings.ToValidUTF8(err.Error(), "�"),
+		Message: strings.ToValidUTF8(err.Error(), "�"), Reader: version,
 	}
 	_, corrupted := errors.AsType[*audiometa.CorruptedFileError](err)
 	_, outOfBounds := errors.AsType[*audiometa.OutOfBoundsError](err)

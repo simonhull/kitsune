@@ -255,7 +255,7 @@ func everyField() map[Field][]string {
 		FieldPerformers: {"Per One", "Per Two"}, FieldRemixer: {"Rem One", "Rem Two"}, FieldGrouping: {"Group"},
 		FieldLabel: {"Label One", "Label Two"}, FieldCatalogNumber: {"CAT-1", "CAT-2"}, FieldBarcode: {"123", "456"},
 		FieldISRC: {"USABC1234567"}, FieldOriginalDate: {"1977-05-06"}, FieldLanguage: {"eng", "fra"},
-		FieldBPM: {"120"}, FieldKey: {"Am"}, FieldCopyright: {"2001 Someone"}, FieldComment: {aComment},
+		FieldBPM: {"120"}, FieldKey: {"Am"}, FieldCopyright: {copyright}, FieldComment: {aComment},
 		FieldLyrics: {"Line one\nLine two"}, FieldSortTitle: {"Title, New"}, FieldSortArtist: {"Artist, Sort"},
 		FieldSortAlbum: {"Album, Sort"}, FieldSortAlbumArtist: {"Album Artist, Sort"},
 	}
@@ -298,7 +298,7 @@ func wantEveryField(t *testing.T, path string, before *store.TrackWrite) {
 
 func TestEveryFieldRoundTrips(t *testing.T) {
 	t.Parallel()
-	for _, sample := range []string{sampleFLAC, sampleMP3, sampleMP3v23, sampleM4A} {
+	for _, sample := range []string{sampleFLAC, sampleMP3, sampleMP3v23, sampleM4A, sampleWAVInfo, sampleWAVBare, sampleWAVBoth, sampleAIFF} {
 		t.Run(sample, func(t *testing.T) {
 			t.Parallel()
 			path := copySample(t, sample)
@@ -308,7 +308,7 @@ func TestEveryFieldRoundTrips(t *testing.T) {
 			if err := audiometa.Write(path, edit.apply); err != nil {
 				t.Fatalf("Write: %v", err)
 			}
-			if sample == sampleMP3v23 {
+			if sample == sampleMP3v23 || sample == sampleWAVBoth {
 				want[FieldOriginalDate] = []string{"1977"} // TORY holds a year.
 			}
 			got := fieldsOf(t, path)
@@ -334,7 +334,7 @@ func clearEdit() Edit {
 
 func TestEveryFieldClears(t *testing.T) {
 	t.Parallel()
-	for _, sample := range []string{sampleFLAC, sampleMP3, sampleMP3v23, sampleM4A} {
+	for _, sample := range []string{sampleFLAC, sampleMP3, sampleMP3v23, sampleM4A, sampleWAVInfo, sampleWAVBoth, sampleAIFF} {
 		t.Run(sample, func(t *testing.T) {
 			t.Parallel()
 			path := copySample(t, sample)

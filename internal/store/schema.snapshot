@@ -243,7 +243,7 @@ CREATE TABLE scan_issues (
 	message  TEXT    NOT NULL,
 	size     INTEGER NOT NULL,
 	mtime    INTEGER NOT NULL,
-	seen_at  INTEGER NOT NULL,
+	seen_at  INTEGER NOT NULL, reader TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (root, rel_path)
 ) STRICT, WITHOUT ROWID;
 --   column cid=0 name=root type=TEXT notnull=1 dflt_value=<nil> pk=1 hidden=0
@@ -253,6 +253,7 @@ CREATE TABLE scan_issues (
 --   column cid=4 name=size type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=5 name=mtime type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=6 name=seen_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=reader type=TEXT notnull=1 dflt_value='' pk=0 hidden=0
 
 -- table sessions
 CREATE TABLE sessions (

@@ -85,14 +85,15 @@ INSERT INTO track_artists (track_id, role, ord, artist_id) VALUES (?, ?, ?, ?);
 DELETE FROM scan_issues WHERE root = ? AND rel_path = ?;
 
 -- name: UpsertScanIssue :exec
-INSERT INTO scan_issues (root, rel_path, kind, message, size, mtime, seen_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO scan_issues (root, rel_path, kind, message, size, mtime, seen_at, reader)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (root, rel_path) DO UPDATE SET
     kind = excluded.kind,
     message = excluded.message,
     size = excluded.size,
     mtime = excluded.mtime,
-    seen_at = excluded.seen_at;
+    seen_at = excluded.seen_at,
+    reader = excluded.reader;
 
 -- name: TrackStates :many
 SELECT id, rel_path, size, mtime, missing_since IS NOT NULL AS missing
@@ -100,7 +101,7 @@ FROM tracks
 WHERE root = ?;
 
 -- name: IssueStates :many
-SELECT rel_path, size, mtime
+SELECT rel_path, size, mtime, reader
 FROM scan_issues
 WHERE root = ?;
 

@@ -300,7 +300,7 @@ func TestNewTrackWriteCompilationValues(t *testing.T) {
 			t.Parallel()
 			f := &audiometa.File{}
 			if v != "" {
-				f.Tags.AddRaw("TCMP", v)
+				f.Tags.AddRaw(keyTCMP, v)
 			}
 			if got := NewTrackWrite(f, testInfo()).Compilation; got != want {
 				t.Errorf("Compilation(%q) = %t, want %t", v, got, want)
@@ -415,7 +415,7 @@ func BenchmarkNewTrackWrite(b *testing.B) {
 	f := &audiometa.File{}
 	f.Format = audiometa.FormatFLAC
 	f.Tags.Title, f.Tags.Album = songName, "Album"
-	f.Tags.Artists = []string{"Artist One", "Artist Two"}
+	f.Tags.Artists = []string{artistOne, artistTwo}
 	f.Tags.Year = 2001
 	f.Tags.AddRaw("ALBUMARTIST", "Album Artist")
 	f.Tags.AddRaw(keyArtistSort, "One, Artist")

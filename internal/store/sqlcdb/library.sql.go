@@ -208,7 +208,7 @@ func (q *Queries) InsertTrackTag(ctx context.Context, arg InsertTrackTagParams) 
 }
 
 const issueStates = `-- name: IssueStates :many
-SELECT rel_path, size, mtime
+SELECT rel_path, size, mtime, reader
 FROM scan_issues
 WHERE root = ?
 `
@@ -217,6 +217,7 @@ type IssueStatesRow struct {
 	RelPath string
 	Size    int64
 	Mtime   int64
+	Reader  string
 }
 
 func (q *Queries) IssueStates(ctx context.Context, root string) ([]IssueStatesRow, error) {
@@ -228,7 +229,12 @@ func (q *Queries) IssueStates(ctx context.Context, root string) ([]IssueStatesRo
 	var items []IssueStatesRow
 	for rows.Next() {
 		var i IssueStatesRow
-		if err := rows.Scan(&i.RelPath, &i.Size, &i.Mtime); err != nil {
+		if err := rows.Scan(
+			&i.RelPath,
+			&i.Size,
+			&i.Mtime,
+			&i.Reader,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -711,14 +717,15 @@ func (q *Queries) UpsertArtwork(ctx context.Context, arg UpsertArtworkParams) er
 }
 
 const upsertScanIssue = `-- name: UpsertScanIssue :exec
-INSERT INTO scan_issues (root, rel_path, kind, message, size, mtime, seen_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO scan_issues (root, rel_path, kind, message, size, mtime, seen_at, reader)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (root, rel_path) DO UPDATE SET
     kind = excluded.kind,
     message = excluded.message,
     size = excluded.size,
     mtime = excluded.mtime,
-    seen_at = excluded.seen_at
+    seen_at = excluded.seen_at,
+    reader = excluded.reader
 `
 
 type UpsertScanIssueParams struct {
@@ -729,6 +736,7 @@ type UpsertScanIssueParams struct {
 	Size    int64
 	Mtime   int64
 	SeenAt  int64
+	Reader  string
 }
 
 func (q *Queries) UpsertScanIssue(ctx context.Context, arg UpsertScanIssueParams) error {
@@ -740,6 +748,7 @@ func (q *Queries) UpsertScanIssue(ctx context.Context, arg UpsertScanIssueParams
 		arg.Size,
 		arg.Mtime,
 		arg.SeenAt,
+		arg.Reader,
 	)
 	return err
 }
