@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createFixtureSource } from './fixtures.ts';
 import { Library } from './library.svelte.ts';
-import { Outbox } from './outbox.ts';
+import { ListenOutbox, Outbox } from './outbox.ts';
 import {
 	ServerError,
 	UnauthorizedError,
 	type LibrarySource,
+	type ListenReport,
 	type PlayReport,
 	type User
 } from './source.ts';
@@ -285,5 +286,31 @@ describe('Library plays', () => {
 		expect(onExpired).not.toHaveBeenCalled();
 		expect(store.length).toBe(1);
 		expect(subject.user).toMatchObject(simon);
+	});
+});
+
+describe('ListenOutbox', () => {
+	it('sends a start and its end, in order, and keeps both apart until each has gone', async () => {
+		const store = new MemoryStorage();
+		const received: ListenReport[] = [];
+		const fake = {
+			...server(),
+			reportListen: vi.fn<LibrarySource['reportListen']>((listen) => {
+				received.push(listen);
+				return Promise.resolve();
+			})
+		};
+		const box = new ListenOutbox(() => store, fake);
+		const start: ListenReport = {
+			clientId: 'c',
+			trackId: 't',
+			startedAt: '2026-11-08T10:00:00.000Z'
+		};
+		box.add(1, { ...start, ended: 'skipped', listenedMs: 4000 });
+		box.add(1, start);
+		expect(store.length).toBe(2);
+		await box.flush(1);
+		expect(received.map(({ ended }) => ended ?? 'start')).toEqual(['start', 'skipped']);
+		expect(store.length).toBe(0);
 	});
 });

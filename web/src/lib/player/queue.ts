@@ -13,6 +13,8 @@ export interface Queue {
 	ordered: boolean;
 	/** For songs from more than one album, each song's, by track ID. Absent for one album. */
 	albums?: ReadonlyMap<string, Album>;
+	/** The shuffle session it plays, which goes on adding to it. */
+	shuffle?: string;
 }
 
 /** A song to queue, with the album it's on. */

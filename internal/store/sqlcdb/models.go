@@ -70,6 +70,17 @@ type LastfmOutbox struct {
 	NextAt   int64
 }
 
+type Listen struct {
+	UserID     int64
+	TrackID    int64
+	ClientID   string
+	Shuffle    string
+	StartedAt  int64
+	ListenedMs int64
+	DurationMs int64
+	Ended      *string
+}
+
 type Play struct {
 	UserID   int64
 	TrackID  int64

@@ -262,6 +262,7 @@ func (s *Server) routes() []route {
 		{pattern: "GET /admin/folders", admin: true, handle: s.getFolders},
 		{pattern: "GET /me", handle: s.getMe},
 		{pattern: "POST /me/plays", handle: s.postPlay},
+		{pattern: "POST /me/listens", handle: s.postListen},
 		{pattern: "PUT /me/hearts/{kind}/{id}", handle: s.putHeart},
 		{pattern: "DELETE /me/hearts/{kind}/{id}", handle: s.deleteHeart},
 		{pattern: "PUT /me/ratings/tracks/{id}", handle: s.putRating},

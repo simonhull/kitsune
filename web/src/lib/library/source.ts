@@ -609,6 +609,21 @@ export interface PlayReport {
 	clientId: string;
 }
 
+/** How a listen ended. Only `skipped`, moving on before the end, counts against a song. */
+export type ListenEnding = 'completed' | 'skipped' | 'stopped' | 'interrupted';
+
+/** A listen's start, or with `ended`, its end, as `POST /me/listens` takes it. */
+export interface ListenReport {
+	/** Ours for this listen, shared by its start and end. */
+	clientId: string;
+	trackId: string;
+	startedAt: string;
+	/** The shuffle session it plays in. */
+	shuffle?: string;
+	ended?: ListenEnding;
+	listenedMs?: number;
+}
+
 /** What someone has done with the library, counted. */
 export interface Listening {
 	/** Plays that counted. */
@@ -654,6 +669,8 @@ export interface LibrarySource {
 	sessionUser(): Promise<User>;
 	/** Rejects with {@link ServerError} or {@link UnauthorizedError}, and goes nowhere either. */
 	reportPlay(play: PlayReport): Promise<void>;
+	/** A listen's start or end, for shuffle to learn from. Rejects as {@link LibrarySource.reportPlay} does. */
+	reportListen(listen: ListenReport): Promise<void>;
 	/** Hearts an item, or takes the heart off. Rejects with {@link ServerError}: 404 for an unknown ID. */
 	setHeart(kind: MarkKind, id: string, on: boolean): Promise<void>;
 	/** Rates a track 1 to 5, or clears it with null. Rejects as {@link LibrarySource.setHeart} does. */

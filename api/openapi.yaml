@@ -192,6 +192,45 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           $ref: "#/components/responses/Problem"
+  /me/listens:
+    post:
+      operationId: postListen
+      summary: Record a listen's start, or how it ended.
+      description: >-
+        Every song a client starts is a listen, whether or not it counts as a
+        play: shuffle learns from them. The client sends the start, and later
+        the end, under one `clientId`; either may come alone, and a report sent
+        again changes nothing. Once a listen has ended, nothing changes how.
+        `skipped` means the person moved on before the end, and is the only
+        ending that counts against a song: `stopped` (playback stopped or ran
+        out) and `interrupted` (an error, or the app closing) never do. A
+        `startedAt` ahead of the server's clock is taken as now. Plays and
+        Last.fm are unchanged: `POST /me/plays` still reports a listen that
+        counted.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ListenReport" }
+      responses:
+        "204":
+          description: The listen is recorded.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
   /me/hearts/{kind}/{id}:
     put:
       operationId: putHeart
@@ -1598,6 +1637,35 @@ components:
         canEditTags:
           type: boolean
           description: True for an administrator on a server with `library.tag_writes` on.
+    ListenReport:
+      type: object
+      additionalProperties: false
+      required: [clientId, trackId, startedAt]
+      properties:
+        clientId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The client's own ID for this listen, shared by its start and its end.
+        trackId: { type: string, minLength: 1 }
+        startedAt:
+          type: string
+          format: date-time
+          description: When the listen started, by the client's clock.
+        shuffle:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The shuffle session it plays in, from `POST /me/shuffles`. Absent outside one.
+        ended:
+          type: string
+          enum: [completed, skipped, stopped, interrupted]
+          description: How it ended. Absent on a start.
+        listenedMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: How much of the song played, in milliseconds.
     PlayReport:
       type: object
       additionalProperties: false

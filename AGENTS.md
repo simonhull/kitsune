@@ -78,6 +78,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   there are and what each holds, and checks a value on the way in and again on the way out; the
   store keeps the text. A new key is an entry there and its schema in the contract. Server settings
   never go there.
+- Every song a client starts is a listen (`POST /me/listens`), whether or not it counts as a play:
+  its start and its end share a client ID and are one `listens` row, and once ended it never
+  changes. Only `skipped`, moving on while it sounds, counts against a song; pausing, a restart,
+  the page closing and an error never do. `plays` and Last.fm stay as they were.
 - `GET /events` is every client's one stream of changes (server-sent events). `internal/events` numbers
   them, keeps 5 minutes or 10,000 for `Last-Event-ID`, and filters each by its `Audience`; past that a
   client gets `resync`. Handlers publish only after a change succeeded (`s.publish`), and the scanner

@@ -958,6 +958,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		me: () => respond(whoIsSignedIn),
 		sessionUser: () => respond(whoIsSignedIn),
 		reportPlay: () => respond(() => undefined),
+		reportListen: () => respond(() => undefined),
 		setHeart: (kind: MarkKind, id: string, on: boolean) =>
 			respond(() => {
 				const key = `${kind}/${id}`;

@@ -128,6 +128,9 @@
 	ononline={() => {
 		library.flushPlays();
 	}}
+	onpagehide={() => {
+		player.leave();
+	}}
 />
 <svelte:document onvisibilitychange={onVisibilityChange} />
 

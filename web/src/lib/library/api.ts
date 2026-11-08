@@ -26,6 +26,7 @@ import {
 	type LoginFailure,
 	type MarkKind,
 	type Me,
+	type ListenReport,
 	type PlayReport,
 	type Prefs,
 	type ScanIssues,
@@ -241,6 +242,17 @@ export function createApiSource({
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify(play)
+				},
+				quietly
+			),
+
+		reportListen: (listen: ListenReport) =>
+			read<undefined>(
+				'/me/listens',
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(listen)
 				},
 				quietly
 			),

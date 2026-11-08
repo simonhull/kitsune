@@ -360,6 +360,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.pruneArtworkStmt, err = db.PrepareContext(ctx, pruneArtwork); err != nil {
 		return nil, fmt.Errorf("error preparing query PruneArtwork: %w", err)
 	}
+	if q.recentListensStmt, err = db.PrepareContext(ctx, recentListens); err != nil {
+		return nil, fmt.Errorf("error preparing query RecentListens: %w", err)
+	}
 	if q.recentPlaysStmt, err = db.PrepareContext(ctx, recentPlays); err != nil {
 		return nil, fmt.Errorf("error preparing query RecentPlays: %w", err)
 	}
@@ -408,6 +411,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.trackAlbumULIDStmt, err = db.PrepareContext(ctx, trackAlbumULID); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackAlbumULID: %w", err)
 	}
+	if q.trackForListenStmt, err = db.PrepareContext(ctx, trackForListen); err != nil {
+		return nil, fmt.Errorf("error preparing query TrackForListen: %w", err)
+	}
 	if q.trackRowIDStmt, err = db.PrepareContext(ctx, trackRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackRowID: %w", err)
 	}
@@ -434,6 +440,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertLastfmAccountStmt, err = db.PrepareContext(ctx, upsertLastfmAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertLastfmAccount: %w", err)
+	}
+	if q.upsertListenStmt, err = db.PrepareContext(ctx, upsertListen); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertListen: %w", err)
 	}
 	if q.upsertPrefStmt, err = db.PrepareContext(ctx, upsertPref); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertPref: %w", err)
@@ -1015,6 +1024,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing pruneArtworkStmt: %w", cerr)
 		}
 	}
+	if q.recentListensStmt != nil {
+		if cerr := q.recentListensStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing recentListensStmt: %w", cerr)
+		}
+	}
 	if q.recentPlaysStmt != nil {
 		if cerr := q.recentPlaysStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing recentPlaysStmt: %w", cerr)
@@ -1095,6 +1109,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing trackAlbumULIDStmt: %w", cerr)
 		}
 	}
+	if q.trackForListenStmt != nil {
+		if cerr := q.trackForListenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing trackForListenStmt: %w", cerr)
+		}
+	}
 	if q.trackRowIDStmt != nil {
 		if cerr := q.trackRowIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing trackRowIDStmt: %w", cerr)
@@ -1138,6 +1157,11 @@ func (q *Queries) Close() error {
 	if q.upsertLastfmAccountStmt != nil {
 		if cerr := q.upsertLastfmAccountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertLastfmAccountStmt: %w", cerr)
+		}
+	}
+	if q.upsertListenStmt != nil {
+		if cerr := q.upsertListenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertListenStmt: %w", cerr)
 		}
 	}
 	if q.upsertPrefStmt != nil {
@@ -1316,6 +1340,7 @@ type Queries struct {
 	pruneAlbumsStmt                  *sql.Stmt
 	pruneArtistsStmt                 *sql.Stmt
 	pruneArtworkStmt                 *sql.Stmt
+	recentListensStmt                *sql.Stmt
 	recentPlaysStmt                  *sql.Stmt
 	renameArtistStmt                 *sql.Stmt
 	resetLastfmOutboxStmt            *sql.Stmt
@@ -1332,6 +1357,7 @@ type Queries struct {
 	touchSessionStmt                 *sql.Stmt
 	trackAlbumRowStmt                *sql.Stmt
 	trackAlbumULIDStmt               *sql.Stmt
+	trackForListenStmt               *sql.Stmt
 	trackRowIDStmt                   *sql.Stmt
 	trackStatesStmt                  *sql.Stmt
 	undigestedStmt                   *sql.Stmt
@@ -1341,6 +1367,7 @@ type Queries struct {
 	upsertArtistStmt                 *sql.Stmt
 	upsertArtworkStmt                *sql.Stmt
 	upsertLastfmAccountStmt          *sql.Stmt
+	upsertListenStmt                 *sql.Stmt
 	upsertPrefStmt                   *sql.Stmt
 	upsertScanIssueStmt              *sql.Stmt
 	upsertSettingStmt                *sql.Stmt
@@ -1464,6 +1491,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		pruneAlbumsStmt:                  q.pruneAlbumsStmt,
 		pruneArtistsStmt:                 q.pruneArtistsStmt,
 		pruneArtworkStmt:                 q.pruneArtworkStmt,
+		recentListensStmt:                q.recentListensStmt,
 		recentPlaysStmt:                  q.recentPlaysStmt,
 		renameArtistStmt:                 q.renameArtistStmt,
 		resetLastfmOutboxStmt:            q.resetLastfmOutboxStmt,
@@ -1480,6 +1508,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		touchSessionStmt:                 q.touchSessionStmt,
 		trackAlbumRowStmt:                q.trackAlbumRowStmt,
 		trackAlbumULIDStmt:               q.trackAlbumULIDStmt,
+		trackForListenStmt:               q.trackForListenStmt,
 		trackRowIDStmt:                   q.trackRowIDStmt,
 		trackStatesStmt:                  q.trackStatesStmt,
 		undigestedStmt:                   q.undigestedStmt,
@@ -1489,6 +1518,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertArtistStmt:                 q.upsertArtistStmt,
 		upsertArtworkStmt:                q.upsertArtworkStmt,
 		upsertLastfmAccountStmt:          q.upsertLastfmAccountStmt,
+		upsertListenStmt:                 q.upsertListenStmt,
 		upsertPrefStmt:                   q.upsertPrefStmt,
 		upsertScanIssueStmt:              q.upsertScanIssueStmt,
 		upsertSettingStmt:                q.upsertSettingStmt,

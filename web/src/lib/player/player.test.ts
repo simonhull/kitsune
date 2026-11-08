@@ -989,3 +989,87 @@ describe('Player reset', () => {
 		});
 	});
 });
+
+describe('listens', () => {
+	/** Each report the library was given: what, how it ended, and how much was heard. */
+	function listening() {
+		const kit = setup();
+		const reports = vi.spyOn(kit.library, 'reportListen').mockImplementation(() => undefined);
+		const said = () =>
+			reports.mock.calls.map(([report]) =>
+				[report.trackId, report.ended ?? 'start', report.listenedMs ?? 0, report.shuffle].join(' ')
+			);
+		return { ...kit, reports, said };
+	}
+
+	it('reports the start when the sound comes, and completed at the end', async () => {
+		const { player, output, said } = listening();
+		player.play(album(2));
+		await settle();
+		expect(said()).toEqual(['t0 start 0 ']);
+		output.elapse(100);
+		await settle();
+		expect(said()).toEqual(['t0 start 0 ', 't0 completed 100000 ', 't1 start 0 ']);
+	});
+
+	it('calls Next while it sounds a skip, with how much was heard', async () => {
+		const { player, output, said, reports } = listening();
+		player.play(album(3));
+		await settle();
+		output.elapse(12);
+		player.next();
+		expect(said()).toEqual(['t0 start 0 ', 't0 skipped 12000 ', 't1 start 0 ']);
+		const [start] = reports.mock.calls.at(0) ?? [];
+		const [end] = reports.mock.calls.at(1) ?? [];
+		expect(end?.clientId).toBe(start?.clientId);
+	});
+
+	it('calls choosing another song a skip', async () => {
+		const { player, output, said } = listening();
+		player.play(album(3));
+		await settle();
+		output.elapse(3);
+		player.play(album(2, 'b'));
+		expect(said()).toContain('t0 skipped 3000 ');
+	});
+
+	it('never calls pausing, a restart, closing or an error a skip', async () => {
+		const { player, output, said } = listening();
+		player.play(album(3));
+		await settle();
+		output.elapse(5);
+		player.pause();
+		player.next();
+		await settle();
+		output.elapse(10);
+		player.previous();
+		await settle();
+		output.elapse(2);
+		player.leave();
+		expect(said()).toEqual([
+			't0 start 0 ',
+			't0 stopped 5000 ',
+			't1 start 0 ',
+			't1 stopped 10000 ',
+			't1 start 0 ',
+			't1 interrupted 2000 '
+		]);
+	});
+
+	it('says nothing of a song that never sounded', async () => {
+		const { player, output, said } = listening();
+		output.answers.push(refusal('NotSupportedError'));
+		player.play(album(3));
+		player.next();
+		await settle();
+		expect(said()).toEqual(['t1 start 0 ']);
+	});
+
+	it('names the shuffle a song plays in', async () => {
+		const { player, said } = listening();
+		const songs = album(2).tracks.map((track) => ({ album: album(2), track }));
+		player.playSongs(songs, 'S1');
+		await settle();
+		expect(said()).toEqual(['t0 start 0 S1']);
+	});
+});

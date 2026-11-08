@@ -74,6 +74,23 @@ type User struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// ListenReport is the body of POST /me/listens: a listen's start, or its end.
+// The two share ClientID, and a report sent again changes nothing.
+type ListenReport struct {
+	// ClientID is the client's own ID for the listen.
+	ClientID string `json:"clientId"`
+	TrackID  string `json:"trackId"`
+	// StartedAt is when the listen started, by the client's clock.
+	StartedAt time.Time `json:"startedAt"`
+	// Shuffle is the shuffle session it plays in, if any.
+	Shuffle string `json:"shuffle,omitzero"`
+	// Ended is how it ended: completed, skipped, stopped or interrupted.
+	// Absent on a start.
+	Ended string `json:"ended,omitzero"`
+	// ListenedMs is how much of the song played.
+	ListenedMs int64 `json:"listenedMs,omitzero"`
+}
+
 // PlayReport is the body of POST /me/plays: one listen that counted. It names no
 // user: a play is always the caller's.
 type PlayReport struct {
