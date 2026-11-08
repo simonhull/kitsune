@@ -89,7 +89,7 @@
 								<span class="disc-name">{head.name}</span>
 							{/if}
 							<span class="disc-facts"
-								><span class="disc-songs">{facts.songs} · </span>{facts.length}</span
+								><span class="disc-songs">{`${facts.songs} · `}</span>{facts.length}</span
 							>
 						</p>
 						<button
@@ -450,8 +450,9 @@
 			display: grid;
 			grid-template-columns: minmax(0, 1fr) var(--target);
 			grid-template-areas: 'no play' 'about play';
+			align-content: center;
 			align-items: center;
-			column-gap: 10px;
+			gap: 2px 10px;
 			min-height: 64px;
 			padding: 18px 8px 8px 10px;
 			margin-bottom: 0;
@@ -470,7 +471,6 @@
 		.disc-about {
 			grid-area: about;
 			display: block;
-			margin-top: 2px;
 			overflow: hidden;
 			font-size: 13px;
 			color: var(--text-secondary);
