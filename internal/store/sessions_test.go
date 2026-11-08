@@ -221,18 +221,49 @@ func TestUsersListsByNameWithoutHashes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	users, err := s.Users(t.Context())
+	users, err := s.Users(t.Context(), sessionT0())
 	if err != nil {
 		t.Fatal(err)
 	}
 	names := make([]string, 0, len(users))
-	for _, u := range users {
-		names = append(names, u.Name)
-		if u.PasswordHash != "" {
-			t.Errorf("%s carries a hash", u.Name)
+	for _, a := range users {
+		names = append(names, a.User.Name)
+		if a.User.PasswordHash != "" {
+			t.Errorf("%s carries a hash", a.User.Name)
 		}
 	}
 	if got := strings.Join(names, ","); got != "Amy,kim,zoe" {
 		t.Errorf("names = %s, want Amy,kim,zoe", got)
+	}
+}
+
+func TestUsersCountLiveSessions(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	u := newSessionUser(t, s)
+	if _, err := s.CreateUser(t.Context(), store.NewUser{Name: "amy", PasswordHash: "h", Role: store.RoleUser}); err != nil {
+		t.Fatal(err)
+	}
+	t0 := sessionT0()
+	for i, created := range []time.Time{t0, t0.Add(time.Hour), t0.Add(-48 * time.Hour)} {
+		expires := created.Add(24 * time.Hour) // The third has expired by t0 + 2h.
+		ns := &store.NewSession{TokenHash: hashN(byte(i + 1)), UserID: u.ID, CreatedAt: created, ExpiresAt: expires}
+		if err := s.CreateSession(t.Context(), ns); err != nil {
+			t.Fatal(err)
+		}
+	}
+	users, err := s.Users(t.Context(), t0.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("got %d accounts, want 2", len(users))
+	}
+	amy, simonAcct := users[0], users[1]
+	if amy.Sessions != 0 || !amy.LastSeen.IsZero() {
+		t.Errorf("amy = %+v, want no sessions and no last seen", amy)
+	}
+	if simonAcct.Sessions != 2 || !simonAcct.LastSeen.Equal(t0.Add(time.Hour)) {
+		t.Errorf("simon = %d sessions, last seen %v; want 2 and %v", simonAcct.Sessions, simonAcct.LastSeen, t0.Add(time.Hour))
 	}
 }

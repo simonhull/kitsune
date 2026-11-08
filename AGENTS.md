@@ -91,7 +91,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   a route wouldn't send: a new kind gets a schema in the contract, a case in `events_test.go`, and a
   place in `TestNoEventHoldsASecret`. The handler sets its own write deadline, since the server has none.
 - Nothing the server writes (bodies, headers, logs) contains a password or token, except
-  login's response and `Set-Cookie`, and the setup code's one log line (see Operations).
+  login's and reset confirmation's responses and `Set-Cookie`, and the setup code's and each reset
+  code's one log line (see Operations).
 - `GET /setup` and `POST /setup` are public. They make the first account, an administrator, while
   there is none; once one exists (`users add` included) `needed` is false for good and `POST` is 409.
   "Your network" is `isLocal` (loopback, private, link-local, `100.64.0.0/10`) on `clientIP`; from

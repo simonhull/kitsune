@@ -167,15 +167,30 @@ func (s *Store) SetPassword(ctx context.Context, id int64, hash string, keep []b
 	return nil
 }
 
-// Users returns every user by name, without their password hashes.
-func (s *Store) Users(ctx context.Context) ([]User, error) {
-	rows, err := s.rq.ListUsers(ctx)
+// Account is a user with how they have been signing in.
+type Account struct {
+	User     User      // Without its password hash.
+	LastSeen time.Time // The newest live session's last use; zero with none.
+	Sessions int       // Live sessions.
+}
+
+// Users returns every user by name, without their password hashes, with
+// their sessions that are live at now.
+func (s *Store) Users(ctx context.Context, now time.Time) ([]Account, error) {
+	rows, err := s.rq.ListUsers(ctx, now.UnixMilli())
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
-	users := make([]User, 0, len(rows))
+	accounts := make([]Account, 0, len(rows))
 	for _, r := range rows {
-		users = append(users, User{ID: r.ID, Name: r.Name, Role: Role(r.Role), CreatedAt: time.UnixMilli(r.CreatedAt).UTC()})
+		a := Account{
+			User:     User{ID: r.ID, Name: r.Name, Role: Role(r.Role), CreatedAt: time.UnixMilli(r.CreatedAt).UTC()},
+			Sessions: int(r.Sessions),
+		}
+		if r.Sessions > 0 {
+			a.LastSeen = time.UnixMilli(r.LastSeen).UTC()
+		}
+		accounts = append(accounts, a)
 	}
-	return users, nil
+	return accounts, nil
 }

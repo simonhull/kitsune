@@ -69,9 +69,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (int64, 
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, name, role, created_at
-FROM users
-ORDER BY name, id
+SELECT u.id, u.name, u.role, u.created_at,
+       CAST(coalesce(max(s.last_seen), 0) AS INTEGER) AS last_seen,
+       count(s.token_hash) AS sessions
+FROM users AS u
+LEFT JOIN sessions AS s ON s.user_id = u.id AND s.expires_at > ?1
+GROUP BY u.id
+ORDER BY u.name, u.id
 `
 
 type ListUsersRow struct {
@@ -79,10 +83,12 @@ type ListUsersRow struct {
 	Name      string
 	Role      string
 	CreatedAt int64
+	LastSeen  int64
+	Sessions  int64
 }
 
-func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
-	rows, err := q.query(ctx, q.listUsersStmt, listUsers)
+func (q *Queries) ListUsers(ctx context.Context, now int64) ([]ListUsersRow, error) {
+	rows, err := q.query(ctx, q.listUsersStmt, listUsers, now)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +101,8 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 			&i.Name,
 			&i.Role,
 			&i.CreatedAt,
+			&i.LastSeen,
+			&i.Sessions,
 		); err != nil {
 			return nil, err
 		}

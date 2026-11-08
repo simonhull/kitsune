@@ -378,6 +378,9 @@ func TestNoEventHoldsASecret(t *testing.T) {
 		t.Fatal(err)
 	}
 	fx.send(t, changeCall(t, token, api.PasswordChange{Current: "a password", New: newPassword}))
+	kim := fx.seedUser(t, "kim", testPassword, store.RoleUser)
+	fx.send(t, setCall(t, token, idOf(&kim), api.PasswordSet{New: newPassword}))
+	fx.send(t, call{method: http.MethodGet, path: usersPath, header: bearer(token)})
 	fx.requestReset(t, "user-admin")
 	code := fx.lastCode(t)
 	fx.send(t, jsonCall(t, confirmPath, "", api.ResetConfirm{Name: "user-admin", Code: code, New: testPassword}))

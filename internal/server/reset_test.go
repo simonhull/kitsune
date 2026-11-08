@@ -180,7 +180,7 @@ func TestResetRefusals(t *testing.T) {
 		{name: "request without a name", call: call{method: http.MethodPost, path: resetPath, body: `{}`, header: http.Header{contentType: {jsonType}}}, status: http.StatusBadRequest, detail: badResetDetail, invalid: true},
 		{name: "request as a form", call: call{method: http.MethodPost, path: resetPath, body: "name=simon", header: http.Header{contentType: {"application/x-www-form-urlencoded"}}}, status: http.StatusBadRequest, detail: badResetDetail, invalid: true},
 		{name: "confirm without a code", call: call{method: http.MethodPost, path: confirmPath, body: `{"name":"simon","new":"` + newPassword + `"}`, header: http.Header{contentType: {jsonType}}}, status: http.StatusBadRequest, detail: badResetConfirmDetail, invalid: true},
-		{name: "confirm a short password", call: jsonCall(t, confirmPath, "", api.ResetConfirm{Name: simonName, Code: code, New: "2short"}), status: http.StatusBadRequest, detail: auth.ErrPasswordTooShort.Error()},
+		{name: "confirm a short password", call: jsonCall(t, confirmPath, "", api.ResetConfirm{Name: simonName, Code: code, New: shortPassword}), status: http.StatusBadRequest, detail: auth.ErrPasswordTooShort.Error()},
 		{name: "confirm a wrong code", call: jsonCall(t, confirmPath, "", api.ResetConfirm{Name: simonName, Code: "0000-0000-0000-0000", New: newPassword}), status: http.StatusForbidden},
 	}
 	for _, tt := range tests { // In turn: the code must outlive them all.

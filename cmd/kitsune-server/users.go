@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"golang.org/x/term"
 
@@ -219,10 +220,10 @@ func runUsersList(args []string, env config.Env, stdout io.Writer) error {
 	if err != nil {
 		return err //nolint:wrapcheck // config's errors already name the file and key.
 	}
-	var users []store.User
+	var users []store.Account
 	err = withUsers(cfg.Storage.DataDir, func(ctx context.Context, st *store.Store, _ *auth.Service) error {
 		var listErr error
-		users, listErr = st.Users(ctx)
+		users, listErr = st.Users(ctx, time.Now())
 		return listErr //nolint:wrapcheck // Wrapped once below, with the command's name.
 	})
 	if err != nil {
@@ -230,7 +231,7 @@ func runUsersList(args []string, env config.Env, stdout io.Writer) error {
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 0, listPadding, ' ', 0)
 	for _, u := range users {
-		_, _ = fmt.Fprintf(tw, "%s\t%s\n", u.Name, u.Role)
+		_, _ = fmt.Fprintf(tw, "%s\t%s\n", u.User.Name, u.User.Role)
 	}
 	if err = tw.Flush(); err != nil {
 		return fmt.Errorf("write users: %w", err)

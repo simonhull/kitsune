@@ -14,6 +14,7 @@ import (
 const (
 	myPasswordPath = "/me/password"
 	newPassword    = "battery staple"
+	shortPassword  = "2short"
 )
 
 // changeCall is POST /me/password with token and body.
@@ -120,7 +121,7 @@ func TestChangePasswordRefusals(t *testing.T) {
 		invalid bool
 	}{
 		{name: "wrong current", call: changeCall(t, sess.token, api.PasswordChange{Current: wrongPass, New: newPassword}), status: http.StatusForbidden, detail: "the current password is wrong"},
-		{name: "short new", call: changeCall(t, sess.token, api.PasswordChange{Current: testPassword, New: "2short"}), status: http.StatusBadRequest, detail: auth.ErrPasswordTooShort.Error()},
+		{name: "short new", call: changeCall(t, sess.token, api.PasswordChange{Current: testPassword, New: shortPassword}), status: http.StatusBadRequest, detail: auth.ErrPasswordTooShort.Error()},
 		{name: "body not JSON", call: call{method: http.MethodPost, path: myPasswordPath, body: "current=" + testPassword, header: jsonHeader(sess.token)}, status: http.StatusBadRequest, detail: badPasswordChangeDetail, invalid: true},
 		{name: "no credentials", call: call{method: http.MethodPost, path: myPasswordPath, body: `{"current":"a","new":"b"}`, header: http.Header{contentType: {jsonType}}}, status: http.StatusUnauthorized, invalid: true},
 		{name: "cookie without the request header", call: call{method: http.MethodPost, path: myPasswordPath, body: `{"current":"a","new":"b"}`, header: cookieJSON(sess.token)}, status: http.StatusForbidden},
