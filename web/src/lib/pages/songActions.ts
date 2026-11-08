@@ -101,6 +101,51 @@ export function menuTarget(
 	return one === undefined ? undefined : { kind: 'song', trackId, ...one };
 }
 
+/** An item of a song's ⋯ menu. */
+export type RowMenuItem =
+	| 'play'
+	| 'playNext'
+	| 'addToQueue'
+	| 'heart'
+	| 'rating'
+	| 'editTags'
+	| 'remove'
+	| 'goToAlbum'
+	| 'goToArtist'
+	| 'fileInfo';
+
+/**
+ * What a song's ⋯ menu holds, in order. One song: Play next and Add to queue, never Play, which a
+ * click on the row does. Songs picked: Play first. Then the marks and Edit tags…, Remove from queue
+ * in Up next, and where to go, less the page it's opened on.
+ */
+export function rowMenuItems(
+	target: Pick<MenuTarget, 'kind'> & { artistId?: string | undefined },
+	context: { here?: 'album' | 'artist' | undefined; editable: boolean; removable: boolean }
+): RowMenuItem[] {
+	const items: RowMenuItem[] = [];
+	if (target.kind === 'picked') {
+		items.push('play');
+	}
+	items.push('playNext', 'addToQueue', 'heart', 'rating');
+	if (context.editable) {
+		items.push('editTags');
+	}
+	if (context.removable) {
+		items.push('remove');
+	}
+	if (target.kind === 'song') {
+		if (context.here !== 'album') {
+			items.push('goToAlbum');
+		}
+		if (target.artistId !== undefined && context.here !== 'artist') {
+			items.push('goToArtist');
+		}
+		items.push('fileInfo');
+	}
+	return items;
+}
+
 /** What can be done with songs, one or picked: the bar's actions and the ⋯ menu's. */
 export interface SongActions {
 	play(): void;

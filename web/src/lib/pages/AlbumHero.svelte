@@ -13,6 +13,7 @@
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsShown from '#lib/shell/StarsShown.svelte';
+	import { albumMenu } from './albumMenu.svelte.ts';
 	import TagFields from './TagFields.svelte';
 	import type { TagSession } from './tagEdits.svelte.ts';
 
@@ -163,6 +164,23 @@
 						disabled={!playable}
 						bind:this={editButton}
 						onclick={edit}>Edit tags</button
+					>
+				{/if}
+				{#if entry !== undefined}
+					{@const held = entry}
+					<button
+						type="button"
+						class="ghost round"
+						aria-label={`More for ${held.title}`}
+						aria-haspopup="menu"
+						onclick={(event) => {
+							const { left, bottom } = event.currentTarget.getBoundingClientRect();
+							albumMenu.open(held, left, bottom + 6);
+						}}
+						><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+							><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"
+							></circle><circle cx="19" cy="12" r="1.8"></circle></svg
+						></button
 					>
 				{/if}
 				{#if stars !== null}
@@ -393,6 +411,15 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+	}
+
+	.ghost.round {
+		width: var(--target);
+		padding: 0;
+	}
+
+	.round svg {
+		fill: currentColor;
 	}
 
 	.ghost:disabled {

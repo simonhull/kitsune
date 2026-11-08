@@ -3,6 +3,7 @@ import type { Album, Track } from '#lib/library/source.ts';
 import {
 	albumOf,
 	appended,
+	extended,
 	currentOf,
 	holds,
 	inOrder,
@@ -191,6 +192,19 @@ describe('a queue of picked songs', () => {
 		expect(added && albumOf(queue, added).id).toBe('b');
 		const own = queue.tracks.at(4);
 		expect(own && albumOf(queue, own).id).toBe('a');
+	});
+
+	it('puts songs next while shuffling, ahead of its picks, and the shuffle carries on after', () => {
+		const shuffle = { id: 'session' };
+		// Playing t0; the shuffle has queued t1 and t2 ahead of it.
+		const shuffling = { ...inOrder(a), index: 0, ordered: false, shuffle };
+		const queue = playingNext(shuffling, songs(b, 0));
+		expect(ids(queue.tracks)).toEqual(['t0', 'bt0', 't1', 't2']);
+		expect(queue.shuffle).toBe(shuffle);
+		// The shuffle's next picks still go on the end, after what was played next.
+		const carried = extended(queue, songs(b, 2));
+		expect(ids(carried.tracks)).toEqual(['t0', 'bt0', 't1', 't2', 'bt2']);
+		expect(carried.shuffle).toBe(shuffle);
 	});
 
 	it('adds songs at the end', () => {

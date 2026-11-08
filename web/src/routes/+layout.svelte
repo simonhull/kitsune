@@ -14,6 +14,7 @@
 	import { morphsKey, startMorphs } from '#lib/morph/engine.ts';
 	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
+	import AlbumMenu from '#lib/pages/AlbumMenu.svelte';
 	import { albumsView } from '#lib/pages/albumsView.svelte.ts';
 	import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
@@ -180,6 +181,7 @@
 		/>
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
+	<AlbumMenu />
 	{#if import.meta.env.DEV}<Hud />{/if}
 </div>
 
