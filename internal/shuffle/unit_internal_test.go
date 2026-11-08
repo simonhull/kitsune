@@ -153,9 +153,10 @@ func TestGaps(t *testing.T) {
 		want   []int32
 	}{
 		{"room for the full gap", []int32{1, 10}, 1000, []int32{4, 4}},
-		{"half of a small set alternates", []int32{6, 6}, 12, []int32{2, 2}},
+		{"just under half of a set alternates", []int32{6, 7}, 13, []int32{2, 1}},
 		{"an album shuffle has no rule", []int32{8}, 8, []int32{1}},
-		{"a third of nine is three apart", []int32{3, 6}, 9, []int32{4, 1}},
+		{"a quarter is three apart, not a rotation", []int32{3, 9}, 12, []int32{3, 1}},
+		{"a fifth has room for four", []int32{3, 12}, 16, []int32{4, 1}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

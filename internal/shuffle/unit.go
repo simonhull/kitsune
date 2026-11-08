@@ -128,6 +128,14 @@ func (u *Unit) Artists() []ArtistID { return slices.Clone(u.artists) }
 // Albums are the unit's albums.
 func (u *Unit) Albums() []AlbumID { return slices.Clone(u.albums) }
 
+// primary is the unit's primary artist, or false for a unit without one.
+func (u *Unit) primary() (ArtistID, bool) {
+	if len(u.artists) == 0 {
+		return 0, false
+	}
+	return u.artists[0], true
+}
+
 // Pool is the units of one shuffle's scope, with what spacing needs to know
 // about them. Build it with [NewPool]; it is never changed after.
 type Pool struct {
@@ -274,6 +282,19 @@ func intern[K comparable](index map[K]int32, counts *[]int32, key K) int32 {
 	}
 	(*counts)[i]++
 	return i
+}
+
+// lead returns the unit holding first: its index in the pool, or -1 and the
+// unit of a song skipped in shuffle, outside any run, that the person chose
+// to start from. It returns -1 and nil when no song is first.
+func (p *Pool) lead(first TrackID) (int, *Unit) {
+	if i, ok := p.unitOf[first]; ok {
+		return int(i), nil
+	}
+	if u, ok := p.solo[first]; ok {
+		return -1, &u
+	}
+	return -1, nil
 }
 
 // newUnit combines members, in play order, into a unit.
