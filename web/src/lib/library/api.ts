@@ -31,6 +31,7 @@ import {
 	type ScanStatus,
 	type SearchResults,
 	type SetupFailure,
+	type FolderListing,
 	type ServerSettings,
 	type SettingKey,
 	type SetupStatus,
@@ -421,6 +422,9 @@ export function createApiSource({
 		issues: () => read<ScanIssues>('/admin/library/issues'),
 
 		settings: () => read<ServerSettings>('/admin/settings'),
+
+		folders: (path) =>
+			read<FolderListing>(`/admin/folders?${new URLSearchParams({ path }).toString()}`),
 
 		async changeSettings(change) {
 			const response = await call('/admin/settings', {

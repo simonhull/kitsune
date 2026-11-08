@@ -364,6 +364,20 @@ export interface SecretSetting {
 	from?: string;
 }
 
+/** Only `folder` can be added; the rest are the library's, or Kitsune's own. */
+export type FolderKind = 'folder' | 'library' | 'inside' | 'holds' | 'data' | 'config';
+
+/** `GET /admin/folders`: what the server sees in a folder. Directories only. */
+export interface FolderListing {
+	path: string;
+	/** Absent at `/`. */
+	parent?: string;
+	kind: FolderKind;
+	folders: { name: string; path: string; kind: FolderKind }[];
+	/** Counted for a second or two at most: with `complete` false, at least this. */
+	audio: { files: number; folders: number; complete: boolean };
+}
+
 /** A library folder and what it holds now. */
 export interface LibraryFolder {
 	path: string;
@@ -594,6 +608,8 @@ export interface LibrarySource {
 	settings(): Promise<ServerSettings>;
 	/** All of it or none: a refusal is a {@link SettingsError} naming the key. */
 	changeSettings(change: SettingsChange): Promise<ServerSettings>;
+	/** Administrators only. Rejects with a 404 `ServerError` for a folder the server can't read. */
+	folders(path: string): Promise<FolderListing>;
 }
 
 export class AlbumNotFoundError extends Error {

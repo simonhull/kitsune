@@ -101,6 +101,8 @@ type testServerOptions struct {
 	Web           fs.FS                    // Nil means no web client.
 	Lastfm        *lastfmtest.Server       // Nil means Last.fm is not set up; else the sender runs against it.
 	SetupCode     string                   // "" means the server started with accounts.
+	FolderRoot    string                   // What the folder picker calls /. "" means the real /.
+	DataDir       string                   // Kitsune's data folder, as the picker sees it.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -187,6 +189,8 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		Web:           o.Web,
 		Lastfm:        sender,
 		SetupCode:     o.SetupCode,
+		FolderRoot:    o.FolderRoot,
+		DataDir:       o.DataDir,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)

@@ -1,4 +1,4 @@
-import { changedSettings, settingsFixture } from './settingsFixtures.ts';
+import { changedSettings, foldersFixture, settingsFixture } from './settingsFixtures.ts';
 import { fnv1a } from '#lib/cover/cover.ts';
 import { letterOf } from '#lib/pages/libraryRows.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
@@ -1047,6 +1047,15 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			respond(() => {
 				adminOnly();
 				return structuredClone(settings);
+			}),
+		folders: (path) =>
+			respond(() => {
+				adminOnly();
+				const listing = foldersFixture(path, settings.settings['library.roots'].value);
+				if (listing === null) {
+					throw new ServerError(404);
+				}
+				return listing;
 			}),
 		changeSettings: (change) =>
 			respond(() => {

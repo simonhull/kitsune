@@ -42,6 +42,7 @@ import {
 	type ScanIssues,
 	type ScanMode,
 	type ScanRefusal,
+	type FolderListing,
 	type ServerSettings,
 	type SettingsChange,
 	type SetupStatus
@@ -571,6 +572,11 @@ export class Library {
 				Math.max(delayMs, passPollMs)
 			);
 		}
+	}
+
+	/** The folders the server sees in a path, for the folder picker. */
+	folders(path: string): Promise<FolderListing> {
+		return this.#source.folders(path);
 	}
 
 	/** The server's settings, for an administrator's Server page. */

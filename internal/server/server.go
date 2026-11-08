@@ -8,6 +8,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io/fs"
@@ -71,6 +72,12 @@ type Config struct {
 	Listen         string
 	ListenFromFile bool
 	Version        string
+	// FolderRoot is what GET /admin/folders calls /. "" means the real /; tests
+	// point it at a temporary folder.
+	FolderRoot string
+	// DataDir and ConfigDir are Kitsune's own folders: the picker shows them and
+	// never lets them be chosen. "" means none.
+	DataDir, ConfigDir string
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -101,6 +108,9 @@ type Server struct {
 	listen        string
 	listenFile    bool
 	version       string
+	folderRoot    string
+	dataDir       string
+	configDir     string
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -143,6 +153,9 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		listen:        cfg.Listen,
 		listenFile:    cfg.ListenFromFile,
 		version:       cfg.Version,
+		folderRoot:    cmp.Or(cfg.FolderRoot, "/"),
+		dataDir:       cfg.DataDir,
+		configDir:     cfg.ConfigDir,
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
@@ -231,6 +244,7 @@ func (s *Server) routes() []route {
 		{pattern: "POST /admin/library/scan", admin: true, handle: s.postScan},
 		{pattern: "GET /admin/settings", admin: true, handle: s.getSettings},
 		{pattern: "PATCH /admin/settings", admin: true, handle: s.patchSettings},
+		{pattern: "GET /admin/folders", admin: true, handle: s.getFolders},
 		{pattern: "GET /me", handle: s.getMe},
 		{pattern: "POST /me/plays", handle: s.postPlay},
 		{pattern: "PUT /me/hearts/{kind}/{id}", handle: s.putHeart},

@@ -4,6 +4,7 @@
 	import { library, type Load } from '#lib/library/library.svelte.ts';
 	import { SettingsError, type ServerSettings } from '#lib/library/source.ts';
 	import ScanCard from '#lib/pages/ScanCard.svelte';
+	import FolderPicker from '#lib/pages/FolderPicker.svelte';
 	import SettingsSection from '#lib/pages/SettingsSection.svelte';
 	import {
 		afterSave,
@@ -42,12 +43,19 @@
 	let now = $state(Date.now());
 	let apiKeyField = $state<HTMLInputElement | undefined>();
 	let secretField = $state<HTMLInputElement | undefined>();
+	let picking = $state(false);
 
 	const facts = $derived(library.facts);
 	const settings = $derived(load.kind === 'ready' ? load.value : null);
 	const scanning = $derived(facts?.scan.state === 'running');
 	const pass = $derived(facts?.fingerprints);
 	const passing = $derived(pass !== undefined && pass.done < pass.total);
+	const graceHint = $derived(
+		'A song that disappears keeps its plays, hearts and ratings this long, in case its folder comes back.' +
+			(!passing && facts !== null && facts.tracks > 0
+				? ' Every song has its fingerprint, so a moved file keeps them too.'
+				: '')
+	);
 	const bytes = $derived(settings?.folders.reduce((sum, folder) => sum + folder.bytes, 0) ?? 0);
 
 	function changed(section: SectionId): boolean {
@@ -122,6 +130,14 @@
 		if (base !== null && draft !== null) {
 			draft = undone(base, draft, section);
 			problems[section] = '';
+		}
+	}
+
+	/** Adds a folder the picker chose, and saves at once: the scan it starts is the point. */
+	function addRoot(path: string): void {
+		if (draft !== null && !draft.roots.includes(path)) {
+			draft.roots = [...draft.roots, path];
+			void save('library');
 		}
 	}
 
@@ -245,6 +261,14 @@
 					{:else}
 						<p class="empty">No folders yet. Add the one your music is in, and a scan reads it.</p>
 					{/each}
+					<button
+						type="button"
+						class="add-folder"
+						disabled={saving === 'library'}
+						onclick={() => {
+							picking = true;
+						}}>Add a folder</button
+					>
 					{#if base !== null && base.roots.some((root) => !draft?.roots.includes(root))}
 						<p class="hint">
 							A removed folder’s songs go only once a scan has read every folder left, so a disk
@@ -319,7 +343,7 @@
 								}
 							}}
 							autocomplete="off"
-							placeholder="Paste it here. It’s never shown again."
+							placeholder="Paste the shared secret"
 						/>
 					{:else}
 						<div class="secret">
@@ -391,7 +415,7 @@
 						<span class="label">Forget missing songs after</span>
 						<span class="days">
 							<input class="input code short" inputmode="decimal" bind:value={draft.graceDays} />
-							<span>days</span>
+							<span>{draft.graceDays.trim() === '1' ? 'day' : 'days'}</span>
 						</span>
 						{#if fromLine(s['library.missing_grace']) !== null}
 							<span class="from mono">{fromLine(s['library.missing_grace'])}</span>
@@ -402,9 +426,7 @@
 					<ScanCard kind="pass" {pass} />
 				{/if}
 				<p class="hint">
-					A song that disappears keeps its plays, hearts and ratings this long, in case its folder
-					comes back.{#if !passing && facts !== null && facts.tracks > 0}
-						Every song has its fingerprint, so a moved file keeps them too.{/if}
+					{graceHint}
 				</p>
 			</SettingsSection>
 
@@ -484,6 +506,17 @@
 	{/if}
 </div>
 
+<FolderPicker
+	open={picking}
+	onclose={() => {
+		picking = false;
+	}}
+	onadd={(path) => {
+		picking = false;
+		addRoot(path);
+	}}
+/>
+
 <style>
 	.server {
 		--section-pad: 32px;
@@ -527,7 +560,7 @@
 
 	h1 {
 		margin-top: 20px;
-		font-size: var(--headline);
+		font-size: clamp(64px, calc(var(--intro-width) * 0.29), var(--headline));
 		font-weight: 900;
 		letter-spacing: var(--tracking-hero);
 		line-height: 0.82;
@@ -659,6 +692,26 @@
 	}
 
 	.remove:hover {
+		background: var(--hover);
+	}
+
+	.add-folder {
+		height: 52px;
+		border: 1px dashed var(--edge-strong);
+		border-radius: var(--radius-16);
+		background: transparent;
+		color: var(--text);
+		font: inherit;
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+		transition:
+			border-color var(--morph-fast) var(--curve-morph),
+			background var(--morph-fast) var(--curve-morph);
+	}
+
+	.add-folder:hover:not(:disabled) {
+		border-color: var(--fox-line);
 		background: var(--hover);
 	}
 

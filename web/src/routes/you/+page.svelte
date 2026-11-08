@@ -429,8 +429,12 @@
 		text-decoration: none;
 	}
 
-	a.solid {
+	a.solid,
+	a.quiet {
 		height: 48px;
+	}
+
+	a.solid {
 		padding: 0 22px;
 	}
 

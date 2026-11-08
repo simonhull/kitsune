@@ -395,12 +395,12 @@
 					{view.filter === 'hearted' ? 'Nothing hearted yet.' : 'No song rated 4 or 5 yet.'}
 				</p>
 			{/if}
-			{#if facts !== null && facts.scan.state === 'running'}
-				<div class="scanning" out:fold>
-					<ScanCard kind="scan" scan={facts.scan} now={scanNow} />
-				</div>
-			{/if}
 		</div>
+		{#if facts !== null && facts.scan.state === 'running'}
+			<div class="scanning dock" class:stacked={view.stacked} out:fold>
+				<ScanCard kind="scan" scan={facts.scan} now={scanNow} />
+			</div>
+		{/if}
 		{#if view.columns && !view.stacked}
 			<div class="columns-head" data-morph-part="intro" data-morph-key="columns-head">
 				<SongHeader
@@ -643,6 +643,31 @@
 
 	.scanning {
 		padding-top: 16px;
+	}
+
+	/* In the name column, under the artist and above what's next, so neither is covered. */
+	.dock {
+		position: fixed;
+		z-index: 2;
+		left: var(--page-edge);
+		bottom: 320px;
+		width: var(--name-column);
+		padding-top: 0;
+	}
+
+	/* No name column on a phone: just above the player island, the card's note left out. */
+	.dock.stacked {
+		left: 16px;
+		right: 16px;
+		border-radius: var(--radius-20);
+		box-shadow: var(--glass-shadow);
+		bottom: 104px;
+		width: auto;
+		--scan-pad: 14px 18px;
+	}
+
+	.dock.stacked :global(.note) {
+		display: none;
 	}
 
 	.scanning.alone {

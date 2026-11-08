@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -90,8 +91,22 @@ func runServe(args []string, env config.Env, stderr io.Writer) error {
 	context.AfterFunc(ctx, stop)
 
 	lastfmURL, _ := env(lastfmURLEnv)
-	l := launch{lastfmURL: lastfmURL, seeds: seeds, level: level, listenFromFile: keys.Has("server.listen")}
+	l := launch{
+		lastfmURL: lastfmURL, seeds: seeds, level: level, listenFromFile: keys.Has("server.listen"),
+		configDir: configDir(*path, config.DefaultPaths(env)),
+	}
 	return serveConfig(ctx, &cfg, l, log)
+}
+
+// configDir is the folder of the config file serve reads, named or default, or
+// "" when there is none.
+func configDir(named string, paths config.Paths) string {
+	if name := cmp.Or(named, paths.ConfigFile); name != "" {
+		if abs, err := filepath.Abs(name); err == nil {
+			return filepath.Dir(abs)
+		}
+	}
+	return ""
 }
 
 // lastfmURLEnv names the root of a fake Last.fm to talk to in place of the
@@ -110,6 +125,7 @@ type launch struct {
 	seeds          []settings.Seed
 	level          *slog.LevelVar // Nil means the level can't change.
 	listenFromFile bool           // server.toml set listen.
+	configDir      string         // The config file's folder, which the folder picker won't offer.
 }
 
 // serveConfig opens the app, listens and serves until ctx ends.
@@ -274,6 +290,8 @@ func (a *app) handler(ctx context.Context, cfg *config.Config, l *launch, public
 		Settings:       a.live,
 		Listen:         cfg.Server.Listen,
 		ListenFromFile: l.listenFromFile,
+		DataDir:        cfg.Storage.DataDir,
+		ConfigDir:      l.configDir,
 		Version:        version(),
 	})
 }

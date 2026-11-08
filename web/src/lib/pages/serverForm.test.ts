@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { settingsFixture } from '#lib/library/settingsFixtures.ts';
+import type { FolderKind } from '#lib/library/source.ts';
 import {
 	afterSave,
+	checkLine,
+	crumbsOf,
+	kindNote,
 	changeFor,
 	daysText,
 	dirty,
@@ -170,5 +174,35 @@ describe('the words on the Server page', () => {
 		expect(lastScanLine(last, false, now)).toBe('Today 03:04 · took 4 min');
 		expect(lastScanLine(undefined, false, now)).toBe('None since the server started');
 		expect(lastScanLine(last, true, now)).toBe('Running now');
+	});
+});
+
+describe('the folder picker', () => {
+	it('walks a path back to /', () => {
+		expect(crumbsOf('/audiobooks/Dune')).toEqual([
+			{ name: '/', path: '/' },
+			{ name: 'audiobooks', path: '/audiobooks' },
+			{ name: 'Dune', path: '/audiobooks/Dune' }
+		]);
+		expect(crumbsOf('/')).toEqual([{ name: '/', path: '/' }]);
+	});
+
+	it('says what the folder it is in holds, and why one cannot be added', () => {
+		const at = (kind: FolderKind, files = 612, complete = true): string =>
+			checkLine({
+				path: '/audiobooks',
+				kind,
+				folders: [],
+				audio: { files, folders: 38, complete }
+			});
+		expect(at('folder')).toBe(
+			'/audiobooks is readable: 612 audio files in 38 folders. Adding it starts a scan.'
+		);
+		expect(at('folder', 612, false)).toMatch(/at least 612 audio files/);
+		expect(at('folder', 0)).toMatch(/no audio files/);
+		expect(at('library')).toMatch(/already/);
+		expect(at('data')).toMatch(/Kitsune’s own/);
+		expect(kindNote('config')).toBe('Kitsune’s config');
+		expect(kindNote('folder')).toBe('');
 	});
 });

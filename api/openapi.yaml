@@ -953,6 +953,43 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "403":
           $ref: "#/components/responses/Problem"
+  /admin/folders:
+    get:
+      operationId: getFolders
+      summary: List the folders the server can see, for the folder picker.
+      description: >-
+        For administrators. Directories only, never a file name or size: the
+        folders in `path`, and how much audio `path` holds, counted as a scan
+        would find it and for at most a second or two. Read from / through a
+        root that neither `..` nor a symlink can leave. Under Docker these are
+        the container's paths. Kitsune's own data and config folders, and the
+        library's, are listed with a kind that says they can't be added.
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: An absolute path; / when absent.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The folders in path.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FolderListing" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
   /library:
     get:
       operationId: getLibrary
@@ -2071,6 +2108,42 @@ components:
             server needs it before it can open its database.
         listenSource: { type: string, enum: [server.toml, default] }
         version: { type: string }
+    FolderListing:
+      type: object
+      additionalProperties: false
+      required: [path, kind, folders, audio]
+      properties:
+        path: { type: string }
+        parent: { type: string, description: The folder above path. Absent at /. }
+        kind: { $ref: "#/components/schemas/FolderKind" }
+        folders: { type: array, items: { $ref: "#/components/schemas/Folder" } }
+        audio: { $ref: "#/components/schemas/AudioCount" }
+    Folder:
+      type: object
+      additionalProperties: false
+      required: [name, path, kind]
+      properties:
+        name: { type: string }
+        path: { type: string }
+        kind: { $ref: "#/components/schemas/FolderKind" }
+    FolderKind:
+      type: string
+      enum: [folder, library, inside, holds, data, config]
+      description: >-
+        Only `folder` can be added. `library` is a library folder already,
+        `inside` lies in one and `holds` holds one; `data` is Kitsune's data and
+        `config` holds its config file.
+    AudioCount:
+      type: object
+      additionalProperties: false
+      description: >-
+        The audio files under a folder and the folders that hold them. With
+        `complete` false the count stopped early, and these are at least that.
+      required: [files, folders, complete]
+      properties:
+        files: { type: integer }
+        folders: { type: integer }
+        complete: { type: boolean }
     LibraryFolder:
       type: object
       additionalProperties: false

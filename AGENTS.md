@@ -162,6 +162,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - `lastfm.shared_secret` is a secret: stored as written, because the server signs with it, and never
   logged, returned (`GET /admin/settings` says only `set`) or put in an error. Never quote a value
   in a `KeyError`. A secret can't be a `-set` flag, which the process list shows.
+- `GET /admin/folders` is the folder picker's browser of what the server sees: directories only, read
+  through `os.Root` from `Config.FolderRoot` (`/`), never a file name or size. A symlink is listed as
+  the folder it names, and an absolute target is read under the root, since `os.Root` refuses every
+  absolute link. The audio count is bounded by time and folders. Tests point the root at a temp dir.
 
 ## Auth
 - `internal/auth` owns credentials. Passwords are Argon2id in PHC format; the store only

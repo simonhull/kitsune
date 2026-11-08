@@ -83,6 +83,16 @@ func isAudio(name string) bool {
 	return false
 }
 
+// IsAudio reports whether a scan reads the file name, by its extension. A
+// name starting with "." never is.
+func IsAudio(name string) bool { return !strings.HasPrefix(name, ".") && isAudio(name) }
+
+// SkipsFolder reports whether a scan leaves the folder name out: a hidden one,
+// or a NAS's own, such as "@eaDir".
+func SkipsFolder(name string) bool {
+	return strings.HasPrefix(name, ".") || strings.HasPrefix(name, "@")
+}
+
 // isWriteTemp reports whether name is audiometa's temp file for a rewrite in
 // progress, ".<name>.audiometa-<random>.tmp". Scans hold the library lock, so one
 // they see was left by a killed edit.

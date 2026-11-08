@@ -1,4 +1,10 @@
-import type { ServerSettings, Setting, SettingsChange } from './source.ts';
+import type {
+	FolderKind,
+	FolderListing,
+	ServerSettings,
+	Setting,
+	SettingsChange
+} from './source.ts';
 
 /** The defaults the server gives a key nothing has set. */
 const defaults = {
@@ -38,6 +44,53 @@ export function settingsFixture(lastfmConfigured: boolean): ServerSettings {
 		listenSource: 'server.toml',
 		version: '2026.11.07 · 8ece8cd',
 		folders: [{ path: '/music', tracks: 7586, bytes: 140_660_000_000 }]
+	};
+}
+
+/** The boards' container: what compose.yaml mounts, and Kitsune's own two. */
+const tree: Record<string, { folders: string[]; files: number; holding: number }> = {
+	'/': { folders: ['audiobooks', 'config', 'data', 'mnt', 'music'], files: 0, holding: 0 },
+	'/audiobooks': { folders: ['Dune', 'The Hobbit'], files: 612, holding: 38 },
+	'/audiobooks/Dune': { folders: [], files: 40, holding: 2 },
+	'/audiobooks/The Hobbit': { folders: [], files: 22, holding: 1 },
+	'/config': { folders: [], files: 0, holding: 0 },
+	'/data': { folders: ['artwork'], files: 0, holding: 0 },
+	'/data/artwork': { folders: [], files: 0, holding: 0 },
+	'/mnt': { folders: ['usb'], files: 0, holding: 0 },
+	'/mnt/usb': { folders: [], files: 3, holding: 1 },
+	'/music': { folders: ['Mere Coast'], files: 7586, holding: 927 },
+	'/music/Mere Coast': { folders: [], files: 12, holding: 1 }
+};
+
+function kindOf(path: string, roots: readonly string[]): FolderKind {
+	const under = (parent: string, child: string): boolean =>
+		child === parent || child.startsWith(parent === '/' ? '/' : `${parent}/`);
+	for (const root of roots) {
+		if (path === root) return 'library';
+		if (under(root, path)) return 'inside';
+		if (under(path, root)) return 'holds';
+	}
+	if (under('/data', path)) return 'data';
+	return path === '/config' ? 'config' : 'folder';
+}
+
+/** Lists a folder of the boards' container, as `GET /admin/folders` would. */
+export function foldersFixture(path: string, roots: readonly string[]): FolderListing | null {
+	const here = tree[path];
+	if (here === undefined) {
+		return null;
+	}
+	const join = (name: string): string => (path === '/' ? `/${name}` : `${path}/${name}`);
+	return {
+		path,
+		...(path === '/' ? {} : { parent: path.slice(0, path.lastIndexOf('/')) || '/' }),
+		kind: kindOf(path, roots),
+		folders: here.folders.map((name) => ({
+			name,
+			path: join(name),
+			kind: kindOf(join(name), roots)
+		})),
+		audio: { files: here.files, folders: here.holding, complete: true }
 	};
 }
 

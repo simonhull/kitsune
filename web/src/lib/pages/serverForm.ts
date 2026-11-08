@@ -1,5 +1,7 @@
 import { plural } from '#lib/library/home.ts';
 import type {
+	FolderKind,
+	FolderListing,
 	LibraryFacts,
 	LogLevel,
 	ScanResult,
@@ -299,4 +301,59 @@ export function lastScanLine(last: ScanResult | undefined, running: boolean, now
 			? `${String(Math.max(1, Math.round(ms / 1000)))} s`
 			: `${String(Math.round(ms / 60_000))} min`;
 	return last.outcome === 'failed' ? `${day} ${time} · failed` : `${day} ${time} · took ${took}`;
+}
+
+/** The breadcrumb to a path: `/`, then each folder on the way. */
+export function crumbsOf(path: string): { name: string; path: string }[] {
+	const crumbs = [{ name: '/', path: '/' }];
+	let at = '';
+	for (const name of path.split('/').filter((part) => part !== '')) {
+		at = `${at}/${name}`;
+		crumbs.push({ name, path: at });
+	}
+	return crumbs;
+}
+
+/** Why a folder in the picker can't be added, beside its name. */
+export function kindNote(kind: FolderKind): string {
+	switch (kind) {
+		case 'library':
+			return 'in your library';
+		case 'inside':
+			return 'inside your library';
+		case 'holds':
+			return 'holds a library folder';
+		case 'data':
+			return 'Kitsune’s data';
+		case 'config':
+			return 'Kitsune’s config';
+		case 'folder':
+	}
+	return '';
+}
+
+/** What the picker says of the folder it's in: whether it can be added, and what it holds. */
+export function checkLine({ path, kind, audio }: FolderListing): string {
+	if (path === '/') {
+		return 'Open the folder your music is in.';
+	}
+	switch (kind) {
+		case 'library':
+			return `${path} is in your library already.`;
+		case 'inside':
+			return `${path} is inside a library folder, so its songs are in already.`;
+		case 'holds':
+			return `${path} holds a library folder. Remove that one first to add this instead.`;
+		case 'data':
+		case 'config':
+			return `${path} is Kitsune’s own, not music.`;
+		case 'folder':
+	}
+	if (audio.files === 0) {
+		return audio.complete
+			? `${path} is readable, but holds no audio files Kitsune reads.`
+			: `${path} is readable. Counting its files took too long, so it wasn’t finished.`;
+	}
+	const files = `${audio.complete ? '' : 'at least '}${plural(audio.files, 'audio file', 'audio files')}`;
+	return `${path} is readable: ${files} in ${plural(audio.folders, 'folder', 'folders')}. Adding it starts a scan.`;
 }

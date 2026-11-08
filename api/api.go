@@ -548,6 +548,44 @@ type ServerSettings struct {
 	Folders []LibraryFolder `json:"folders"`
 }
 
+// The values of Folder.Kind and FolderListing.Kind. Only FolderFree can be added
+// to the library; the others are listed so the server's own folders show.
+const (
+	FolderFree    = "folder"  // Can be added.
+	FolderLibrary = "library" // Is a library folder already.
+	FolderInside  = "inside"  // Lies inside a library folder.
+	FolderHolds   = "holds"   // Holds a library folder.
+	FolderData    = "data"    // Is or holds Kitsune's data.
+	FolderConfig  = "config"  // Holds Kitsune's config file.
+)
+
+// FolderListing is the response to GET /admin/folders: the folders in Path,
+// directories only, and what Path itself holds.
+type FolderListing struct {
+	Path string `json:"path"`
+	// Parent is the folder above Path, absent at /.
+	Parent  string     `json:"parent,omitzero"`
+	Kind    string     `json:"kind"`
+	Folders []Folder   `json:"folders"`
+	Audio   AudioCount `json:"audio"`
+}
+
+// Folder is one folder in a listing.
+type Folder struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Kind string `json:"kind"`
+}
+
+// AudioCount is how much audio a folder holds, its subfolders included. The
+// count stops after a while: Complete is false when it stopped early, and the
+// numbers are then at least that.
+type AudioCount struct {
+	Files    int  `json:"files"`
+	Folders  int  `json:"folders"`
+	Complete bool `json:"complete"`
+}
+
 // LibraryFolder is a library root and what it holds now: 0 and 0 until a scan
 // has read it.
 type LibraryFolder struct {
