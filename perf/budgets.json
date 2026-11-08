@@ -1,6 +1,6 @@
 {
 	"about": "p95 budgets in ms, about 1.5x what was measured when each was set, and never looser than plan 042 began with. The browser suite (web/perf) and the server tests (internal/server) fail past them. On CI runners every budget is multiplied by ciMultiplier.",
-	"ciMultiplier": 2,
+	"ciMultiplier": 1.8,
 	"browser": {
 		"play-library": { "interaction": "Play a song from the Library", "p95Ms": 45 },
 		"play-album": { "interaction": "Play a song on its album page", "p95Ms": 70 },
