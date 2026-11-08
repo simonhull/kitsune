@@ -80,11 +80,11 @@ func holdSpeed(tb testing.TB, b budget, limit time.Duration, took []time.Duratio
 
 func appendSummary(tb testing.TB, path, row string) {
 	tb.Helper()
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0) //nolint:gosec // G703: the path is CI's own job summary, from GITHUB_STEP_SUMMARY.
 	if err != nil {
 		tb.Fatal(err)
 	}
-	_, err = io.WriteString(f, row)
+	_, err = f.WriteString(row)
 	if err = cmp.Or(err, f.Close()); err != nil {
 		tb.Fatal(err)
 	}

@@ -50,17 +50,17 @@ func newStreamServer(t *testing.T) *streamServer {
 
 // seed records a live track of the given format and returns its relative path.
 // The file itself is written by [streamServer.write].
-func (ss *streamServer) seed(t testing.TB, id, format string) string {
-	t.Helper()
+func (ss *streamServer) seed(tb testing.TB, id, format string) string {
+	tb.Helper()
 	ss.seeds++
 	rel := fmt.Sprintf("%d.audio", ss.seeds)
-	ss.record(t, id, rel, format)
+	ss.record(tb, id, rel, format)
 	return rel
 }
 
 // record writes a live track's row.
-func (ss *streamServer) record(t testing.TB, id, rel, format string) {
-	t.Helper()
+func (ss *streamServer) record(tb testing.TB, id, rel, format string) {
+	tb.Helper()
 	tw := store.TrackWrite{
 		ULID: id, Root: ss.root, RelPath: rel,
 		Digest: new(sha256.Sum256([]byte(id))),
@@ -69,20 +69,20 @@ func (ss *streamServer) record(t testing.TB, id, rel, format string) {
 		Artists: []store.ArtistWrite{{ULID: annID, MatchKey: "ann", Name: annName, SortName: annName}},
 		Album:   store.AlbumWrite{GroupKey: "g", ULID: albumULID(1), Name: "Album", SortName: "album", Artist: annName},
 	}
-	if err := ss.Store.WriteBatch(t.Context(), &store.Batch{Tracks: []store.TrackWrite{tw}}); err != nil {
-		t.Fatal(err)
+	if err := ss.Store.WriteBatch(tb.Context(), &store.Batch{Tracks: []store.TrackWrite{tw}}); err != nil {
+		tb.Fatal(err)
 	}
 }
 
 // write puts body at rel with the given modification time.
-func (ss *streamServer) write(t testing.TB, rel, body string, mtime time.Time) {
-	t.Helper()
+func (ss *streamServer) write(tb testing.TB, rel, body string, mtime time.Time) {
+	tb.Helper()
 	path := filepath.Join(ss.root, rel)
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	if err := os.Chtimes(path, mtime, mtime); err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 }
 

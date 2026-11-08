@@ -1,26 +1,26 @@
 {
-	"about": "p95 budgets in ms. The browser suite (web/perf) and the server tests (internal/server) fail past them. On CI runners every budget is multiplied by ciMultiplier.",
+	"about": "p95 budgets in ms, about 1.5x what was measured when each was set, and never looser than plan 042 began with. The browser suite (web/perf) and the server tests (internal/server) fail past them. On CI runners every budget is multiplied by ciMultiplier.",
 	"ciMultiplier": 2,
 	"browser": {
-		"play-library": { "interaction": "Play a song from the Library", "p95Ms": 150 },
-		"play-album": { "interaction": "Play a song on its album page", "p95Ms": 150 },
-		"next": { "interaction": "Next", "p95Ms": 150 },
-		"previous": { "interaction": "Previous", "p95Ms": 150 },
-		"heart": { "interaction": "Heart a song, on screen", "p95Ms": 50 },
-		"heart-server": { "interaction": "Heart a song, server round trip", "p95Ms": 100 },
-		"star": { "interaction": "Star a song, on screen", "p95Ms": 50 },
-		"open-album": { "interaction": "Open an album from the Library", "p95Ms": 200 },
+		"play-library": { "interaction": "Play a song from the Library", "p95Ms": 45 },
+		"play-album": { "interaction": "Play a song on its album page", "p95Ms": 70 },
+		"next": { "interaction": "Next", "p95Ms": 35 },
+		"previous": { "interaction": "Previous", "p95Ms": 45 },
+		"heart": { "interaction": "Heart a song, on screen", "p95Ms": 30 },
+		"heart-server": { "interaction": "Heart a song, server round trip", "p95Ms": 20 },
+		"star": { "interaction": "Star a song, on screen", "p95Ms": 30 },
+		"open-album": { "interaction": "Open an album from the Library", "p95Ms": 120 },
 		"library-paint": { "interaction": "Library first rows, from page load", "p95Ms": 500 },
 		"scroll": { "interaction": "Longest frame in a 2 s Library fling", "p95Ms": 32 },
 		"search": { "interaction": "Search, keystroke to results", "p95Ms": 100 },
-		"columns-menu": { "interaction": "Open the columns menu", "p95Ms": 50 },
-		"row-menu": { "interaction": "Open a song's ⋯ menu", "p95Ms": 50 }
+		"columns-menu": { "interaction": "Open the columns menu", "p95Ms": 30 },
+		"row-menu": { "interaction": "Open a song's ⋯ menu", "p95Ms": 25 }
 	},
 	"server": {
-		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 20 },
+		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 0.5 },
 		"library-index": {
 			"interaction": "GET /library/index, 50k songs, default fields, gzip",
-			"p95Ms": 1000
+			"p95Ms": 600
 		}
 	}
 }

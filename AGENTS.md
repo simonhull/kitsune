@@ -306,11 +306,12 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
   suite (`web/perf`, Playwright) times clicks, keys and page loads in a release build against generated
   libraries of 1,000 and 50,000 songs, 20 runs each; `internal/server`'s `*Speed` tests time the
-  stream's first byte and `GET /library/index`. Each fails past its budget, and CI's `perf` job runs
-  both on every PR, with the table in the job summary. CI multiplies budgets by `ciMultiplier`.
+  stream's first byte and `GET /library/index`. Each fails past its budget. Budgets are about 1.5x
+  what was measured when they were set; on CI they are multiplied by `ciMultiplier`.
 - `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes
   only under `$KITSUNE_PERF_DIR` (default `kitsune-perf` in the temp directory) and reuses the
-  libraries there. `KITSUNE_PERF_CHROMIUM` picks a local Chromium, `KITSUNE_PERF_LIBRARIES=1k` measures
+  libraries there. Each server starts on a fresh database, and nothing is timed until its first scan
+  and the fingerprint pass after it are done: the suite measures a server at rest. `KITSUNE_PERF_CHROMIUM` picks a local Chromium, `KITSUNE_PERF_LIBRARIES=1k` measures
   one size, `KITSUNE_PERF_VERBOSE=1` prints every sample. The speed tests skip under `-race`.
 - Nothing new may wait on the play path, from a click to the `playing` event. A change on that path,
   or to a budget, carries the suite's numbers before and after, and no change is called faster without them.

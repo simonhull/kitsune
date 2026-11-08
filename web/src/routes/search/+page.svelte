@@ -11,7 +11,7 @@
 	import TopResult from '#lib/pages/TopResult.svelte';
 	import TrackHits from '#lib/pages/TrackHits.svelte';
 
-	/** The URL waits this long on a word in progress, so history isn't a key-by-key record. */
+	/** A word in progress waits this long, which is still inside keeping up with the fingers. */
 	const debounceMs = 180;
 
 	const { search } = library;
@@ -27,16 +27,6 @@
 	let text = $state(untrack(() => query));
 	let field: HTMLTextAreaElement | undefined = $state();
 	let pending: ReturnType<typeof setTimeout> | undefined;
-	/** The query last sent, which the box sends ahead of the URL: the URL catching up asks nothing. */
-	let asked: string | null = null;
-
-	/** Looks for `wanted`, unless that's already been asked. A new question takes back the last. */
-	function ask(wanted: string): void {
-		if (wanted !== asked) {
-			asked = wanted;
-			search.run(wanted);
-		}
-	}
 
 	/** The URL says what's searched, so a search can be shared, and a reload lands on it. */
 	function write(): void {
@@ -54,8 +44,6 @@
 	function typed(): void {
 		// A pasted line break: a query is one line, however many it wraps to.
 		text = text.replace(/\s*\n\s*/gu, ' ');
-		// The search never waits for the URL: every keystroke asks at once.
-		ask(text.trim());
 		clearTimeout(pending);
 		pending = setTimeout(write, debounceMs);
 	}
@@ -73,13 +61,15 @@
 		}
 	}
 
-	// A link, a reload, Back or Forward: whatever the URL asks that the box hasn't.
 	$effect(() => {
 		const wanted = query;
 		// Untracked: a search reads and writes its own state, which mustn't start it again.
 		untrack(() => {
-			ask(wanted);
+			search.run(wanted);
 		});
+		return () => {
+			search.stop();
+		};
 	});
 
 	beforeNavigate(({ type }) => {
@@ -102,7 +92,6 @@
 
 	onDestroy(() => {
 		clearTimeout(pending);
-		search.stop();
 	});
 </script>
 

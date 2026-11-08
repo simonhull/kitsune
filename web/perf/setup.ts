@@ -31,6 +31,35 @@ async function ready(url: string, server: ChildProcess, log: string): Promise<vo
 	throw new Error(`not ready after ${String(readyTimeoutMs)} ms; see ${log}`);
 }
 
+/**
+ * Waits for what a first scan leaves running in the background, the fingerprint pass, so the suite
+ * times a server at rest: right after a first scan the pass reads every file, and a fling taken
+ * then drops frames that no later one does.
+ */
+async function idle(url: string): Promise<void> {
+	const login = await fetch(`${url}/api/v1/auth/login`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ name: user.name, password: user.password })
+	});
+	const { token } = (await login.json()) as { token: string };
+	const deadline = Date.now() + readyTimeoutMs;
+	while (Date.now() < deadline) {
+		const response = await fetch(`${url}/api/v1/library`, {
+			headers: { Authorization: `Bearer ${token}` }
+		});
+		const facts = (await response.json()) as {
+			scan: { state: string };
+			fingerprints: { done: number; total: number };
+		};
+		if (facts.scan.state === 'idle' && facts.fingerprints.done >= facts.fingerprints.total) {
+			return;
+		}
+		await new Promise((done) => setTimeout(done, 500));
+	}
+	throw new Error(`the server was still busy after ${String(readyTimeoutMs)} ms`);
+}
+
 export default async function setup(): Promise<() => Promise<void>> {
 	if (!existsSync(serverBinary)) {
 		throw new Error(
@@ -78,11 +107,14 @@ export default async function setup(): Promise<() => Promise<void>> {
 			stdio: ['ignore', out, out]
 		});
 		servers.push(server);
-		await ready(`http://127.0.0.1:${String(library.port)}`, server, log);
+		const url = `http://127.0.0.1:${String(library.port)}`;
+		await ready(url, server, log);
+		const scanned = performance.now();
+		await idle(url);
 		console.log(
 			`perf: ${library.name}: ${String(manifest.songs)} songs, ${String(manifest.albums)} albums, ` +
 				`${String(manifest.artists)} artists; library ${(wrote - started).toFixed(0)} ms, ` +
-				`first scan ${(performance.now() - wrote).toFixed(0)} ms`
+				`first scan ${(scanned - wrote).toFixed(0)} ms, fingerprints ${(performance.now() - scanned).toFixed(0)} ms`
 		);
 	}
 	return async () => {
