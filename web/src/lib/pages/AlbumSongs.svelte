@@ -242,9 +242,9 @@
 <style>
 	.panel {
 		position: relative;
+		/* Under the stage, in line with its words: the hero's gutter on each side, never a centred column. */
 		margin: -72px auto 0;
 		width: calc(100% - 128px);
-		max-width: 1312px;
 		min-height: 560px;
 		box-sizing: border-box;
 		padding: 20px 24px 24px;
@@ -254,14 +254,12 @@
 		backdrop-filter: blur(24px);
 		transition:
 			margin-top var(--morph-slow) var(--curve-settle),
-			width var(--morph-slow) var(--curve-settle),
-			max-width var(--morph-slow) var(--curve-settle);
+			width var(--morph-slow) var(--curve-settle);
 	}
 
 	.editing {
 		margin-top: -34px;
 		width: calc(100% - 64px);
-		max-width: 1376px;
 		padding: 12px 24px;
 		border-radius: var(--radius-28);
 		background: var(--card);
