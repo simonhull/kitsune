@@ -258,8 +258,21 @@ func everyField() map[Field][]string {
 		FieldBPM: {"120"}, FieldKey: {"Am"}, FieldCopyright: {copyright}, FieldComment: {aComment},
 		FieldLyrics: {"Line one\nLine two"}, FieldSortTitle: {"Title, New"}, FieldSortArtist: {"Artist, Sort"},
 		FieldSortAlbum: {"Album, Sort"}, FieldSortAlbumArtist: {"Album Artist, Sort"},
+		FieldMusicBrainzAlbumID: {mbidAlbum}, FieldMusicBrainzReleaseGroupID: {mbidGroup},
+		FieldMusicBrainzAlbumArtistID: {mbidArtistOne, mbidArtistTwo}, FieldMusicBrainzArtistID: {mbidArtistTwo, mbidArtistOne},
+		FieldMusicBrainzRecordingID: {mbidRecording}, FieldMusicBrainzTrackID: {mbidTrack},
 	}
 }
+
+// MusicBrainz IDs the tests write.
+const (
+	mbidAlbum     = "7c1e9a52-4d0b-4f6e-9a1c-2b77d5e03b04"
+	mbidGroup     = "0f4dc8e1-91a3-4b52-8e6f-a3c0b9d41e27"
+	mbidArtistOne = "5b2e7f10-c6d4-4a8b-b1e9-6f03a2d7c815"
+	mbidArtistTwo = "9d1a3c44-0e2b-4f7a-8c6d-1b5e9f20a7c3"
+	mbidRecording = "3e8f1d20-7b4c-4a9e-b2d6-5c0a8e1f9b37"
+	mbidTrack     = "a41c7e09-2d5f-4b38-9e6a-0f7b3c2d8e15"
+)
 
 // fieldsOf reads the file at path as an editor would.
 func fieldsOf(t *testing.T, path string) *TrackTags {
@@ -653,6 +666,8 @@ func TestEditRefuses(t *testing.T) {
 		{name: "a BPM M4A can't hold", sample: sampleM4A, edit: Edit{Fields: map[Field][]string{FieldBPM: {"120.5"}}}},
 		{name: "a NUL", sample: sampleFLAC, edit: Edit{Fields: map[Field][]string{FieldComment: {"a\x00b"}}}},
 		{name: "two comments", sample: sampleFLAC, edit: Edit{Fields: map[Field][]string{FieldComment: {"a", "b"}}}},
+		{name: "not an MBID", sample: sampleFLAC, edit: Edit{Fields: map[Field][]string{FieldMusicBrainzAlbumID: {"Glasshouse"}}}},
+		{name: "an upper-case MBID", sample: sampleMP3, edit: Edit{Fields: map[Field][]string{FieldMusicBrainzTrackID: {strings.ToUpper(mbidTrack)}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -685,5 +700,46 @@ func TestFormatWithoutWriteKeysIsRefused(t *testing.T) {
 	err := edit.apply(&audiometa.File{Format: audiometa.FormatOgg})
 	if !errors.Is(err, ErrUnsupportedEdit) || !strings.Contains(err.Error(), "Ogg") {
 		t.Errorf("apply = %v, want ErrUnsupportedEdit naming the format", err)
+	}
+}
+
+func TestMusicBrainzIDsLandWhereAScanReadsThem(t *testing.T) {
+	t.Parallel()
+	for _, sample := range []string{sampleFLAC, sampleMP3, sampleMP3v23, sampleM4A, sampleWAVBare, sampleAIFF} {
+		t.Run(sample, func(t *testing.T) {
+			t.Parallel()
+			path := copySample(t, sample)
+			seed(t, path, map[string][]string{keysArtistMBID[0]: {"stale-artist-id"}})
+			// One request renames the artists, whose old IDs go, and gives the new ones.
+			edit := Edit{Fields: map[Field][]string{
+				FieldArtists: {artistValue, otherName}, FieldAlbumArtists: {albumValue},
+				FieldMusicBrainzArtistID: {mbidArtistOne, mbidArtistTwo}, FieldMusicBrainzAlbumArtistID: {mbidArtistTwo},
+				FieldMusicBrainzAlbumID: {mbidAlbum}, FieldMusicBrainzRecordingID: {mbidRecording},
+			}}
+			if err := audiometa.Write(path, edit.apply); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			got := reread(t, path)
+			if got.Album.MBID != mbidAlbum {
+				t.Errorf("album MBID = %q, want %q", got.Album.MBID, mbidAlbum)
+			}
+			artistIDs := make([]string, 0, len(got.Artists))
+			for _, a := range got.Artists {
+				artistIDs = append(artistIDs, a.MBID)
+			}
+			if want := []string{mbidArtistOne, mbidArtistTwo}; !slices.Equal(artistIDs, want) {
+				t.Errorf("artist MBIDs = %q, want %q", artistIDs, want)
+			}
+			if len(got.AlbumArtists) != 1 || got.AlbumArtists[0].MBID != mbidArtistTwo {
+				t.Errorf("album artists = %+v, want one with %s", got.AlbumArtists, mbidArtistTwo)
+			}
+			recording := make([]string, 0, 1)
+			for _, key := range TrackMBIDKeys() {
+				recording = append(recording, rawValues(&got, key)...)
+			}
+			if !slices.Equal(recording, []string{mbidRecording}) {
+				t.Errorf("recording MBID = %q, want %q", recording, mbidRecording)
+			}
+		})
 	}
 }

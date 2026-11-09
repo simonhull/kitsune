@@ -23,9 +23,11 @@
 		leave: () => void;
 		/** Writes the draft. */
 		write: () => void;
+		/** Finds this album's release on MusicBrainz: offered while nothing is unsaved. */
+		match?: (() => void) | undefined;
 	}
 
-	let { session, open = null, what = 'this album', leave, write }: Props = $props();
+	let { session, open = null, what = 'this album', leave, write, match }: Props = $props();
 
 	const summary = $derived(session.summary);
 	const report = $derived(session.report);
@@ -80,6 +82,15 @@
 				{changes} <span class="where">{where}</span>
 			{/if}
 		</span>
+		{#if match !== undefined && session.tags !== null && open === null}
+			<button
+				type="button"
+				class="leave"
+				disabled={session.saving || summary.changes > 0}
+				title={summary.changes > 0 ? 'Write or leave your changes first' : undefined}
+				onclick={match}>Find matches…</button
+			>
+		{/if}
 		<button type="button" class="leave" disabled={session.saving} onclick={leave}>Leave it</button>
 		<button
 			type="button"

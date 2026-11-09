@@ -23,6 +23,8 @@ import (
 	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/lastfm/lastfmtest"
 	"github.com/simonhull/kitsune/internal/library"
+	"github.com/simonhull/kitsune/internal/matching"
+	"github.com/simonhull/kitsune/internal/matching/musicbrainztest"
 	"github.com/simonhull/kitsune/internal/openapitest"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/settings"
@@ -105,6 +107,7 @@ type testServerOptions struct {
 	FolderRoot    string                   // What the folder picker calls /. "" means the real /.
 	DataDir       string                   // Kitsune's data folder, as the picker sees it.
 	Watch         bool                     // Run a folder watcher over the roots.
+	MusicBrainz   *musicbrainztest.Server  // Nil means matching is not set up; else it asks the stand-in.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -186,6 +189,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		tb.Cleanup(func() { cancel(); watching.Wait() }) // Before the store closes.
 	}
 	h := New(Config{
+		Matcher:       testMatcher(o.MusicBrainz, st),
 		Watcher:       watcher,
 		Events:        hub,
 		Settings:      live,
@@ -218,6 +222,17 @@ const (
 	testListen  = ":4533"
 	testVersion = "v0.0.0-test"
 )
+
+// testMatcher returns a matcher asking mb and keeping its answers in st, or nil
+// without mb.
+func testMatcher(mb *musicbrainztest.Server, st *store.Store) *matching.Matcher {
+	if mb == nil {
+		return nil
+	}
+	o := mb.Options()
+	o.Cache = NewLookupCache(st, matching.SourceMusicBrainz)
+	return matching.New(matching.NewMusicBrainz(o))
+}
 
 // testRoots returns the library roots o asks for: its LibraryRoot, then
 // o.Roots empty folders.

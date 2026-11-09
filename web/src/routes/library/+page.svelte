@@ -17,6 +17,7 @@
 	import BulkEditor from '#lib/pages/BulkEditor.svelte';
 	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
 	import SelectionBar from '#lib/pages/SelectionBar.svelte';
+	import { matchFromBulk } from '#lib/matching/hooks.ts';
 	import TagBar from '#lib/pages/TagBar.svelte';
 	import { selection } from '#lib/pages/selection.svelte.ts';
 	import {
@@ -671,6 +672,7 @@
 						leaveBulk();
 					}}
 					write={() => void writeBulk()}
+					match={matchFromBulk(bulk)}
 				/>
 			</div>
 		{:else if selection.any}

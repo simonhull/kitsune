@@ -81,6 +81,19 @@ type Listen struct {
 	Ended      *string
 }
 
+type Lookup struct {
+	Source    string
+	Key       string
+	Body      []byte
+	FetchedAt int64
+}
+
+type MatchState struct {
+	AlbumID int64
+	State   string
+	At      int64
+}
+
 type Play struct {
 	UserID   int64
 	TrackID  int64
