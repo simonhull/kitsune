@@ -265,12 +265,17 @@ export function rowEvents(handlers: RowHandlers): {
 		onclick(event) {
 			const at = rowEvent(event);
 			if (at === undefined) {
+				// A heading's box picks songs too.
+				if (event.target instanceof Element && event.target.closest('.pick') !== null) {
+					dropText(event.currentTarget);
+				}
 				return;
 			}
 			const intent = clickIntent(at.target);
 			switch (intent.kind) {
 				case 'box': {
 					handlers.pick(at.trackId, event.shiftKey ? 'range' : 'toggle');
+					dropText(event.currentTarget);
 					// The box says what the list did with the click, whatever the click did to it.
 					if (at.target instanceof HTMLInputElement) {
 						at.target.checked = handlers.picked(at.trackId);
@@ -299,6 +304,7 @@ export function rowEvents(handlers: RowHandlers): {
 						handlers.play(at.trackId, at.row.dataset['album'] ?? '');
 					} else {
 						handlers.pick(at.trackId, how);
+						dropText(event.currentTarget);
 					}
 				}
 			}
@@ -333,6 +339,17 @@ export function rowEvents(handlers: RowHandlers): {
 			}
 		}
 	};
+}
+
+/**
+ * Lets go of any text selected in `list`: picking songs is never selecting their words, and text
+ * still highlighted across the rows would read as part of the pick.
+ */
+function dropText(list: EventTarget | null): void {
+	const text = getSelection();
+	if (list instanceof Node && text !== null && !text.isCollapsed && text.containsNode(list, true)) {
+		text.removeAllRanges();
+	}
 }
 
 /** Gives a row's play target the focus, in the list under `root`. */
