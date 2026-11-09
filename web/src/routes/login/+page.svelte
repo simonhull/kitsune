@@ -1,11 +1,13 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, tick } from 'svelte';
+	import { fly } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { safeNext } from '#lib/library/session.ts';
 	import { LoginError, type LoginFailure } from '#lib/library/source.ts';
 	import { morph } from '#lib/morph/registry.ts';
+	import ResetCard from '#lib/pages/ResetCard.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 
 	let busy = $state(false);
@@ -13,7 +15,17 @@
 	/** Seconds until the server will listen again, while it's refusing. */
 	let waiting = $state(0);
 	let password: HTMLInputElement | undefined = $state();
+	let nameField: HTMLInputElement | undefined = $state();
+	/** The name as typed, which the reset carries over and brings back. */
+	let name = $state('');
+	/** A forgotten password: the reset's card stands where the form was. */
+	let resetting = $state(false);
 	let countdown: ReturnType<typeof setInterval> | undefined;
+	/** How long the form takes to arrive back from a reset; nothing moves for less motion. */
+	const arrive =
+		typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
+			? 0
+			: 280;
 
 	const message = $derived.by(() => {
 		switch (failure?.kind) {
@@ -67,11 +79,16 @@
 		busy = true;
 		failure = null;
 		try {
-			await library.login(String(fields.get('name')), String(fields.get('password')));
+			await library.login(name, String(fields.get('password')));
 		} catch (error) {
 			refused(error);
 			return;
 		}
+		await enter();
+	}
+
+	/** Signed in, by password or by a reset: Home arrives as it does from the door. */
+	async function enter(): Promise<void> {
 		// Home needs its units on the page before the fox leaves, or it has nothing to arrive.
 		await library.loadShell();
 		const next = safeNext(page.url.searchParams.get('next'), location.origin);
@@ -88,6 +105,15 @@
 		// Replacing, so Back never returns to the door.
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- `safeNext` returns a path on this origin.
 		await goto(next, { replaceState: true });
+	}
+
+	/** Back from the reset is a step of its own, forwards: the name comes back as it was left. */
+	async function signInAgain(carried: string): Promise<void> {
+		name = carried;
+		resetting = false;
+		failure = null;
+		await tick();
+		(name === '' ? nameField : password)?.focus();
 	}
 
 	/** Puts the caret in the first field, where a keyboard won't jump up uninvited. */
@@ -107,39 +133,50 @@
 </svelte:head>
 
 <div class="door">
-	<div class="column">
+	<div class="column" class:wide={resetting}>
 		<h1>Sign in to Kitsune</h1>
 		<span class="fox" use:morph={{ id: 'fox', slot: 'door', kind: 'control' }}
 			><Icon name="fox" size={44} /></span
 		>
-		<form data-morph-part="words" onsubmit={submit}>
-			<label>
-				<span>Name</span>
-				<input
-					name="name"
-					autocomplete="username"
-					autocapitalize="none"
-					autocorrect="off"
-					spellcheck="false"
-					required
-					use:focusOnDesktop
-				/>
-			</label>
-			<label>
-				<span>Password</span>
-				<input
-					name="password"
-					type="password"
-					autocomplete="current-password"
-					required
-					bind:this={password}
-				/>
-			</label>
-			<button type="submit" disabled={busy || waiting > 0} aria-busy={busy}>
-				{busy ? 'Signing in…' : 'Sign in'}
-			</button>
-			<p class="error" role="alert">{message}</p>
-		</form>
+		{#if resetting}
+			<div class="reset" data-morph-part="words">
+				<ResetCard {name} onback={(carried) => void signInAgain(carried)} ondone={enter} />
+			</div>
+		{:else}
+			<form data-morph-part="words" onsubmit={submit} in:fly={{ y: 16, duration: arrive }}>
+				<label>
+					<span>Name</span>
+					<input
+						name="name"
+						autocomplete="username"
+						autocapitalize="none"
+						autocorrect="off"
+						spellcheck="false"
+						required
+						bind:value={name}
+						bind:this={nameField}
+						use:focusOnDesktop
+					/>
+				</label>
+				<label>
+					<span>Password</span>
+					<input
+						name="password"
+						type="password"
+						autocomplete="current-password"
+						required
+						bind:this={password}
+					/>
+				</label>
+				<button type="submit" disabled={busy || waiting > 0} aria-busy={busy}>
+					{busy ? 'Signing in…' : 'Sign in'}
+				</button>
+				<p class="error" role="alert">{message}</p>
+				<button type="button" class="forgot" onclick={() => (resetting = true)}
+					>Forgot password?</button
+				>
+			</form>
+		{/if}
 	</div>
 </div>
 
@@ -154,10 +191,55 @@
 
 	.column {
 		width: min(340px, 100%);
+		transition: width var(--morph-fast) var(--curve-morph);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 32px;
+	}
+
+	/* The reset is setup's card: 400 wide, the width less the gutters on a phone. */
+	.column.wide {
+		width: min(400px, 100%);
+		gap: 28px;
+	}
+
+	.reset {
+		width: 100%;
+	}
+
+	/* Always under Sign in, not only after a refusal. */
+	.forgot {
+		align-self: center;
+		height: var(--target);
+		margin-top: -12px;
+		padding: 0 12px;
+		border: 0;
+		background: transparent;
+		color: var(--text-secondary);
+		font-size: 14px;
+		font-weight: 600;
+		text-decoration: underline;
+		text-decoration-color: var(--edge-strong);
+		text-underline-offset: 4px;
+	}
+
+	.forgot:hover {
+		color: var(--fox-text);
+		text-decoration-color: var(--fox-line);
+	}
+
+	/* At 4K the door takes the step the Server page takes there. */
+	@media (min-width: 3000px) {
+		.column {
+			width: 460px;
+		}
+
+		.column.wide {
+			width: 560px;
+			--reset-pad: 40px;
+			--reset-title: 36px;
+		}
 	}
 
 	h1 {
