@@ -35,8 +35,12 @@
 	let button: HTMLButtonElement | undefined = $state();
 	let open = $state<{ x: number; y: number; sheet: boolean } | null>(null);
 	let sheet: HTMLElement | undefined = $state();
-	/** When the menu last closed: a press on the button that closed it mustn't open it again. */
-	let closedAt = 0;
+	/**
+	 * When the menu last closed: a press on the button that closed it mustn't open it again. Never,
+	 * to begin with: `performance.now()` counts from the page's load, so a 0 here would swallow a
+	 * press in the page's first 300 ms.
+	 */
+	let closedAt = Number.NEGATIVE_INFINITY;
 
 	function show(): void {
 		if (open !== null) {
