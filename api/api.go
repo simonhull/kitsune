@@ -442,11 +442,15 @@ type AlbumDetail struct {
 	Hearted bool `json:"hearted"`
 }
 
-// ArtistEntry is an artist as a list shows it. AlbumCount counts the albums it owns.
+// ArtistEntry is an artist as a list shows it. AlbumCount counts the albums it
+// owns, AddedAt is when the newest of them arrived, and Plays is how often the
+// caller played their songs.
 type ArtistEntry struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	AlbumCount int    `json:"albumCount"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	AlbumCount int       `json:"albumCount"`
+	AddedAt    time.Time `json:"addedAt"`
+	Plays      int       `json:"plays"`
 }
 
 // ArtistList is the response to GET /artists.

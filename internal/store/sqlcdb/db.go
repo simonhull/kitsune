@@ -321,6 +321,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listLastfmDueUsersStmt, err = db.PrepareContext(ctx, listLastfmDueUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListLastfmDueUsers: %w", err)
 	}
+	if q.listOwningArtistPlaysStmt, err = db.PrepareContext(ctx, listOwningArtistPlays); err != nil {
+		return nil, fmt.Errorf("error preparing query ListOwningArtistPlays: %w", err)
+	}
 	if q.listOwningArtistsStmt, err = db.PrepareContext(ctx, listOwningArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListOwningArtists: %w", err)
 	}
@@ -1010,6 +1013,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listLastfmDueUsersStmt: %w", cerr)
 		}
 	}
+	if q.listOwningArtistPlaysStmt != nil {
+		if cerr := q.listOwningArtistPlaysStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listOwningArtistPlaysStmt: %w", cerr)
+		}
+	}
 	if q.listOwningArtistsStmt != nil {
 		if cerr := q.listOwningArtistsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listOwningArtistsStmt: %w", cerr)
@@ -1463,6 +1471,7 @@ type Queries struct {
 	listIndexTracksOfStmt            *sql.Stmt
 	listLastfmDueStmt                *sql.Stmt
 	listLastfmDueUsersStmt           *sql.Stmt
+	listOwningArtistPlaysStmt        *sql.Stmt
 	listOwningArtistsStmt            *sql.Stmt
 	listRunsOfStmt                   *sql.Stmt
 	listScanIssuesStmt               *sql.Stmt
@@ -1631,6 +1640,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIndexTracksOfStmt:            q.listIndexTracksOfStmt,
 		listLastfmDueStmt:                q.listLastfmDueStmt,
 		listLastfmDueUsersStmt:           q.listLastfmDueUsersStmt,
+		listOwningArtistPlaysStmt:        q.listOwningArtistPlaysStmt,
 		listOwningArtistsStmt:            q.listOwningArtistsStmt,
 		listRunsOfStmt:                   q.listRunsOfStmt,
 		listScanIssuesStmt:               q.listScanIssuesStmt,

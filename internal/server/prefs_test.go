@@ -81,6 +81,33 @@ func TestPrefsKeepTheTheme(t *testing.T) {
 	}
 }
 
+func TestPrefsKeepEachListsSort(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	sess := ts.sessionFor(t)
+	sorts := map[string]string{
+		"/me/prefs/library.sort": `{"artists":{"by":"plays","dir":"desc"},"albums":{"by":"year","dir":"asc"}}`,
+		"/me/prefs/albums.sort":  `{"by":"rating","dir":"desc"}`,
+		"/me/prefs/artists.sort": `{"by":"albums","dir":"asc"}`,
+	}
+	for path, body := range sorts {
+		ts.pref(t, sess.token, path).problem(t, http.StatusNotFound)
+		wantNoContent(t, ts.send(t, putPrefCall(sess.token, path, body)))
+	}
+	for path, body := range sorts {
+		if got := ts.pref(t, sess.token, path); got.Status != http.StatusOK || string(got.Body) != body {
+			t.Errorf("GET %s = %d %s, want %s", path, got.Status, got.Body, body)
+		}
+	}
+	// Each list takes only its own orders: the contract allows them all, the key doesn't.
+	for path, body := range map[string]string{
+		"/me/prefs/albums.sort":  `{"by":"albums","dir":"desc"}`,
+		"/me/prefs/artists.sort": `{"by":"rating","dir":"desc"}`,
+	} {
+		ts.send(t, putPrefCall(sess.token, path, body)).problem(t, http.StatusBadRequest)
+	}
+}
+
 func TestPrefsRefuseUnknownKeys(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)

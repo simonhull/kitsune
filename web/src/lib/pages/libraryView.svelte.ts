@@ -1,5 +1,6 @@
 import { untrack } from 'svelte';
 import { library } from '#lib/library/library.svelte.ts';
+import { sortIndex, turnedLetterTarget } from '#lib/library/libraryOrder.ts';
 import type { LibraryIndex } from '#lib/library/source.ts';
 import { player } from '#lib/player/player.svelte.ts';
 import {
@@ -20,6 +21,7 @@ import {
 import { columnsFrom, coverFor, largeFrom, stepFor, type Step } from './columns.ts';
 import { albumAfter, LibraryContinues } from './libraryContinues.ts';
 import { createTapper } from './libraryTap.ts';
+import { sorts } from './sortsView.svelte.ts';
 
 /**
  * How long after a song from the list begins the next album's record is fetched: past its first
@@ -155,7 +157,13 @@ class LibraryView {
 	filter = $state<LibraryFilter>('everything');
 
 	readonly frame: Frame = $derived(frameFor(this.step, this.stacked, this.cover));
-	readonly #index = $derived(library.index.kind === 'ready' ? library.index.value : noLibrary);
+	/**
+	 * The index in the person's order, which everything below reads: the rows, the rail, and what
+	 * plays on from a song. The default is the server's own order, and costs nothing.
+	 */
+	readonly #index = $derived(
+		sortIndex(library.index.kind === 'ready' ? library.index.value : noLibrary, sorts.library.value)
+	);
 	/** Moves on to look at the marks again: a filter reads them once, and a press doesn't move rows. */
 	#looked = $state(0);
 	/**
@@ -315,6 +323,11 @@ class LibraryView {
 		return this.#scrollTo((next?.top ?? 0) + this.frame.metrics.artistHead);
 	}
 
+	/** Forgets the place on screen: a list in a new order starts from its top. */
+	toTop(): void {
+		this.#anchor = null;
+	}
+
 	/** Shows what a filter keeps. Choosing the one already shown looks at the marks again. */
 	choose(filter: LibraryFilter): void {
 		this.filter = filter;
@@ -326,10 +339,14 @@ class LibraryView {
 		this.#looked += 1;
 	}
 
-	/** Finds the scroll that puts a letter's first artist on the line. */
-	jump(letter: string): number {
+	/** Finds the scroll that puts a letter's first artist on the line, on a rail that may run Z to A. */
+	jump(letter: string, rail: readonly string[]): number {
 		const { layout, frame } = this;
-		const artist = layout.artists.at(letterTarget(layout, letter));
+		const target =
+			sorts.library.value.artists.dir === 'desc'
+				? turnedLetterTarget(layout.letters, rail, letter, layout.artists.length)
+				: letterTarget(layout, letter);
+		const artist = layout.artists.at(target);
 		return this.#scrollTo((artist?.top ?? 0) + frame.metrics.artistHead);
 	}
 

@@ -1270,8 +1270,8 @@ paths:
       description: >-
         An album belongs to its album artists; with none, to the first artist of
         its tracks, unless it is a compilation. Sorted by sort name, ignoring
-        case. Various Artists is never listed. Guests are found through search
-        and links.
+        case, then ID: a client orders its copy as it likes. Various Artists is
+        never listed. Guests are found through search and links.
       responses:
         "200":
           description: The artists.
@@ -1808,8 +1808,8 @@ components:
       required: true
       description: >-
         The preference: `library.columns`, `ui.theme`, `shuffle.ratings`,
-        `shuffle.flow` or `shuffle.memory`. The server knows which keys there
-        are.
+        `shuffle.flow`, `shuffle.memory`, `library.sort`, `albums.sort` or
+        `artists.sort`. The server knows which keys there are.
       schema: { type: string }
     ItemID:
       name: id
@@ -2672,11 +2672,18 @@ components:
     ArtistEntry:
       type: object
       additionalProperties: false
-      required: [id, name, albumCount]
+      required: [id, name, albumCount, addedAt, plays]
       properties:
         id: { type: string }
         name: { type: string }
         albumCount: { type: integer, description: The albums it owns. }
+        addedAt:
+          type: string
+          format: date-time
+          description: When the newest album it owns arrived.
+        plays:
+          type: integer
+          description: How often the caller played the songs of the albums it owns.
     ArtistList:
       type: object
       additionalProperties: false
@@ -2729,6 +2736,47 @@ components:
         - $ref: "#/components/schemas/UITheme"
         - $ref: "#/components/schemas/ShuffleAmount"
         - $ref: "#/components/schemas/ShuffleMemory"
+        - $ref: "#/components/schemas/LibrarySort"
+        - $ref: "#/components/schemas/ListSort"
+    LibrarySort:
+      type: object
+      additionalProperties: false
+      description: >-
+        `library.sort`: how the Library orders its artists, and each artist's
+        albums; artist pages order their albums the same way. Artists A to Z
+        and albums newest first when never set. Ties go by name, then ID.
+      required: [artists, albums]
+      properties:
+        artists:
+          type: object
+          additionalProperties: false
+          required: [by, dir]
+          properties:
+            by: { type: string, enum: [name, added, plays] }
+            dir: { $ref: "#/components/schemas/SortDirection" }
+        albums:
+          type: object
+          additionalProperties: false
+          required: [by, dir]
+          properties:
+            by: { type: string, enum: [year, name, added] }
+            dir: { $ref: "#/components/schemas/SortDirection" }
+    ListSort:
+      type: object
+      additionalProperties: false
+      description: >-
+        `albums.sort`: the Albums page's order, `by` one of `name`, `artist`,
+        `year`, `added`, `plays` or `rating`. `artists.sort`: the Artists page's,
+        `by` one of `name`, `albums`, `added` or `plays`. Name A to Z when never
+        set. Ties go by name, then ID.
+      required: [by, dir]
+      properties:
+        by: { type: string, enum: [name, artist, year, added, plays, rating, albums] }
+        dir: { $ref: "#/components/schemas/SortDirection" }
+    SortDirection:
+      type: string
+      description: Which way the order runs. What is unknown, such as a missing year, goes last either way.
+      enum: [asc, desc]
     UITheme:
       type: string
       description: >-

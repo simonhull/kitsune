@@ -10,14 +10,18 @@ import (
 
 // getArtists lists the artists who own an album, whole: a library has few enough.
 func (s *Server) getArtists(w http.ResponseWriter, r *http.Request) {
-	artists, err := s.library.Artists(r.Context())
+	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
+	artists, err := s.library.Artists(r.Context(), user.ID)
 	if err != nil {
 		s.internalError(w, r, "list artists", err)
 		return
 	}
 	body := api.ArtistList{Artists: make([]api.ArtistEntry, len(artists))}
 	for i := range artists {
-		body.Artists[i] = toAPIArtistEntry(&artists[i])
+		a := &artists[i]
+		body.Artists[i] = api.ArtistEntry{
+			ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount, AddedAt: a.AddedAt, Plays: a.Plays,
+		}
 	}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
@@ -38,10 +42,6 @@ func (s *Server) getArtist(w http.ResponseWriter, r *http.Request) {
 		Albums: s.toAPIAlbumEntries(d.Albums), AppearsOn: s.toAPIAlbumEntries(d.AppearsOn),
 	}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
-}
-
-func toAPIArtistEntry(a *store.ArtistSummary) api.ArtistEntry {
-	return api.ArtistEntry{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount}
 }
 
 func toAPIArtistLinks(links []store.ArtistLink) []api.ArtistLink {

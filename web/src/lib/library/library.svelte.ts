@@ -33,7 +33,7 @@ import {
 	type AlbumEntry,
 	type AlbumTags,
 	type ArtistDetail,
-	type ArtistEntry,
+	type ListedArtist,
 	type ArtistLink,
 	type EditedTracks,
 	type IndexField,
@@ -208,7 +208,7 @@ export class Library {
 	dealer: ((open: () => void) => Promise<void>) | null = null;
 	playing = $state.raw<NowPlaying | null>(null);
 	/** The artists who own an album, by name. */
-	artists = $state.raw<Load<ArtistEntry[]>>({ kind: 'loading' });
+	artists = $state.raw<Load<ListedArtist[]>>({ kind: 'loading' });
 	/** What scans had trouble with, for administrators. */
 	issues = $state.raw<Load<ScanIssues>>({ kind: 'loading' });
 	/** Every song, for the Library page. Nothing asks until it opens. */
@@ -1139,6 +1139,15 @@ export class Library {
 				this.index = { kind: 'unavailable' };
 			}
 		}
+	}
+
+	/**
+	 * Whether the index held, or on its way, carries every one of `fields`. One that carries more is
+	 * as good: a page that needs less never reads the whole library again to drop some.
+	 */
+	holdsFields(fields: readonly IndexField[]): boolean {
+		const held = this.#fields();
+		return fields.every((field) => held.includes(field));
 	}
 
 	/** What {@link Library.index} was asked for, as fields. */
