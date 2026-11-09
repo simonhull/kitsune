@@ -61,9 +61,11 @@
 		border-radius: calc(var(--box-size, 16px) / 4);
 		background: transparent;
 		opacity: 0;
-		transition:
-			opacity 120ms var(--curve-morph),
-			border-color 120ms var(--curve-morph);
+		/*
+		 * Only the showing fades. A border that eased too would ease on every hidden box whose row starts
+		 * or stops playing, a run of frames on the way to the sound for nothing anyone sees.
+		 */
+		transition: opacity 120ms var(--curve-morph);
 	}
 
 	/* The real box, unseen, over the drawn one and past it: 28 for a pointer, 44 for a finger. */
