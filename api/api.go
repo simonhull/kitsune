@@ -577,8 +577,12 @@ type TrackFields struct {
 	AddedAt       time.Time `json:"addedAt,omitzero"`
 	Plays         int       `json:"plays,omitzero"` // The caller's.
 	LastPlayedAt  time.Time `json:"lastPlayedAt,omitzero"`
-	// TrackGain is the track's ReplayGain in dB, absent when the file has none.
+	// TrackGain is the track's ReplayGain in dB: its tags', or for a file with
+	// no gain tagged Kitsune's measure of it. Absent when it has neither.
 	TrackGain *float64 `json:"trackGain,omitzero"`
+	// TrackGainSource says where TrackGain comes from, as [ReplayGain.Source]
+	// does, and is there exactly when TrackGain is.
+	TrackGainSource string `json:"trackGainSource,omitzero"`
 	// Shuffle is the caller's shuffle rules on the track, absent with none.
 	Shuffle *ShuffleMark `json:"shuffle,omitzero"`
 }
