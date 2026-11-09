@@ -157,7 +157,7 @@ JOIN albums a ON a.id = t.album_id
 LEFT JOIN artwork w ON w.hash = a.artwork_hash
 WHERE ta.artist_id = ?
 GROUP BY a.id
-ORDER BY a.year DESC NULLS LAST, a.sort_name, a.id
+ORDER BY a.compilation, a.year DESC NULLS LAST, a.sort_name, a.id
 `
 
 type ListArtistAlbumsRow struct {
@@ -217,9 +217,54 @@ func (q *Queries) ListArtistAlbums(ctx context.Context, artistID int64) ([]ListA
 	return items, nil
 }
 
+const listOwningArtistPlays = `-- name: ListOwningArtistPlays :many
+SELECT ta.artist_id, CAST(sum(p.plays) AS INTEGER) AS plays
+FROM (SELECT track_id, count(*) AS plays FROM plays WHERE user_id = ? GROUP BY track_id) AS p
+JOIN tracks t ON t.id = p.track_id AND t.missing_since IS NULL
+JOIN albums a ON a.id = t.album_id
+JOIN track_artists ta ON ta.track_id = t.id
+WHERE ta.role = 'album_artist'
+   OR (ta.ord = 0 AND a.compilation = 0 AND NOT EXISTS (
+        SELECT 1 FROM tracks o
+        JOIN track_artists oa ON oa.track_id = o.id AND oa.role = 'album_artist'
+        WHERE o.album_id = a.id AND o.missing_since IS NULL))
+GROUP BY ta.artist_id
+`
+
+type ListOwningArtistPlaysRow struct {
+	ArtistID int64
+	Plays    int64
+}
+
+// How often the person played the live tracks of the albums each artist owns,
+// owners as ListOwningArtists has them. An artist with none isn't listed.
+func (q *Queries) ListOwningArtistPlays(ctx context.Context, userID int64) ([]ListOwningArtistPlaysRow, error) {
+	rows, err := q.query(ctx, q.listOwningArtistPlaysStmt, listOwningArtistPlays, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOwningArtistPlaysRow
+	for rows.Next() {
+		var i ListOwningArtistPlaysRow
+		if err := rows.Scan(&i.ArtistID, &i.Plays); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOwningArtists = `-- name: ListOwningArtists :many
 
-SELECT ar.ulid, ar.name, ar.match_key, ar.mbid, count(DISTINCT t.album_id) AS album_count
+SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid, count(DISTINCT t.album_id) AS album_count,
+    CAST(max(a.added_at) AS INTEGER) AS added_at
 FROM track_artists ta
 JOIN tracks t ON t.id = ta.track_id AND t.missing_since IS NULL
 JOIN albums a ON a.id = t.album_id
@@ -234,11 +279,13 @@ ORDER BY ar.sort_name COLLATE NOCASE, ar.id
 `
 
 type ListOwningArtistsRow struct {
+	ID         int64
 	Ulid       string
 	Name       string
 	MatchKey   string
 	Mbid       *string
 	AlbumCount int64
+	AddedAt    int64
 }
 
 // An album's owners are its album artists. An album with none belongs to the
@@ -255,11 +302,13 @@ func (q *Queries) ListOwningArtists(ctx context.Context) ([]ListOwningArtistsRow
 	for rows.Next() {
 		var i ListOwningArtistsRow
 		if err := rows.Scan(
+			&i.ID,
 			&i.Ulid,
 			&i.Name,
 			&i.MatchKey,
 			&i.Mbid,
 			&i.AlbumCount,
+			&i.AddedAt,
 		); err != nil {
 			return nil, err
 		}

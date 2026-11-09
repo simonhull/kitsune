@@ -352,7 +352,8 @@ func indexHeading(r *sqlcdb.ListIndexAlbumsRow) IndexArtist {
 // to go. Artists go by sort name, ignoring case as NOCASE does, then ID, each
 // under the letter a reader looks for it at: names that have none come first, and
 // an accented letter files with its base letter, not after Z. An artist's albums
-// go newest first, an unknown year last, as ListArtistAlbums has them.
+// go newest first, then those with no year, then compilations, as ListArtistAlbums
+// has them. A client may order its copy otherwise; this is the default.
 func orderIndex(artists []IndexArtist) []IndexArtist {
 	letters := make(map[*IndexArtist]byte, len(artists))
 	order := make([]*IndexArtist, len(artists))
@@ -378,10 +379,22 @@ func orderIndex(artists []IndexArtist) []IndexArtist {
 
 func compareIndexAlbums(a, b *IndexAlbum) int {
 	return cmp.Or(
+		compareBool(a.Compilation, b.Compilation),
 		cmp.Compare(yearRank(b.Year), yearRank(a.Year)),
 		compareNoCase(a.SortName, b.SortName),
 		cmp.Compare(a.ID, b.ID),
 	)
+}
+
+// compareBool puts false before true.
+func compareBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	}
+	return -1
 }
 
 // yearRank orders years with the unknown one below every other.

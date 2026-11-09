@@ -2,20 +2,28 @@ import { describe, expect, it } from 'vitest';
 import type { Album, Track } from '#lib/library/source.ts';
 import {
 	albumOf,
+	albumRun,
 	appended,
 	extended,
+	continued,
 	currentOf,
 	holds,
 	inOrder,
 	next,
 	onDisc,
+	onwardOf,
+	pendingAlbum,
 	picked,
 	playingNext,
 	previous,
 	retagged,
 	rewound,
 	shuffled,
-	upcoming
+	throughList,
+	reordered,
+	upcoming,
+	withdrawn,
+	without
 } from './queue';
 
 function album(count: number): Album {
@@ -227,5 +235,85 @@ describe('a queue of picked songs', () => {
 		expect(last?.title).toBe('New');
 		expect(last && albumOf(after, last)).toBe(edited);
 		expect(after.album).toBe(a);
+	});
+});
+
+describe('a queue going on through a list', () => {
+	const other = {
+		...album(2),
+		id: 'b',
+		tracks: album(2).tracks.map((t) => ({ ...t, id: `b${t.id}` }))
+	};
+	/** A song from elsewhere, to put in the queue. */
+	const stray = (id: string) => ({ album: album(1), track: { ...other.tracks[0], id } as Track });
+
+	it('decides what comes after it in one place: a shuffle first, then a list, else rest', () => {
+		const queue = inOrder(album(2));
+		expect(onwardOf(queue)).toBe('rest');
+		expect(onwardOf(throughList(queue))).toBe('list');
+		expect(onwardOf({ ...throughList(queue), shuffle: { id: 's' } })).toBe('shuffle');
+	});
+
+	it('takes the next album in whole, in order, keeping album gain', () => {
+		const queue = continued(throughList(inOrder(album(2), 1)), other);
+		expect(ids(queue.tracks)).toEqual(['t0', 't1', 'bt0', 'bt1']);
+		expect(queue.ordered).toBe(true);
+		expect(queue.tracks.slice(2).map((track) => albumOf(queue, track).id)).toEqual(['b', 'b']);
+		expect(queue.continues).toEqual({ album: 'b', ahead: { at: 2, count: 2, after: 'a' } });
+		expect(pendingAlbum(queue)).toEqual({ at: 2, count: 2, after: 'a' });
+		expect(pendingAlbum({ ...queue, index: 2 })).toBeUndefined();
+	});
+
+	it('gives back an album that hasn’t begun, and keeps one that has', () => {
+		const queue = continued(throughList(inOrder(album(2), 1)), other);
+		const back = withdrawn(queue);
+		expect(ids(back.tracks)).toEqual(['t0', 't1']);
+		expect(back.continues).toEqual({ album: 'a' });
+		expect(withdrawn({ ...queue, index: 2 }).tracks).toHaveLength(4);
+		expect(ids(withdrawn(appended(queue, [stray('y')])).tracks)).toEqual(['t0', 't1', 'y']);
+	});
+
+	it('puts songs someone queues before the album ahead, and keeps it where its songs are', () => {
+		const queue = continued(throughList(inOrder(album(2), 1)), other);
+		expect(playingNext(queue, [stray('x')]).continues?.ahead?.at).toBe(3);
+		const added = appended(queue, [stray('y')]);
+		expect(ids(added.tracks)).toEqual(['t0', 't1', 'y', 'bt0', 'bt1']);
+		expect(added.continues?.ahead?.at).toBe(3);
+		expect(ids(appended({ ...added, index: 3 }, [stray('z')]).tracks).at(-1)).toBe('z');
+	});
+
+	it('says where a song is in its album, among the albums around it', () => {
+		const queue = continued(throughList(inOrder(album(2), 1)), other);
+		expect(albumRun(queue)).toEqual({ index: 1, trackCount: 2 });
+		expect(albumRun({ ...queue, index: 2 })).toEqual({ index: 0, trackCount: 2 });
+	});
+
+	it('comes to rest at the end, going no further', () => {
+		expect(rewound(continued(throughList(inOrder(album(2), 1)), other)).continues).toBeUndefined();
+	});
+
+	it('keeps the album ahead where its songs are when songs are taken out of Up next', () => {
+		const queue = appended(continued(throughList(inOrder(album(2), 0)), other), [stray('y')]);
+		expect(ids(queue.tracks)).toEqual(['t0', 't1', 'y', 'bt0', 'bt1']);
+		const fewer = without(queue, ['t1', 'bt0']);
+		expect(ids(fewer.tracks)).toEqual(['t0', 'y', 'bt1']);
+		expect(fewer.continues).toEqual({ album: 'b', ahead: { at: 2, count: 1, after: 'a' } });
+		expect(ids(withdrawn(fewer).tracks)).toEqual(['t0', 'y']);
+		const gone = without(queue, ['bt0', 'bt1']);
+		expect(ids(gone.tracks)).toEqual(['t0', 't1', 'y']);
+		expect(gone.continues).toEqual({ album: 'b' });
+	});
+
+	it('keeps the album ahead while a reorder leaves it whole, and lets it go once it doesn’t', () => {
+		const queue = appended(continued(throughList(inOrder(album(2), 0)), other), [stray('y')]);
+		const moved = reordered(queue, ['bt0', 'bt1', 't1', 'y']);
+		expect(ids(moved.tracks)).toEqual(['t0', 'bt0', 'bt1', 't1', 'y']);
+		expect(moved.continues).toEqual({ album: 'b', ahead: { at: 1, count: 2, after: 'a' } });
+		expect(ids(withdrawn(moved).tracks)).toEqual(['t0', 't1', 'y']);
+		const split = reordered(queue, ['bt0', 't1', 'y', 'bt1']);
+		expect(split.continues).toEqual({ album: 'b' });
+		expect(withdrawn(split)).toBe(split);
+		const turned = reordered(queue, ['t1', 'y', 'bt1', 'bt0']);
+		expect(turned.continues).toEqual({ album: 'b' });
 	});
 });

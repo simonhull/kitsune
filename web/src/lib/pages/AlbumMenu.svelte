@@ -1,5 +1,5 @@
 <!--
-	An album's own ⋯: Play, Play next, Add to queue and Shuffle, then Edit tags… and Go to artist. One
+	An album's own ⋯: Play, Play next, Add to queue and Shuffle, then Edit tags…, Find matches… and Go to artist. One
 	menu, from the album page's hero and from any album card.
 -->
 <script lang="ts">
@@ -78,6 +78,15 @@
 				data-menu-item
 				onclick={then(actions.editTags)}>Edit tags…</button
 			>
+			{#if actions.findMatches !== undefined}
+				<button
+					type="button"
+					role="menuitem"
+					class="item"
+					data-menu-item
+					onclick={then(actions.findMatches)}>Find matches…</button
+				>
+			{/if}
 		{/if}
 		{#if actions.goToArtist !== undefined}
 			<div class="rule"></div>

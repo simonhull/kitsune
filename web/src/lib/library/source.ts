@@ -1,6 +1,7 @@
 /** The contract's types, by name: see `api/openapi.yaml`. Real tags are messy, so much is optional. */
 
 import type { ThemeChoice } from '#lib/theme/theme.svelte.ts';
+import type { AlbumOrder, ArtistOrder, LibrarySort, Sort } from './sorts.ts';
 
 export interface User {
 	id: number;
@@ -143,7 +144,13 @@ export type TagField =
 	| 'sortTitle'
 	| 'sortArtist'
 	| 'sortAlbum'
-	| 'sortAlbumArtist';
+	| 'sortAlbumArtist'
+	| 'musicbrainzAlbumId'
+	| 'musicbrainzReleaseGroupId'
+	| 'musicbrainzAlbumArtistId'
+	| 'musicbrainzArtistId'
+	| 'musicbrainzRecordingId'
+	| 'musicbrainzTrackId';
 
 /** Values by field, the same in every format. Numbers are decimal text. */
 export type FieldValues = Partial<Record<TagField, string[]>>;
@@ -214,6 +221,14 @@ export interface ArtistLink {
 export interface ArtistEntry extends ArtistLink {
 	/** The albums it owns. */
 	albumCount: number;
+}
+
+/** An artist in the list of them all, with what the list sorts by. */
+export interface ListedArtist extends ArtistEntry {
+	/** When the newest album it owns arrived. */
+	addedAt: string;
+	/** How often the caller played the songs of the albums it owns. */
+	plays: number;
 }
 
 export interface ArtistDetail extends ArtistEntry {
@@ -386,6 +401,10 @@ export interface Prefs {
 	'shuffle.flow': number;
 	/** Whether shuffle learns from skips and how much of a song is heard. */
 	'shuffle.memory': boolean;
+	/** How the Library orders its artists and their albums; artist pages take the albums' order. */
+	'library.sort': LibrarySort;
+	'albums.sort': Sort<AlbumOrder>;
+	'artists.sort': Sort<ArtistOrder>;
 }
 
 export type PrefKey = keyof Prefs;
@@ -811,7 +830,7 @@ export interface LibrarySource {
 	/** Rejects with {@link AlbumNotFoundError} for an unknown ID. */
 	album(id: string): Promise<Album>;
 	/** Every artist who owns an album, by name. Guests are found through search and links. */
-	artists(): Promise<ArtistEntry[]>;
+	artists(): Promise<ListedArtist[]>;
 	/** Rejects with {@link ArtistNotFoundError} for an unknown ID. */
 	artist(id: string): Promise<ArtistDetail>;
 	/** Finds artists, albums and tracks. Rejects with an `AbortError` when `signal` aborts. */

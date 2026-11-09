@@ -319,7 +319,7 @@ func (l *editLib) byArtist(name string) store.AlbumDetail {
 // owners returns the artists who own an album, by name.
 func (l *testLib) owners() map[string]string {
 	l.t.Helper()
-	artists, err := l.st.Artists(l.t.Context())
+	artists, err := l.st.Artists(l.t.Context(), 0)
 	if err != nil {
 		l.t.Fatal(err)
 	}

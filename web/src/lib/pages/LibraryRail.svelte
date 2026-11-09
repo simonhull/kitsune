@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { floorElements, floors } from '#lib/shell/floor.svelte.ts';
-	import { railHere } from './libraryRows.ts';
+	import { railLit } from '#lib/library/libraryOrder.ts';
 	import { fold, letterAt } from './railFit.ts';
 
 	interface Props {
@@ -31,7 +31,7 @@
 	const lit = $derived(
 		here === undefined
 			? undefined
-			: railHere(
+			: railLit(
 					folded.shown.map((index) => letters[index] ?? ''),
 					here
 				)

@@ -395,7 +395,7 @@ export class Shuffles {
 		this.#host = host;
 		this.#player = playing;
 		// Each song that begins in a shuffle tops it up, so the queue stays ahead of the player.
-		playing.began = (queue) => {
+		playing.onward.shuffle = (queue) => {
 			const shuffle = this.current;
 			if (shuffle !== null && queue.shuffle === shuffle.ref) {
 				void shuffle.topUp();

@@ -19,10 +19,15 @@ export interface Probe {
 	settle(input: InputType, timeoutMs: number): Promise<number>;
 	/** Resolves with the length of every frame, in ms, over the next `ms`. */
 	frames(ms: number): Promise<number[]>;
+	/** Moves the song sounding to `seconds` before its end, as if it had played that far. */
+	toEnd(seconds: number): void;
 }
 
-/** What a measurement can start at: an input event, or the start of the page load. */
-export type InputType = 'click' | 'contextmenu' | 'keydown' | 'navigation';
+/**
+ * What a measurement can start at: an input event, the start of the page load, or the latest end
+ * of a song (an `<audio>` element's `ended`), for what plays next without anyone asking.
+ */
+export type InputType = 'click' | 'contextmenu' | 'keydown' | 'navigation' | 'ended';
 
 /** Where a test leaves a {@link Wait} for the next page load to arm at its very start. */
 export const armOnLoadKey = 'perf:arm';
@@ -61,9 +66,14 @@ export function installProbe(): void {
 	}
 
 	const waiting = new Map<string, ((at: number) => void)[]>();
+	const elements: HTMLAudioElement[] = [];
 	const NativeAudio = window.Audio;
 	function ProbedAudio(src?: string): HTMLAudioElement {
 		const element = new NativeAudio(src);
+		elements.push(element);
+		element.addEventListener('ended', (event) => {
+			input['ended'] = event.timeStamp;
+		});
 		element.addEventListener('playing', () => {
 			const at = performance.now();
 			for (const [want, resolvers] of waiting) {
@@ -171,6 +181,13 @@ export function installProbe(): void {
 				};
 				requestAnimationFrame(frame);
 			});
+		},
+		toEnd(seconds) {
+			const element = elements.find((each) => !each.paused);
+			if (element === undefined) {
+				throw new Error('nothing is sounding');
+			}
+			element.currentTime = Math.max(0, element.duration - seconds);
 		}
 	};
 

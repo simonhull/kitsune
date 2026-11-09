@@ -147,7 +147,8 @@ func TestLibraryIndexGroupsACompilationUnderItsDisplayedArtist(t *testing.T) {
 	if len(group.Albums) != 2 {
 		t.Fatalf("albums = %v", albumTitles(&group))
 	}
-	sampler := group.Albums[0]
+	// Its records go before its compilations, as an artist's do.
+	sampler := group.Albums[1]
 	if !sampler.Compilation {
 		t.Errorf("album = %+v, want a compilation", sampler)
 	}
@@ -193,6 +194,11 @@ func TestLibraryIndexOrder(t *testing.T) {
 	ts.seedIndex(t,
 		indexAlbum{n: 1, title: "Unknown year", artist: annName, tracks: []indexTrack{{title: "A", trackNo: 1, artists: own}}},
 		indexAlbum{n: 2, title: "Old", artist: annName, year: 1999, tracks: []indexTrack{{title: "B", trackNo: 1, artists: own}}},
+		// Hers by its album artist, and after her own records even though it's the newest.
+		indexAlbum{
+			n: 4, title: "Best of", artist: annName, year: 2024, compilation: true, owners: own,
+			tracks: []indexTrack{{title: "C", trackNo: 1, artists: own}},
+		},
 		indexAlbum{n: 3, title: "New", artist: annName, year: 2021, tracks: []indexTrack{
 			{title: "Disc two", disc: 2, trackNo: 1, artists: own},
 			{title: "No number", disc: 1, artists: own},
@@ -201,8 +207,8 @@ func TestLibraryIndexOrder(t *testing.T) {
 		}},
 	)
 	index := ts.index(t)
-	if got := albumTitles(&index.Artists[0]); !slices.Equal(got, []string{"New", "Old", "Unknown year"}) {
-		t.Errorf("albums = %v, want newest first and no year last", got)
+	if got := albumTitles(&index.Artists[0]); !slices.Equal(got, []string{"New", "Old", "Unknown year", "Best of"}) {
+		t.Errorf("albums = %v, want newest first, then no year, then compilations", got)
 	}
 	tracks := index.Artists[0].Albums[0].Tracks
 	titles := make([]string, len(tracks))

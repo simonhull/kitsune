@@ -8,6 +8,7 @@
 	import AlbumHero from '#lib/pages/AlbumHero.svelte';
 	import BulkEditor from '#lib/pages/BulkEditor.svelte';
 	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
+	import { matchFromBulk, matchFromEditor } from '#lib/matching/hooks.ts';
 	import TagBar from '#lib/pages/TagBar.svelte';
 	import TagRows from '#lib/pages/TagRows.svelte';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
@@ -301,7 +302,13 @@
 		/>
 		{#if bulk !== null}
 			<BulkEditor session={bulk} />
-			<TagBar session={bulk} what="these tracks" leave={leaveBulk} write={() => void writeBulk()} />
+			<TagBar
+				session={bulk}
+				what="these tracks"
+				leave={leaveBulk}
+				write={() => void writeBulk()}
+				match={matchFromBulk(bulk)}
+			/>
 		{:else}
 			<div class="songs" bind:this={songsElement}>
 				<AlbumSongs
@@ -351,7 +358,13 @@
 			{/if}
 		{/if}
 		{#if session !== undefined}
-			<TagBar {session} open={session.open} {leave} write={() => void write()} />
+			<TagBar
+				{session}
+				open={session.open}
+				{leave}
+				write={() => void write()}
+				match={() => matchFromEditor(id)}
+			/>
 		{/if}
 		<p class="visually-hidden" role="status">{announcement}</p>
 	</div>

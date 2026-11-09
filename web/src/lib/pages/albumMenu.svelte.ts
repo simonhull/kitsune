@@ -2,6 +2,7 @@ import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { library } from '#lib/library/library.svelte.ts';
 import type { Album, AlbumEntry } from '#lib/library/source.ts';
+import { matchAlbum } from '#lib/matching/hooks.ts';
 import { player } from '#lib/player/player.svelte.ts';
 import { shuffles } from '#lib/shuffle/session.svelte.ts';
 import { albumSource } from '#lib/shuffle/sources.ts';
@@ -15,6 +16,8 @@ export interface AlbumActions {
 	shuffle(): void;
 	/** Set for a person who may edit tags. */
 	editTags: (() => void) | undefined;
+	/** Opens the match sheet for the album's release. Set for a person who may edit tags. */
+	findMatches: (() => void) | undefined;
 	/** Set once the album says who it's by. */
 	goToArtist: (() => void) | undefined;
 }
@@ -62,6 +65,12 @@ export function albumActions(id: string, album: Album | undefined): AlbumActions
 				? () => {
 						tagEdits.open(id);
 						void goto(resolve('/album/[id]', { id }));
+					}
+				: undefined,
+		findMatches:
+			library.user?.canEditTags === true
+				? () => {
+						matchAlbum(id);
 					}
 				: undefined,
 		goToArtist:
