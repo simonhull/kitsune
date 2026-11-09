@@ -1000,6 +1000,95 @@ func (q *Queries) ListIndexTrackDetailsOf(ctx context.Context, albums []string) 
 	return items, nil
 }
 
+const listIndexTrackMeasures = `-- name: ListIndexTrackMeasures :many
+SELECT t.id, l.integrated
+FROM track_loudness l
+JOIN tracks t ON t.id = l.track_id AND t.size = l.size AND t.mtime = l.mtime
+WHERE l.outcome = 'measured' AND l.integrated IS NOT NULL
+  AND t.missing_since IS NULL AND t.rg_track_gain IS NULL AND t.rg_album_gain IS NULL
+`
+
+type ListIndexTrackMeasuresRow struct {
+	ID         int64
+	Integrated *float64
+}
+
+// Kitsune's own measure of each live track with no gain tagged, as album pages
+// read it: of the file as it is now. Measures land while the server runs, by
+// the loudness pass, outside library writes, so this is read every time and
+// never kept with the library's rows.
+func (q *Queries) ListIndexTrackMeasures(ctx context.Context) ([]ListIndexTrackMeasuresRow, error) {
+	rows, err := q.query(ctx, q.listIndexTrackMeasuresStmt, listIndexTrackMeasures)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTrackMeasuresRow
+	for rows.Next() {
+		var i ListIndexTrackMeasuresRow
+		if err := rows.Scan(&i.ID, &i.Integrated); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndexTrackMeasuresOf = `-- name: ListIndexTrackMeasuresOf :many
+SELECT t.id, l.integrated
+FROM albums a
+CROSS JOIN tracks t
+CROSS JOIN track_loudness l
+WHERE a.ulid IN (/*SLICE:albums*/?) AND t.album_id = a.id AND t.missing_since IS NULL
+  AND t.rg_track_gain IS NULL AND t.rg_album_gain IS NULL
+  AND l.track_id = t.id AND l.size = t.size AND l.mtime = t.mtime
+  AND l.outcome = 'measured' AND l.integrated IS NOT NULL
+`
+
+type ListIndexTrackMeasuresOfRow struct {
+	ID         int64
+	Integrated *float64
+}
+
+func (q *Queries) ListIndexTrackMeasuresOf(ctx context.Context, albums []string) ([]ListIndexTrackMeasuresOfRow, error) {
+	query := listIndexTrackMeasuresOf
+	var queryParams []interface{}
+	if len(albums) > 0 {
+		for _, v := range albums {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:albums*/?", strings.Repeat(",?", len(albums))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
+	}
+	rows, err := q.query(ctx, nil, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndexTrackMeasuresOfRow
+	for rows.Next() {
+		var i ListIndexTrackMeasuresOfRow
+		if err := rows.Scan(&i.ID, &i.Integrated); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIndexTrackTags = `-- name: ListIndexTrackTags :many
 SELECT tt.track_id, tt.key, tt.value
 FROM track_tags tt

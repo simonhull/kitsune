@@ -332,7 +332,7 @@ func rawBody(key string) string {
 func TestEditRawTags(t *testing.T) {
 	t.Parallel()
 	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
-	fx.retag(t, map[string][]string{"MOOD": {"Calm"}, "OLD": {"Gone"}, trackGainKey: {"-6.5 dB"}})
+	fx.retag(t, map[string][]string{"MOOD": {"Calm"}, "OLD": {"Gone"}, trackGainKey: {taggedGain}})
 	id := fx.album.Tracks[0].ID
 	body := `{"all":{"tags":[{"key":"MOOD","values":["Warm","Dark"]},{"key":"OLD","values":[]}]},` +
 		`"tracks":[{"id":"` + id + `","tags":[{"key":"MOOD","values":["Own"]}]}]}`

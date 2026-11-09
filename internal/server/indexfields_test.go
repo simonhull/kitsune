@@ -113,7 +113,7 @@ func TestLibraryIndexSendsTheFieldsAskedFor(t *testing.T) {
 			AlbumArtists: []string{annName}, DisplayGenres: []string{"Dream pop", "Shoegaze"},
 			Composers: []string{"I. Marrow", "M. Vey"}, Year: 2021, Format: streamFormat, SampleRate: 44100,
 			BitDepth: 16, Bitrate: 912, AddedAt: added, Plays: 2, LastPlayedAt: added.Add(-time.Hour),
-			TrackGain: new(-7.25),
+			TrackGain: new(-7.25), TrackGainSource: api.GainFromTags,
 		},
 		{AlbumArtists: []string{annName}, Year: 2021, Format: streamFormat, SampleRate: 44100, BitDepth: 16, Bitrate: 912, AddedAt: added},
 		// An MP3 with nothing to say but its format.
