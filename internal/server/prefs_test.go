@@ -11,7 +11,7 @@ import (
 
 const (
 	columnsPath = "/me/prefs/library.columns"
-	columnsBody = `{"order":["genre","artist","plays"],"artistWhenDifferent":false}`
+	columnsBody = `{"order":["genre","number","title","artist","plays"],"artistWhenDifferent":false}`
 	themePath   = "/me/prefs/ui.theme"
 )
 
@@ -45,8 +45,14 @@ func TestPrefsKeepTheCallersValue(t *testing.T) {
 
 	// A second write replaces the first, spaced however the client likes.
 	wantNoContent(t, ts.send(t, putPrefCall(sess.token, columnsPath, "{ \"order\": [],\n \"artistWhenDifferent\": true }")))
-	if got = ts.pref(t, sess.token, columnsPath); string(got.Body) != `{"order":[],"artistWhenDifferent":true}` {
+	if got = ts.pref(t, sess.token, columnsPath); string(got.Body) != `{"order":["number","title"],"artistWhenDifferent":true}` {
 		t.Errorf("after a replace, GET = %s", got.Body)
+	}
+	// A value saved before the number and the title could move gets them where they were.
+	old := `{"order":["genre","artist"],"artistWhenDifferent":true}`
+	wantNoContent(t, ts.send(t, putPrefCall(sess.token, columnsPath, old)))
+	if got = ts.pref(t, sess.token, columnsPath); string(got.Body) != `{"order":["number","title","genre","artist"],"artistWhenDifferent":true}` {
+		t.Errorf("an old value reads back as %s", got.Body)
 	}
 }
 
@@ -54,7 +60,7 @@ func TestPrefsKeepColumnWidths(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
 	token := ts.tokenFor(t, store.RoleUser)
-	widths := `{"order":["artist","genre"],"artistWhenDifferent":true,"widths":{"artist":240,"genre":96}}`
+	widths := `{"order":["number","title","artist","genre"],"artistWhenDifferent":true,"widths":{"artist":240,"genre":96}}`
 	wantNoContent(t, ts.send(t, putPrefCall(token, columnsPath, widths)))
 	if got := ts.pref(t, token, columnsPath); string(got.Body) != widths {
 		t.Errorf("GET = %s, want %s", got.Body, widths)
@@ -143,7 +149,7 @@ func TestPrefsRefuseBadValues(t *testing.T) {
 	sess := ts.sessionFor(t)
 	for name, body := range map[string]string{
 		"unknown column": `{"order":["skips"],"artistWhenDifferent":true}`,
-		"always shown":   `{"order":["title"],"artistWhenDifferent":true}`,
+		"title's width":  `{"order":[],"artistWhenDifferent":true,"widths":{"title":300}}`,
 		"twice":          `{"order":["genre","genre"],"artistWhenDifferent":true}`,
 		"no switch":      `{"order":["genre"]}`,
 		"no order":       `{"artistWhenDifferent":true}`,

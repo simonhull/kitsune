@@ -3171,15 +3171,20 @@ components:
       additionalProperties: false
       description: >-
         `library.columns`: the person's song columns, one set for every list of
-        songs. Checkbox, number, title, time and the row's menu are always
-        shown and never named here.
+        songs. Checkbox, time and the row's menu are always shown, in their
+        places, and never named here. Number and title are always shown too, and
+        placed in the order.
       required: [order, artistWhenDifferent]
       properties:
         order:
           type: array
-          description: The columns shown, in their order. A column left out is hidden.
+          description: >-
+            The columns shown, in their order, `number` and `title` among them. A
+            column left out is hidden. An order without `number` or `title`, as
+            one saved before they could move, gets them back where they were:
+            `number` first and `title` right after it, and reads back with them.
           uniqueItems: true
-          items: { $ref: "#/components/schemas/SongColumn" }
+          items: { $ref: "#/components/schemas/PlacedColumn" }
         artistWhenDifferent:
           type: boolean
           description: Leave Artist empty where the track's artists are the album's.
@@ -3210,8 +3215,14 @@ components:
       description: A column's width, in CSS pixels at the base size step.
       minimum: 16
       maximum: 960
+    PlacedColumn:
+      description: A column an order may place, the always-shown number and title among them.
+      oneOf:
+        - { $ref: "#/components/schemas/SongColumn" }
+        - { type: string, enum: [number, title] }
     SongColumn:
       type: string
+      description: A song column a person may choose to show or hide.
       enum: [artist, albumArtist, album, genre, year, rating, heart, plays, lastPlayed, added, composer, format, bitrate, gain]
     LibraryIndex:
       type: object

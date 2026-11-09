@@ -95,9 +95,17 @@ func Lookup(name string) (Key, error) {
 	return k, nil
 }
 
-// Column is a song column a person may choose. Checkbox, number, title, time
-// and the row's menu are always there, so they are none of these.
+// Column is a song column a person may place. Checkbox, time and the row's
+// menu are always there, in their places, so they are none of these. Number
+// and title are always there too, but may be moved.
 type Column string
+
+// The number and the title: always shown, so never chosen or given a width,
+// but placed in the order like any other column.
+const (
+	ColumnNumber Column = "number"
+	ColumnTitle  Column = "title"
+)
 
 // The columns a person may choose, in no order of theirs.
 const (
@@ -125,8 +133,14 @@ func Columns() []Column {
 	}
 }
 
+// Placed lists every column an order may name: [ColumnNumber], [ColumnTitle]
+// and the [Columns].
+func Placed() []Column {
+	return append([]Column{ColumnNumber, ColumnTitle}, Columns()...)
+}
+
 // ColumnsValue is the value of [LibraryColumns]: the columns shown, in their
-// order, whether Artist is left empty where it is the album's, and the widths
+// order, number and title among them, whether Artist is left empty where it is the album's, and the widths
 // the person dragged columns to, in CSS pixels at the base size step. A column
 // with no width has its default; a value saved before widths existed has none.
 type ColumnsValue struct {
@@ -150,6 +164,9 @@ var (
 )
 
 // checkColumns accepts a [ColumnsValue] that names each column once at most.
+// An order without the number or the title, as every value saved before they
+// could move, gets them where they always were: the number first, the title
+// after it.
 func checkColumns(value []byte) ([]byte, error) {
 	var in struct {
 		Order               *[]Column      `json:"order"`
@@ -163,27 +180,38 @@ func checkColumns(value []byte) ([]byte, error) {
 		return nil, errMissing
 	}
 	out := ColumnsValue{Order: *in.Order, ArtistWhenDifferent: *in.ArtistWhenDifferent, Widths: in.Widths}
-	known := Columns()
-	if err := checkWidths(out.Widths, known); err != nil {
+	if err := checkWidths(out.Widths, Columns()); err != nil {
 		return nil, err
 	}
+	placed := Placed()
 	for i, c := range out.Order {
-		if !slices.Contains(known, c) {
+		if !slices.Contains(placed, c) {
 			return nil, fmt.Errorf("%q: %w", c, errColumn)
 		}
 		if slices.Contains(out.Order[:i], c) {
 			return nil, fmt.Errorf("%q: %w", c, errDuplicate)
 		}
 	}
-	if out.Order == nil {
-		out.Order = []Column{}
-	}
+	out.Order = framed(out.Order)
 	// Keys in order, so the same widths are the same text.
 	b, err := json.Marshal(out, json.Deterministic(true))
 	if err != nil {
 		return nil, fmt.Errorf("encode: %w", err)
 	}
 	return b, nil
+}
+
+// framed returns order with the number and the title in it: the number first
+// when it's missing, and the title right after the number when it is.
+func framed(order []Column) []Column {
+	out := slices.Clone(order)
+	if !slices.Contains(out, ColumnNumber) {
+		out = slices.Insert(out, 0, ColumnNumber)
+	}
+	if !slices.Contains(out, ColumnTitle) {
+		out = slices.Insert(out, slices.Index(out, ColumnNumber)+1, ColumnTitle)
+	}
+	return out
 }
 
 // checkWidths accepts widths of known columns, each in range.
