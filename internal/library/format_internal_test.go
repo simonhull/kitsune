@@ -63,7 +63,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 				titleSort: "TSOT", artistSort: "TSOP", albumSort: "TSOA",
 				albumArtist: "TPE2", albumArtistSort: "TSO2",
 				artistMBID: keyID3ArtistID, albumArtistMBID: "MUSICBRAINZ ALBUM ARTIST ID",
-				compilation: keyTCMP, albumMBID: "MUSICBRAINZ ALBUM ID", trackMBID: "MUSICBRAINZ TRACK ID",
+				compilation: keyTCMP, albumMBID: "MUSICBRAINZ ALBUM ID", trackMBID: keyRecordingUFID,
 			},
 			artistIDs: []string{mbArtist1},
 		},

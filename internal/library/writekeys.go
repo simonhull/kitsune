@@ -162,7 +162,30 @@ const (
 	keyTSST    = "TSST"
 	// keyDiscSubtitle is the disc's name in Vorbis and M4A, and a TXXX in ID3.
 	keyDiscSubtitle = "DISCSUBTITLE"
+	// keyRecordingUFID is the MP3 frame MusicBrainz Picard keeps the recording's ID in.
+	keyRecordingUFID = "UFID:http://musicbrainz.org"
 )
+
+// picardNames spells the TXXX descriptions and M4A freeform names of the
+// MusicBrainz IDs as MusicBrainz Picard writes them, by the raw key each is read
+// under. A new frame or item gets this name, since some readers match it
+// case-sensitively; one the file has keeps its own, so nothing is written twice.
+// Vorbis names are case-insensitive and stay as their keys.
+//
+//nolint:gochecknoglobals // A fixed table, never written.
+var picardNames = spelled(
+	"MusicBrainz Album Id", "MusicBrainz Release Group Id", "MusicBrainz Album Artist Id",
+	"MusicBrainz Artist Id", "MusicBrainz Track Id", "MusicBrainz Release Track Id",
+)
+
+// spelled maps each name's raw key, the name upper-cased, to the name.
+func spelled(names ...string) map[string]string {
+	out := make(map[string]string, len(names))
+	for _, n := range names {
+		out[strings.ToUpper(n)] = n
+	}
+	return out
+}
 
 // fields is the table, in the order an edit applies: a field comes before those
 // among its dependents, so that one request can change both. Raw names are checked
@@ -256,14 +279,20 @@ var fields = []field{
 	mbid(FieldMusicBrainzReleaseGroupID, false, keysReleaseGroupMBID),
 	mbid(FieldMusicBrainzAlbumArtistID, true, keysAlbumArtistMBID),
 	mbid(FieldMusicBrainzArtistID, true, keysArtistMBID),
-	mbid(FieldMusicBrainzRecordingID, false, keysTrackMBID),
+	{
+		// The recording's ID is a UFID in ID3, which a TXXX left by another tagger
+		// follows, and a freeform "MusicBrainz Track Id" in M4A.
+		name: FieldMusicBrainzRecordingID, flac: keys(keysTrackMBID[0]), mp3: keys(keyRecordingUFID, keysTrackMBID[2]),
+		m4a: keys(keysTrackMBID[2]), valid: validMBID,
+	},
 	mbid(FieldMusicBrainzTrackID, false, keysReleaseTrackMBID),
 }
 
 func keys(names ...string) []string { return names }
 
 // mbid is the row of a MusicBrainz ID. candidates holds its Vorbis key, then
-// its ID3 TXXX description, which M4A's freeform atom shares.
+// its ID3 TXXX description, which M4A's freeform atom shares; [picardNames]
+// spells the latter.
 func mbid(name Field, multi bool, candidates []string) field {
 	vorbisKey, otherKey := candidates[0], candidates[1]
 	return field{name: name, flac: keys(vorbisKey), mp3: keys(otherKey), m4a: keys(otherKey), multi: multi, valid: validMBID}
@@ -449,6 +478,10 @@ func set(t *audiometa.Tags, key string, values []string) {
 	case keyLyrics:
 		t.Lyrics = strings.Join(values, "")
 	default:
+		if name, ok := picardNames[key]; ok {
+			t.SetNamed(name, values...)
+			return
+		}
 		t.Set(key, values...)
 	}
 }
