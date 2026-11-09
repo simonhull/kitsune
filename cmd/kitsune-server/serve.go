@@ -230,7 +230,7 @@ func firstRunCode(ctx context.Context, st *store.Store) (string, error) {
 	if n > 0 {
 		return "", nil
 	}
-	return newSetupCode(), nil
+	return auth.NewCode(), nil
 }
 
 // buildApp wires the auth service and the HTTP server over st, with the settings

@@ -49,6 +49,7 @@ type Service struct {
 	now    func() time.Time
 	slots  chan struct{} // One per hash allowed to run at once.
 	dummy  string        // Hash verified for unknown names, so timing matches.
+	resets resets        // Live reset codes, in memory only.
 }
 
 // Options configures [New]. The zero value is ready to use.
@@ -93,6 +94,7 @@ func New(st *store.Store, opts Options) (*Service, error) {
 		now:    now,
 		slots:  make(chan struct{}, slots),
 		dummy:  hashPassword(params, "kitsune dummy password"),
+		resets: resets{byUser: map[int64]pendingReset{}},
 	}, nil
 }
 
@@ -143,22 +145,7 @@ func (s *Service) Login(ctx context.Context, name, password, userAgent string) (
 		return LoginResult{}, err
 	}
 	s.rehashIfStale(ctx, u.ID, password, ph)
-
-	now := s.clock()
-	minted := newSessionToken()
-	expires := now.Add(sessionIdle)
-	err = s.store.CreateSession(ctx, &store.NewSession{
-		TokenHash: minted.hash,
-		UserID:    u.ID,
-		CreatedAt: now,
-		ExpiresAt: expires,
-		UserAgent: truncateUserAgent(userAgent),
-	})
-	if err != nil {
-		return LoginResult{}, fmt.Errorf("auth: login: %w", err)
-	}
-	u.PasswordHash = ""
-	return LoginResult{Token: minted.token, User: u, ExpiresAt: expires}, nil
+	return s.startSession(ctx, &u, userAgent)
 }
 
 // Authenticate returns the user a session token belongs to, or an error
@@ -211,6 +198,26 @@ func (s *Service) PurgeExpiredSessions(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("auth: purge sessions: %w", err)
 	}
 	return n, nil
+}
+
+// startSession makes a new session for u, which it returns without its hash.
+func (s *Service) startSession(ctx context.Context, u *store.User, userAgent string) (LoginResult, error) {
+	now := s.clock()
+	minted := newSessionToken()
+	expires := now.Add(sessionIdle)
+	err := s.store.CreateSession(ctx, &store.NewSession{
+		TokenHash: minted.hash,
+		UserID:    u.ID,
+		CreatedAt: now,
+		ExpiresAt: expires,
+		UserAgent: truncateUserAgent(userAgent),
+	})
+	if err != nil {
+		return LoginResult{}, fmt.Errorf("auth: start session: %w", err)
+	}
+	user := *u
+	user.PasswordHash = ""
+	return LoginResult{Token: minted.token, User: user, ExpiresAt: expires}, nil
 }
 
 // newUserHash validates a new user's name and password and returns the
