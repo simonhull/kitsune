@@ -93,6 +93,8 @@
 	let last = 0;
 	let ink: InkRange = { from: 0, to: -1 };
 	let dropShowing = false;
+	/** Asked once: a sweep retargets every frame, and a new query each time isn't free. */
+	let reducedMotion: MediaQueryList | undefined;
 
 	/** The rail's measures, read only when it changes size, never per frame. */
 	function geometry(): GooGeometry | undefined {
@@ -244,7 +246,8 @@
 				settle();
 				return;
 			}
-			goo.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+			reducedMotion ??= matchMedia('(prefers-reduced-motion: reduce)');
+			goo.reduced = reducedMotion.matches;
 			const { ghost: old } = goo.retarget(slotCenter(index, goo.geometry.step), performance.now());
 			if (old === undefined) {
 				start();
