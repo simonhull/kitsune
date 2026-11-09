@@ -57,6 +57,16 @@ const (
 	FieldSortArtist      Field = "sortArtist"
 	FieldSortAlbum       Field = "sortAlbum"
 	FieldSortAlbumArtist Field = "sortAlbumArtist"
+
+	// FieldMusicBrainzAlbumID and the fields after it are MusicBrainz's IDs, which
+	// a match writes. The recording is what Picard calls the track in Vorbis, and
+	// the track is the release's track.
+	FieldMusicBrainzAlbumID        Field = "musicbrainzAlbumId"
+	FieldMusicBrainzReleaseGroupID Field = "musicbrainzReleaseGroupId"
+	FieldMusicBrainzAlbumArtistID  Field = "musicbrainzAlbumArtistId"
+	FieldMusicBrainzArtistID       Field = "musicbrainzArtistId"
+	FieldMusicBrainzRecordingID    Field = "musicbrainzRecordingId"
+	FieldMusicBrainzTrackID        Field = "musicbrainzTrackId"
 )
 
 // Edit is a change to a file's tags.
@@ -240,9 +250,35 @@ var fields = []field{
 		name: FieldSortAlbumArtist, flac: keys("ALBUMARTISTSORT"), mp3: keys("TSO2", "ALBUMARTISTSORT"), m4a: keys("soaa"),
 		read: candidates(keysAlbumArtistSort),
 	},
+	// The MBIDs come after artists and album artists, whose change deletes the
+	// artist IDs as dependents: one request can rename and give the new IDs.
+	mbid(FieldMusicBrainzAlbumID, false, keysAlbumMBID),
+	mbid(FieldMusicBrainzReleaseGroupID, false, keysReleaseGroupMBID),
+	mbid(FieldMusicBrainzAlbumArtistID, true, keysAlbumArtistMBID),
+	mbid(FieldMusicBrainzArtistID, true, keysArtistMBID),
+	mbid(FieldMusicBrainzRecordingID, false, keysTrackMBID),
+	mbid(FieldMusicBrainzTrackID, false, keysReleaseTrackMBID),
 }
 
 func keys(names ...string) []string { return names }
+
+// mbid is the row of a MusicBrainz ID. candidates holds its Vorbis key, then
+// its ID3 TXXX description, which M4A's freeform atom shares.
+func mbid(name Field, multi bool, candidates []string) field {
+	vorbisKey, otherKey := candidates[0], candidates[1]
+	return field{name: name, flac: keys(vorbisKey), mp3: keys(otherKey), m4a: keys(otherKey), multi: multi, valid: validMBID}
+}
+
+// mbidPattern is the shape of a MusicBrainz ID: a UUID, as MusicBrainz writes it.
+var mbidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// validMBID takes only a MusicBrainz ID.
+func validMBID(_ family, v string) error {
+	if !mbidPattern.MatchString(v) {
+		return fmt.Errorf("%q is not a MusicBrainz ID: %w", v, ErrUnsupportedEdit)
+	}
+	return nil
+}
 
 func trackNumber(t *audiometa.Tags) *int { return &t.TrackNumber }
 func trackTotal(t *audiometa.Tags) *int  { return &t.TrackTotal }

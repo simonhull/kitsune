@@ -36,7 +36,9 @@ const multiFields: readonly TagField[] = [
 	'catalogNumber',
 	'barcode',
 	'isrc',
-	'language'
+	'language',
+	'musicbrainzAlbumArtistId',
+	'musicbrainzArtistId'
 ];
 
 /** Every field an edit can name, in the order of the page. */
@@ -137,6 +139,54 @@ export const tagGroups: readonly { name: string; fields: readonly FieldSpec[] }[
 			{ field: 'sortArtist', label: 'Sort artist', span: 1 },
 			{ field: 'sortAlbum', label: 'Sort album', span: 1 },
 			{ field: 'sortAlbumArtist', label: 'Sort album artist', span: 1 }
+		]
+	},
+	{
+		// Written by Find matches, never typed: shown so they can be checked.
+		name: 'MUSICBRAINZ',
+		fields: [
+			{
+				field: 'musicbrainzAlbumId',
+				label: 'Release',
+				name: 'MusicBrainz release ID',
+				span: 2,
+				locked: true
+			},
+			{
+				field: 'musicbrainzReleaseGroupId',
+				label: 'Release group',
+				name: 'MusicBrainz release group ID',
+				span: 2,
+				locked: true
+			},
+			{
+				field: 'musicbrainzRecordingId',
+				label: 'Recording',
+				name: 'MusicBrainz recording ID',
+				span: 2,
+				locked: true
+			},
+			{
+				field: 'musicbrainzTrackId',
+				label: 'Track',
+				name: 'MusicBrainz track ID',
+				span: 2,
+				locked: true
+			},
+			{
+				field: 'musicbrainzArtistId',
+				label: 'Artists',
+				name: 'MusicBrainz artist IDs',
+				span: 2,
+				locked: true
+			},
+			{
+				field: 'musicbrainzAlbumArtistId',
+				label: 'Album artists',
+				name: 'MusicBrainz album artist IDs',
+				span: 2,
+				locked: true
+			}
 		]
 	}
 ];

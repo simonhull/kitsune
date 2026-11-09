@@ -161,6 +161,21 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   caps are what stop a long query taking down a read connection; never hand-build an FTS expression.
   The `tracks_fts` table is contentless: it can rank, but can't say which column matched.
 
+## Matching
+- `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
+  `Source`) and says what its tags would become. It proposes and never writes: the client applies what
+  a person ticks through `POST /albums/{id}/edits`, so everything editing guarantees holds. It knows
+  nothing of the store; `server.LookupCache` keeps its answers in `lookups` for a day.
+- One `MusicBrainz` client serves the process (built in `cmd/`): its gate keeps every request to one a
+  second and serves people before prefetch (`matching.Background`). It names itself
+  `Kitsune/<version> ( https://github.com/simonhull/kitsune )` and asks again after a 503.
+- Confidence is evidence-weighted, and evidence is structured facts the client words, as shuffle's
+  `why`. Matching never proposes taking a value away, and never guesses: a field the release lacks is
+  left out.
+- MusicBrainz IDs are fields of the table (`musicbrainz…Id`); a match always writes them with the songs
+  it touches, artists' only where they line up with the song's artists.
+- Tests use `internal/matching/musicbrainztest`; nothing ever talks to the real MusicBrainz.
+
 ## Settings
 - Server settings live in the database's `settings` table, one JSON value per key with its source.
   `internal/settings` alone says which keys there are, what each holds (`defs`) and when a change
@@ -338,6 +353,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   never locks anyone out. `POST /auth/reset/confirm` compares the normalized code in constant time;
   wrong codes count against the login limiter, and a wrong, expired or used code and an unknown name
   are one 403. Success ends every session of that person and signs them in, as login does.
+- `KITSUNE_MUSICBRAINZ_URL`, read only in `cmd/`, points the server at a stand-in MusicBrainz (its web
+  service at `/ws/2/`, covers at `/coverart/`), as `KITSUNE_LASTFM_URL` does for Last.fm.
 - `KITSUNE_LASTFM_URL`, read only in `cmd/`, points the server at a stand-in Last.fm (its API at
   `/2.0/`, its approval page at `/api/auth/`) for manual checks; production never sets it. Tests use
   `internal/lastfm/lastfmtest` and nothing ever talks to the real Last.fm.

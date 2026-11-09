@@ -5,11 +5,10 @@ import type { Player } from './player.svelte.ts';
 const artworkSize = 512;
 
 /** Describes the track sounding, or null with nothing in the player. */
-export function metadataOf({ current, queue }: Player): MediaMetadataInit | null {
-	if (current === null || queue === null) {
+export function metadataOf({ current, album }: Player): MediaMetadataInit | null {
+	if (current === null || album === null) {
 		return null;
 	}
-	const { album } = queue;
 	const hash = album.artwork?.hash;
 	return {
 		title: current.title,

@@ -7,26 +7,36 @@ import { playbackSettings } from './playback.svelte.ts';
 import { HtmlOutput, mediaTypeOf, SilentOutput, type AudioOutput } from './output.ts';
 import {
 	albumOf,
+	albumRun,
 	appended,
+	continued,
 	currentOf,
 	holds,
 	inOrder,
 	next,
 	onDisc,
+	onwardOf,
+	pendingAlbum,
 	picked,
 	playingNext,
 	previous,
 	retagged,
 	rewound,
 	shuffled,
+	throughList,
 	upcoming,
 	extended,
+	withdrawn,
+	type Onward,
 	type Queue,
 	type Queued,
 	type ShuffleRef
 } from './queue.ts';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused';
+
+/** Where a queue was started: a list goes on past the album, anywhere else comes to rest after it. */
+export type StartedFrom = 'list' | 'elsewhere';
 
 /** How many tracks may fail in a row before the player stops trying. */
 const mostFailures = 3;
@@ -55,8 +65,11 @@ export class Player implements PlayerView {
 	carry: (apply: () => void) => void = (apply) => {
 		apply();
 	};
-	/** Told each time a track begins: what keeps a shuffle's queue ahead of it. */
-	began: (queue: Queue) => void = () => undefined;
+	/**
+	 * Told each time a track begins, by what the queue goes on to ({@link onwardOf}): what keeps a
+	 * shuffle's queue, or a list's, ahead of it. Each is set by its owner.
+	 */
+	readonly onward: Partial<Record<Onward, (queue: Queue) => void>> = {};
 
 	readonly #library: Library;
 	readonly #untagged: () => number;
@@ -102,7 +115,13 @@ export class Player implements PlayerView {
 	/** What the island and Now playing should name: the player owns the order. */
 	get cue(): NowPlaying | null {
 		const { queue } = this;
-		return queue === null ? null : cueOf(queue.album, queue.tracks, queue.index, queue.albums);
+		if (queue === null) {
+			return null;
+		}
+		const cue = cueOf(queue.album, queue.tracks, queue.index, queue.albums);
+		// Going on through a list, the queue grows an album at a time: the place that means
+		// something is the song's in its album.
+		return cue === null || queue.continues === undefined ? cue : { ...cue, ...albumRun(queue) };
 	}
 
 	/** The album of the song playing, which in a queue of picked songs changes as it goes. */
@@ -133,18 +152,18 @@ export class Player implements PlayerView {
 		return this.#built;
 	}
 
-	/** Plays an album in its own order, from `index`. */
-	play(album: Album, index = 0): void {
+	/** Plays an album in its own order, from `index`. From a list, it goes on through the list. */
+	play(album: Album, index = 0, from: StartedFrom = 'elsewhere'): void {
 		this.#fresh();
-		this.#begin(inOrder(album, index), this.#movedOn());
+		this.#begin(started(inOrder(album, index), from), this.#movedOn());
 	}
 
 	/** Plays one disc of an album, in order. A disc with no songs plays nothing. */
-	playDisc(album: Album, disc: number): void {
+	playDisc(album: Album, disc: number, from: StartedFrom = 'elsewhere'): void {
 		const queue = onDisc(album, disc);
 		if (queue.tracks.length > 0) {
 			this.#fresh();
-			this.#begin(queue, this.#movedOn());
+			this.#begin(started(queue, from), this.#movedOn());
 		}
 	}
 
@@ -175,6 +194,34 @@ export class Player implements PlayerView {
 		}
 		this.queue = extended(this.queue, songs);
 		this.#show();
+		return true;
+	}
+
+	/**
+	 * Says which album comes after `after` in the list the queue goes on through: `null` for none,
+	 * at the end of the list or with `after` gone from it. An album put after it that hasn't begun
+	 * gives way to this one. Reports whether the queue still goes on from `after`.
+	 */
+	continueList(after: string, album: Album | null): boolean {
+		let queue = this.queue;
+		if (queue?.continues === undefined) {
+			return false;
+		}
+		const ahead = pendingAlbum(queue);
+		if (ahead?.after === after) {
+			if (queue.continues.album === album?.id) {
+				return true;
+			}
+			queue = withdrawn(queue);
+		}
+		if (queue.continues?.album !== after) {
+			return false;
+		}
+		const onward = album === null ? queue : continued(queue, album);
+		if (onward !== this.queue) {
+			this.queue = onward;
+			this.#show();
+		}
 		return true;
 	}
 
@@ -355,7 +402,7 @@ export class Player implements PlayerView {
 		this.#reloadedAt = null;
 		this.#listen = this.#listenFromHere();
 		this.#show();
-		this.began(queue);
+		this.onward[onwardOf(queue)]?.(queue);
 		const track = currentOf(queue);
 		if (track === undefined) {
 			return;
@@ -553,6 +600,11 @@ export class Player implements PlayerView {
 			this.#begin(onward, 'interrupted');
 		}
 	}
+}
+
+/** Marks a queue started from a list, which goes on through it. */
+function started(queue: Queue, from: StartedFrom): Queue {
+	return from === 'list' ? throughList(queue) : queue;
 }
 
 /** The one player. The fixtures have nothing to hear, so they get the clock and no sound. */

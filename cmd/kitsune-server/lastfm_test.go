@@ -36,3 +36,12 @@ func TestLastfmClientRefusesABadFake(t *testing.T) {
 		}
 	}
 }
+
+func TestMatcherRefusesABadStandIn(t *testing.T) {
+	t.Parallel()
+	for _, bad := range []string{"musicbrainz.test", "ftp://musicbrainz.test", "http://"} {
+		if _, err := newMatcher(bad, nil, slog.New(slog.DiscardHandler)); !errors.Is(err, errBadMusicBrainzURL) {
+			t.Errorf("%q: err = %v, want errBadMusicBrainzURL", bad, err)
+		}
+	}
+}

@@ -69,7 +69,8 @@ describe('tagGroups', () => {
 			'THE BASICS',
 			'CREDITS',
 			'RELEASE',
-			'SORTING'
+			'SORTING',
+			'MUSICBRAINZ'
 		]);
 	});
 
@@ -78,9 +79,15 @@ describe('tagGroups', () => {
 		expect(specs.filter(({ field }) => field === 'date')).toHaveLength(1);
 	});
 
-	it('lets album, artists and album artist be edited, and shows compilation only', () => {
+	it('lets album, artists and album artist be edited, and shows compilation and MBIDs only', () => {
 		expect(specs.filter(({ locked = false }) => locked).map(({ field }) => field)).toEqual([
-			'compilation'
+			'compilation',
+			'musicbrainzAlbumId',
+			'musicbrainzReleaseGroupId',
+			'musicbrainzRecordingId',
+			'musicbrainzTrackId',
+			'musicbrainzArtistId',
+			'musicbrainzAlbumArtistId'
 		]);
 	});
 

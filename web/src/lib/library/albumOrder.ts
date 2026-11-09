@@ -1,14 +1,12 @@
 import type { AlbumEntry } from './source.ts';
-
-/** What the Albums page sorts by. */
-export type AlbumOrder = 'name' | 'artist' | 'year' | 'added';
-
-export const albumOrders: readonly { order: AlbumOrder; label: string }[] = [
-	{ order: 'name', label: 'Name' },
-	{ order: 'artist', label: 'Artist' },
-	{ order: 'year', label: 'Year' },
-	{ order: 'added', label: 'Added' }
-];
+import {
+	byKnown,
+	byNumber,
+	byText,
+	type AlbumOrder,
+	type ArtistAlbumOrder,
+	type Sort
+} from './sorts.ts';
 
 /** Letters that Unicode won't take apart. `store/fold.go` keeps the same list for search. */
 const whole: Readonly<Record<string, string>> = {
@@ -56,28 +54,72 @@ export function keyed(album: AlbumEntry): Keyed {
 	};
 }
 
-function byText(a: string, b: string): number {
-	return a < b ? -1 : Number(a > b);
-}
-
 function byName(a: Keyed, b: Keyed): number {
 	return byText(a.name, b.name) || byText(a.album.id, b.album.id);
 }
 
-/** Newest first. An album with no year goes last, not missing. */
-function byYear(a: Keyed, b: Keyed): number {
-	return (b.album.year ?? 0) - (a.album.year ?? 0) || byName(a, b);
+/** What a person thinks of an album: how often they played it, and its stars. Either may be unknown. */
+export interface Standing {
+	plays?: number;
+	/** The mean of its rated songs; absent when none is. */
+	rating?: number;
 }
 
-const comparers: Readonly<Record<AlbumOrder, (a: Keyed, b: Keyed) => number>> = {
-	name: byName,
-	artist: (a, b) => byText(a.artist, b.artist) || byName(a, b),
-	year: byYear,
-	added: (a, b) => b.added - a.added || byText(b.album.id, a.album.id)
-};
+export type StandingOf = (albumId: string) => Standing | undefined;
 
-export function ordered(albums: readonly Keyed[], order: AlbumOrder): Keyed[] {
-	return albums.toSorted(comparers[order]);
+const nothing: StandingOf = () => undefined;
+
+/**
+ * Puts albums in an order. Ties go by name, then ID, so an order is the same every time; an
+ * album with no year, no time added or no rating goes last whichever way the order runs.
+ */
+export function ordered(
+	albums: readonly Keyed[],
+	{ by, dir }: Sort<AlbumOrder>,
+	standing: StandingOf = nothing
+): Keyed[] {
+	const compare = (a: Keyed, b: Keyed): number => {
+		switch (by) {
+			case 'name':
+				return (
+					(dir === 'asc' ? byText(a.name, b.name) : byText(b.name, a.name)) ||
+					byText(a.album.id, b.album.id)
+				);
+			case 'artist':
+				return (
+					(dir === 'asc' ? byText(a.artist, b.artist) : byText(b.artist, a.artist)) || byName(a, b)
+				);
+			case 'year':
+				return byKnown(a.album.year, b.album.year, dir) || byName(a, b);
+			case 'added':
+				return byKnown(a.added || undefined, b.added || undefined, dir) || byName(a, b);
+			case 'plays':
+				return (
+					byNumber(standing(a.album.id)?.plays ?? 0, standing(b.album.id)?.plays ?? 0, dir) ||
+					byName(a, b)
+				);
+			case 'rating':
+				return (
+					byKnown(standing(a.album.id)?.rating, standing(b.album.id)?.rating, dir) || byName(a, b)
+				);
+		}
+	};
+	return albums.toSorted(compare);
+}
+
+/**
+ * An artist's albums in the order the Library has them (`library.sort`'s albums): by year, its own
+ * records before compilations whichever way the years run.
+ */
+export function artistAlbums(
+	albums: readonly AlbumEntry[],
+	sort: Sort<ArtistAlbumOrder>
+): AlbumEntry[] {
+	const list = ordered(albums.map(keyed), sort);
+	if (sort.by === 'year') {
+		list.sort((a, b) => Number(a.album.compilation) - Number(b.album.compilation));
+	}
+	return list.map(({ album }) => album);
 }
 
 /** A place to jump to on the rail. `index` is where it starts in the list, and null is nowhere. */
@@ -88,7 +130,8 @@ export interface Mark {
 
 const letters = ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
 
-function letterMarks(keys: readonly string[]): Mark[] {
+/** The letters in the list's order: Z to A when the names run that way. */
+function letterMarks(keys: readonly string[], dir: Sort['dir']): Mark[] {
 	const firsts = new Map<string, number>();
 	keys.forEach((key, index) => {
 		const letter = key.charAt(0).toUpperCase();
@@ -96,7 +139,10 @@ function letterMarks(keys: readonly string[]): Mark[] {
 			firsts.set(letter, index);
 		}
 	});
-	return letters.map((label) => ({ label, index: firsts.get(label) ?? null }));
+	return (dir === 'asc' ? letters : letters.toReversed()).map((label) => ({
+		label,
+		index: firsts.get(label) ?? null
+	}));
 }
 
 function decadeOf({ album: { year } }: Keyed): string {
@@ -114,16 +160,27 @@ function decadeMarks(albums: readonly Keyed[]): Mark[] {
 	return marks;
 }
 
-/** Reads the rail off the list as shown. Time added has no steps worth naming, so it has none. */
-export function marksOf(albums: readonly Keyed[], order: AlbumOrder): Mark[] {
-	switch (order) {
+/**
+ * Reads the rail off the list as shown. Time added, plays and ratings have no steps worth naming,
+ * so they have none.
+ */
+export function marksOf(albums: readonly Keyed[], { by, dir }: Sort<AlbumOrder>): Mark[] {
+	switch (by) {
 		case 'name':
-			return letterMarks(albums.map(({ name }) => name));
+			return letterMarks(
+				albums.map(({ name }) => name),
+				dir
+			);
 		case 'artist':
-			return letterMarks(albums.map(({ artist }) => artist));
+			return letterMarks(
+				albums.map(({ artist }) => artist),
+				dir
+			);
 		case 'year':
 			return decadeMarks(albums);
 		case 'added':
+		case 'plays':
+		case 'rating':
 			return [];
 	}
 }
@@ -161,9 +218,11 @@ export function withGenre(albums: readonly Keyed[], genre: string): Keyed[] {
 	return albums.filter(({ album }) => album.displayGenres?.some((g) => sameGenre(g, genre)));
 }
 
-/** What an Albums page's URL asks for. */
+/**
+ * What an Albums page's URL asks for: a genre. The order is the person's, kept as `albums.sort`,
+ * so it follows them to other devices rather than living in a link.
+ */
 export interface AlbumsQuery {
-	order: AlbumOrder;
 	genre: string | null;
 }
 
@@ -173,17 +232,12 @@ export function albumsQueryIn({
 }: {
 	searchParams: Pick<URLSearchParams, 'get'>;
 }): AlbumsQuery {
-	const asked = searchParams.get('sort');
-	const known = albumOrders.find(({ order }) => order === asked);
-	return { order: known?.order ?? 'name', genre: searchParams.get('genre') || null };
+	return { genre: searchParams.get('genre') || null };
 }
 
 /** The search part of the URL for a query. The plain list has none. */
-export function albumsSearch({ order, genre }: AlbumsQuery): string {
+export function albumsSearch({ genre }: AlbumsQuery): string {
 	const params = new URLSearchParams();
-	if (order !== 'name') {
-		params.set('sort', order);
-	}
 	if (genre !== null) {
 		params.set('genre', genre);
 	}

@@ -27,6 +27,7 @@ import (
 	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/lastfm"
 	"github.com/simonhull/kitsune/internal/library"
+	"github.com/simonhull/kitsune/internal/matching"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/server"
 	"github.com/simonhull/kitsune/internal/settings"
@@ -92,11 +93,12 @@ func runServe(args []string, env config.Env, stderr io.Writer) error {
 	context.AfterFunc(ctx, stop)
 
 	lastfmURL, _ := env(lastfmURLEnv)
+	musicbrainzURL, _ := env(musicbrainzURLEnv)
 	l := launch{
-		lastfmURL: lastfmURL, seeds: seeds, level: level, listenFromFile: keys.Has("server.listen"),
+		lastfmURL: lastfmURL, musicbrainzURL: musicbrainzURL, seeds: seeds, level: level, listenFromFile: keys.Has("server.listen"),
 		configDir: configDir(*path, config.DefaultPaths(env)),
 	}
-	return serveConfig(ctx, &cfg, l, log)
+	return serveConfig(ctx, &cfg, &l, log)
 }
 
 // configDir is the folder of the config file serve reads, named or default, or
@@ -123,6 +125,7 @@ var errBadLastfmURL = errors.New(lastfmURLEnv + " must be an absolute http or ht
 // level, which the database's log.level sets.
 type launch struct {
 	lastfmURL      string // "" means the real Last.fm.
+	musicbrainzURL string // "" means the real MusicBrainz.
 	seeds          []settings.Seed
 	level          *slog.LevelVar // Nil means the level can't change.
 	listenFromFile bool           // server.toml set listen.
@@ -130,7 +133,7 @@ type launch struct {
 }
 
 // serveConfig opens the app, listens and serves until ctx ends.
-func serveConfig(ctx context.Context, cfg *config.Config, l launch, log *slog.Logger) (err error) {
+func serveConfig(ctx context.Context, cfg *config.Config, l *launch, log *slog.Logger) (err error) {
 	a, err := openApp(ctx, cfg, l, log)
 	if err != nil {
 		return err
@@ -167,6 +170,7 @@ type app struct {
 	setupCode string
 	covers    *artwork.Cache
 	genres    *library.Genres
+	matcher   *matching.Matcher // The process's one way to MusicBrainz.
 
 	// live holds the settings, and the owners of the ones that apply at once
 	// follow it (follow.go).
@@ -184,7 +188,7 @@ type app struct {
 
 // openApp creates data_dir if needed, opens and migrates the database in it,
 // seeds the settings it has no value for, and builds the HTTP server.
-func openApp(ctx context.Context, cfg *config.Config, l launch, log *slog.Logger) (*app, error) {
+func openApp(ctx context.Context, cfg *config.Config, l *launch, log *slog.Logger) (*app, error) {
 	if err := os.MkdirAll(cfg.Storage.DataDir, dataDirMode); err != nil {
 		return nil, fmt.Errorf("create data_dir: %w", err)
 	}
@@ -200,7 +204,7 @@ func openApp(ctx context.Context, cfg *config.Config, l launch, log *slog.Logger
 	if l.level != nil {
 		l.level.Set(live.Snapshot().LogLevel)
 	}
-	a, err := buildApp(ctx, cfg, &l, st, live, log)
+	a, err := buildApp(ctx, cfg, l, st, live, log)
 	if err != nil {
 		return nil, errors.Join(err, st.Close())
 	}
@@ -251,6 +255,10 @@ func buildApp(ctx context.Context, cfg *config.Config, l *launch, st *store.Stor
 	if err != nil {
 		return nil, err
 	}
+	matcher, err := newMatcher(l.musicbrainzURL, st, log)
+	if err != nil {
+		return nil, err
+	}
 	setupCode, err := firstRunCode(ctx, st)
 	if err != nil {
 		return nil, err
@@ -263,7 +271,7 @@ func buildApp(ctx context.Context, cfg *config.Config, l *launch, st *store.Stor
 		scanner: newScanner(snap, st, covers, genres, hub, log), events: hub,
 		basePath: public.BasePath(), dataDir: cfg.Storage.DataDir, baseURL: snap.BaseURL,
 		setupCode: setupCode, covers: covers, genres: genres,
-		live: live, level: l.level, lastfmURL: l.lastfmURL, changes: subscribe(live),
+		live: live, level: l.level, lastfmURL: l.lastfmURL, changes: subscribe(live), matcher: matcher,
 	}
 	a.watcher = library.NewWatcher(a.scanner, library.WatchOptions{OnChange: server.FoldersChanged(hub)})
 	a.http = newHTTPServer(a.handler(ctx, cfg, l, &public), log)
@@ -300,6 +308,7 @@ func (a *app) handler(ctx context.Context, cfg *config.Config, l *launch, public
 		Version:        version(),
 		Watcher:        a.watcher,
 		Events:         a.events,
+		Matcher:        a.matcher,
 	})
 }
 
@@ -360,6 +369,40 @@ func lastfmClient(cfg config.LastFM, fakeURL string, log *slog.Logger) (*lastfm.
 	client.APIBase, client.AuthBase = root+"/2.0/", root+"/api/auth/"
 	log.Warn("talking to a stand-in Last.fm, not the real one", "env", lastfmURLEnv, "url", root)
 	return client, nil
+}
+
+// musicbrainzURLEnv names the root of a stand-in MusicBrainz to talk to in
+// place of the real one, serving the web service at /ws/2/ and covers at
+// /coverart/. Only tests and manual checks set it; production never needs it.
+const musicbrainzURLEnv = "KITSUNE_MUSICBRAINZ_URL"
+
+// errBadMusicBrainzURL means KITSUNE_MUSICBRAINZ_URL is not an absolute http URL.
+var errBadMusicBrainzURL = errors.New(musicbrainzURLEnv + " must be an absolute http or https URL")
+
+// newMatcher returns the matcher over the process's one MusicBrainz client,
+// which keeps its answers in st, aimed at the stand-in at standIn when set.
+func newMatcher(standIn string, st *store.Store, log *slog.Logger) (*matching.Matcher, error) {
+	o := matching.MusicBrainzOptions{
+		Version: agentVersion(), Cache: server.NewLookupCache(st, matching.SourceMusicBrainz), Logger: log,
+	}
+	if standIn != "" {
+		u, err := url.Parse(standIn)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, errBadMusicBrainzURL
+		}
+		root := strings.TrimSuffix(standIn, "/")
+		o.BaseURL, o.CoverURL = root+"/ws/2/", root+"/coverart/"
+		log.Warn("talking to a stand-in MusicBrainz, not the real one", "env", musicbrainzURLEnv, "url", root)
+	}
+	return matching.New(matching.NewMusicBrainz(o)), nil
+}
+
+// agentVersion is the version MusicBrainz is told: this build's, or dev.
+func agentVersion() string {
+	if v := version(); !strings.HasPrefix(v, "(") {
+		return v
+	}
+	return "dev"
 }
 
 // webClient returns the client built into this binary, and says so when the

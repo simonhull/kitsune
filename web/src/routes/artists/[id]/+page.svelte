@@ -4,7 +4,11 @@
 	import { emWidth } from '#lib/library/fit.ts';
 	import { artistFacts } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import { artistAlbums } from '#lib/library/albumOrder.ts';
+	import { artistAlbumOrders, wayOf } from '#lib/library/sorts.ts';
 	import AlbumShelf from '#lib/pages/AlbumShelf.svelte';
+	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
+	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 	import type { PageProps } from './$types';
 
 	let { params }: PageProps = $props();
@@ -14,6 +18,23 @@
 	const artist = $derived(load.kind === 'ready' ? load.value : undefined);
 	/** Known from whatever linked here, so the first frame has its headline. */
 	const name = $derived(artist?.name ?? library.artistName(id) ?? '');
+
+	/** Its albums go as an artist's do on the Library: one order, `library.sort`'s albums. */
+	const order = $derived(sorts.library.value.albums);
+	const sortGroups: SortGroup[] = $derived([
+		{
+			label: 'SORT ALBUMS BY',
+			options: artistAlbumOrders,
+			current: order,
+			choose: (next) => {
+				sorts.library.set({ ...sorts.library.value, albums: next as typeof order });
+			}
+		}
+	]);
+
+	$effect(() => {
+		void sorts.library.load();
+	});
 
 	// Never awaited, like an album's tracks. Untracked: a failure must wait for Try again.
 	$effect(() => {
@@ -47,14 +68,23 @@
 		{:else if artist !== undefined}
 			{#if artist.albums.length > 0}
 				<section aria-labelledby="own-albums">
-					<h2 id="own-albums">Albums</h2>
-					<AlbumShelf albums={artist.albums} />
+					<div class="heading">
+						<h2 id="own-albums">Albums</h2>
+						<SortControl
+							groups={sortGroups}
+							words={artistAlbumOrders.find(({ by }) => by === order.by)?.label ?? ''}
+							way={wayOf(order.by, order.dir)}
+							look="pill"
+							label="Sort the albums"
+						/>
+					</div>
+					<AlbumShelf albums={artistAlbums(artist.albums, order)} />
 				</section>
 			{/if}
 			{#if artist.appearsOn.length > 0}
 				<section aria-labelledby="appears-on">
 					<h2 id="appears-on">Appears on</h2>
-					<AlbumShelf albums={artist.appearsOn} />
+					<AlbumShelf albums={artistAlbums(artist.appearsOn, order)} />
 				</section>
 			{/if}
 			{#if artist.albums.length === 0 && artist.appearsOn.length === 0}
@@ -112,6 +142,14 @@
 		display: flex;
 		flex-direction: column;
 		gap: 24px;
+	}
+
+	.heading {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px 24px;
 	}
 
 	h2 {

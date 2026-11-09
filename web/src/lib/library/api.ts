@@ -15,7 +15,7 @@ import {
 	type AlbumSort,
 	type AlbumTags,
 	type ArtistDetail,
-	type ArtistEntry,
+	type ListedArtist,
 	type EditedTracks,
 	type EditFailure,
 	type EditStopped,
@@ -523,7 +523,7 @@ export function createApiSource({
 		},
 
 		async artists() {
-			const { artists } = await read<{ artists: ArtistEntry[] }>('/artists');
+			const { artists } = await read<{ artists: ListedArtist[] }>('/artists');
 			return artists;
 		},
 

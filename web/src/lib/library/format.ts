@@ -171,14 +171,15 @@ export function albumFacts(entry: AlbumEntry, album: Album): string {
 	].join(' · ');
 }
 
-/** The line over the Library page: the letter you're at, and how much there is. */
+/** The line over the Library page: the letter you're at, when the list has letters, and how much there is. */
 export function libraryLine(
-	letter: string,
+	letter: string | undefined,
 	artists: number,
 	songs: number,
 	of: number = songs
 ): string {
-	return `${letter} · ${plural(artists, 'ARTIST', 'ARTISTS')} · ${partOf(songs, of, 'SONG', 'SONGS', ' OF ')}`;
+	const counts = `${plural(artists, 'ARTIST', 'ARTISTS')} · ${partOf(songs, of, 'SONG', 'SONGS', ' OF ')}`;
+	return letter === undefined ? counts : `${letter} · ${counts}`;
 }
 
 /** Counts `shown` of `total`, or just the total when a filter hides none of them. */
