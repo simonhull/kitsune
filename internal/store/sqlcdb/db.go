@@ -327,6 +327,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listIndexTrackDetailsOfStmt, err = db.PrepareContext(ctx, listIndexTrackDetailsOf); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexTrackDetailsOf: %w", err)
 	}
+	if q.listIndexTrackMeasuresStmt, err = db.PrepareContext(ctx, listIndexTrackMeasures); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexTrackMeasures: %w", err)
+	}
+	if q.listIndexTrackMeasuresOfStmt, err = db.PrepareContext(ctx, listIndexTrackMeasuresOf); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIndexTrackMeasuresOf: %w", err)
+	}
 	if q.listIndexTrackTagsStmt, err = db.PrepareContext(ctx, listIndexTrackTags); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexTrackTags: %w", err)
 	}
@@ -1071,6 +1077,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listIndexTrackDetailsOfStmt: %w", cerr)
 		}
 	}
+	if q.listIndexTrackMeasuresStmt != nil {
+		if cerr := q.listIndexTrackMeasuresStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexTrackMeasuresStmt: %w", cerr)
+		}
+	}
+	if q.listIndexTrackMeasuresOfStmt != nil {
+		if cerr := q.listIndexTrackMeasuresOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIndexTrackMeasuresOfStmt: %w", cerr)
+		}
+	}
 	if q.listIndexTrackTagsStmt != nil {
 		if cerr := q.listIndexTrackTagsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listIndexTrackTagsStmt: %w", cerr)
@@ -1601,6 +1617,8 @@ type Queries struct {
 	listIndexTrackArtistsOfStmt      *sql.Stmt
 	listIndexTrackDetailsStmt        *sql.Stmt
 	listIndexTrackDetailsOfStmt      *sql.Stmt
+	listIndexTrackMeasuresStmt       *sql.Stmt
+	listIndexTrackMeasuresOfStmt     *sql.Stmt
 	listIndexTrackTagsStmt           *sql.Stmt
 	listIndexTrackTagsOfStmt         *sql.Stmt
 	listIndexTracksStmt              *sql.Stmt
@@ -1786,6 +1804,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIndexTrackArtistsOfStmt:      q.listIndexTrackArtistsOfStmt,
 		listIndexTrackDetailsStmt:        q.listIndexTrackDetailsStmt,
 		listIndexTrackDetailsOfStmt:      q.listIndexTrackDetailsOfStmt,
+		listIndexTrackMeasuresStmt:       q.listIndexTrackMeasuresStmt,
+		listIndexTrackMeasuresOfStmt:     q.listIndexTrackMeasuresOfStmt,
 		listIndexTrackTagsStmt:           q.listIndexTrackTagsStmt,
 		listIndexTrackTagsOfStmt:         q.listIndexTrackTagsOfStmt,
 		listIndexTracksStmt:              q.listIndexTracksStmt,

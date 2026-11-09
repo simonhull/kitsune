@@ -8,6 +8,7 @@ import (
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/library"
+	"github.com/simonhull/kitsune/internal/loudness"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -83,6 +84,7 @@ func (f indexFields) options() store.IndexOptions {
 		AlbumArtists: f.has(fieldAlbumArtist),
 		Plays:        f.has(fieldPlays) || f.has(fieldLastPlayed),
 		Shuffle:      f.has(fieldShuffle),
+		Measured:     f.has(fieldGain),
 		TagKeys:      keys,
 	}
 }
@@ -144,8 +146,19 @@ func (w *fieldWriter) addFacts(out *api.TrackFields, t *store.IndexExtra) {
 	if f.has(fieldAdded) {
 		out.AddedAt = t.AddedAt
 	}
-	if f.has(fieldGain) && t.TrackGain != nil {
-		out.TrackGain = new(*t.TrackGain)
+	if f.has(fieldGain) {
+		setGain(out, t)
+	}
+}
+
+// setGain sets the gain a track plays at, as album pages say it: its tags' when
+// it has a gain tagged, else Kitsune's measure of its file, else none.
+func setGain(out *api.TrackFields, t *store.IndexExtra) {
+	switch {
+	case t.TrackGain != nil:
+		out.TrackGain, out.TrackGainSource = new(*t.TrackGain), api.GainFromTags
+	case t.Measured != nil:
+		out.TrackGain, out.TrackGainSource = new(loudness.Gain(*t.Measured)), api.GainMeasured
 	}
 }
 

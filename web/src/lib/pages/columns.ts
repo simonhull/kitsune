@@ -137,7 +137,8 @@ export const columnSpecs: readonly ColumnSpec[] = [
 		id: 'gain',
 		label: 'ReplayGain',
 		head: 'RG',
-		width: [64, 84],
+		// Room for the widest measured gain, `≈−12.4 dB`, without an ellipsis.
+		width: [72, 96],
 		end: true,
 		field: 'gain',
 		look: 'fact'
@@ -533,6 +534,8 @@ export type Cell =
 			look: 'name' | 'fact';
 			text: string;
 			/** Says something is missing, in the fox. */ warn?: true;
+			/** A gain Kitsune measured, as no tag says it: the cell marks it quietly. */
+			measured?: true;
 	  }
 	| { look: 'stars'; stars: number }
 	| { look: 'heart'; hearted: boolean };
@@ -620,8 +623,11 @@ export function cellOf(id: ColumnId, context: CellContext): Cell {
 		case 'bitrate':
 			return fact(track.bitrate === undefined ? '' : String(track.bitrate));
 		case 'gain':
-			return track.trackGain === undefined
-				? { look: 'fact', text: 'no RG', warn: true }
+			if (track.trackGain === undefined) {
+				return { look: 'fact', text: 'no RG', warn: true };
+			}
+			return track.trackGainSource === 'measured'
+				? { look: 'fact', text: `${gain(track.trackGain)} dB`, measured: true }
 				: fact(`${gain(track.trackGain)} dB`);
 	}
 }
@@ -753,7 +759,10 @@ function phonePart(
 		case 'bitrate':
 			return track.bitrate === undefined ? '' : `${String(track.bitrate)} kbps`;
 		case 'gain':
-			return track.trackGain === undefined ? 'no RG' : `RG ${gain(track.trackGain)}`;
+			if (track.trackGain === undefined) {
+				return 'no RG';
+			}
+			return `RG ${track.trackGainSource === 'measured' ? '≈' : ''}${gain(track.trackGain)}`;
 		default:
 			return cell.look === 'name' || cell.look === 'fact' ? cell.text : '';
 	}

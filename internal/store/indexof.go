@@ -59,6 +59,15 @@ func readAlbumOptions(ctx context.Context, q *sqlcdb.Queries, userID int64, opts
 			return sqlcdb.ListIndexTrackTagsRow(r)
 		})
 	}
+	if opts.Measured {
+		measures, err := q.ListIndexTrackMeasuresOf(ctx, albums)
+		if err != nil {
+			return fmt.Errorf("track measures: %w", err)
+		}
+		rows.measures = convert(measures, func(r sqlcdb.ListIndexTrackMeasuresOfRow) sqlcdb.ListIndexTrackMeasuresRow {
+			return sqlcdb.ListIndexTrackMeasuresRow(r)
+		})
+	}
 	return readAlbumOwn(ctx, q, userID, opts, rows)
 }
 

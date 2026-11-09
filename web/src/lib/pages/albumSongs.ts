@@ -29,7 +29,9 @@ export function rowsOf(album: Album): LibraryAlbum {
 			format: track.format,
 			sampleRate: track.sampleRate,
 			bitDepth: track.bitDepth,
-			trackGain: track.replayGain?.trackGain
+			trackGain: track.replayGain?.trackGain,
+			trackGainSource:
+				track.replayGain?.trackGain === undefined ? undefined : track.replayGain.source
 		}))
 	};
 }

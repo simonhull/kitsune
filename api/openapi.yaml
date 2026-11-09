@@ -1746,9 +1746,10 @@ paths:
             (`albumArtists`), `genre` (`displayGenres`, spelled as albums'
             are), `year`, `composer` (`composers`), `format` (`format`,
             `sampleRate`, `bitDepth` and `bitrate`), `bitrate`, `added`
-            (`addedAt`), `gain` (`trackGain`), and the caller's own `plays`,
-            `lastPlayed` (`lastPlayedAt`) and `shuffle` rules. An unknown name
-            is a 400.
+            (`addedAt`), `gain` (`trackGain` and `trackGainSource`: the tags'
+            gain, or for a file with none Kitsune's measure of it), and the
+            caller's own `plays`, `lastPlayed` (`lastPlayedAt`) and `shuffle`
+            rules. An unknown name is a 400.
           style: form
           explode: false
           schema:
@@ -3364,8 +3365,16 @@ components:
         trackGain:
           type: number
           description: >-
-            With `fields=gain`: the track's ReplayGain, in dB. Absent when the
-            file has none.
+            With `fields=gain`: the gain the track plays at, in dB, as an
+            album's `replayGain.trackGain`: the file's tagged ReplayGain, or, for
+            a file with no gain tagged, Kitsune's own measure of it. Absent when
+            it has neither.
+        trackGainSource:
+          type: string
+          enum: [tags, measured]
+          description: >-
+            With `fields=gain`, where `trackGain` comes from, as `ReplayGain`'s
+            `source` says it. Present exactly when `trackGain` is.
         shuffle:
           type: object
           additionalProperties: false

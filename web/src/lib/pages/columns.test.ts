@@ -351,6 +351,25 @@ describe('the ReplayGain column', () => {
 		expect(fieldsFor(['gain'])).toEqual(['gain', 'shuffle']);
 	});
 
+	it('marks a gain Kitsune measured, without the warning', () => {
+		const measured = track({ trackGain: 2, trackGainSource: 'measured' });
+		expect(cellOf('gain', context({ track: measured }))).toEqual({
+			look: 'fact',
+			text: '+2.0 dB',
+			measured: true
+		});
+		const tagged = track({ trackGain: -6.2, trackGainSource: 'tags' });
+		expect(cellOf('gain', context({ track: tagged }))).toEqual({ look: 'fact', text: '−6.2 dB' });
+	});
+
+	it('says on a phone which gain was measured', () => {
+		const line = (fields: Partial<LibraryTrack>) =>
+			phoneLine(['gain'], context({ track: track(fields) }), () => true);
+		expect(line({ trackGain: -6.2, trackGainSource: 'tags' })).toEqual(['RG −6.2']);
+		expect(line({ trackGain: -6.2, trackGainSource: 'measured' })).toEqual(['RG ≈−6.2']);
+		expect(line({})).toEqual(['no RG']);
+	});
+
 	it('is off by default', () => {
 		expect(defaultColumns.order).not.toContain('gain');
 	});

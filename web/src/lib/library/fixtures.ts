@@ -339,9 +339,11 @@ function fieldsOf(
 	if (fields.has('added')) {
 		out.addedAt = album.addedAt;
 	}
-	// Most files carry their gain; one in seven doesn't, so "no RG" has something to show.
+	// Most files carry their gain; one in seven doesn't, so "no RG" has something to show, and
+	// one in five more was measured by Kitsune.
 	if (fields.has('gain') && seed % 7 !== 0) {
 		out.trackGain = -((seed % 110) / 10);
+		out.trackGainSource = seed % 5 === 0 ? 'measured' : 'tags';
 	}
 	if (fields.has('plays') && plays > 0) {
 		out.plays = plays;

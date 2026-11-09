@@ -79,6 +79,9 @@ type IndexExtra struct {
 	LastPlayed                    time.Time // Zero when never played.
 	// Shuffle is the person's rules on the track: nil when it has none.
 	Shuffle *ShuffleMark
+	// Measured is Kitsune's own measure of the file, in LUFS, for a track with
+	// no gain tagged: nil when it has a gain tagged, or no current measure.
+	Measured *float64
 }
 
 // ShuffleMark is what a person's shuffle rules say of one track.
@@ -95,6 +98,7 @@ type IndexOptions struct {
 	AlbumArtists bool     // Each track's album artists.
 	Plays        bool     // How often the person played each track, and when last.
 	Shuffle      bool     // The person's shuffle rules on each track.
+	Measured     bool     // Kitsune's loudness measure of each track with no gain tagged.
 	TagKeys      []string // Raw tags to carry the values of. The store doesn't know what they mean.
 	// Albums, by public ID, makes a partial index of only those that have a
 	// live track, each with where it goes in the whole one. Nil means every album.
@@ -102,7 +106,7 @@ type IndexOptions struct {
 }
 
 func (o *IndexOptions) any() bool {
-	return o.Details || o.AlbumArtists || o.Plays || o.Shuffle || len(o.TagKeys) > 0
+	return o.Details || o.AlbumArtists || o.Plays || o.Shuffle || o.Measured || len(o.TagKeys) > 0
 }
 
 // indexRows is what the index's queries read, all from one snapshot.
@@ -115,6 +119,7 @@ type indexRows struct {
 	details      []sqlcdb.ListIndexTrackDetailsRow
 	albumArtists []sqlcdb.ListIndexTrackAlbumArtistsRow
 	tags         []sqlcdb.ListIndexTrackTagsRow
+	measures     []sqlcdb.ListIndexTrackMeasuresRow
 	plays        []sqlcdb.ListIndexPlaysRow
 	shuffle      []sqlcdb.ListIndexShuffleRow
 }
@@ -205,6 +210,12 @@ func (s *Store) readIndexOptions(
 			return q.ListIndexTrackTags(ctx, opts.TagKeys)
 		}); err != nil {
 			return fmt.Errorf("track tags: %w", err)
+		}
+	}
+	if opts.Measured {
+		// Never kept: the loudness pass writes measures outside library writes.
+		if rows.measures, err = q.ListIndexTrackMeasures(ctx); err != nil {
+			return fmt.Errorf("track measures: %w", err)
 		}
 	}
 	return readPersonal(ctx, q, userID, opts, rows)
@@ -301,6 +312,9 @@ func indexExtras(rows *indexRows) map[int64]*IndexExtra {
 		r := &rows.tags[i]
 		e := of(r.TrackID)
 		e.Tags = append(e.Tags, Tag{Key: r.Key, Value: r.Value})
+	}
+	for _, r := range rows.measures {
+		of(r.ID).Measured = r.Integrated
 	}
 	for _, r := range rows.plays {
 		e := of(r.TrackID)

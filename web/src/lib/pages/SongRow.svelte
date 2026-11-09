@@ -179,6 +179,12 @@
 		<span class="cell name" data-col={id}
 			><a class="link" href={resolve('/album/[id]', { id: album.id })}>{cell.text}</a></span
 		>
+	{:else if cell.measured === true}
+		<span data-col={id} class="cell fact end" title="Measured by Kitsune"
+			><span class="approx" aria-hidden="true">≈</span><span class="visually-hidden"
+				>measured
+			</span>{cell.text}</span
+		>
 	{:else}
 		<span
 			data-col={id}
@@ -448,6 +454,11 @@
 
 	.cell.warn {
 		color: var(--fox-text);
+	}
+
+	/* A gain Kitsune measured: one quiet mark before the value, which reads as a tagged one. */
+	.approx {
+		color: var(--text-label);
 	}
 
 	.end,

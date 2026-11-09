@@ -286,8 +286,13 @@ export interface LibraryTrack {
 	/** The caller's. */
 	plays?: number;
 	lastPlayedAt?: string;
-	/** Its ReplayGain, in dB. Absent when the file has none. */
+	/**
+	 * The gain it plays at, in dB: its tags', or for a file with none Kitsune's measure of it.
+	 * Absent when it has neither.
+	 */
 	trackGain?: number;
+	/** Where `trackGain` comes from, as `ReplayGain.source` says it. There exactly when it is. */
+	trackGainSource?: ReplayGain['source'];
 	/** The caller's shuffle rules on it. */
 	shuffle?: ShuffleMark;
 }
