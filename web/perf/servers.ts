@@ -15,9 +15,15 @@ export interface Library {
 	port: number;
 }
 
+/**
+ * Where the servers listen: from `KITSUNE_PERF_PORT` (default 14610), one port a library, so runs
+ * from two worktrees at once don't answer each other's requests.
+ */
+const firstPort = Number(process.env['KITSUNE_PERF_PORT'] ?? '14610');
+
 const allLibraries: Library[] = [
-	{ name: '1k', songs: 1000, loudAlbums: 60, port: 14610 },
-	{ name: '50k', songs: 50_000, loudAlbums: 60, port: 14611 }
+	{ name: '1k', songs: 1000, loudAlbums: 60, port: firstPort },
+	{ name: '50k', songs: 50_000, loudAlbums: 60, port: firstPort + 1 }
 ];
 
 /** The libraries this run measures: all of them, or those `KITSUNE_PERF_LIBRARIES` names (`1k,50k`). */
