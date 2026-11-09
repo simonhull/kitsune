@@ -206,7 +206,7 @@
 	{#each phone ? [] : shown as id (id)}
 		{@const cell = cellOf(id, context)}
 		{#if cell.look === 'stars'}
-			<span class="rate" role="group" aria-label={`Rate ${track.title}`}>
+			<span class="rate" data-col={id} role="group" aria-label={`Rate ${track.title}`}>
 				{#each [1, 2, 3, 4, 5] as star (star)}
 					<button
 						type="button"
@@ -218,15 +218,16 @@
 				{/each}
 			</span>
 		{:else if cell.look === 'heart'}
-			<span class="heart-cell"
+			<span class="heart-cell" data-col={id}
 				><HeartButton kind="tracks" id={track.id} name={track.title} size={16} /></span
 			>
 		{:else if id === 'album' && cell.text !== ''}
-			<span class="cell name"
+			<span class="cell name" data-col={id}
 				><a class="link" href={resolve('/album/[id]', { id: album.id })}>{cell.text}</a></span
 			>
 		{:else}
 			<span
+				data-col={id}
 				class={['cell', cell.look]}
 				class:end={id === 'plays' || id === 'bitrate' || id === 'gain'}
 				class:warn={cell.warn === true}>{cell.text}</span

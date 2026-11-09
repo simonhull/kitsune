@@ -2536,8 +2536,9 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        `library.columns`: the Library list's song columns. Checkbox, number,
-        title, time and the row's menu are always shown and never named here.
+        `library.columns`: the person's song columns, one set for every list of
+        songs. Checkbox, number, title, time and the row's menu are always
+        shown and never named here.
       required: [order, artistWhenDifferent]
       properties:
         order:
@@ -2548,6 +2549,33 @@ components:
         artistWhenDifferent:
           type: boolean
           description: Leave Artist empty where the track's artists are the album's.
+        widths:
+          type: object
+          description: >-
+            The widths columns were dragged to, in CSS pixels at the base size
+            step, by column. A column not named has its default width, as has
+            every column of a value saved without widths.
+          additionalProperties: false
+          properties:
+            artist: { $ref: "#/components/schemas/ColumnWidth" }
+            albumArtist: { $ref: "#/components/schemas/ColumnWidth" }
+            album: { $ref: "#/components/schemas/ColumnWidth" }
+            genre: { $ref: "#/components/schemas/ColumnWidth" }
+            year: { $ref: "#/components/schemas/ColumnWidth" }
+            rating: { $ref: "#/components/schemas/ColumnWidth" }
+            heart: { $ref: "#/components/schemas/ColumnWidth" }
+            plays: { $ref: "#/components/schemas/ColumnWidth" }
+            lastPlayed: { $ref: "#/components/schemas/ColumnWidth" }
+            added: { $ref: "#/components/schemas/ColumnWidth" }
+            composer: { $ref: "#/components/schemas/ColumnWidth" }
+            format: { $ref: "#/components/schemas/ColumnWidth" }
+            bitrate: { $ref: "#/components/schemas/ColumnWidth" }
+            gain: { $ref: "#/components/schemas/ColumnWidth" }
+    ColumnWidth:
+      type: integer
+      description: A column's width, in CSS pixels at the base size step.
+      minimum: 16
+      maximum: 960
     SongColumn:
       type: string
       enum: [artist, albumArtist, album, genre, year, rating, heart, plays, lastPlayed, added, composer, format, bitrate, gain]

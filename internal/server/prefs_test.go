@@ -50,6 +50,25 @@ func TestPrefsKeepTheCallersValue(t *testing.T) {
 	}
 }
 
+func TestPrefsKeepColumnWidths(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	token := ts.tokenFor(t, store.RoleUser)
+	widths := `{"order":["artist","genre"],"artistWhenDifferent":true,"widths":{"artist":240,"genre":96}}`
+	wantNoContent(t, ts.send(t, putPrefCall(token, columnsPath, widths)))
+	if got := ts.pref(t, token, columnsPath); string(got.Body) != widths {
+		t.Errorf("GET = %s, want %s", got.Body, widths)
+	}
+	// A value from before widths is still one, and has none.
+	wantNoContent(t, ts.send(t, putPrefCall(token, columnsPath, columnsBody)))
+	if got := ts.pref(t, token, columnsPath); string(got.Body) != columnsBody {
+		t.Errorf("GET = %s, want %s", got.Body, columnsBody)
+	}
+	bad := putPrefCall(token, columnsPath, `{"order":[],"artistWhenDifferent":true,"widths":{"genre":2}}`)
+	bad.invalid = true
+	ts.send(t, bad).problem(t, http.StatusBadRequest)
+}
+
 func TestPrefsKeepTheTheme(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
@@ -102,7 +121,7 @@ func TestPrefsRefuseBadValues(t *testing.T) {
 		"no switch":      `{"order":["genre"]}`,
 		"no order":       `{"artistWhenDifferent":true}`,
 		"null order":     `{"order":null,"artistWhenDifferent":true}`,
-		"extra":          `{"order":[],"artistWhenDifferent":true,"widths":{}}`,
+		"extra":          `{"order":[],"artistWhenDifferent":true,"columns":{}}`,
 		"not an object":  `["genre"]`,
 		"truncated":      "{",
 	} {

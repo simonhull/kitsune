@@ -11,6 +11,7 @@
 	import { player } from '#lib/player/player.svelte.ts';
 	import {
 		artistWhenDifferentIn,
+		columnVars,
 		columnsFrom,
 		columnsIn,
 		fit,
@@ -53,7 +54,7 @@
 	const phone = $derived(windowWidth < columnsFrom);
 	const step = $derived(windowWidth >= largeFrom ? 'large' : 'columns');
 	const order = $derived(columnsIn(columnsView.pref.order, 'search'));
-	const fitted = $derived(fit(order, width, step, parts));
+	const fitted = $derived(fit(order, width, step, parts, columnsView.pref.widths));
 	const grid = $derived(template(fitted.shown, step, parts));
 	const artistWhenDifferent = $derived(artistWhenDifferentIn(columnsView.pref, 'search'));
 
@@ -194,6 +195,7 @@
 	bind:this={root}
 	bind:clientWidth={width}
 	style:--song-grid={grid}
+	style={columnVars(fitted.shown, columnsView.pref.widths, step)}
 	data-selecting={selection.any ? '' : undefined}
 >
 	{#if !phone}
@@ -206,6 +208,11 @@
 				columnsMenu = { x, y, hiding };
 			}}
 			box={headerBox}
+			widths={columnsView.pref.widths}
+			{step}
+			onresize={(id, to) => {
+				columnsView.resize(id, to);
+			}}
 		/>
 	{/if}
 	<div class="rows" {...events}>

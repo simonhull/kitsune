@@ -412,6 +412,8 @@ export interface ColumnsPref {
 	order: ColumnId[];
 	/** Leave Artist empty where the track's artists are the album's. */
 	artistWhenDifferent: boolean;
+	/** The widths columns were dragged to, at the base size step. One not named has its default. */
+	widths?: Partial<Record<ColumnId, number>>;
 }
 
 export interface LibraryAlbum {

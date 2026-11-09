@@ -7,7 +7,7 @@
 	import { emptyLine } from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { ColumnId } from '#lib/library/source.ts';
-	import { fit, monoAdvance, template } from '#lib/pages/columns.ts';
+	import { columnVars, fit, monoAdvance, numbered, template } from '#lib/pages/columns.ts';
 	import ColumnsMenu from '#lib/pages/ColumnsMenu.svelte';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import LibraryAlbum from '#lib/pages/LibraryAlbum.svelte';
@@ -105,7 +105,9 @@
 	let songsWidth = $state(0);
 	/** The columns' step: the phone has none, so it fits as the step above it would. */
 	const columnStep = $derived(view.step === 'large' ? 'large' : 'columns');
-	const fitted = $derived(fit(columnsView.pref.order, songsWidth, columnStep));
+	const fitted = $derived(
+		fit(columnsView.pref.order, songsWidth, columnStep, numbered, columnsView.pref.widths)
+	);
 	const grid = $derived(template(fitted.shown, columnStep));
 	/**
 	 * Set for a moment when the width crosses a step, so what changes size moves to it. Nothing
@@ -288,6 +290,10 @@
 		picked: (trackId) => selection.has(trackId)
 	});
 
+	function resize(id: ColumnId, width: number): void {
+		columnsView.resize(id, width);
+	}
+
 	function onWindowKey(event: KeyboardEvent): void {
 		list.windowKey(event, menu !== null || rowMenu !== null || bulk !== null);
 	}
@@ -411,6 +417,7 @@
 	style:--cover={`${String(view.cover)}px`}
 	style:--list-line={`${String(view.frame.line)}px`}
 	style:--song-grid={grid}
+	style={columnVars(fitted.shown, columnsView.pref.widths, columnStep)}
 	data-selecting={selection.any ? '' : undefined}
 >
 	<h1>Library</h1>
@@ -476,6 +483,9 @@
 					hiddenCount={fitted.hiddenCount}
 					{openMenu}
 					box={headerBox}
+					widths={columnsView.pref.widths}
+					step={columnStep}
+					onresize={resize}
 				/>
 			</div>
 		{/if}
@@ -528,6 +538,9 @@
 										shown={fitted.shown}
 										hiddenCount={fitted.hiddenCount}
 										{openMenu}
+										widths={columnsView.pref.widths}
+										step={columnStep}
+										onresize={resize}
 										box={headerBox}
 									/>
 								</div>

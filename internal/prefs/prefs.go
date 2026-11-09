@@ -111,23 +111,35 @@ func Columns() []Column {
 }
 
 // ColumnsValue is the value of [LibraryColumns]: the columns shown, in their
-// order, and whether Artist is left empty where it is the album's.
+// order, whether Artist is left empty where it is the album's, and the widths
+// the person dragged columns to, in CSS pixels at the base size step. A column
+// with no width has its default; a value saved before widths existed has none.
 type ColumnsValue struct {
-	Order               []Column `json:"order"`
-	ArtistWhenDifferent bool     `json:"artistWhenDifferent"`
+	Order               []Column       `json:"order"`
+	ArtistWhenDifferent bool           `json:"artistWhenDifferent"`
+	Widths              map[Column]int `json:"widths,omitempty"`
 }
+
+// The widths a column may be given, in CSS pixels: what the client allows, with
+// room on either side. The client keeps each column to its own range inside it.
+const (
+	MinColumnWidth = 16
+	MaxColumnWidth = 960
+)
 
 var (
 	errMissing   = errors.New("order and artistWhenDifferent are both required")
 	errColumn    = errors.New("no such column")
 	errDuplicate = errors.New("a column is named twice")
+	errWidth     = errors.New("a width is out of range")
 )
 
 // checkColumns accepts a [ColumnsValue] that names each column once at most.
 func checkColumns(value []byte) ([]byte, error) {
 	var in struct {
-		Order               *[]Column `json:"order"`
-		ArtistWhenDifferent *bool     `json:"artistWhenDifferent"`
+		Order               *[]Column      `json:"order"`
+		ArtistWhenDifferent *bool          `json:"artistWhenDifferent"`
+		Widths              map[Column]int `json:"widths"`
 	}
 	if err := json.Unmarshal(value, &in, json.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
@@ -135,8 +147,11 @@ func checkColumns(value []byte) ([]byte, error) {
 	if in.Order == nil || in.ArtistWhenDifferent == nil {
 		return nil, errMissing
 	}
-	out := ColumnsValue{Order: *in.Order, ArtistWhenDifferent: *in.ArtistWhenDifferent}
+	out := ColumnsValue{Order: *in.Order, ArtistWhenDifferent: *in.ArtistWhenDifferent, Widths: in.Widths}
 	known := Columns()
+	if err := checkWidths(out.Widths, known); err != nil {
+		return nil, err
+	}
 	for i, c := range out.Order {
 		if !slices.Contains(known, c) {
 			return nil, fmt.Errorf("%q: %w", c, errColumn)
@@ -148,11 +163,25 @@ func checkColumns(value []byte) ([]byte, error) {
 	if out.Order == nil {
 		out.Order = []Column{}
 	}
-	b, err := json.Marshal(out)
+	// Keys in order, so the same widths are the same text.
+	b, err := json.Marshal(out, json.Deterministic(true))
 	if err != nil {
 		return nil, fmt.Errorf("encode: %w", err)
 	}
 	return b, nil
+}
+
+// checkWidths accepts widths of known columns, each in range.
+func checkWidths(widths map[Column]int, known []Column) error {
+	for c, width := range widths {
+		if !slices.Contains(known, c) {
+			return fmt.Errorf("%q: %w", c, errColumn)
+		}
+		if width < MinColumnWidth || width > MaxColumnWidth {
+			return fmt.Errorf("%q: %w", c, errWidth)
+		}
+	}
+	return nil
 }
 
 // Theme is how the web client looks: one of its themes, or whichever the

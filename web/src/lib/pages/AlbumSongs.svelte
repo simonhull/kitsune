@@ -10,8 +10,10 @@
 	import { runJoins } from '#lib/library/shuffleRules.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import { discGroups } from './albumSongs.ts';
+	import { columnsView } from './columnsView.svelte.ts';
 	import {
 		artistWhenDifferentIn,
+		columnVars,
 		columnsFrom,
 		columnsIn,
 		fit,
@@ -85,7 +87,7 @@
 	const step = $derived(windowWidth >= largeFrom ? 'large' : 'columns');
 	const order = $derived(columnsIn(pref.order, 'album'));
 	const artistWhenDifferent = $derived(artistWhenDifferentIn(pref, 'album'));
-	const fitted = $derived(fit(order, width, step));
+	const fitted = $derived(fit(order, width, step, numbered, pref.widths));
 	const grid = $derived(template(fitted.shown, step));
 	const groups = $derived(rows === undefined ? [] : discGroups(rows));
 	const shared = $derived(
@@ -139,6 +141,7 @@
 	data-morph-part="panel"
 	data-selecting={selection.any ? '' : undefined}
 	style:--song-grid={grid}
+	style={columnVars(fitted.shown, pref.widths, step)}
 >
 	{#if album !== undefined && editor !== undefined}
 		{@render editor(album)}
@@ -157,6 +160,11 @@
 					hiddenCount={fitted.hiddenCount}
 					openMenu={openColumns}
 					box={headerBox}
+					widths={pref.widths}
+					{step}
+					onresize={(id, to) => {
+						columnsView.resize(id, to);
+					}}
 				/>
 			{/if}
 			{#each groups as group, at (group.disc?.no ?? 0)}

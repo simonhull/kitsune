@@ -163,7 +163,82 @@ export function savedColumns(saved: ColumnsPref | null): ColumnsPref {
 		return defaultColumns;
 	}
 	const order = [...new Set(saved.order)].filter((id) => specs.has(id));
-	return { order, artistWhenDifferent: saved.artistWhenDifferent };
+	const widths = Object.fromEntries(
+		Object.entries(saved.widths ?? {}).flatMap(([id, width]) =>
+			specs.has(id as ColumnId) && typeof width === 'number'
+				? [[id, clampWidth(id as ColumnId, width)]]
+				: []
+		)
+	) as Partial<Record<ColumnId, number>>;
+	return Object.keys(widths).length === 0
+		? { order, artistWhenDifferent: saved.artistWhenDifferent }
+		: { order, artistWhenDifferent: saved.artistWhenDifferent, widths };
+}
+
+/** How wide a column may be dragged, at the base step: never under its label, never silly wide. */
+export function widthRange(id: ColumnId): { min: number; max: number } {
+	const spec = specOf(id);
+	const base = spec.width[0];
+	if (spec.look === 'heart') {
+		return { min: 20, max: 48 };
+	}
+	if (spec.look === 'stars') {
+		return { min: 76, max: 160 };
+	}
+	// The label in the header's 11 px mono, and a little room; an empty label, as an icon's, 48.
+	const label = spec.head === '' ? 48 : Math.ceil(spec.head.length * 7.6) + 4;
+	return { min: Math.min(base, Math.max(36, label)), max: Math.max(base * 3, 360) };
+}
+
+export function clampWidth(id: ColumnId, width: number): number {
+	const { min, max } = widthRange(id);
+	return Math.round(Math.min(max, Math.max(min, width)));
+}
+
+/** A column's width at the base step: the person's, or its default. */
+export function baseWidth(id: ColumnId, widths: ColumnsPref['widths']): number {
+	return widths?.[id] ?? specOf(id).width[0];
+}
+
+/** How a column's width scales from the base step to `step`, as its default widths do. */
+export function widthScale(id: ColumnId, step: Exclude<Step, 'phone'>): number {
+	const [columns, large] = specOf(id).width;
+	return step === 'large' ? large / columns : 1;
+}
+
+/** A column's width at a step: the person's base width, taken up the step with it. */
+export function widthAt(
+	id: ColumnId,
+	widths: ColumnsPref['widths'],
+	step: Exclude<Step, 'phone'>
+): number {
+	return Math.round(baseWidth(id, widths) * widthScale(id, step));
+}
+
+/** The preference with a column dragged to `width` at the base step, kept in its range. */
+export function resized(pref: ColumnsPref, id: ColumnId, width: number): ColumnsPref {
+	return { ...pref, widths: { ...pref.widths, [id]: clampWidth(id, width) } };
+}
+
+/** A divider's arrow key: 8 px a press, 16 with Shift. */
+export function nudged(width: number, key: string, shift: boolean): number {
+	const by = shift ? 16 : 8;
+	if (key === 'ArrowLeft') {
+		return width - by;
+	}
+	return key === 'ArrowRight' ? width + by : width;
+}
+
+/**
+ * The columns' widths as the custom properties the grid reads (`--col-genre: 120px`), set on the
+ * list's container: a drag changes one property there, and no row.
+ */
+export function columnVars(
+	order: readonly ColumnId[],
+	widths: ColumnsPref['widths'],
+	step: Exclude<Step, 'phone'>
+): string {
+	return order.map((id) => `--col-${id}: ${String(widthAt(id, widths, step))}px`).join('; ');
 }
 
 /**
@@ -249,7 +324,8 @@ export function fit(
 	order: readonly ColumnId[],
 	width: number,
 	step: Exclude<Step, 'phone'>,
-	parts: RowParts = numbered
+	parts: RowParts = numbered,
+	widths?: ColumnsPref['widths']
 ): Fit {
 	const frame = frameOf(step);
 	// What comes before the title, the title, time and ⋯, and the gaps between them.
@@ -262,7 +338,9 @@ export function fit(
 	const shown: ColumnId[] = [];
 	for (const id of order) {
 		const spec = specOf(id);
-		const need = atStep(spec.least ?? spec.width, step) + frame.gap;
+		const wide = widthAt(id, widths, step);
+		const need =
+			Math.min(spec.least === undefined ? wide : atStep(spec.least, step), wide) + frame.gap;
 		if (need > room) {
 			break;
 		}
@@ -280,12 +358,13 @@ export function template(
 	titleLeast = frameOf(step).title
 ): string {
 	const frame = frameOf(step);
+	// Each width is the container's `--col-<id>`, so a drag changes the property and not the grid.
 	const columns = shown.map((id) => {
 		const spec = specOf(id);
-		const width = atStep(spec.width, step);
+		const width = `var(--col-${id}, ${String(atStep(spec.width, step))}px)`;
 		return spec.least === undefined
-			? `${String(width)}px`
-			: `minmax(${String(atStep(spec.least, step))}px, ${String(width)}px)`;
+			? width
+			: `minmax(min(${String(atStep(spec.least, step))}px, ${width}), ${width})`;
 	});
 	return [
 		...leading(frame, parts).map((each) => `${String(each)}px`),
