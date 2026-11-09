@@ -1,3 +1,4 @@
+import { expect } from '@playwright/test';
 import { runs, test } from './fixture.ts';
 import { albumTracks, playing } from './pages.ts';
 
@@ -6,7 +7,13 @@ import { albumTracks, playing } from './pages.ts';
  * pointer rests on each card first, as a person's does on the way to its play.
  */
 test('Albums: play one from its cover', async ({ page, perf }) => {
-	await page.goto('/albums?sort=artist');
+	// The order is the person's, not the URL's: by name, the loud albums are spread through all of it.
+	const sorted = await page.request.put('/api/v1/me/prefs/albums.sort', {
+		headers: { 'X-Kitsune-Request': '1' },
+		data: { by: 'artist', dir: 'asc' }
+	});
+	expect(sorted.status()).toBe(204);
+	await page.goto('/albums');
 	await page.locator('main .card').first().waitFor();
 	const play = perf.samples('play-cover');
 	const island = page.locator('aside[aria-label="Player"]');
