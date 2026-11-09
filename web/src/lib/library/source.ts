@@ -143,7 +143,13 @@ export type TagField =
 	| 'sortTitle'
 	| 'sortArtist'
 	| 'sortAlbum'
-	| 'sortAlbumArtist';
+	| 'sortAlbumArtist'
+	| 'musicbrainzAlbumId'
+	| 'musicbrainzReleaseGroupId'
+	| 'musicbrainzAlbumArtistId'
+	| 'musicbrainzArtistId'
+	| 'musicbrainzRecordingId'
+	| 'musicbrainzTrackId';
 
 /** Values by field, the same in every format. Numbers are decimal text. */
 export type FieldValues = Partial<Record<TagField, string[]>>;

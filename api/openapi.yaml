@@ -2348,7 +2348,11 @@ components:
         old one whole. A value a file can't hold is a 422. `compilation` takes
         `1`, and clearing it turns it off. `album`, `artists`, `albumArtists`
         and `compilation` decide which album a track groups into: an album
-        renamed whole keeps its ID.
+        renamed whole keeps its ID. The `musicbrainz…Id` fields take
+        MusicBrainz IDs, lower-case; `musicbrainzRecordingId` is the
+        recording, `musicbrainzTrackId` the release's track. A change of
+        `artists` or `albumArtists` drops their IDs unless the same edit
+        gives new ones.
       type: object
       additionalProperties: false
       properties:
@@ -2385,6 +2389,12 @@ components:
         sortArtist: { $ref: "#/components/schemas/Values" }
         sortAlbum: { $ref: "#/components/schemas/Values" }
         sortAlbumArtist: { $ref: "#/components/schemas/Values" }
+        musicbrainzAlbumId: { $ref: "#/components/schemas/Values" }
+        musicbrainzReleaseGroupId: { $ref: "#/components/schemas/Values" }
+        musicbrainzAlbumArtistId: { $ref: "#/components/schemas/Values" }
+        musicbrainzArtistId: { $ref: "#/components/schemas/Values" }
+        musicbrainzRecordingId: { $ref: "#/components/schemas/Values" }
+        musicbrainzTrackId: { $ref: "#/components/schemas/Values" }
     Values:
       type: array
       items: { type: string }
