@@ -6,11 +6,20 @@
 	import { artistHoldings, clock, libraryLine } from '#lib/library/format.ts';
 	import { emptyLine } from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import type { ColumnId } from '#lib/library/source.ts';
-	import { columnVars, fit, monoAdvance, numbered, template } from '#lib/pages/columns.ts';
+	import type { ColumnId, MovableId } from '#lib/library/source.ts';
+	import {
+		columnVars,
+		fit,
+		monoAdvance,
+		movable,
+		numbered,
+		reorderIn,
+		template
+	} from '#lib/pages/columns.ts';
 	import ColumnsMenu from '#lib/pages/ColumnsMenu.svelte';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import LibraryAlbum from '#lib/pages/LibraryAlbum.svelte';
+	import LinePill from '#lib/pages/LinePill.svelte';
 	import LibraryFilters from '#lib/pages/LibraryFilters.svelte';
 	import LibraryRail from '#lib/pages/LibraryRail.svelte';
 	import RowMenu from '#lib/pages/RowMenu.svelte';
@@ -334,6 +343,15 @@
 		columnsView.resize(id, width);
 	}
 
+	/** A column dropped or keyed to a new place in the header: the one order every list shares. */
+	function reorder(id: MovableId, to: number, keys: boolean): void {
+		columnsView.reorder(reorderIn(columnsView.pref, 'library', fitted.shown, id, to), {
+			debounce: keys
+		});
+	}
+
+	const canMove = (id: MovableId): boolean => movable(id, columnsView.pref);
+
 	function onWindowKey(event: KeyboardEvent): void {
 		list.windowKey(event, menu !== null || rowMenu !== null || bulk !== null);
 	}
@@ -553,6 +571,8 @@
 					widths={columnsView.pref.widths}
 					step={columnStep}
 					onresize={resize}
+					onreorder={reorder}
+					movable={canMove}
 				/>
 			</div>
 		{/if}
@@ -598,6 +618,20 @@
 									<HeartButton kind="artists" {id} {name} size={18} />
 								{/if}
 								<p class="holdings">{artistHoldings(block.artist.albums, block)}</p>
+								{#if !view.columns}
+									<!-- A phone has no header: its way to the song line is here, on the artist's line. -->
+									<span class="line-pill-place">
+										<LinePill
+											album={block.artist.albums.at(0)}
+											context="library"
+											lineChars={Math.floor(
+												(songsWidth - 96 - (selection.any ? 26 : 0)) / monoAdvance
+											)}
+											artistWhenDifferent={columnsView.pref.artistWhenDifferent}
+											{now}
+										/>
+									</span>
+								{/if}
 							</div>
 							{#if view.stacked && view.columns}
 								<div class="stacked-header">
@@ -608,6 +642,8 @@
 										widths={columnsView.pref.widths}
 										step={columnStep}
 										onresize={resize}
+										onreorder={reorder}
+										movable={canMove}
 										box={headerBox}
 									/>
 								</div>
@@ -921,6 +957,10 @@
 
 	.sort-round {
 		order: 3;
+	}
+
+	.line-pill-place {
+		margin-left: auto;
 	}
 
 	.next {

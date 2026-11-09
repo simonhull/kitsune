@@ -71,6 +71,10 @@
 	--shadow-hero: 0 40px 90px rgb(0 0 0 / 50%);
 	--shadow-poster: 0 60px 120px rgb(0 0 0 / 55%);
 	--shadow-float: 0 24px 64px rgb(0 0 0 / 60%);
+
+	/* A column lifted to move: its hard offset, printed off register, and the lane's grain. */
+	--lift-offset: rgb(245 241 236 / 80%);
+	--grain-alpha: 0.1;
 }
 
 /*
@@ -131,6 +135,9 @@
 	--shadow-hero: 0 40px 90px -34px rgb(60 40 20 / 45%);
 	--shadow-poster: 0 60px 120px -46px rgb(60 40 20 / 50%);
 	--shadow-float: 0 24px 64px -24px rgb(60 40 20 / 35%);
+
+	--lift-offset: rgb(22 18 14 / 85%);
+	--grain-alpha: 0.07;
 }
 
 :root {
@@ -170,6 +177,14 @@
 	--morph-drop: 180ms;
 	--curve-morph: ease-out;
 	--curve-settle: cubic-bezier(0.22, 1.12, 0.36, 1);
+	/* Making room: fast out, a long tail, no overshoot. Neighbours get out of the way; they don't bounce. */
+	--morph-room: 160ms;
+	--curve-room: cubic-bezier(0.2, 0.9, 0.3, 1);
+	/* Falling home, on a cancel: ease-in, shorter, no settle. Never the lift played backwards. */
+	--morph-fall: 140ms;
+	--curve-fall: cubic-bezier(0.5, 0, 0.9, 0.6);
+	/* Grain, as an image: its alpha comes from each theme's --grain-alpha. */
+	--grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.6 -.4'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 
 	/*
 	 * The page frame (base.css): every page spans the window less a gutter, 16 on a phone, 32 at

@@ -9,10 +9,19 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { trackLabel } from '#lib/library/format.ts';
-	import type { ColumnId, LibraryTrack } from '#lib/library/source.ts';
+	import type { ColumnId, LibraryTrack, MovableId } from '#lib/library/source.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
-	import { cellOf, fitLine, phoneLine, timeOf, type RowAlbum, type RowParts } from './columns.ts';
+	import {
+		cellOf,
+		fitLine,
+		leadingCount,
+		lineupOf,
+		phoneLine,
+		timeOf,
+		type RowAlbum,
+		type RowParts
+	} from './columns.ts';
 	import PickBox from './PickBox.svelte';
 
 	interface Props {
@@ -22,10 +31,13 @@
 		/** Under 700: two lines a song, and no columns. */
 		phone: boolean;
 		parts: RowParts;
-		/** The columns shown. Their grid is the list's `--song-grid`, which the header shares. */
-		shown: readonly ColumnId[];
+		/**
+		 * What the row places, in order: the number, the title and the columns shown. Their grid is
+		 * the list's `--song-grid`, which the header shares.
+		 */
+		shown: readonly MovableId[];
 		/** The person's columns, which a phone's second line is made from. */
-		order: readonly ColumnId[];
+		order: readonly MovableId[];
 		artistWhenDifferent: boolean;
 		/** How many characters a phone's second line has room for. */
 		lineChars: number;
@@ -80,15 +92,9 @@
 
 	const context = $derived({ track, album, stars, hearted, artistWhenDifferent, now });
 	const mark = $derived(track.shuffle);
-	/** The play target spans the cover, the number and the title, after the handle and the box. */
-	const playColumns = $derived.by(() => {
-		const from = (parts.handle ? 2 : 1) + 1;
-		return `${String(from)} / ${String(titleColumn + 1)}`;
-	});
+	const lineup = $derived(lineupOf(shown, parts));
 	/** The title's own column, which a second line sits in. */
-	const titleColumn = $derived(
-		(parts.handle ? 2 : 1) + 1 + (parts.cover ? 1 : 0) + (parts.number ? 1 : 0)
-	);
+	const titleColumn = $derived(leadingCount(parts) + lineup.indexOf('title') + 1);
 </script>
 
 {#snippet marks()}
@@ -111,6 +117,76 @@
 				>· {credit}</span
 			>{/if}{@render marks()}</span
 	>
+{/snippet}
+
+{#snippet number()}
+	<span class="mono number" data-col="number">
+		{#if cued && sounding}
+			<Icon name="play" size={12} />
+		{:else}
+			{trackLabel(track, false)}
+		{/if}
+	</span>
+{/snippet}
+
+<!-- The title is the row's one control for a screen reader and the keyboard. -->
+{#snippet play()}
+	<button
+		type="button"
+		class="play"
+		data-col="title"
+		aria-label={`Play ${track.title}`}
+		aria-current={cued ? 'true' : undefined}
+	>
+		{#if phone && second === undefined}
+			<span class="lines">
+				{@render titled()}
+				<span class="line"
+					><span class="parts"
+						>{fitLine(
+							phoneLine(order, context, sameOnAlbum ?? (() => false)),
+							timeOf(track),
+							lineChars
+						).join(' · ')}</span
+					><span class="line-time">{timeOf(track)}</span></span
+				>
+			</span>
+		{:else}
+			{@render titled()}
+		{/if}
+	</button>
+{/snippet}
+
+{#snippet column(id: ColumnId)}
+	{@const cell = cellOf(id, context)}
+	{#if cell.look === 'stars'}
+		<span class="rate" data-col={id} role="group" aria-label={`Rate ${track.title}`}>
+			{#each [1, 2, 3, 4, 5] as star (star)}
+				<button
+					type="button"
+					class:on={star <= cell.stars}
+					data-star={star}
+					aria-label={`Rate ${track.title} ${String(star)} of 5`}
+					aria-pressed={star <= cell.stars}>★</button
+				>
+			{/each}
+		</span>
+	{:else if cell.look === 'heart'}
+		<span class="heart-cell" data-col={id}
+			><HeartButton kind="tracks" id={track.id} name={track.title} size={16} /></span
+		>
+	{:else if id === 'album' && cell.text !== ''}
+		<span class="cell name" data-col={id}
+			><a class="link" href={resolve('/album/[id]', { id: album.id })}>{cell.text}</a></span
+		>
+	{:else}
+		<span
+			data-col={id}
+			class={['cell', cell.look]}
+			class:end={id === 'plays' || id === 'bitrate' || id === 'gain'}
+			class:warn={cell.warn === true}>{cell.text}</span
+		>
+	{/if}
 {/snippet}
 
 <!--
@@ -163,78 +239,29 @@
 	<span class="box pick-gutter" data-own-click
 		><PickBox state={picked ? 'all' : 'none'} label={`Select ${track.title}`} /></span
 	>
-	<button
-		type="button"
-		class="play"
-		aria-label={`Play ${track.title}`}
-		aria-current={cued ? 'true' : undefined}
-		style:grid-column={phone ? undefined : playColumns}
-	>
-		{#if parts.cover}
-			<span class="cover"><Cover albumId={album.id} entry={album} place="small" lazy /></span>
-		{/if}
-		{#if parts.number}
-			<span class="mono number">
-				{#if cued && sounding}
-					<Icon name="play" size={12} />
-				{:else}
-					{trackLabel(track, false)}
-				{/if}
-			</span>
-		{/if}
-		{#if phone && second === undefined}
-			<span class="lines">
-				{@render titled()}
-				<span class="line"
-					><span class="parts"
-						>{fitLine(
-							phoneLine(order, context, sameOnAlbum ?? (() => false)),
-							timeOf(track),
-							lineChars
-						).join(' · ')}</span
-					><span class="line-time">{timeOf(track)}</span></span
-				>
-			</span>
-		{:else}
-			{@render titled()}
-		{/if}
-	</button>
+	{#if parts.cover}
+		<span class="cover"><Cover albumId={album.id} entry={album} place="small" lazy /></span>
+	{/if}
+	{#if phone}
+		{#if parts.number}{@render number()}{/if}
+		{@render play()}
+	{:else}
+		<!-- In the person's order: the number and the title move like any column. -->
+		{#each lineup as id (id)}
+			{#if id === 'number'}
+				{@render number()}
+			{:else if id === 'title'}
+				{@render play()}
+			{:else}
+				{@render column(id)}
+			{/if}
+		{/each}
+	{/if}
 	{#if second !== undefined}
 		<span class="second" style:grid-column={phone ? undefined : String(titleColumn)}
 			>{@render second()}</span
 		>
 	{/if}
-	{#each phone ? [] : shown as id (id)}
-		{@const cell = cellOf(id, context)}
-		{#if cell.look === 'stars'}
-			<span class="rate" data-col={id} role="group" aria-label={`Rate ${track.title}`}>
-				{#each [1, 2, 3, 4, 5] as star (star)}
-					<button
-						type="button"
-						class:on={star <= cell.stars}
-						data-star={star}
-						aria-label={`Rate ${track.title} ${String(star)} of 5`}
-						aria-pressed={star <= cell.stars}>★</button
-					>
-				{/each}
-			</span>
-		{:else if cell.look === 'heart'}
-			<span class="heart-cell" data-col={id}
-				><HeartButton kind="tracks" id={track.id} name={track.title} size={16} /></span
-			>
-		{:else if id === 'album' && cell.text !== ''}
-			<span class="cell name" data-col={id}
-				><a class="link" href={resolve('/album/[id]', { id: album.id })}>{cell.text}</a></span
-			>
-		{:else}
-			<span
-				data-col={id}
-				class={['cell', cell.look]}
-				class:end={id === 'plays' || id === 'bitrate' || id === 'gain'}
-				class:warn={cell.warn === true}>{cell.text}</span
-			>
-		{/if}
-	{/each}
 	{#if !phone || second !== undefined}<span class="mono time">{timeOf(track)}</span>{/if}
 	<button type="button" class="more" aria-label={`More for ${track.title}`} aria-haspopup="menu"
 		><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
@@ -276,12 +303,14 @@
 		right: 0;
 	}
 
-	/* The cover, the number and the title are one target: tapping any of them plays the song. */
+	/*
+	 * The title's cell: the row's one button, which the keyboard and a screen reader use. A press
+	 * anywhere else on the row plays the song too, through the list's handler.
+	 */
 	.play {
 		min-width: 0;
 		height: 100%;
-		display: grid;
-		grid-template-columns: subgrid;
+		display: flex;
 		align-items: center;
 		padding: 0;
 		border: 0;

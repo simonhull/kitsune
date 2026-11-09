@@ -6,7 +6,13 @@
 	import type { Snippet } from 'svelte';
 	import { addedOn, discFacts, formatLine } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import type { Album, ColumnId, ColumnsPref, LibraryAlbum } from '#lib/library/source.ts';
+	import type {
+		Album,
+		ColumnId,
+		ColumnsPref,
+		LibraryAlbum,
+		MovableId
+	} from '#lib/library/source.ts';
 	import { runJoins } from '#lib/library/shuffleRules.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import { discGroups } from './albumSongs.ts';
@@ -19,10 +25,13 @@
 		fit,
 		largeFrom,
 		monoAdvance,
+		movable,
 		numbered,
+		reorderIn,
 		sameOnAlbum,
 		template
 	} from './columns.ts';
+	import LinePill from './LinePill.svelte';
 	import PickBox from './PickBox.svelte';
 	import type { Selection } from './selection.svelte.ts';
 	import SongHeader from './SongHeader.svelte';
@@ -154,7 +163,11 @@
 		</p>
 	{:else if rows !== undefined}
 		<div class="rows" bind:clientWidth={width} {...events}>
-			{#if !phone}
+			{#if phone}
+				<div class="line-bar">
+					<LinePill album={rows} context="album" {lineChars} {artistWhenDifferent} {now} />
+				</div>
+			{:else}
 				<SongHeader
 					shown={fitted.shown}
 					hiddenCount={fitted.hiddenCount}
@@ -165,6 +178,12 @@
 					onresize={(id, to) => {
 						columnsView.resize(id, to);
 					}}
+					onreorder={(id: MovableId, to: number, keys: boolean) => {
+						columnsView.reorder(reorderIn(pref, 'album', fitted.shown, id, to), {
+							debounce: keys
+						});
+					}}
+					movable={(id: MovableId) => movable(id, pref)}
 				/>
 			{/if}
 			{#each groups as group, at (group.disc?.no ?? 0)}
@@ -240,6 +259,13 @@
 </section>
 
 <style>
+	/* On a phone, where there's no header: the song line's pill, at the panel's top right. */
+	.line-bar {
+		display: flex;
+		justify-content: flex-end;
+		padding: 0 0 8px;
+	}
+
 	.panel {
 		position: relative;
 		/* Under the stage, in line with its words: the hero's gutter on each side, never a centred column. */

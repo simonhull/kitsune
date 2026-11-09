@@ -16,6 +16,13 @@ import {
 	fieldsFor,
 	fit,
 	fitLine,
+	framed,
+	keyTarget,
+	lineNotes,
+	moveSaid,
+	reorderIn,
+	wallSaid,
+	columnName,
 	formatCell,
 	lastWhen,
 	menuList,
@@ -96,7 +103,7 @@ describe('fit', () => {
 
 	it('drops from the end of the order at 1280, keeping Artist as the board does', () => {
 		expect(fit(defaultColumns.order, 558, 'columns')).toEqual({
-			shown: ['artist'],
+			shown: ['number', 'title', 'artist'],
 			hiddenCount: 5
 		});
 	});
@@ -104,13 +111,13 @@ describe('fit', () => {
 	it('keeps the title at 200 or more', () => {
 		// The row with no columns: 14 + 20 + 12 + 28 + 12 + title + 12 + 44 + 12 + 36 + 14.
 		const bare = 14 + 20 + 12 + 28 + 12 + 200 + 12 + 44 + 12 + 36 + 14;
-		expect(fit(['year'], bare + 44 + 12 - 1, 'columns').shown).toEqual([]);
-		expect(fit(['year'], bare + 44 + 12, 'columns').shown).toEqual(['year']);
+		expect(fit(['year'], bare + 44 + 12 - 1, 'columns').shown).toEqual(['number', 'title']);
+		expect(fit(['year'], bare + 44 + 12, 'columns').shown).toEqual(['number', 'title', 'year']);
 	});
 
 	it('stops at the first column that does not fit, even when a later one would', () => {
 		expect(fit(['artist', 'year'], 504, 'columns')).toEqual({
-			shown: [],
+			shown: ['number', 'title'],
 			hiddenCount: 2
 		});
 	});
@@ -167,7 +174,7 @@ describe('savedColumns', () => {
 		expect(savedColumns(null)).toEqual(defaultColumns);
 		expect(
 			savedColumns({ order: ['skips', 'year', 'year'] as never, artistWhenDifferent: false })
-		).toEqual({ order: ['year'], artistWhenDifferent: false });
+		).toEqual({ order: ['number', 'title', 'year'], artistWhenDifferent: false });
 	});
 });
 
@@ -237,17 +244,21 @@ describe('fitLine', () => {
 
 describe('the menu', () => {
 	it('lists the shown columns first, in order, then the rest', () => {
-		const list = menuList({ order: ['plays', 'artist'], artistWhenDifferent: true });
-		expect(list.slice(0, 3)).toEqual([
+		const list = menuList({ order: ['plays', 'title', 'artist'], artistWhenDifferent: true });
+		expect(list.slice(0, 5)).toEqual([
+			{ id: 'number', on: true },
 			{ id: 'plays', on: true },
+			{ id: 'title', on: true },
 			{ id: 'artist', on: true },
 			{ id: 'genre', on: false }
 		]);
-		expect(list).toHaveLength(14);
+		expect(list).toHaveLength(16);
 	});
 
 	it('reorders the shown columns', () => {
-		expect(moved(defaultColumns, 'format', 0).order).toEqual([
+		expect(moved(defaultColumns, 'format', 2).order).toEqual([
+			'number',
+			'title',
 			'format',
 			'artist',
 			'genre',
@@ -255,11 +266,26 @@ describe('the menu', () => {
 			'plays',
 			'lastPlayed'
 		]);
-		expect(moved(defaultColumns, 'artist', 3).order).toEqual([
+		expect(moved(defaultColumns, 'artist', 5).order).toEqual([
+			'number',
+			'title',
 			'genre',
 			'rating',
 			'plays',
 			'artist',
+			'lastPlayed',
+			'format'
+		]);
+	});
+
+	it('moves the number and the title like any column', () => {
+		expect(moved(defaultColumns, 'title', 4).order).toEqual([
+			'number',
+			'artist',
+			'genre',
+			'rating',
+			'title',
+			'plays',
 			'lastPlayed',
 			'format'
 		]);
@@ -285,13 +311,26 @@ describe('columnsIn', () => {
 
 	it('keeps Artist and Album on in search, Album after Artist where the person has none', () => {
 		expect(columnsIn(['genre', 'artist', 'rating'], 'search')).toEqual([
+			'number',
+			'title',
 			'genre',
 			'artist',
 			'album',
 			'rating'
 		]);
-		expect(columnsIn(['rating'], 'search')).toEqual(['artist', 'album', 'rating']);
-		expect(columnsIn([...order], 'search')).toEqual(order);
+		// Search's own Artist comes right after the title, wherever the title is.
+		expect(columnsIn(['rating', 'number', 'title'], 'search')).toEqual([
+			'rating',
+			'number',
+			'title',
+			'artist',
+			'album'
+		]);
+		expect(columnsIn(['number', 'title', ...order], 'search')).toEqual([
+			'number',
+			'title',
+			...order
+		]);
 	});
 
 	it('reads one shared preference: an album page leaves out the album artist always', () => {
@@ -321,8 +360,8 @@ describe('fit with a cover', () => {
 	it('fits fewer columns beside a cover than beside a number', () => {
 		const parts = { handle: false, cover: true, number: false };
 		expect(template([], 'columns', parts)).toBe('20px 40px minmax(200px, 1fr) 44px 36px');
-		expect(fit(['artist'], 600, 'columns', parts).shown).toEqual(['artist']);
-		expect(fit(['artist'], 540, 'columns', parts).shown).toEqual([]);
+		expect(fit(['artist'], 600, 'columns', parts).shown).toEqual(['title', 'artist']);
+		expect(fit(['artist'], 540, 'columns', parts).shown).toEqual(['title']);
 	});
 });
 
@@ -356,15 +395,23 @@ describe('column widths', () => {
 
 	it('fits the columns to their dragged widths', () => {
 		const wide = resized(defaultColumns, 'genre', 360).widths;
-		expect(fit(['genre', 'rating'], 700, 'columns').shown).toEqual(['genre', 'rating']);
-		expect(fit(['genre', 'rating'], 700, 'columns', numbered, wide).shown).toEqual([]);
+		expect(fit(['genre', 'rating'], 700, 'columns').shown).toEqual([
+			'number',
+			'title',
+			'genre',
+			'rating'
+		]);
+		expect(fit(['genre', 'rating'], 700, 'columns', numbered, wide).shown).toEqual([
+			'number',
+			'title'
+		]);
 	});
 
 	it('round-trips through the saved value, which may have none, and drops what it doesn’t know', () => {
 		const pref = resized(defaultColumns, 'artist', 240);
 		expect(savedColumns(JSON.parse(JSON.stringify(pref)) as ColumnsPref)).toEqual(pref);
 		expect(savedColumns({ order: ['genre'], artistWhenDifferent: true })).toEqual({
-			order: ['genre'],
+			order: ['number', 'title', 'genre'],
 			artistWhenDifferent: true
 		});
 		const odd = { order: [], artistWhenDifferent: true, widths: { skips: 90, genre: 5 } };
@@ -373,5 +420,217 @@ describe('column widths', () => {
 
 	it('resets with the rest: the defaults have no widths', () => {
 		expect(defaultColumns.widths).toBeUndefined();
+	});
+});
+
+describe('the number and the title in the order', () => {
+	it('puts them back where an old value had neither: the number first, the title after it', () => {
+		expect(framed(['genre', 'artist'])).toEqual(['number', 'title', 'genre', 'artist']);
+		expect(framed(['genre', 'number'])).toEqual(['genre', 'number', 'title']);
+		expect(framed(['genre', 'title'])).toEqual(['number', 'genre', 'title']);
+		expect(framed(['artist', 'title', 'number'])).toEqual(['artist', 'title', 'number']);
+		expect(savedColumns({ order: ['genre'], artistWhenDifferent: true }).order).toEqual([
+			'number',
+			'title',
+			'genre'
+		]);
+	});
+
+	it('lays the title out flexible wherever it sits, and the number at its width', () => {
+		expect(template(['artist', 'number', 'title', 'year'], 'columns')).toBe(
+			'20px minmax(min(128px, var(--col-artist, 200px)), var(--col-artist, 200px)) 28px ' +
+				'minmax(200px, 1fr) var(--col-year, 44px) 44px 36px'
+		);
+		// Beside a cover there's no number, whatever the order says.
+		expect(
+			template(['year', 'number', 'title'], 'columns', {
+				handle: false,
+				cover: true,
+				number: false
+			})
+		).toBe('20px 40px var(--col-year, 44px) minmax(200px, 1fr) 44px 36px');
+	});
+
+	it('fits the same columns wherever the number and the title are', () => {
+		const at = 900;
+		const base = fit(defaultColumns.order, at, 'columns');
+		const moved = fit(
+			['artist', 'genre', 'title', 'rating', 'number', 'plays', 'lastPlayed', 'format'],
+			at,
+			'columns'
+		);
+		expect(new Set(moved.shown)).toEqual(new Set(base.shown));
+		expect(moved.hiddenCount).toBe(base.hiddenCount);
+	});
+});
+
+/** Every order of `items`. */
+function orders<T>(items: readonly T[]): T[][] {
+	if (items.length <= 1) {
+		return [[...items]];
+	}
+	return items.flatMap((item, index) =>
+		orders([...items.slice(0, index), ...items.slice(index + 1)]).map((rest) => [item, ...rest])
+	);
+}
+
+describe('reorderIn', () => {
+	const pref: ColumnsPref = defaultColumns;
+
+	it('moves a column within the Library, by its new place', () => {
+		const shown = fit(pref.order, 1104, 'columns').shown;
+		expect(reorderIn(pref, 'library', shown, 'genre', 4).order).toEqual([
+			'number',
+			'title',
+			'artist',
+			'rating',
+			'genre',
+			'plays',
+			'lastPlayed',
+			'format'
+		]);
+		expect(reorderIn(pref, 'library', shown, 'format', 0).order).toEqual([
+			'format',
+			'number',
+			'title',
+			'artist',
+			'genre',
+			'rating',
+			'plays',
+			'lastPlayed'
+		]);
+		expect(reorderIn(pref, 'library', shown, 'title', 7).order.at(-1)).toBe('title');
+	});
+
+	it('changes nothing for a drop in place', () => {
+		const shown = fit(pref.order, 1104, 'columns').shown;
+		expect(reorderIn(pref, 'library', shown, 'genre', 3)).toBe(pref);
+	});
+
+	it('maps an album page, which leaves Album out, by neighbour', () => {
+		const withAlbum: ColumnsPref = {
+			...pref,
+			order: ['number', 'title', 'artist', 'album', 'genre', 'rating']
+		};
+		const shown = columnsIn(withAlbum.order, 'album');
+		// Genre dropped after the title: Album stays after Artist, its neighbour.
+		expect(reorderIn(withAlbum, 'album', shown, 'genre', 2).order).toEqual([
+			'number',
+			'title',
+			'genre',
+			'artist',
+			'album',
+			'rating'
+		]);
+		// Rating dropped after Artist goes after Artist, before Album, in the Library too.
+		expect(reorderIn(withAlbum, 'album', shown, 'rating', 3).order).toEqual([
+			'number',
+			'title',
+			'artist',
+			'rating',
+			'album',
+			'genre'
+		]);
+	});
+
+	it('maps search, which puts in Artist and Album, by the neighbours the person has', () => {
+		const own: ColumnsPref = { ...pref, order: ['number', 'title', 'genre', 'rating'] };
+		const shown = fit(columnsIn(own.order, 'search'), 1600, 'columns', {
+			handle: false,
+			cover: true,
+			number: false
+		}).shown;
+		expect(shown).toEqual(['title', 'artist', 'album', 'genre', 'rating']);
+		// Rating dropped first: before the title, its right neighbour.
+		expect(reorderIn(own, 'search', shown, 'rating', 0).order).toEqual([
+			'number',
+			'rating',
+			'title',
+			'genre'
+		]);
+		// Search's own columns aren't the person's to move.
+		expect(reorderIn(own, 'search', shown, 'artist', 4)).toBe(own);
+	});
+
+	it('keeps the columns hidden at this width behind the ones shown', () => {
+		const tight: ColumnsPref = {
+			...pref,
+			order: ['number', 'artist', 'year', 'genre', 'title']
+		};
+		// Room for one column: Artist shows, Year and Genre don't, and the title is placed last.
+		const shown: ColumnsPref['order'] = ['number', 'artist', 'title'];
+		const next = reorderIn(tight, 'library', shown, 'artist', 2);
+		expect(next.order).toEqual(['number', 'title', 'artist', 'year', 'genre']);
+	});
+
+	it('never changes which columns fit, for every drop of every column', () => {
+		for (const width of [700, 900, 1104, 1600]) {
+			const shown = fit(pref.order, width, 'columns').shown;
+			for (const id of shown) {
+				for (let to = 0; to < shown.length; to++) {
+					const next = reorderIn(pref, 'library', shown, id, to);
+					const after = fit(next.order, width, 'columns');
+					expect(new Set(after.shown)).toEqual(new Set(shown));
+					expect(after.shown).toEqual(
+						(() => {
+							const lineup = shown.filter((each) => each !== id);
+							lineup.splice(to, 0, id);
+							return lineup;
+						})()
+					);
+				}
+			}
+		}
+	});
+
+	it('fits the same set in any order of a fitted lineup', () => {
+		const shown = fit(pref.order, 900, 'columns').shown;
+		for (const order of orders(shown)) {
+			expect(new Set(fit(order, 900, 'columns').shown)).toEqual(new Set(shown));
+		}
+	});
+});
+
+describe('the keys', () => {
+	it('moves one place, or to an end, and stops at the walls', () => {
+		expect(keyTarget(2, 6, 'ArrowLeft')).toBe(1);
+		expect(keyTarget(2, 6, 'ArrowRight')).toBe(3);
+		expect(keyTarget(2, 6, 'Home')).toBe(0);
+		expect(keyTarget(2, 6, 'End')).toBe(5);
+		expect(keyTarget(0, 6, 'ArrowLeft')).toBeNull();
+		expect(keyTarget(0, 6, 'Home')).toBeNull();
+		expect(keyTarget(5, 6, 'ArrowRight')).toBeNull();
+		expect(keyTarget(5, 6, 'End')).toBeNull();
+		expect(keyTarget(2, 6, 'Enter')).toBeNull();
+	});
+
+	it('says what happened, politely', () => {
+		const lineup: ColumnsPref['order'] = ['number', 'title', 'artist', 'rating', 'plays', 'genre'];
+		expect(moveSaid(lineup, 'genre')).toBe('Genre moved to 6 of 6, after Plays.');
+		expect(moveSaid(lineup, 'number')).toBe('Number moved to 1 of 6, first.');
+		expect(wallSaid('artist', 'ArrowLeft')).toBe('Artist is already first.');
+		expect(wallSaid('title', 'End')).toBe('Title is already last. Time stays put.');
+		expect(columnName(lineup, 'rating')).toBe('Rating, column 4 of 6');
+	});
+});
+
+describe('lineNotes', () => {
+	it('notes what the heading says and what the line has no room for', () => {
+		const rated = context({
+			track: track({
+				plays: 31,
+				displayGenres: ['Dream pop'],
+				lastPlayedAt: '2026-11-06T10:00:00'
+			}),
+			stars: 4
+		});
+		const order = defaultColumns.order;
+		const notes = lineNotes(order, rated, (id) => id === 'genre', 24);
+		expect(notes.get('genre')).toBe('heading');
+		expect(notes.get('rating')).toBeUndefined();
+		expect(notes.get('plays')).toBeUndefined();
+		expect(notes.get('lastPlayed')).toBe('over');
+		// The number and the title are never parts of the line, wherever they are.
+		expect(phoneLine(['plays', 'title', 'number'], rated, () => false)).toEqual(['31 plays']);
 	});
 });

@@ -6,7 +6,7 @@
 	import { albumStars } from '#lib/library/albumStars.ts';
 	import { albumHoldings, discFacts } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import type { ColumnId, ColumnsPref } from '#lib/library/source.ts';
+	import type { ColumnId, ColumnsPref, MovableId } from '#lib/library/source.ts';
 	import { runJoins } from '#lib/library/shuffleRules.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
@@ -34,7 +34,7 @@
 		/** How many characters a phone's second line has room for. */
 		lineChars: number;
 		/** The columns that fit. */
-		shown: readonly ColumnId[];
+		shown: readonly MovableId[];
 		pref: ColumnsPref;
 		/** When "Yesterday" is. */
 		now: number;
