@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { Selection } from './selection.svelte.ts';
 import { factsLine, menuTarget, pickedFacts, rowMenuItems } from './songActions.ts';
+
+function pickedOf(ids: string[]): Selection {
+	const selection = new Selection();
+	for (const id of ids) {
+		selection.toggle(id);
+	}
+	return selection;
+}
 
 const song = { kind: 'song' as const, artistId: 'ar1' };
 const everywhere = { editable: true, removable: false };
@@ -62,7 +71,7 @@ describe('menuTarget', () => {
 	});
 
 	it('is the songs picked when it opens on one of several picked', () => {
-		const target = menuTarget('a1', ['a1', 'b1'], facts, one);
+		const target = menuTarget('a1', pickedOf(['a1', 'b1']), () => ['a1', 'b1'], facts, one);
 		expect(target).toEqual({
 			kind: 'picked',
 			count: 2,
@@ -72,8 +81,11 @@ describe('menuTarget', () => {
 	});
 
 	it('is the song alone when it opens on one not picked, or picked alone', () => {
-		expect(menuTarget('a2', ['a1', 'b1'], facts, one)?.kind).toBe('song');
-		expect(menuTarget('a1', ['a1'], facts, one)?.kind).toBe('song');
+		const never = (): string[] => {
+			throw new Error('asked for the songs picked');
+		};
+		expect(menuTarget('a2', pickedOf(['a1', 'b1']), never, facts, one)?.kind).toBe('song');
+		expect(menuTarget('a1', pickedOf(['a1']), never, facts, one)?.kind).toBe('song');
 	});
 
 	it('says the facts as the bar does', () => {

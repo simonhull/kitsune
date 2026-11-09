@@ -79,17 +79,20 @@ export function factsLine({ albums, durationMs }: PickedFacts): string {
 
 /**
  * What the ⋯ menu opens on, from a row: the picked songs when it's one of several picked, or else
- * the song alone. `song` says what the menu needs of a song the list holds.
+ * the song alone. `song` says what the menu needs of a song the list holds. `picked` is asked for
+ * only when it's needed: in the Library it runs over every song.
  */
 export function menuTarget(
 	trackId: string,
-	picked: readonly string[],
+	selection: { has(id: string): boolean; readonly size: number },
+	pickedOf: () => readonly string[],
 	facts: SongFacts,
 	song: (
 		trackId: string
 	) => Omit<Extract<MenuTarget, { kind: 'song' }>, 'kind' | 'trackId'> | undefined
 ): MenuTarget | undefined {
-	if (picked.length > 1 && picked.includes(trackId)) {
+	if (selection.size > 1 && selection.has(trackId)) {
+		const picked = pickedOf();
 		return {
 			kind: 'picked',
 			count: picked.length,

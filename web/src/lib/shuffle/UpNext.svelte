@@ -133,12 +133,18 @@
 				return;
 			}
 			opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-			const target = menuTarget(key, picked, songFacts, () => ({
-				albumId: item.album.id,
-				title: item.titles.join(' + '),
-				line: `${item.album.title.toUpperCase()} · ${clock(item.durationMs / 1000)}`,
-				artistId: undefined
-			}));
+			const target = menuTarget(
+				key,
+				selection,
+				() => picked,
+				songFacts,
+				() => ({
+					albumId: item.album.id,
+					title: item.titles.join(' + '),
+					line: `${item.album.title.toUpperCase()} · ${clock(item.durationMs / 1000)}`,
+					artistId: undefined
+				})
+			);
 			if (target === undefined) {
 				return;
 			}

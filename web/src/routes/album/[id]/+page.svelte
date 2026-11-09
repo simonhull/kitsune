@@ -52,7 +52,7 @@
 	$effect(() => {
 		const wanted = id;
 		const fields = columnsView.fields;
-		if (columnsView.known) {
+		if (columnsView.known && !untrack(() => library.indexHolds(wanted, fields))) {
 			untrack(() => void library.loadAlbumRows([wanted], fields));
 		}
 	});
@@ -96,19 +96,25 @@
 
 	function openRowMenu(trackId: string, x: number, y: number): void {
 		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-		const target = menuTarget(trackId, picked, songFacts, (each) => {
-			const track = rows?.tracks.find((one) => one.id === each);
-			if (track === undefined || entry === undefined) {
-				return undefined;
+		const target = menuTarget(
+			trackId,
+			selection,
+			() => picked,
+			songFacts,
+			(each) => {
+				const track = rows?.tracks.find((one) => one.id === each);
+				if (track === undefined || entry === undefined) {
+					return undefined;
+				}
+				const disc = (rows?.discs?.length ?? 0) > 1 ? ` · DISC ${String(track.discNo ?? 1)}` : '';
+				return {
+					albumId: id,
+					title: track.title,
+					line: `${entry.title.toUpperCase()}${disc} · ${clock(track.durationMs / 1000)}`,
+					artistId: album?.artists.at(0)?.id
+				};
 			}
-			const disc = (rows?.discs?.length ?? 0) > 1 ? ` · DISC ${String(track.discNo ?? 1)}` : '';
-			return {
-				albumId: id,
-				title: track.title,
-				line: `${entry.title.toUpperCase()}${disc} · ${clock(track.durationMs / 1000)}`,
-				artistId: album?.artists.at(0)?.id
-			};
-		});
+		);
 		if (target !== undefined) {
 			rowMenu = {
 				x,

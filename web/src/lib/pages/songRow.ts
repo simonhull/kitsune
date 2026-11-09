@@ -223,7 +223,8 @@ export function clickIntent(target: Clicked): ClickIntent {
 
 /** What a list does with its rows' events: the row says only which song, and how. */
 export interface RowHandlers {
-	play(trackId: string): void;
+	/** Plays a song: the row says which album it's in, so a list needn't look it up. */
+	play(trackId: string, albumId: string): void;
 	pick(trackId: string, how: PickHow): void;
 	/** Opens the ⋯ menu for a song, at a place. */
 	menu(trackId: string, x: number, y: number): void;
@@ -295,7 +296,7 @@ export function rowEvents(handlers: RowHandlers): {
 					const picking = at.row.closest('[data-selecting]') !== null;
 					const how = tapOf(event, longPress.touch, picking);
 					if (how === 'play') {
-						handlers.play(at.trackId);
+						handlers.play(at.trackId, at.row.dataset['album'] ?? '');
 					} else {
 						handlers.pick(at.trackId, how);
 					}

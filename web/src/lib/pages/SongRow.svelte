@@ -128,6 +128,7 @@
 	role="group"
 	aria-label={track.title}
 	data-track={track.id}
+	data-album={album.id}
 	style:top={top === undefined ? undefined : `${String(top)}px`}
 	style:height={height === undefined ? undefined : `${String(height)}px`}
 >

@@ -144,17 +144,23 @@
 		},
 		menu: (trackId, x, y) => {
 			opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-			const target = menuTarget(trackId, picked, songFacts, (each) => {
-				const hit = tracks.find(({ id }) => id === each);
-				return hit === undefined
-					? undefined
-					: {
-							albumId: hit.albumId,
-							title: hit.title,
-							line: `${hit.album.toUpperCase()} · ${clock(hit.durationMs / 1000)}`,
-							artistId: undefined
-						};
-			});
+			const target = menuTarget(
+				trackId,
+				selection,
+				() => picked,
+				songFacts,
+				(each) => {
+					const hit = tracks.find(({ id }) => id === each);
+					return hit === undefined
+						? undefined
+						: {
+								albumId: hit.albumId,
+								title: hit.title,
+								line: `${hit.album.toUpperCase()} · ${clock(hit.durationMs / 1000)}`,
+								artistId: undefined
+							};
+				}
+			);
 			if (target !== undefined) {
 				rowMenu = {
 					x,

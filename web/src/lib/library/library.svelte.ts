@@ -1347,6 +1347,17 @@ export class Library {
 		return read?.album;
 	}
 
+	/** Whether the index holds an album's songs with `fields` already, so nothing need be read. */
+	indexHolds(id: string, fields: readonly IndexField[]): boolean {
+		const read = this.#rows.get(id);
+		return (
+			(read !== undefined && read.fields === fields.join(',')) ||
+			(this.index.kind === 'ready' &&
+				fields.every((field) => this.#fields().includes(field)) &&
+				this.index.value.artists.some((artist) => artist.albums.some((album) => album.id === id)))
+		);
+	}
+
 	/** Reads albums' songs with `fields`, for {@link Library.albumRows}. A failure leaves what was. */
 	async loadAlbumRows(ids: readonly string[], fields: readonly IndexField[]): Promise<void> {
 		const epoch = this.#epoch;

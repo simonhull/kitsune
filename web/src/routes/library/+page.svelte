@@ -225,17 +225,23 @@
 	/** Opens the ⋯ menu: on the picked songs, when it's opened on one of them. */
 	function openRowMenu(trackId: string, x: number, y: number): void {
 		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-		const target = menuTarget(trackId, picked, songFacts, (id) => {
-			const song = songs.get(id);
-			return song === undefined
-				? undefined
-				: {
-						albumId: song.album.id,
-						title: song.track.title,
-						line: `${song.album.title.toUpperCase()} · ${clock(song.track.durationMs / 1000)}`,
-						artistId: song.artist.id
-					};
-		});
+		const target = menuTarget(
+			trackId,
+			selection,
+			() => picked,
+			songFacts,
+			(id) => {
+				const song = songs.get(id);
+				return song === undefined
+					? undefined
+					: {
+							albumId: song.album.id,
+							title: song.track.title,
+							line: `${song.album.title.toUpperCase()} · ${clock(song.track.durationMs / 1000)}`,
+							artistId: song.artist.id
+						};
+			}
+		);
 		if (target !== undefined) {
 			rowMenu = {
 				x,
@@ -271,11 +277,8 @@
 
 	/** The rows' one set of handlers: a row's song plays in its album, from where it is. */
 	const events = rowEvents({
-		play: (trackId) => {
-			const albumId = albumOf.get(trackId);
-			if (albumId !== undefined) {
-				view.play(albumId, trackId);
-			}
+		play: (trackId, albumId) => {
+			view.play(albumId, trackId);
 		},
 		pick: (trackId, how) => {
 			list.pick(trackId, how);
