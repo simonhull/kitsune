@@ -24,8 +24,11 @@ func MatchKey(s string) string {
 }
 
 // Raw tag names differ by format but never collide across formats: Vorbis keys
-// are upper-case words, ID3 keys are four-letter frame IDs or upper-cased TXXX
-// descriptions, and M4A keys are atom names or upper-cased freeform names. A
+// are upper-case words, ID3 keys are four-letter frame IDs, upper-cased TXXX
+// descriptions or "UFID:" and the frame's owner, and M4A keys are atom names or
+// upper-cased freeform names. audiometa upper-cases TXXX descriptions and
+// freeform names whatever their case in the file, so "MusicBrainz Album Id" is
+// found as "MUSICBRAINZ ALBUM ID". A
 // WAV or AIFF file adds its native text after its ID3 frames: LIST/INFO IDs
 // ("IGNR") and AIFF chunk IDs ("NAME"). Each field therefore has one candidate
 // list for every format, tried in order.
@@ -42,7 +45,10 @@ var (
 	keysAlbumArtistMBID = []string{"MUSICBRAINZ_ALBUMARTISTID", "MUSICBRAINZ ALBUM ARTIST ID"}
 	keysCompilation     = []string{"COMPILATION", "TCMP", "cpil"}
 	keysAlbumMBID       = []string{"MUSICBRAINZ_ALBUMID", "MUSICBRAINZ ALBUM ID"}
-	keysTrackMBID       = []string{"MUSICBRAINZ_TRACKID", "MUSICBRAINZ TRACK ID"}
+	// keysTrackMBID hold the recording's ID, which an MP3 keeps in a UFID frame
+	// and M4A in a freeform "MusicBrainz Track Id". The UFID comes first: a TXXX
+	// of the M4A name is what some taggers leave in an MP3.
+	keysTrackMBID = []string{"MUSICBRAINZ_TRACKID", keyRecordingUFID, "MUSICBRAINZ TRACK ID"}
 	// keysReleaseGroupMBID and keysReleaseTrackMBID are written by a match, and
 	// read only by the tag editor.
 	keysReleaseGroupMBID = []string{"MUSICBRAINZ_RELEASEGROUPID", "MUSICBRAINZ RELEASE GROUP ID"}

@@ -331,6 +331,7 @@ func TestEveryFieldRoundTrips(t *testing.T) {
 				}
 			}
 			wantEveryField(t, path, &before)
+			wantPicardOnDisk(t, path, sample)
 		})
 	}
 }
