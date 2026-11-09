@@ -181,27 +181,29 @@
 				match={matchFromBulk(bulk)}
 			/>
 		{:else}
-			<TrackList
-				{album}
-				{cuedId}
-				sounding={player.sounding}
-				play={(index) => {
-					if (album !== undefined) {
-						player.play(album, index);
-					}
-				}}
-				playDisc={(disc) => {
-					if (album !== undefined) {
-						player.playDisc(album, disc);
-					}
-				}}
-				gone={library.failed(id)}
-				unavailable={library.unavailable(id)}
-				retry={() => void library.loadAlbum(id)}
-				editing={session !== undefined}
-				one={session?.open != null}
-				editor={session?.tags == null ? undefined : editor}
-			/>
+			<div class="songs">
+				<TrackList
+					{album}
+					{cuedId}
+					sounding={player.sounding}
+					play={(index) => {
+						if (album !== undefined) {
+							player.play(album, index);
+						}
+					}}
+					playDisc={(disc) => {
+						if (album !== undefined) {
+							player.playDisc(album, disc);
+						}
+					}}
+					gone={library.failed(id)}
+					unavailable={library.unavailable(id)}
+					retry={() => void library.loadAlbum(id)}
+					editing={session !== undefined}
+					one={session?.open != null}
+					editor={session?.tags == null ? undefined : editor}
+				/>
+			</div>
 		{/if}
 		{#if session !== undefined}
 			<TagBar
@@ -219,6 +221,14 @@
 <style>
 	.album {
 		padding-bottom: 140px;
+	}
+
+	/*
+	 * The songs keep to a width a row reads across, growing with the step, and stand at the hero's
+	 * words: the list centres itself in its gutters, so the cap counts both of them in.
+	 */
+	.songs {
+		max-width: calc(1280px * var(--step) + 2 * max(64px, var(--gutter)));
 	}
 
 	/* The last row must clear the bar as well as the island. */
