@@ -44,17 +44,22 @@ test('Library: a song runs into the next, and an album into the next album', asy
 	let timed = 0;
 	while (timed < runs) {
 		const listed = await nextLoudAlbum(page, perf.manifest, used);
+		// The album after it must be mounted too, to know its first song.
+		await page.locator(`main .row[data-track="${listed.firstTrack}"]`).scrollIntoViewIfNeeded();
 		const shown = await mountedAlbums(page);
 		const following = shown.at(shown.findIndex(({ id }) => id === listed.id) + 1);
 		const tracks = await albumTracks(page, listed.id);
 		const [first, second] = tracks;
 		const last = tracks.at(-1);
-		if (first === undefined || second === undefined || last === undefined) {
-			// One song: there is no change of song to time against the change of album.
+		if (
+			first === undefined ||
+			second === undefined ||
+			last === undefined ||
+			following === undefined
+		) {
+			// One song has no change of song to time against the change of album; and an album with
+			// nothing mounted after it can't say where the list goes. The next loud album will do.
 			continue;
-		}
-		if (following === undefined) {
-			throw new Error(`nothing is listed after ${listed.title}`);
 		}
 		// Each change goes into a song with real audio, a loud album's first or second, so the two
 		// differ only in what comes before them: the next song, or the next album.
