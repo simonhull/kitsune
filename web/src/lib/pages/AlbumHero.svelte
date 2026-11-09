@@ -88,7 +88,7 @@
 	}
 </script>
 
-<section aria-label="Album" class="hero" class:editing class:one={open !== null}>
+<section aria-label="Album" class="hero stepped" class:editing class:one={open !== null}>
 	<div
 		class="art"
 		data-morph-part="art"
@@ -202,9 +202,10 @@
 </section>
 
 <style>
+	/* The stage spans the window: its words and cover keep to the frame's gutter, or 64 at least. */
 	.hero {
-		--hero-pad: 64px;
-		--hero-cover: 380px;
+		--hero-pad: max(64px, var(--gutter));
+		--hero-cover: calc(380px * var(--step));
 		--hero-type: var(--type-hero);
 
 		container-type: inline-size;
@@ -224,7 +225,7 @@
 	.art {
 		position: absolute;
 		right: var(--hero-pad);
-		top: 120px;
+		top: calc(120px * var(--step));
 		width: var(--hero-cover);
 		height: var(--hero-cover);
 		border-radius: var(--radius-24);
@@ -259,10 +260,10 @@
 		position: absolute;
 		left: var(--hero-pad);
 		right: var(--hero-pad);
-		bottom: 120px;
+		bottom: calc(120px * var(--step));
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
+		gap: calc(18px * var(--step));
 		transition: bottom var(--morph-slow) var(--curve-settle);
 	}
 
@@ -279,7 +280,7 @@
 
 	.meta {
 		font-family: var(--font-mono);
-		font-size: 13px;
+		font-size: calc(13px * var(--step));
 		color: var(--wash);
 		opacity: 0;
 		transition: opacity var(--morph-fast);
@@ -352,8 +353,8 @@
 	}
 
 	.play {
-		width: 72px;
-		height: 72px;
+		width: calc(72px * var(--step));
+		height: calc(72px * var(--step));
 		border: 0;
 		border-radius: 50%;
 		background: var(--accent);
@@ -392,7 +393,7 @@
 
 	.artist {
 		min-width: 0;
-		font-size: 22px;
+		font-size: calc(22px * var(--step));
 		font-weight: 700;
 		letter-spacing: var(--tracking-title);
 		margin-right: 12px;
@@ -401,12 +402,12 @@
 
 	.ghost {
 		height: var(--target);
-		padding: 0 18px;
+		padding: 0 calc(18px * var(--step));
 		border-radius: var(--radius-pill);
 		border: 1px solid var(--edge-strong);
 		background: color-mix(in srgb, var(--ground) 30%, transparent);
 		color: var(--text);
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		font-weight: 600;
 		display: flex;
 		align-items: center;
@@ -419,6 +420,8 @@
 	}
 
 	.round svg {
+		width: calc(18px * var(--step));
+		height: calc(18px * var(--step));
 		fill: currentColor;
 	}
 
@@ -448,7 +451,7 @@
 	}
 
 	.glyphs {
-		font-size: 18px;
+		font-size: calc(18px * var(--step));
 		color: var(--accent);
 	}
 

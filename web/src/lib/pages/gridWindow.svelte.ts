@@ -34,6 +34,8 @@ export class GridWindow {
 	measure = $state.raw<Measure | null>(null);
 	/** The last entry of the row at the top of the screen, or the very last at the end. */
 	reached = $state(0);
+	/** The entry a landing aims at, mounted whatever the page size turns out to be once measured. */
+	aimed = $state<number | null>(null);
 
 	readonly #entries: () => readonly AlbumEntry[];
 	readonly #nearEnd: () => void;
@@ -48,12 +50,24 @@ export class GridWindow {
 		return this.#entries();
 	}
 
+	/**
+	 * How many entries a page holds: whole rows, so a wide screen's columns never leave a row short at
+	 * a seam. A page is a fetch's 60 until the grid is measured, then 60 rounded up to its columns.
+	 */
+	get pageSize(): number {
+		const columns = this.measure?.columns ?? 0;
+		return columns > 0 ? Math.ceil(albumPageSize / columns) * columns : albumPageSize;
+	}
+
 	get pageCount(): number {
-		return Math.ceil(this.entries.length / albumPageSize);
+		return Math.ceil(this.entries.length / this.pageSize);
 	}
 
 	mounted(page: number): boolean {
 		const spread = this.wide ? 1 : 0;
+		if (this.aimed !== null && Math.floor(this.aimed / this.pageSize) === page) {
+			return true;
+		}
 		return page >= this.first - spread && page <= this.last + spread;
 	}
 
@@ -63,7 +77,8 @@ export class GridWindow {
 			return undefined;
 		}
 		const { columns, rowHeight, rowGap } = this.measure;
-		const cards = Math.min(albumPageSize, this.entries.length - page * albumPageSize);
+		const size = this.pageSize;
+		const cards = Math.min(size, this.entries.length - page * size);
 		const rows = Math.ceil(cards / columns);
 		return rows * rowHeight + (rows - 1) * rowGap;
 	}
@@ -84,8 +99,9 @@ export class GridWindow {
 		if (strides === null || this.measure === null) {
 			return undefined;
 		}
-		const page = Math.floor(index / albumPageSize);
-		const row = Math.floor((index - page * albumPageSize) / this.measure.columns);
+		const size = this.pageSize;
+		const page = Math.floor(index / size);
+		const row = Math.floor((index - page * size) / this.measure.columns);
 		return page * strides.page + row * strides.row;
 	}
 
@@ -97,7 +113,7 @@ export class GridWindow {
 		}
 		const page = Math.floor(offset / strides.page);
 		const row = Math.floor((offset - page * strides.page) / strides.row);
-		const last = page * albumPageSize + (row + 1) * this.measure.columns - 1;
+		const last = page * this.pageSize + (row + 1) * this.measure.columns - 1;
 		return Math.min(last, this.entries.length - 1);
 	}
 
@@ -108,6 +124,7 @@ export class GridWindow {
 			const stride = full + this.measure.rowGap;
 			const margin = innerHeight * viewportMargin;
 			const end = Math.max(0, this.pageCount - 1);
+			this.aimed = null;
 			this.first = Math.min(end, Math.max(0, Math.floor((-top - margin) / stride)));
 			this.last = Math.min(end, Math.max(0, Math.floor((innerHeight - top + margin) / stride)));
 		}
@@ -124,12 +141,14 @@ export class GridWindow {
 	aim(albumId: string): void {
 		const index = this.entries.findIndex((album) => album.id === albumId);
 		if (index >= 0) {
-			this.first = this.last = Math.floor(index / albumPageSize);
+			this.aimed = index;
+			this.first = this.last = Math.floor(index / this.pageSize);
 		}
 	}
 
 	/** Goes back to the top, for a list that has changed under the grid. */
 	rewind(): void {
+		this.aimed = null;
 		this.first = 0;
 		this.last = 0;
 		this.reached = 0;

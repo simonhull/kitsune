@@ -18,8 +18,9 @@
 <style>
 	.shelf {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-		gap: 24px;
+		/* More covers on a wider screen, at the card's size for the step: never bigger ones. */
+		grid-template-columns: repeat(auto-fill, minmax(calc(220px * var(--step)), 1fr));
+		gap: calc(24px * var(--step));
 	}
 
 	@media (max-width: 720px) {

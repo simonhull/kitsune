@@ -160,7 +160,7 @@
 </svelte:head>
 
 {#if user !== null}
-	<div class="you">
+	<div class="page-frame you">
 		<div class="left">
 			<div class="who" data-morph-part="intro" data-morph-key="who">
 				<p class="mono role">{roleLine(user.role)}</p>
@@ -348,9 +348,9 @@
 
 <style>
 	.you {
-		max-width: 1440px;
-		margin: 0 auto;
-		padding: 120px 64px 160px;
+		--frame-top: 120px;
+		--frame-bottom: 160px;
+
 		display: grid;
 		grid-template-columns: minmax(0, 560px) minmax(0, 656px);
 		justify-content: space-between;
@@ -697,6 +697,28 @@
 		grid-column: 2;
 	}
 
+	/* A 4K screen lays the cards side by side beside the name, rather than stretching one. */
+	@media (min-width: 2560px) {
+		.you {
+			grid-template-columns:
+				minmax(0, calc(560px * var(--step)))
+				repeat(auto-fill, minmax(calc(600px * var(--step)), 1fr));
+			justify-content: stretch;
+			gap: calc(32px * var(--step));
+		}
+
+		/* Two rows: the third card goes under the first when only two fit beside the name. */
+		.left {
+			grid-row: span 2;
+		}
+
+		.looks,
+		.shuffles,
+		.where {
+			grid-column: auto;
+		}
+	}
+
 	.appearance {
 		margin-top: 16px;
 		padding: 32px;
@@ -857,8 +879,9 @@
 
 	@media (max-width: 1100px) {
 		.you {
+			--frame-top: 106px;
+
 			grid-template-columns: minmax(0, 1fr);
-			padding: 106px 32px 160px;
 			gap: 56px;
 		}
 
@@ -877,7 +900,8 @@
 
 	@media (max-width: 720px) {
 		.you {
-			padding: 98px 16px 140px;
+			--frame-top: 98px;
+			--frame-bottom: 140px;
 		}
 
 		.appearance {

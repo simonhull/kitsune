@@ -53,7 +53,7 @@
 		<a href={resolve('/artists')}>All artists</a>
 	</div>
 {:else}
-	<div class="artist">
+	<div class="page-frame artist">
 		<div class="words">
 			<span class="meta">{artist === undefined ? '' : artistFacts(artist)}&nbsp;</span>
 			<!-- The fit divides by the words' width, known before layout: the first frame is final. -->
@@ -96,24 +96,23 @@
 
 <style>
 	.artist {
+		--frame-top: 120px;
+
 		container-type: inline-size;
-		max-width: 1400px;
-		margin: 0 auto;
-		padding: 120px 32px 140px;
 		display: flex;
 		flex-direction: column;
-		gap: 56px;
+		gap: calc(56px * var(--step));
 	}
 
 	.words {
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
+		gap: calc(18px * var(--step));
 	}
 
 	.meta {
 		font-family: var(--font-mono);
-		font-size: 13px;
+		font-size: calc(13px * var(--step));
 		color: var(--text-secondary);
 	}
 
@@ -141,7 +140,7 @@
 	section {
 		display: flex;
 		flex-direction: column;
-		gap: 24px;
+		gap: calc(24px * var(--step));
 	}
 
 	.heading {
@@ -201,7 +200,8 @@
 
 	@media (max-width: 720px) {
 		.artist {
-			padding: 104px 16px 128px;
+			--frame-top: 104px;
+
 			gap: 40px;
 		}
 

@@ -2,17 +2,27 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import type { AlbumEntry } from '#lib/library/source.ts';
+	import { library } from '#lib/library/library.svelte.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import { albumMenu } from './albumMenu.svelte.ts';
+	import CoverPlay from './CoverPlay.svelte';
 
 	interface Props {
 		album: AlbumEntry;
 	}
 
 	let { album }: Props = $props();
+
+	/** Asks for the songs as a pointer or focus comes near, so the cover's play starts at once. */
+	function warm(): void {
+		void library.loadAlbum(album.id);
+	}
 </script>
 
-<!-- Right-click opens the album's own menu; where nothing hovers, a ⋯ on the cover does. -->
+<!--
+	Right-click opens the album's own menu; where nothing hovers, a ⋯ on the cover does. The cover's
+	play sits beside the link, not in it: a button can't live inside a link.
+-->
 <div
 	class="card"
 	data-morph-part="card"
@@ -24,7 +34,12 @@
 	role="group"
 	aria-label={album.title}
 >
-	<a class="link" href={resolve('/album/[id]', { id: album.id })}>
+	<a
+		class="open"
+		onpointerenter={warm}
+		onfocus={warm}
+		href={resolve('/album/[id]', { id: album.id })}
+	>
 		<span class="art" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
 			><Cover albumId={album.id} entry={album} place="card" lazy /></span
 		>
@@ -39,6 +54,7 @@
 			>
 		</span>
 	</a>
+	<CoverPlay {album} />
 	<button
 		type="button"
 		class="more"
@@ -64,10 +80,10 @@
 		min-width: 0;
 	}
 
-	.link {
+	.open {
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: calc(12px * var(--step));
 		min-width: 0;
 	}
 
@@ -107,14 +123,15 @@
 		letter-spacing: var(--tracking-title);
 	}
 
-	.card:hover .title {
+	.open:hover .title {
 		color: var(--fox-text);
 	}
 
 	.artist {
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		color: var(--text-meta);
 	}
+
 	/* Only where nothing hovers: a mouse has right-click. On the cover's corner, a finger's 44. */
 	.more {
 		display: none;

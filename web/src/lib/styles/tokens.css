@@ -170,4 +170,32 @@
 	--morph-drop: 180ms;
 	--curve-morph: ease-out;
 	--curve-settle: cubic-bezier(0.22, 1.12, 0.36, 1);
+
+	/*
+	 * The page frame (base.css): every page spans the window less a gutter, 16 on a phone, 32 at
+	 * 1280, 48 at 1920 and 96 at 3840. A wider screen gets more columns, never a centred column.
+	 */
+	--gutter: clamp(16px, 2.5vw, 128px);
+	/* Clear of the nav island above, and of the player island below. */
+	--frame-top: 106px;
+	--frame-bottom: 140px;
+
+	/*
+	 * The size step: from 2560 a page's type, covers, radii and spacing go one step up together, as
+	 * the Library's rows do, so a 4K screen at 100% reads like 1920. Phone and desktop stay at 1.
+	 */
+	--step: 1;
+}
+
+@media (max-width: 720px) {
+	:root {
+		--frame-top: 98px;
+		--frame-bottom: 128px;
+	}
+}
+
+@media (min-width: 2560px) {
+	:root {
+		--step: 1.25;
+	}
 }

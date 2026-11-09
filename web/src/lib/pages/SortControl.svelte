@@ -228,16 +228,22 @@
 		inset: -8px -4px;
 	}
 
+	/* On a page's frame: a step up with the page. */
 	.pill {
-		height: 40px;
-		padding: 0 14px 0 12px;
+		height: calc(40px * var(--step));
+		padding: 0 calc(14px * var(--step)) 0 calc(12px * var(--step));
 		border-radius: var(--radius-pill);
-		font: 600 13px var(--font-sans);
+		font: 600 calc(13px * var(--step)) var(--font-sans);
+	}
+
+	.pill svg {
+		width: calc(16px * var(--step));
+		height: calc(16px * var(--step));
 	}
 
 	.pill .way {
 		font-family: var(--font-mono);
-		font-size: 11px;
+		font-size: calc(11px * var(--step));
 		letter-spacing: 0.06em;
 		color: var(--fox-text);
 	}

@@ -138,7 +138,7 @@
 {#if !library.admin}
 	<p class="gone">Matching is for administrators.</p>
 {:else}
-	<div class="queue">
+	<div class="page-frame queue">
 		<header>
 			<div class="words">
 				<a class="crumb" href={resolve('/health')}>HEALTH › NO MUSICBRAINZ IDS</a>
@@ -326,9 +326,8 @@
 
 <style>
 	.queue {
-		max-width: 1824px;
-		margin: 0 auto;
-		padding: 120px 48px 160px;
+		--frame-top: 120px;
+		--frame-bottom: 160px;
 	}
 
 	button {
@@ -412,7 +411,7 @@
 	.panels {
 		margin-top: 56px;
 		display: grid;
-		grid-template-columns: minmax(0, 620px) minmax(0, 1fr);
+		grid-template-columns: minmax(0, calc(620px * var(--step))) minmax(0, 1fr);
 		gap: 32px;
 		align-items: start;
 	}
@@ -803,7 +802,8 @@
 	/* A phone: the list, full width. Tapping an album opens its releases. */
 	@media (max-width: 900px) {
 		.queue {
-			padding: 98px 16px 140px;
+			--frame-top: 98px;
+			--frame-bottom: 140px;
 		}
 
 		h1 {

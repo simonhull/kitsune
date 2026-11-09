@@ -77,12 +77,12 @@
 <style>
 	.top {
 		/* What the disc and the cover take from the words' width. */
-		--beside: 220px;
+		--beside: calc(220px * var(--step));
 
 		container-type: inline-size;
 		position: relative;
-		min-height: 300px;
-		padding: 28px;
+		min-height: calc(300px * var(--step));
+		padding: calc(28px * var(--step));
 		border-radius: var(--radius-28);
 		overflow: hidden;
 		display: flex;
@@ -96,19 +96,19 @@
 		position: absolute;
 		right: -40px;
 		top: -40px;
-		width: 280px;
-		height: 280px;
+		width: calc(280px * var(--step));
+		height: calc(280px * var(--step));
 		border-radius: 50%;
 		background: var(--top-accent);
 	}
 
 	.art {
 		position: absolute;
-		right: 28px;
-		top: 28px;
-		width: 176px;
-		height: 176px;
-		border-radius: 18px;
+		right: calc(28px * var(--step));
+		top: calc(28px * var(--step));
+		width: calc(176px * var(--step));
+		height: calc(176px * var(--step));
+		border-radius: calc(18px * var(--step));
 		overflow: hidden;
 		box-shadow: var(--shadow-tile);
 	}
@@ -136,7 +136,7 @@
 
 		display: block;
 		max-width: var(--room);
-		font-size: clamp(30px, var(--fit), 64px);
+		font-size: clamp(30px, var(--fit), calc(64px * var(--step)));
 		font-weight: 900;
 		letter-spacing: -0.05em;
 		line-height: 0.95;

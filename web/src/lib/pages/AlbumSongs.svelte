@@ -135,7 +135,7 @@
 
 <section
 	aria-label="Tracks"
-	class="panel song-list"
+	class="panel song-list stepped"
 	class:editing
 	class:one
 	data-morph-part="panel"
@@ -243,11 +243,11 @@
 	.panel {
 		position: relative;
 		/* Under the stage, in line with its words: the hero's gutter on each side, never a centred column. */
-		margin: -72px auto 0;
-		width: calc(100% - 128px);
-		min-height: 560px;
+		margin: calc(-72px * var(--step)) auto 0;
+		width: calc(100% - 2 * max(64px, var(--gutter)));
+		min-height: calc(560px * var(--step));
 		box-sizing: border-box;
-		padding: 20px 24px 24px;
+		padding: calc(20px * var(--step)) calc(24px * var(--step)) calc(24px * var(--step));
 		border-radius: var(--radius-32);
 		background: color-mix(in srgb, var(--card) 82%, transparent);
 		border: 1px solid var(--edge);
@@ -257,9 +257,10 @@
 			width var(--morph-slow) var(--curve-settle);
 	}
 
+	/* Editing, it reaches 32 past the words on each side. */
 	.editing {
 		margin-top: -34px;
-		width: calc(100% - 64px);
+		width: calc(100% - 2 * max(32px, var(--gutter) - 32px));
 		padding: 12px 24px;
 		border-radius: var(--radius-28);
 		background: var(--card);
@@ -308,13 +309,13 @@
 		display: flex;
 		align-items: flex-end;
 		gap: var(--col-gap, 12px);
-		padding: 40px var(--row-pad, 14px) 14px;
+		padding: calc(40px * var(--step)) var(--row-pad, 14px) calc(14px * var(--step));
 		margin-bottom: 4px;
 		border-bottom: 1px solid var(--edge-strong);
 	}
 
 	.disc.first {
-		padding-top: 12px;
+		padding-top: calc(12px * var(--step));
 	}
 
 	/* In the rows' gutter, which reaches from the panel's edge and down the whole heading. */
@@ -325,12 +326,12 @@
 		box-sizing: border-box;
 		display: flex;
 		align-items: flex-end;
-		margin: -40px 0 -14px calc(-1 * var(--row-pad, 14px));
-		padding: 0 0 26px var(--row-pad, 14px);
+		margin: calc(-40px * var(--step)) 0 calc(-14px * var(--step)) calc(-1 * var(--row-pad, 14px));
+		padding: 0 0 calc(26px * var(--step)) var(--row-pad, 14px);
 	}
 
 	.disc.first .disc-box {
-		margin-top: -12px;
+		margin-top: calc(-12px * var(--step));
 	}
 
 	.disc-no {
@@ -346,15 +347,15 @@
 		min-width: 0;
 		display: flex;
 		align-items: baseline;
-		gap: 20px;
-		padding-left: 8px;
+		gap: calc(20px * var(--step));
+		padding-left: calc(8px * var(--step));
 	}
 
 	.disc-name {
 		min-width: 0;
 		overflow: hidden;
 		padding-bottom: 2px;
-		font-size: 20px;
+		font-size: calc(20px * var(--step));
 		font-weight: 600;
 		color: var(--text-secondary);
 		white-space: nowrap;
@@ -373,15 +374,15 @@
 	.disc-play {
 		flex: none;
 		height: var(--target);
-		padding: 0 18px;
+		padding: 0 calc(18px * var(--step));
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: calc(8px * var(--step));
 		border: 1px solid var(--edge-strong);
 		border-radius: var(--radius-pill);
 		background: none;
 		color: var(--text);
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		font-weight: 600;
 	}
 
@@ -394,9 +395,9 @@
 	.facts {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px 24px;
-		margin-top: 8px;
-		padding: 16px var(--row-pad, 14px) 0;
+		gap: calc(8px * var(--step)) calc(24px * var(--step));
+		margin-top: calc(8px * var(--step));
+		padding: calc(16px * var(--step)) var(--row-pad, 14px) 0;
 		border-top: 1px solid var(--edge);
 		font-family: var(--font-mono);
 		font-size: var(--type-mono);

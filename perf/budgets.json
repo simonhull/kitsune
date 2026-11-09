@@ -20,7 +20,8 @@
 		"next-shuffle": { "interaction": "Next, in a shuffle", "p95Ms": 30 },
 		"sort-library": { "interaction": "Turn the Library's order round, click to rows", "p95Ms": 150 },
 		"track-change": { "interaction": "A song ends, the next one sounds", "p95Ms": 12 },
-		"album-change": { "interaction": "An album ends, the next down the Library sounds", "p95Ms": 12 }
+		"album-change": { "interaction": "An album ends, the next down the Library sounds", "p95Ms": 12 },
+		"play-cover": { "interaction": "Play an album from its cover", "p95Ms": 50 }
 	},
 	"server": {
 		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 0.5 },
