@@ -4,6 +4,7 @@ import { libraryRows, menu, nextLoudAlbum, openLibrary, playing } from './pages.
 test('Library: play a song, open the menus', async ({ page, perf }) => {
 	await openLibrary(page);
 	const play = perf.samples('play-library');
+	const playCell = perf.samples('play-library-cell');
 	const rowMenu = perf.samples('row-menu');
 	const columns = perf.samples('columns-menu');
 	const used = new Set<string>();
@@ -25,6 +26,14 @@ test('Library: play a song, open the menus', async ({ page, perf }) => {
 		);
 		await page.keyboard.press('Escape');
 		await page.locator('.floating').waitFor({ state: 'detached' });
+
+		// Anywhere on a row plays it: the same, from a cell that isn't the title. Last, so its
+		// song's loading is over before the next round's menus are timed.
+		const other = await nextLoudAlbum(page, perf.manifest, used);
+		const cell = page.locator(`main .row[data-track="${other.firstTrack}"] .time`);
+		await cell.scrollIntoViewIfNeeded();
+		await perf.time(playCell, 'click', playing(other.firstTrack), () => cell.click());
+		await page.locator('aside[aria-label="Player"] button.pause').click();
 	}
 });
 

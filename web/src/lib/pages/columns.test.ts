@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { ColumnsPref, LibraryAlbum, LibraryTrack } from '#lib/library/source.ts';
 import {
+	artistWhenDifferentIn,
 	cellOf,
+	clampWidth,
+	columnVars,
+	nudged,
+	numbered,
+	resized,
+	widthAt,
+	widthRange,
+	columnsIn,
 	coverFor,
 	defaultColumns,
 	fieldsFor,
@@ -128,7 +137,9 @@ describe('fit', () => {
 describe('template', () => {
 	it('lays the board out, names giving up width before they drop', () => {
 		expect(template(defaultColumns.order, 'columns')).toBe(
-			'20px 28px minmax(200px, 1fr) minmax(128px, 200px) 120px 84px 48px 104px 88px 44px 36px'
+			'20px 28px minmax(200px, 1fr) minmax(min(128px, var(--col-artist, 200px)), var(--col-artist, 200px)) ' +
+				'var(--col-genre, 120px) var(--col-rating, 84px) var(--col-plays, 48px) ' +
+				'var(--col-lastPlayed, 104px) var(--col-format, 88px) 44px 36px'
 		);
 		expect(template([], 'large')).toBe('24px 32px minmax(200px, 1fr) 56px 44px');
 	});
@@ -232,7 +243,7 @@ describe('the menu', () => {
 			{ id: 'artist', on: true },
 			{ id: 'genre', on: false }
 		]);
-		expect(list).toHaveLength(13);
+		expect(list).toHaveLength(14);
 	});
 
 	it('reorders the shown columns', () => {
@@ -261,5 +272,106 @@ describe('the menu', () => {
 	it('shows a column at the end, and hides one', () => {
 		expect(toggled(defaultColumns, 'year').order.at(-1)).toBe('year');
 		expect(toggled(defaultColumns, 'genre').order).not.toContain('genre');
+	});
+});
+
+describe('columnsIn', () => {
+	const order = ['genre', 'artist', 'album', 'rating'] as const;
+
+	it('shows the Library every column, and an album page all but Album', () => {
+		expect(columnsIn([...order], 'library')).toEqual(order);
+		expect(columnsIn([...order], 'album')).toEqual(['genre', 'artist', 'rating']);
+	});
+
+	it('keeps Artist and Album on in search, Album after Artist where the person has none', () => {
+		expect(columnsIn(['genre', 'artist', 'rating'], 'search')).toEqual([
+			'genre',
+			'artist',
+			'album',
+			'rating'
+		]);
+		expect(columnsIn(['rating'], 'search')).toEqual(['artist', 'album', 'rating']);
+		expect(columnsIn([...order], 'search')).toEqual(order);
+	});
+
+	it('reads one shared preference: an album page leaves out the album artist always', () => {
+		const pref = { order: [...order], artistWhenDifferent: false };
+		expect(artistWhenDifferentIn(pref, 'library')).toBe(false);
+		expect(artistWhenDifferentIn(pref, 'album')).toBe(true);
+		expect(artistWhenDifferentIn({ ...pref, artistWhenDifferent: true }, 'search')).toBe(false);
+	});
+});
+
+describe('the ReplayGain column', () => {
+	it('says the gain, and warns when there is none', () => {
+		expect(cellOf('gain', context({ track: track({ trackGain: -7.25 }) }))).toEqual({
+			look: 'fact',
+			text: '−7.3 dB'
+		});
+		expect(cellOf('gain', context())).toEqual({ look: 'fact', text: 'no RG', warn: true });
+		expect(fieldsFor(['gain'])).toEqual(['gain', 'shuffle']);
+	});
+
+	it('is off by default', () => {
+		expect(defaultColumns.order).not.toContain('gain');
+	});
+});
+
+describe('fit with a cover', () => {
+	it('fits fewer columns beside a cover than beside a number', () => {
+		const parts = { handle: false, cover: true, number: false };
+		expect(template([], 'columns', parts)).toBe('20px 40px minmax(200px, 1fr) 44px 36px');
+		expect(fit(['artist'], 600, 'columns', parts).shown).toEqual(['artist']);
+		expect(fit(['artist'], 540, 'columns', parts).shown).toEqual([]);
+	});
+});
+
+describe('column widths', () => {
+	it('keeps a dragged width within its column’s range: its label at least, never silly wide', () => {
+		expect(widthRange('genre')).toEqual({ min: 42, max: 360 });
+		expect(clampWidth('genre', 10)).toBe(42);
+		expect(clampWidth('genre', 2000)).toBe(360);
+		expect(clampWidth('plays', 20)).toBe(42);
+		expect(widthRange('heart')).toEqual({ min: 20, max: 48 });
+		expect(widthRange('rating').min).toBeGreaterThanOrEqual(76);
+		expect(clampWidth('artist', 230.4)).toBe(230);
+	});
+
+	it('takes a width up the step with the rest, kept at the base step', () => {
+		const pref = resized(defaultColumns, 'genre', 160);
+		expect(pref.widths).toEqual({ genre: 160 });
+		expect(widthAt('genre', pref.widths, 'columns')).toBe(160);
+		expect(widthAt('genre', pref.widths, 'large')).toBe(200);
+		expect(widthAt('rating', pref.widths, 'large')).toBe(110);
+		expect(columnVars(['genre', 'plays'], pref.widths, 'columns')).toBe(
+			'--col-genre: 160px; --col-plays: 48px'
+		);
+	});
+
+	it('resizes from the keyboard, 8 px a press and 16 with Shift', () => {
+		expect(nudged(120, 'ArrowRight', false)).toBe(128);
+		expect(nudged(120, 'ArrowLeft', true)).toBe(104);
+		expect(nudged(120, 'Enter', false)).toBe(120);
+	});
+
+	it('fits the columns to their dragged widths', () => {
+		const wide = resized(defaultColumns, 'genre', 360).widths;
+		expect(fit(['genre', 'rating'], 700, 'columns').shown).toEqual(['genre', 'rating']);
+		expect(fit(['genre', 'rating'], 700, 'columns', numbered, wide).shown).toEqual([]);
+	});
+
+	it('round-trips through the saved value, which may have none, and drops what it doesn’t know', () => {
+		const pref = resized(defaultColumns, 'artist', 240);
+		expect(savedColumns(JSON.parse(JSON.stringify(pref)) as ColumnsPref)).toEqual(pref);
+		expect(savedColumns({ order: ['genre'], artistWhenDifferent: true })).toEqual({
+			order: ['genre'],
+			artistWhenDifferent: true
+		});
+		const odd = { order: [], artistWhenDifferent: true, widths: { skips: 90, genre: 5 } };
+		expect(savedColumns(odd as unknown as ColumnsPref).widths).toEqual({ genre: 42 });
+	});
+
+	it('resets with the rest: the defaults have no widths', () => {
+		expect(defaultColumns.widths).toBeUndefined();
 	});
 });

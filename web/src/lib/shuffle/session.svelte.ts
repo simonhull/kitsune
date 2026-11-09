@@ -44,6 +44,11 @@ export interface UpNextItem {
 	artist: string;
 	/** The album of its first song, for its cover. */
 	album: AlbumEntry;
+	/** Its songs, in the order they play, and how long they last together. */
+	trackIds: string[];
+	durationMs: number;
+	/** In the player's queue already, rather than a pick still to queue. */
+	queued: boolean;
 	/** Why it came up, when the server has said. */
 	why?: ShuffleWhy;
 }
@@ -263,6 +268,8 @@ export class Shuffle {
 			const last = items.at(-1);
 			if (last?.key === unit) {
 				last.titles.push(track.title);
+				last.trackIds.push(track.id);
+				last.durationMs += track.durationMs;
 				continue;
 			}
 			const album = albumOf(queue, track);
@@ -271,6 +278,9 @@ export class Shuffle {
 				titles: [track.title],
 				artist: track.artists.at(0) ?? album.artist,
 				album,
+				trackIds: [track.id],
+				durationMs: track.durationMs,
+				queued: true,
 				why: this.#why.get(track.id)
 			});
 		}
@@ -284,10 +294,93 @@ export class Shuffle {
 				titles: pick.songs.map(({ title }) => title),
 				artist: first.artists.at(0) ?? '',
 				album: entryOf(first),
+				trackIds: pick.songs.map(({ id }) => id),
+				durationMs: pick.songs.reduce((sum, { durationMs }) => sum + durationMs, 0),
+				queued: false,
 				why: pick.why
 			});
 		}
 		return items.slice(0, upNextShown);
+	}
+
+	/** Takes songs out of what comes up, queued or still to queue, and keeps the queue topped up. */
+	remove(trackIds: readonly string[]): void {
+		this.#player.removeAhead(trackIds);
+		this.picks = this.picks.filter((pick) => !pick.songs.some(({ id }) => trackIds.includes(id)));
+		void this.topUp();
+	}
+
+	/**
+	 * Moves what comes up one place up or down. Within the queue it's the queue's order; within the
+	 * picks still to queue, theirs. Across the two, the pick is queued in the other's place, and the
+	 * other goes back to the picks, first.
+	 */
+	async move(key: string, by: -1 | 1): Promise<void> {
+		const items = this.upNext;
+		const at = items.findIndex((item) => item.key === key);
+		const other = items.at(at + by);
+		const item = items.at(at);
+		if (at < 0 || at + by < 0 || item === undefined || other === undefined) {
+			return;
+		}
+		const [upper, lower] = by < 0 ? [other, item] : [item, other];
+		if (upper.queued && lower.queued) {
+			const ahead = items.filter((each) => each.queued);
+			const swapped = ahead.flatMap((each) =>
+				each === upper ? lower.trackIds : each === lower ? upper.trackIds : each.trackIds
+			);
+			this.#player.reorderAhead(swapped);
+			return;
+		}
+		if (!upper.queued && !lower.queued) {
+			const from = this.picks.findIndex((pick) => pick.songs.at(0)?.id === upper.key);
+			const picks = [...this.picks];
+			const [a, b] = [picks[from], picks[from + 1]];
+			if (from < 0 || a === undefined || b === undefined) {
+				return;
+			}
+			picks.splice(from, 2, b, a);
+			this.picks = picks;
+			return;
+		}
+		// The last song queued and the first pick trade places.
+		const pick = this.picks.at(0);
+		const queue = this.#player.queue;
+		if (pick === undefined || queue === null) {
+			return;
+		}
+		const songs = await queuedLater(this.#host, pick.songs);
+		if (!this.active) {
+			return;
+		}
+		const back: ShufflePick = {
+			why: this.#why.get(upper.trackIds[0] ?? '') ?? pick.why,
+			songs: upper.trackIds.flatMap((id) => {
+				const track = queue.tracks.find((each) => each.id === id);
+				if (track === undefined) {
+					return [];
+				}
+				const album = albumOf(queue, track);
+				return [
+					{
+						id,
+						title: track.title,
+						artists: track.artists,
+						albumId: album.id,
+						album: album.title,
+						durationMs: track.durationMs,
+						artwork: album.artwork
+					}
+				];
+			})
+		};
+		this.#player.removeAhead(upper.trackIds);
+		for (const { track } of songs) {
+			this.#why.set(track.id, pick.why);
+			this.#unit.set(track.id, pick.songs.at(0)?.id ?? '');
+		}
+		this.#player.extendShuffle(this.ref, songs);
+		this.picks = [back, ...this.picks.slice(1)];
 	}
 }
 

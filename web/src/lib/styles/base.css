@@ -110,3 +110,37 @@ button {
 	animation-duration: 200ms;
 	animation-timing-function: var(--curve-morph);
 }
+
+/*
+ * A list of songs: what SongRow and its header are sized by, in every list (plan 047). From 2560
+ * they take one step up together (row 56, title 18, box 20), so a 4K screen reads like 1920.
+ */
+.song-list {
+	--song-row: 44px;
+	--song-cover: 40px;
+	--col-gap: 12px;
+	--row-pad: 14px;
+	--cell-type: 14px;
+	--star-type: 13px;
+	--box-size: 16px;
+	--more-size: 36px;
+	--head-row: 40px;
+	--head-type: 11px;
+}
+
+@media (min-width: 2560px) {
+	.song-list {
+		--song-row: 56px;
+		--song-cover: 52px;
+		--col-gap: 16px;
+		--row-pad: 18px;
+		--cell-type: 17px;
+		--star-type: 16px;
+		--box-size: 20px;
+		--more-size: 44px;
+		--head-row: 50px;
+		--head-type: 13px;
+		--type-body: 18px;
+		--type-mono: 15px;
+	}
+}

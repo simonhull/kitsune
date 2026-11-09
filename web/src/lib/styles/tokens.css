@@ -26,6 +26,8 @@
 	--text-secondary: #cbc4bc;
 	--text-meta: #a39b93;
 	--text-label: #8c857d;
+	/* An empty checkbox's edge: 3:1 against a row. */
+	--check-edge: rgb(255 255 255 / 40%);
 
 	/* The fox as words, icons, carets and rings: it has to read on the ground. Fills stay --fox. */
 	--fox-text: #f28c28;
@@ -92,6 +94,7 @@
 	--text-secondary: #3f3832;
 	--text-meta: #655c53;
 	--text-label: #6f665d;
+	--check-edge: rgb(22 18 14 / 55%);
 
 	--fox-text: #a64b00;
 	--fox-line: #c8640a;

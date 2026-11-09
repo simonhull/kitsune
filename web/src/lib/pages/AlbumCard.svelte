@@ -4,6 +4,7 @@
 	import type { AlbumEntry } from '#lib/library/source.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { morph } from '#lib/morph/registry.ts';
+	import { albumMenu } from './albumMenu.svelte.ts';
 	import CoverPlay from './CoverPlay.svelte';
 
 	interface Props {
@@ -18,8 +19,21 @@
 	}
 </script>
 
-<!-- The cover's play sits beside the link, not in it: a button can't live inside a link. -->
-<div class="card" data-morph-part="card" data-morph-key={`card:${album.id}`}>
+<!--
+	Right-click opens the album's own menu; where nothing hovers, a ⋯ on the cover does. The cover's
+	play sits beside the link, not in it: a button can't live inside a link.
+-->
+<div
+	class="card"
+	data-morph-part="card"
+	data-morph-key={`card:${album.id}`}
+	oncontextmenu={(event) => {
+		event.preventDefault();
+		albumMenu.open(album, event.clientX, event.clientY);
+	}}
+	role="group"
+	aria-label={album.title}
+>
 	<a
 		class="open"
 		onpointerenter={warm}
@@ -41,6 +55,23 @@
 		</span>
 	</a>
 	<CoverPlay {album} />
+	<button
+		type="button"
+		class="more"
+		aria-label={`More for ${album.title}`}
+		aria-haspopup="menu"
+		onclick={(event) => {
+			const { right, bottom } = event.currentTarget.getBoundingClientRect();
+			albumMenu.open(album, right - 300, bottom + 6);
+		}}
+		><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+			><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle
+				cx="19"
+				cy="12"
+				r="1.8"
+			></circle></svg
+		></button
+	>
 </div>
 
 <style>
@@ -99,5 +130,31 @@
 	.artist {
 		font-size: calc(14px * var(--step));
 		color: var(--text-meta);
+	}
+
+	/* Only where nothing hovers: a mouse has right-click. On the cover's corner, a finger's 44. */
+	.more {
+		display: none;
+		position: absolute;
+		top: 6px;
+		right: 6px;
+		width: var(--target);
+		height: var(--target);
+		place-items: center;
+		padding: 0;
+		border: 0;
+		border-radius: var(--radius-pill);
+		background: var(--glass-fill);
+		color: var(--text);
+	}
+
+	.more svg {
+		fill: currentColor;
+	}
+
+	@media (hover: none) {
+		.more {
+			display: grid;
+		}
 	}
 </style>

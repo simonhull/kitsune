@@ -1,6 +1,14 @@
 <script lang="ts">
 	import type { ColumnId } from '#lib/library/source.ts';
-	import { defaultColumns, menuList, moved, specOf, toggled } from './columns.ts';
+	import {
+		columnsIn,
+		defaultColumns,
+		menuList,
+		moved,
+		specOf,
+		toggled,
+		type ColumnsContext
+	} from './columns.ts';
 	import { columnsView } from './columnsView.svelte.ts';
 	import Floating from './Floating.svelte';
 
@@ -9,10 +17,20 @@
 		y: number;
 		/** The label right-clicked, offered first as "Hide <label>". */
 		hiding?: ColumnId | undefined;
+		/** Where it was opened: on an album page, Album is the page, so it says it shows elsewhere. */
+		context?: ColumnsContext;
 		onclose: (refocus: boolean) => void;
 	}
 
-	let { x, y, hiding, onclose }: Props = $props();
+	let { x, y, hiding, context = 'library', onclose }: Props = $props();
+	/** What this list leaves out of the person's columns, which still shows elsewhere. */
+	const elsewhere = $derived(
+		new Set(
+			menuList(columnsView.pref)
+				.map(({ id }) => id)
+				.filter((id) => !columnsIn([id], context).includes(id))
+		)
+	);
 
 	const pref = $derived(columnsView.pref);
 	const list = $derived(menuList(pref));
@@ -86,7 +104,7 @@
 		>
 		<div class="rule"></div>
 	{/if}
-	<p class="eyebrow">COLUMNS · DRAG TO REORDER</p>
+	<p class="eyebrow">YOUR SONG COLUMNS · DRAG TO REORDER</p>
 	{#each ['#', 'Title', 'Time'] as fixed (fixed)}
 		<div class="always">
 			<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"
@@ -99,7 +117,13 @@
 	{/each}
 	<div class="list" bind:this={listElement} role="group" aria-label="Choose and order the columns">
 		{#each list as { id, on }, index (id)}
-			<label class="column" class:on class:dragging={dragging === id} data-column={id}>
+			<label
+				class="column"
+				class:on
+				class:dragging={dragging === id}
+				class:elsewhere={elsewhere.has(id)}
+				data-column={id}
+			>
 				<input
 					type="checkbox"
 					role="menuitemcheckbox"
@@ -115,6 +139,7 @@
 					}}
 				/>
 				<span class="name">{specOf(id).label}</span>
+				{#if elsewhere.has(id)}<span class="note">LIBRARY ONLY</span>{/if}
 				<span
 					class="handle"
 					aria-hidden="true"
@@ -161,6 +186,7 @@
 			columnsView.set(defaultColumns);
 		}}>Reset to defaults</button
 	>
+	<p class="eyebrow shared">THE SAME IN THE LIBRARY AND ON EVERY ALBUM</p>
 </Floating>
 
 <style>
@@ -196,6 +222,15 @@
 		font-size: 11px;
 		letter-spacing: 0.08em;
 		color: var(--text-meta);
+	}
+
+	.shared {
+		padding: 8px 12px 4px;
+	}
+
+	.elsewhere .name,
+	.elsewhere .note {
+		color: var(--text-label);
 	}
 
 	.always {

@@ -9,7 +9,7 @@
 	import { queryIn, searchFor } from '#lib/library/searchUrl.ts';
 	import AlbumCard from '#lib/pages/AlbumCard.svelte';
 	import TopResult from '#lib/pages/TopResult.svelte';
-	import TrackHits from '#lib/pages/TrackHits.svelte';
+	import SearchSongs from '#lib/pages/SearchSongs.svelte';
 
 	/** The URL waits this long on a word in progress, so history isn't a key-by-key record. */
 	const debounceMs = 180;
@@ -174,7 +174,7 @@
 			{#if found.tracks.length > 0}
 				<section class="wide" aria-labelledby="found-tracks">
 					<h2 id="found-tracks">Tracks</h2>
-					<TrackHits tracks={found.tracks} />
+					<SearchSongs tracks={found.tracks} />
 				</section>
 			{/if}
 		</div>

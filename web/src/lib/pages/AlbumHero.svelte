@@ -13,6 +13,7 @@
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsShown from '#lib/shell/StarsShown.svelte';
+	import { albumMenu } from './albumMenu.svelte.ts';
 	import TagFields from './TagFields.svelte';
 	import type { TagSession } from './tagEdits.svelte.ts';
 
@@ -33,8 +34,6 @@
 		picking?: { picked: number; of: number } | undefined;
 		/** Goes from the album page's editor to many tracks at once. */
 		many?: (() => void) | undefined;
-		/** Finds the album's release on MusicBrainz. Left out for anyone who can't edit. */
-		match?: (() => void) | undefined;
 	}
 
 	let {
@@ -46,8 +45,7 @@
 		session,
 		eyebrow = $bindable(),
 		picking,
-		many,
-		match
+		many
 	}: Props = $props();
 
 	/** Editing of either kind: the page draws up the same way for both. */
@@ -168,9 +166,21 @@
 						onclick={edit}>Edit tags</button
 					>
 				{/if}
-				{#if match !== undefined}
-					<button type="button" class="ghost" disabled={!playable} onclick={match}
-						>Find matches</button
+				{#if entry !== undefined}
+					{@const held = entry}
+					<button
+						type="button"
+						class="ghost round"
+						aria-label={`More for ${held.title}`}
+						aria-haspopup="menu"
+						onclick={(event) => {
+							const { left, bottom } = event.currentTarget.getBoundingClientRect();
+							albumMenu.open(held, left, bottom + 6);
+						}}
+						><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+							><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"
+							></circle><circle cx="19" cy="12" r="1.8"></circle></svg
+						></button
 					>
 				{/if}
 				{#if stars !== null}
@@ -402,6 +412,17 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+	}
+
+	.ghost.round {
+		width: var(--target);
+		padding: 0;
+	}
+
+	.round svg {
+		width: calc(18px * var(--step));
+		height: calc(18px * var(--step));
+		fill: currentColor;
 	}
 
 	.ghost:disabled {

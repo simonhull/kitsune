@@ -284,6 +284,8 @@ export interface LibraryTrack {
 	/** The caller's. */
 	plays?: number;
 	lastPlayedAt?: string;
+	/** Its ReplayGain, in dB. Absent when the file has none. */
+	trackGain?: number;
 	/** The caller's shuffle rules on it. */
 	shuffle?: ShuffleMark;
 }
@@ -386,6 +388,7 @@ export type IndexField =
 	| 'added'
 	| 'plays'
 	| 'lastPlayed'
+	| 'gain'
 	| 'shuffle';
 
 /** The preferences a person keeps on the server, by key, with what each holds. */
@@ -420,13 +423,16 @@ export type ColumnId =
 	| 'added'
 	| 'composer'
 	| 'format'
-	| 'bitrate';
+	| 'bitrate'
+	| 'gain';
 
 /** `library.columns`: the columns shown, in their order, and the Artist switch. */
 export interface ColumnsPref {
 	order: ColumnId[];
 	/** Leave Artist empty where the track's artists are the album's. */
 	artistWhenDifferent: boolean;
+	/** The widths columns were dragged to, at the base size step. One not named has its default. */
+	widths?: Partial<Record<ColumnId, number>>;
 }
 
 export interface LibraryAlbum {

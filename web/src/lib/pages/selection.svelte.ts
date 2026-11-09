@@ -122,3 +122,23 @@ export class Selection {
 
 /** The one selection on the Library list. It outlives the page, as the list's place does. */
 export const selection = new Selection();
+
+/**
+ * The selection of the song list on screen, if there is one: while it holds anything, its bar takes
+ * the player's place. A page with a song list sets it, and lets it go when it leaves.
+ */
+class OnScreen {
+	current = $state.raw<Selection | null>(null);
+
+	/** Says `list` is the one on screen, until the returned function lets it go. */
+	show(list: Selection): () => void {
+		this.current = list;
+		return () => {
+			if (this.current === list) {
+				this.current = null;
+			}
+		};
+	}
+}
+
+export const onScreen = new OnScreen();

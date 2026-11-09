@@ -14,11 +14,12 @@
 	import { morphsKey, startMorphs } from '#lib/morph/engine.ts';
 	import Hud from '#lib/morph/Hud.svelte';
 	import { watchInput } from '#lib/morph/journey.ts';
+	import AlbumMenu from '#lib/pages/AlbumMenu.svelte';
 	import { albumsView } from '#lib/pages/albumsView.svelte.ts';
 	import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import { libraryView } from '#lib/pages/libraryView.svelte.ts';
-	import { selection } from '#lib/pages/selection.svelte.ts';
+	import { onScreen, selection } from '#lib/pages/selection.svelte.ts';
 	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
 	import MatchSheet from '#lib/matching/MatchSheet.svelte';
@@ -181,10 +182,11 @@
 		<PlayerIsland
 			playing={library.playing}
 			expanded={onNowPlaying}
-			away={selection.any && routeId === '/library' && bulkEdits.current === null}
+			away={onScreen.current?.any === true && bulkEdits.current === null}
 		/>
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
+	<AlbumMenu />
 	{#if library.admin && !atDoor}<MatchSheet />{/if}
 	{#if import.meta.env.DEV}<Hud />{/if}
 </div>
