@@ -95,3 +95,37 @@ export async function albumTracks(page: Page, id: string): Promise<string[]> {
 	const album = (await response.json()) as { tracks: { id: string }[] };
 	return album.tracks.map((track) => track.id);
 }
+
+/**
+ * Waits for the page to come to rest after a move: nothing left in flight between the pages, no
+ * element still lifted onto a layer of its own for its arrival, and no CSS animation that ends
+ * still running, then one frame more for what landing repaints. A press made in mid-flight would
+ * share the machine with the landing, and time the move as much as the press.
+ */
+export async function atRest(page: Page): Promise<void> {
+	await page.waitForFunction(
+		() =>
+			document.querySelector('.ghost-layer, .morph-layer') !== null &&
+			document.querySelector('.ghost-layer > *, .morph-layer > *') === null &&
+			document.querySelector('[style*="will-change"]') === null &&
+			document
+				.getAnimations()
+				.every(
+					(animation) =>
+						animation.playState !== 'running' ||
+						animation.effect?.getComputedTiming().endTime === Infinity
+				),
+		undefined,
+		{ polling: 'raf' }
+	);
+	await page.evaluate(
+		() =>
+			new Promise<void>((done) => {
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => {
+						done();
+					});
+				});
+			})
+	);
+}
