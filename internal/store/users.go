@@ -137,3 +137,60 @@ func (s *Store) SetPasswordHash(ctx context.Context, id int64, hash string) erro
 	}
 	return nil
 }
+
+// SetPassword replaces a user's password hash and ends their sessions, in one
+// transaction, so no session made with the old password outlives it. The
+// session whose token hash is keep stays; a nil keep ends them all. It returns
+// an error wrapping [ErrNotFound] if no user has id.
+func (s *Store) SetPassword(ctx context.Context, id int64, hash string, keep []byte) error {
+	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+		n, err := q.SetPasswordHash(ctx, sqlcdb.SetPasswordHashParams{PasswordHash: hash, ID: id})
+		if err != nil {
+			return fmt.Errorf("set password hash: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("user %d: %w", id, ErrNotFound)
+		}
+		if keep == nil {
+			_, err = q.DeleteSessionsOf(ctx, id)
+		} else {
+			_, err = q.DeleteOtherSessionsOf(ctx, sqlcdb.DeleteOtherSessionsOfParams{UserID: id, TokenHash: keep})
+		}
+		if err != nil {
+			return fmt.Errorf("end sessions: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("set password: %w", err)
+	}
+	return nil
+}
+
+// Account is a user with how they have been signing in.
+type Account struct {
+	User     User      // Without its password hash.
+	LastSeen time.Time // The newest live session's last use; zero with none.
+	Sessions int       // Live sessions.
+}
+
+// Users returns every user by name, without their password hashes, with
+// their sessions that are live at now.
+func (s *Store) Users(ctx context.Context, now time.Time) ([]Account, error) {
+	rows, err := s.rq.ListUsers(ctx, now.UnixMilli())
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	accounts := make([]Account, 0, len(rows))
+	for _, r := range rows {
+		a := Account{
+			User:     User{ID: r.ID, Name: r.Name, Role: Role(r.Role), CreatedAt: time.UnixMilli(r.CreatedAt).UTC()},
+			Sessions: int(r.Sessions),
+		}
+		if r.Sessions > 0 {
+			a.LastSeen = time.UnixMilli(r.LastSeen).UTC()
+		}
+		accounts = append(accounts, a)
+	}
+	return accounts, nil
+}

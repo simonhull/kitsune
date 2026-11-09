@@ -108,6 +108,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteMissingBeforeStmt, err = db.PrepareContext(ctx, deleteMissingBefore); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteMissingBefore: %w", err)
 	}
+	if q.deleteOtherSessionsOfStmt, err = db.PrepareContext(ctx, deleteOtherSessionsOf); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteOtherSessionsOf: %w", err)
+	}
 	if q.deleteRunStmt, err = db.PrepareContext(ctx, deleteRun); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteRun: %w", err)
 	}
@@ -116,6 +119,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteSessionStmt, err = db.PrepareContext(ctx, deleteSession); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSession: %w", err)
+	}
+	if q.deleteSessionsOfStmt, err = db.PrepareContext(ctx, deleteSessionsOf); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteSessionsOf: %w", err)
 	}
 	if q.deleteSettingStmt, err = db.PrepareContext(ctx, deleteSetting); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSetting: %w", err)
@@ -377,6 +383,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTrackRowIDsStmt, err = db.PrepareContext(ctx, listTrackRowIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackRowIDs: %w", err)
+	}
+	if q.listUsersStmt, err = db.PrepareContext(ctx, listUsers); err != nil {
+		return nil, fmt.Errorf("error preparing query ListUsers: %w", err)
 	}
 	if q.listWarnedTracksStmt, err = db.PrepareContext(ctx, listWarnedTracks); err != nil {
 		return nil, fmt.Errorf("error preparing query ListWarnedTracks: %w", err)
@@ -673,6 +682,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteMissingBeforeStmt: %w", cerr)
 		}
 	}
+	if q.deleteOtherSessionsOfStmt != nil {
+		if cerr := q.deleteOtherSessionsOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteOtherSessionsOfStmt: %w", cerr)
+		}
+	}
 	if q.deleteRunStmt != nil {
 		if cerr := q.deleteRunStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteRunStmt: %w", cerr)
@@ -686,6 +700,11 @@ func (q *Queries) Close() error {
 	if q.deleteSessionStmt != nil {
 		if cerr := q.deleteSessionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteSessionStmt: %w", cerr)
+		}
+	}
+	if q.deleteSessionsOfStmt != nil {
+		if cerr := q.deleteSessionsOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteSessionsOfStmt: %w", cerr)
 		}
 	}
 	if q.deleteSettingStmt != nil {
@@ -1123,6 +1142,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listTrackRowIDsStmt: %w", cerr)
 		}
 	}
+	if q.listUsersStmt != nil {
+		if cerr := q.listUsersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listUsersStmt: %w", cerr)
+		}
+	}
 	if q.listWarnedTracksStmt != nil {
 		if cerr := q.listWarnedTracksStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listWarnedTracksStmt: %w", cerr)
@@ -1440,9 +1464,11 @@ type Queries struct {
 	deleteLastfmAccountStmt          *sql.Stmt
 	deleteLastfmItemStmt             *sql.Stmt
 	deleteMissingBeforeStmt          *sql.Stmt
+	deleteOtherSessionsOfStmt        *sql.Stmt
 	deleteRunStmt                    *sql.Stmt
 	deleteScanIssueStmt              *sql.Stmt
 	deleteSessionStmt                *sql.Stmt
+	deleteSessionsOfStmt             *sql.Stmt
 	deleteSettingStmt                *sql.Stmt
 	deleteTrackArtistsStmt           *sql.Stmt
 	deleteTrackHeartStmt             *sql.Stmt
@@ -1530,6 +1556,7 @@ type Queries struct {
 	listTrackHitsStmt                *sql.Stmt
 	listTrackRatingsStmt             *sql.Stmt
 	listTrackRowIDsStmt              *sql.Stmt
+	listUsersStmt                    *sql.Stmt
 	listWarnedTracksStmt             *sql.Stmt
 	liveTrackFactsStmt               *sql.Stmt
 	loudnessCountsStmt               *sql.Stmt
@@ -1614,9 +1641,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteLastfmAccountStmt:          q.deleteLastfmAccountStmt,
 		deleteLastfmItemStmt:             q.deleteLastfmItemStmt,
 		deleteMissingBeforeStmt:          q.deleteMissingBeforeStmt,
+		deleteOtherSessionsOfStmt:        q.deleteOtherSessionsOfStmt,
 		deleteRunStmt:                    q.deleteRunStmt,
 		deleteScanIssueStmt:              q.deleteScanIssueStmt,
 		deleteSessionStmt:                q.deleteSessionStmt,
+		deleteSessionsOfStmt:             q.deleteSessionsOfStmt,
 		deleteSettingStmt:                q.deleteSettingStmt,
 		deleteTrackArtistsStmt:           q.deleteTrackArtistsStmt,
 		deleteTrackHeartStmt:             q.deleteTrackHeartStmt,
@@ -1704,6 +1733,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listTrackHitsStmt:                q.listTrackHitsStmt,
 		listTrackRatingsStmt:             q.listTrackRatingsStmt,
 		listTrackRowIDsStmt:              q.listTrackRowIDsStmt,
+		listUsersStmt:                    q.listUsersStmt,
 		listWarnedTracksStmt:             q.listWarnedTracksStmt,
 		liveTrackFactsStmt:               q.liveTrackFactsStmt,
 		loudnessCountsStmt:               q.loudnessCountsStmt,

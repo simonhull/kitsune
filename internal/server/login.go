@@ -1,9 +1,7 @@
 package server
 
 import (
-	"encoding/json/v2"
 	"errors"
-	"mime"
 	"net/http"
 	"strconv"
 	"time"
@@ -59,9 +57,14 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.limiter.succeeded(nk, ik)
+	s.writeSession(w, r, &res, req.Cookie)
+}
 
+// writeSession answers with a new session: in the kitsune_session cookie when
+// cookie is set, else as a token in the body.
+func (s *Server) writeSession(w http.ResponseWriter, r *http.Request, res *auth.LoginResult, cookie bool) {
 	session := api.Session{ExpiresAt: res.ExpiresAt, User: toAPIUser(&res.User)}
-	if req.Cookie {
+	if cookie {
 		s.setSessionCookie(w, r, res.Token)
 	} else {
 		session.Token = res.Token
@@ -77,27 +80,26 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 // attacker's account.
 func decodeLogin(w http.ResponseWriter, r *http.Request) (api.LoginRequest, bool) {
 	var req api.LoginRequest
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != api.JSONMediaType {
-		return req, false
-	}
-	body := http.MaxBytesReader(w, r.Body, maxLoginBody)
-	if err = json.UnmarshalRead(body, &req, json.RejectUnknownMembers(true)); err != nil {
-		return req, false
-	}
-	return req, req.Name != "" && req.Password != ""
+	ok := decodeCredentials(w, r, &req)
+	return req, ok && req.Name != "" && req.Password != ""
 }
 
 // checkLimits counts a login attempt on the keys and, if one is blocked,
 // writes the 429 problem and reports false.
 func (s *Server) checkLimits(w http.ResponseWriter, r *http.Request, keys ...string) bool {
-	wait, ok := s.limiter.attempt(keys, s.now())
+	return s.admit(s.limiter, w, r, "too many failed logins; retry later", keys...)
+}
+
+// admit counts an attempt on the keys in l and, if one is blocked, writes the
+// 429 problem with detail and reports false.
+func (s *Server) admit(l *loginLimiter, w http.ResponseWriter, r *http.Request, detail string, keys ...string) bool {
+	wait, ok := l.attempt(keys, s.now())
 	if ok {
 		return true
 	}
 	seconds := int((wait + time.Second - 1) / time.Second)
 	w.Header().Set("Retry-After", strconv.Itoa(seconds))
-	writeProblem(w, r, http.StatusTooManyRequests, "too many failed logins; retry later")
+	writeProblem(w, r, http.StatusTooManyRequests, detail)
 	return false
 }
 
