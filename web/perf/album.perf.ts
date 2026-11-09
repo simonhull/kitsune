@@ -1,5 +1,5 @@
 import { runs, test } from './fixture.ts';
-import { albumPage, albumTracks, nextLoudAlbum, openLibrary, playing } from './pages.ts';
+import { albumPage, albumTracks, atRest, nextLoudAlbum, openLibrary, playing } from './pages.ts';
 
 test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
 	// Hearts and stars on a song are its Heart and Rating columns: the person's, here with Heart on.
@@ -31,6 +31,8 @@ test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
 		const art = page.locator(`main a.art[href="/album/${album.id}"]`);
 		await art.scrollIntoViewIfNeeded();
 		await perf.time(open, 'click', albumPage(album.id), () => art.click());
+		// Someone looks before they press: the page has landed, and only the press is timed.
+		await atRest(page);
 
 		const rows = page.locator('main section[aria-label="Tracks"] .row');
 		const thirdRow = `main section[aria-label="Tracks"] .row[data-track="${third}"]`;
