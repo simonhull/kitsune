@@ -95,6 +95,9 @@ linters:
       # Commands talk to the terminal.
       - path: ^cmd/
         linters: [forbidigo]
+      # MusicBrainz's JSON is kebab-case: its tags name its members, not the API's.
+      - path: ^internal/matching/(mbjson\.go|musicbrainztest/)
+        linters: [tagliatelle]
 
 issues:
   max-issues-per-linter: 0
