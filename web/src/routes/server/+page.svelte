@@ -6,6 +6,7 @@
 	import ScanCard from '#lib/pages/ScanCard.svelte';
 	import FolderPicker from '#lib/pages/FolderPicker.svelte';
 	import SettingsSection from '#lib/pages/SettingsSection.svelte';
+	import PeopleCard from '#lib/pages/PeopleCard.svelte';
 	import {
 		afterSave,
 		changeFor,
@@ -232,6 +233,9 @@
 		</p>
 	{:else if settings !== null && draft !== null}
 		{@const s = settings.settings}
+		<div class="people">
+			<PeopleCard />
+		</div>
 		<div class="sections">
 			<SettingsSection
 				id="library"
@@ -653,7 +657,15 @@
 		cursor: pointer;
 	}
 
+	/* People spans both columns, under the intro and the settings beside it. */
+	.people {
+		grid-column: 1 / -1;
+		min-width: 0;
+	}
+
 	.sections {
+		grid-column: 2;
+		grid-row: 1;
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 32px;
@@ -1048,6 +1060,11 @@
 		.server {
 			grid-template-columns: minmax(0, 1fr);
 			padding-top: 112px;
+		}
+
+		.sections {
+			grid-column: auto;
+			grid-row: auto;
 		}
 
 		.intro dl {

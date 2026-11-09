@@ -57,6 +57,7 @@ import {
 	type ServerSettings,
 	type SettingsChange,
 	type SetupStatus,
+	type Account,
 	type ListenReport,
 	type ShufflePage,
 	type ShuffleRules,
@@ -503,6 +504,33 @@ export class Library {
 		// Logging in names the user; only `/me` says what they may do.
 		this.user = await this.#source.me();
 		this.#session = Promise.resolve('signed-in');
+	}
+
+	/** Asks for a reset code, which lands in the server's log. Rejects with `ResetError`. */
+	requestReset(name: string): Promise<void> {
+		return this.#source.requestReset(name);
+	}
+
+	/** Sets a new password with a reset code and signs in, as {@link Library.login} does. Rejects with `ResetError`. */
+	async confirmReset(name: string, code: string, password: string): Promise<void> {
+		await this.#source.confirmReset(name, code, password);
+		this.user = await this.#source.me();
+		this.#session = Promise.resolve('signed-in');
+	}
+
+	/** Changes the caller's password: this browser stays signed in. Rejects with `PasswordError`. */
+	changePassword(current: string, password: string): Promise<void> {
+		return this.#source.changePassword(current, password);
+	}
+
+	/** Every account, for an administrator's People card. */
+	accounts(): Promise<Account[]> {
+		return this.#source.accounts();
+	}
+
+	/** Sets someone else's password and signs them out everywhere. Rejects with `PasswordError`. */
+	setPassword(userId: number, password: string): Promise<void> {
+		return this.#source.setPassword(userId, password);
 	}
 
 	/**

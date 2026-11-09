@@ -814,12 +814,13 @@ func TestIssueFor(t *testing.T) {
 		{"permission", os.ErrPermission, store.IssueUnreadable, retrySize},
 		{"anything else", errors.New("boom"), store.IssueUnreadable, retrySize},
 	}
+	const reader = "v1.2.3"
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			is := issueFor(j, tt.err)
-			if is.Kind != tt.kind || is.Size != tt.wantSize || is.Message != tt.err.Error() {
-				t.Errorf("issue = %+v, want kind %s, size %d, message %q", is, tt.kind, tt.wantSize, tt.err)
+			is := issueFor(j, tt.err, reader)
+			if is.Kind != tt.kind || is.Size != tt.wantSize || is.Message != tt.err.Error() || is.Reader != reader {
+				t.Errorf("issue = %+v, want kind %s, size %d, message %q, reader %s", is, tt.kind, tt.wantSize, tt.err, reader)
 			}
 			if is.Root != "/r" || is.RelPath != aFLAC || !is.MTime.Equal(j.MTime) {
 				t.Errorf("issue = %+v, want the job's location and mtime", is)

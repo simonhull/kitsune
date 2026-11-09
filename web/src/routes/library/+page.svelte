@@ -77,7 +77,7 @@
 	const artist = $derived(layout.artists.at(view.here)?.artist);
 	const next = $derived(layout.artists.at(view.here + 1)?.artist);
 	const letter = $derived(artist === undefined ? undefined : letterOf(artist.sortName));
-	const letters = $derived(railLetters(layout, view.stacked));
+	const letters = $derived(railLetters(layout));
 	const filtered = $derived(view.filter !== 'everything');
 	/** Under a filter, the letters it leaves empty: grey, and a jump to one goes on to the next. */
 	const quiet = $derived(

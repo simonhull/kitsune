@@ -91,7 +91,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   a route wouldn't send: a new kind gets a schema in the contract, a case in `events_test.go`, and a
   place in `TestNoEventHoldsASecret`. The handler sets its own write deadline, since the server has none.
 - Nothing the server writes (bodies, headers, logs) contains a password or token, except
-  login's response and `Set-Cookie`, and the setup code's one log line (see Operations).
+  login's and reset confirmation's responses and `Set-Cookie`, and the setup code's and each reset
+  code's one log line (see Operations).
 - `GET /setup` and `POST /setup` are public. They make the first account, an administrator, while
   there is none; once one exists (`users add` included) `needed` is false for good and `POST` is 409.
   "Your network" is `isLocal` (loopback, private, link-local, `100.64.0.0/10`) on `clientIP`; from
@@ -192,6 +193,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Tests hash with cheap parameters (`auth.Params{Time: 1, MemoryKiB: 64, Threads: 1}`);
   only benchmarks use `auth.DefaultParams()`.
 - Changing `DefaultParams` is safe: hashes carry their parameters, and logins rehash.
+- A new password goes through `Service.SetPassword`, which ends sessions in the same write as the hash,
+  as its `SignOut` says: `POST /me/password` keeps the caller's session and ends the others (the
+  current password is checked, and wrong ones count against the login limiter); a reset and
+  `users passwd` end them all (`-keep-sessions` keeps them); an administrator's `POST
+  /admin/users/{id}/password` ends them all and refuses the caller's own account.
+- `kitsune-server users passwd NAME` sets a password from the command line, while a server runs
+  on the database, and `users list` prints names and roles. Like `users add`, both refuse a database
+  with migrations pending and never create one. In the image: `docker exec -it kitsune
+  /kitsune-server users passwd NAME`.
 
 ## Library
 - `internal/library` turns audiometa files into store writes. Identity keys always go
@@ -229,7 +239,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   the one list of types), or one past the watch limit (ENOSPC on add). `GET /admin/settings` says
   each folder's mode and why.
 - Unreadable files are retried every scan (`retrySize`); corrupted and unsupported ones
-  wait for the file to change.
+  wait for the file to change, or for another tag reader: each such issue keeps the audiometa
+  version that judged it (`scan_issues.reader`, `Options.Reader`), and a scan reads the file again
+  once its own differs.
+- WAV and AIFF keep tags in an ID3v2 chunk and in their own text (LIST/INFO; NAME, AUTH, ANNO).
+  A field's `native` keys are mirrors of its ID3 keys, read after them and kept in step where they
+  exist; audiometa mirrors the typed fields itself. The ID3 version, which decides the family, comes
+  from the chunk (`chunks.go`).
 - One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it
   gets `ErrBusy`; a scan that meets an edit waits. Readers never take it. The fingerprint pass holds
   it for one batch at a time (32 files or about 2 s), so an edit or a scan waits out a batch, and
@@ -303,6 +319,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   once, in the startup WARN line: the one secret ever written to a log, on purpose, since whoever
   reads the log runs the server. The code lives in memory only (`server.Config.SetupCode`) and never
   appears in a response.
+- A forgotten password is reset with a code from the log, since Kitsune sends no email.
+  `POST /auth/reset` answers 202 whether or not the name exists; for a real one `auth` makes a code
+  (`auth.NewCode`, the setup code's shape) and the server logs it once, in a WARN line naming the
+  user: the only other secret ever written to a log, on purpose. Codes live in `auth.Service`'s
+  memory, one per person (a new request replaces the old), for `auth.ResetCodeTTL` (15 minutes), and
+  a restart voids them. Requests are limited per IP and per name on their own limiter, so asking
+  never locks anyone out. `POST /auth/reset/confirm` compares the normalized code in constant time;
+  wrong codes count against the login limiter, and a wrong, expired or used code and an unknown name
+  are one 403. Success ends every session of that person and signs them in, as login does.
 - `KITSUNE_LASTFM_URL`, read only in `cmd/`, points the server at a stand-in Last.fm (its API at
   `/2.0/`, its approval page at `/api/auth/`) for manual checks; production never sets it. Tests use
   `internal/lastfm/lastfmtest` and nothing ever talks to the real Last.fm.

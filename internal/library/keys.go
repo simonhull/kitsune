@@ -25,8 +25,10 @@ func MatchKey(s string) string {
 
 // Raw tag names differ by format but never collide across formats: Vorbis keys
 // are upper-case words, ID3 keys are four-letter frame IDs or upper-cased TXXX
-// descriptions, and M4A keys are atom names or upper-cased freeform names. Each
-// field therefore has one candidate list for every format, tried in order.
+// descriptions, and M4A keys are atom names or upper-cased freeform names. A
+// WAV or AIFF file adds its native text after its ID3 frames: LIST/INFO IDs
+// ("IGNR") and AIFF chunk IDs ("NAME"). Each field therefore has one candidate
+// list for every format, tried in order.
 // TestRawKeysPerFormat checks every name against real files written by audiometa.
 //
 //nolint:gochecknoglobals // Fixed lookup tables, never written.
@@ -41,8 +43,8 @@ var (
 	keysCompilation     = []string{"COMPILATION", "TCMP", "cpil"}
 	keysAlbumMBID       = []string{"MUSICBRAINZ_ALBUMID", "MUSICBRAINZ ALBUM ID"}
 	keysTrackMBID       = []string{"MUSICBRAINZ_TRACKID", "MUSICBRAINZ TRACK ID"}
-	keysGenre           = []string{"GENRE", "TCON", "\xA9gen"}
-	keysDate            = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day"}
+	keysGenre           = []string{"GENRE", "TCON", "\xA9gen", "IGNR"}
+	keysDate            = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day", keyICRD}
 	keysOriginalDate    = []string{"TDOR", "TORY", "ORIGINALDATE"}
 	// keysDiscSubtitle hold a disc's name. ID3v2.4 has a frame for it, which
 	// ID3v2.3 lacks: there, and in Vorbis and M4A, it is a DISCSUBTITLE text.

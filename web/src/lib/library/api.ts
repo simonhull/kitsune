@@ -3,6 +3,8 @@ import {
 	ArtistNotFoundError,
 	EditError,
 	LoginError,
+	PasswordError,
+	ResetError,
 	ServerError,
 	SettingsError,
 	SetupError,
@@ -24,6 +26,9 @@ import {
 	type Listening,
 	type LibrarySource,
 	type LoginFailure,
+	type PasswordFailure,
+	type ResetFailure,
+	type Account,
 	type MarkKind,
 	type Me,
 	type ListenReport,
@@ -109,6 +114,42 @@ function tagsFailureOf({ status }: Response): EditFailure {
 			return { kind: 'gone' };
 		case 409:
 			return { kind: 'missing' };
+	}
+	return { kind: 'unavailable' };
+}
+
+/** Whether a 400 is the password rule's, which the auth service words as `password too …`. */
+async function passwordRule(response: Response): Promise<boolean> {
+	const { detail = '' } = ((await response.json().catch(() => null)) ?? {}) as { detail?: string };
+	return detail.startsWith('password');
+}
+
+/** Why a reset was refused. A stale code and a wrong one are the same 403, by design. */
+async function resetFailureOf(response: Response): Promise<ResetFailure> {
+	switch (response.status) {
+		case 403:
+			return { kind: 'code' };
+		case 429:
+			return { kind: 'throttled', retryAfterSeconds: retrySeconds(response) };
+		case 400:
+			if (await passwordRule(response)) {
+				return { kind: 'password' };
+			}
+	}
+	return { kind: 'unavailable' };
+}
+
+/** Why a password wasn't changed or set. */
+async function passwordFailureOf(response: Response): Promise<PasswordFailure> {
+	switch (response.status) {
+		case 403:
+			return { kind: 'current' };
+		case 429:
+			return { kind: 'throttled', retryAfterSeconds: retrySeconds(response) };
+		case 400:
+			if (await passwordRule(response)) {
+				return { kind: 'password' };
+			}
 	}
 	return { kind: 'unavailable' };
 }
@@ -311,6 +352,84 @@ export function createApiSource({
 			}
 			const { user } = (await response.json()) as { user: User };
 			return user;
+		},
+
+		async requestReset(name) {
+			let response: Response;
+			try {
+				response = await call('/auth/reset', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ name })
+				});
+			} catch {
+				throw new ResetError({ kind: 'unavailable' });
+			}
+			if (!response.ok) {
+				throw new ResetError(await resetFailureOf(response));
+			}
+		},
+
+		async confirmReset(name, code, password) {
+			let response: Response;
+			try {
+				response = await call('/auth/reset/confirm', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ name, code, new: password, cookie: true })
+				});
+			} catch {
+				throw new ResetError({ kind: 'unavailable' });
+			}
+			if (!response.ok) {
+				throw new ResetError(await resetFailureOf(response));
+			}
+			const { user } = (await response.json()) as { user: User };
+			return user;
+		},
+
+		async changePassword(current, password) {
+			let response: Response;
+			try {
+				response = await call('/me/password', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ current, new: password })
+				});
+			} catch {
+				throw new PasswordError({ kind: 'unavailable' });
+			}
+			if (response.status === 401) {
+				onUnauthorized();
+				throw new UnauthorizedError();
+			}
+			if (!response.ok) {
+				throw new PasswordError(await passwordFailureOf(response));
+			}
+		},
+
+		accounts: async () => (await read<{ users: Account[] }>('/admin/users')).users,
+
+		async setPassword(userId, password) {
+			let response: Response;
+			try {
+				response = await call(`/admin/users/${String(userId)}/password`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ new: password })
+				});
+			} catch {
+				throw new PasswordError({ kind: 'unavailable' });
+			}
+			if (response.status === 401) {
+				onUnauthorized();
+				throw new UnauthorizedError();
+			}
+			if (!response.ok) {
+				// A 403 here is never a current password: there isn't one to get wrong.
+				const failure = await passwordFailureOf(response);
+				throw new PasswordError(failure.kind === 'current' ? { kind: 'unavailable' } : failure);
+			}
 		},
 
 		logout: () => read<undefined>('/auth/logout', { method: 'POST' }),

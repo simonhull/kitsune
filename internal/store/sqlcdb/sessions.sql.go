@@ -47,6 +47,23 @@ func (q *Queries) DeleteExpiredSessions(ctx context.Context, expiresAt int64) (i
 	return result.RowsAffected()
 }
 
+const deleteOtherSessionsOf = `-- name: DeleteOtherSessionsOf :execrows
+DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?
+`
+
+type DeleteOtherSessionsOfParams struct {
+	UserID    int64
+	TokenHash []byte
+}
+
+func (q *Queries) DeleteOtherSessionsOf(ctx context.Context, arg DeleteOtherSessionsOfParams) (int64, error) {
+	result, err := q.exec(ctx, q.deleteOtherSessionsOfStmt, deleteOtherSessionsOf, arg.UserID, arg.TokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteSession = `-- name: DeleteSession :exec
 DELETE FROM sessions WHERE token_hash = ?
 `
@@ -54,6 +71,18 @@ DELETE FROM sessions WHERE token_hash = ?
 func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	_, err := q.exec(ctx, q.deleteSessionStmt, deleteSession, tokenHash)
 	return err
+}
+
+const deleteSessionsOf = `-- name: DeleteSessionsOf :execrows
+DELETE FROM sessions WHERE user_id = ?
+`
+
+func (q *Queries) DeleteSessionsOf(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.exec(ctx, q.deleteSessionsOfStmt, deleteSessionsOf, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const sessionByTokenHash = `-- name: SessionByTokenHash :one

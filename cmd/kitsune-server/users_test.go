@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ const (
 	usersCmd      = "users"
 	addCmd        = "add"
 	passwordStdin = "-password-stdin"
+	exactlyOne    = "exactly one"
 )
 
 func cheapParams() auth.Params { return auth.Params{Time: 1, MemoryKiB: 64, Threads: 1} }
@@ -59,9 +61,14 @@ func (e userEnv) run(args []string, stdin string) cliResult {
 	return cliResult{code: code, stdout: out.String(), stderr: errOut.String()}
 }
 
+// users runs "users SUB -config FILE rest...".
+func (e userEnv) users(sub, stdin string, rest ...string) cliResult {
+	return e.run(append([]string{usersCmd, sub, "-config", e.config}, rest...), stdin)
+}
+
 // usersAdd runs "users add -config FILE rest...".
 func (e userEnv) usersAdd(stdin string, rest ...string) cliResult {
-	return e.run(append([]string{usersCmd, addCmd, "-config", e.config}, rest...), stdin)
+	return e.users(addCmd, stdin, rest...)
 }
 
 func (e userEnv) openStore(t *testing.T) *store.Store {
@@ -145,6 +152,7 @@ func markUnmigrated(t *testing.T, path string) {
 	}
 	defer func() { _ = db.Close() }()
 	const back = "DROP TABLE shuffle_sessions; DROP TABLE listens; DROP TABLE shuffle_run_tracks; DROP TABLE shuffle_runs; DROP TABLE shuffle_excluded; DROP TABLE settings; DROP TABLE user_prefs; DROP TABLE lastfm_outbox; DROP TABLE lastfm_accounts; DROP TABLE plays; DROP TABLE track_hearts; DROP TABLE album_hearts; DROP TABLE artist_hearts; DROP TABLE track_ratings; " +
+		"ALTER TABLE scan_issues DROP COLUMN reader; " +
 		"PRAGMA user_version = 852615662"
 	if _, err = db.ExecContext(t.Context(), back); err != nil {
 		t.Fatal(err)
@@ -189,8 +197,8 @@ type errorCase struct {
 
 func usersErrorCases() []errorCase {
 	return []errorCase{
-		{name: "no name", args: []string{passwordStdin}, stdin: goodPassword, wantCode: exitUsage, wantStderr: "exactly one"},
-		{name: "two names", args: []string{passwordStdin, "a", "b"}, stdin: goodPassword, wantCode: exitUsage, wantStderr: "exactly one"},
+		{name: "no name", args: []string{passwordStdin}, stdin: goodPassword, wantCode: exitUsage, wantStderr: exactlyOne},
+		{name: "two names", args: []string{passwordStdin, "a", "b"}, stdin: goodPassword, wantCode: exitUsage, wantStderr: exactlyOne},
 		{name: "stdin is not a terminal", args: []string{simonName}, stdin: goodPassword, wantCode: exitUsage, wantStderr: "pass -password-stdin", wantNoDataDir: true},
 		{name: "empty password", args: []string{passwordStdin, simonName}, stdin: "\n", wantCode: exitFailure, wantStderr: "too short", wantNoDataDir: true},
 		{name: "bad name", args: []string{passwordStdin, " simon"}, stdin: goodPassword, wantCode: exitFailure, wantStderr: "invalid user name", wantNoDataDir: true},
@@ -242,5 +250,160 @@ func (tt *errorCase) check(t *testing.T) {
 	}
 	if _, err := os.Stat(e.dataDir); tt.wantNoDataDir && err == nil {
 		t.Error("data_dir was created before validation passed")
+	}
+}
+
+const newPassword = "battery staple"
+
+// usersPasswd runs "users passwd -config FILE rest...".
+func (e userEnv) usersPasswd(stdin string, rest ...string) cliResult {
+	return e.users("passwd", stdin, rest...)
+}
+
+// addWithSession adds simon and signs him in, returning the session's token.
+func (e userEnv) addWithSession(t *testing.T) string {
+	t.Helper()
+	if r := e.usersAdd(goodPassword, passwordStdin, "-admin", simonName); r.code != exitOK {
+		t.Fatalf("users add: %+v", r)
+	}
+	st := e.openStore(t)
+	svc, err := auth.New(st, auth.Options{Params: cheapParams()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.Login(t.Context(), simonName, goodPassword, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res.Token
+}
+
+// checkPasswd says whether the new password works, the old one doesn't, and token still does.
+func (e userEnv) checkPasswd(t *testing.T, token string, wantSession bool) {
+	t.Helper()
+	st := e.openStore(t)
+	svc, err := auth.New(st, auth.Options{Params: cheapParams()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.Login(t.Context(), simonName, goodPassword, ""); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Errorf("old password: err = %v, want ErrInvalidCredentials", err)
+	}
+	if _, err = svc.Login(t.Context(), simonName, newPassword, ""); err != nil {
+		t.Errorf("new password: %v", err)
+	}
+	if _, err = svc.Authenticate(t.Context(), token); (err == nil) != wantSession {
+		t.Errorf("old session works = %v, want %v", err == nil, wantSession)
+	}
+}
+
+func TestUsersPasswdSignsOutEverywhere(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	e := newUserEnv(t)
+	token := e.addWithSession(t)
+
+	r := e.usersPasswd(newPassword+"\n", passwordStdin, simonName)
+
+	if r.code != exitOK || r.stdout != "set a new password for \"simon\" and signed them out everywhere\n" {
+		t.Fatalf("result = %+v", r)
+	}
+	e.checkPasswd(t, token, false)
+}
+
+func TestUsersPasswdKeepSessions(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	e := newUserEnv(t)
+	token := e.addWithSession(t)
+
+	r := e.usersPasswd(newPassword, passwordStdin, "-keep-sessions", "SIMON")
+
+	if r.code != exitOK || r.stdout != "set a new password for \"SIMON\"\n" {
+		t.Fatalf("result = %+v", r)
+	}
+	e.checkPasswd(t, token, true)
+}
+
+// passwdCase is one row of TestUsersPasswdErrors.
+type passwdCase struct {
+	name       string
+	args       []string
+	stdin      string
+	noUsers    bool
+	wantCode   int
+	wantStderr string
+}
+
+func passwdErrorCases() []passwdCase {
+	return []passwdCase{
+		{name: "no name", args: []string{passwordStdin}, stdin: newPassword, wantCode: exitUsage, wantStderr: exactlyOne},
+		{name: "no database", args: []string{passwordStdin, simonName}, stdin: newPassword, noUsers: true, wantCode: exitFailure, wantStderr: "no database"},
+		{name: "unknown name", args: []string{passwordStdin, "kim"}, stdin: newPassword, wantCode: exitFailure, wantStderr: `no such user named "kim"`},
+		{name: "short password", args: []string{passwordStdin, simonName}, stdin: "short\n", wantCode: exitFailure, wantStderr: "too short"},
+		{name: "stdin is not a terminal", args: []string{simonName}, stdin: newPassword, wantCode: exitUsage, wantStderr: "pass -password-stdin"},
+	}
+}
+
+func TestUsersPasswdErrors(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	for _, tt := range passwdErrorCases() { //nolint:paralleltest // overrides authParams.
+		t.Run(tt.name, tt.check)
+	}
+}
+
+// check runs the case and verifies its exit code and message, and that it
+// echoes no password, names no other user and creates no database.
+func (tt *passwdCase) check(t *testing.T) {
+	e := newUserEnv(t)
+	if !tt.noUsers {
+		e.addWithSession(t)
+	}
+	r := e.usersPasswd(tt.stdin, tt.args...)
+	if r.code != tt.wantCode || !strings.Contains(r.stderr, tt.wantStderr) {
+		t.Errorf("code = %d, stderr = %q; want %d containing %q", r.code, r.stderr, tt.wantCode, tt.wantStderr)
+	}
+	if strings.Contains(r.stdout+r.stderr, newPassword) {
+		t.Errorf("output echoes the password: %+v", r)
+	}
+	if tt.name == "unknown name" && strings.Contains(r.stderr, simonName) {
+		t.Errorf("stderr names another user: %q", r.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(e.dataDir, store.FileName)); tt.noUsers && err == nil {
+		t.Error("users passwd created a database")
+	}
+}
+
+func TestUsersPasswdRefusesPendingMigrations(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	e := newUserEnv(t)
+	if r := e.usersAdd(goodPassword, passwordStdin, simonName); r.code != exitOK {
+		t.Fatalf("result = %+v", r)
+	}
+	markUnmigrated(t, filepath.Join(e.dataDir, store.FileName))
+
+	r := e.usersPasswd(newPassword, passwordStdin, simonName)
+
+	if r.code != exitFailure || !strings.Contains(r.stderr, store.ErrMigrationsPending.Error()) {
+		t.Fatalf("result = %+v", r)
+	}
+}
+
+func TestUsersList(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	useCheapParams(t)
+	e := newUserEnv(t)
+	e.addWithSession(t)
+	if r := e.usersAdd(goodPassword, passwordStdin, "kim"); r.code != exitOK {
+		t.Fatalf("users add: %+v", r)
+	}
+
+	r := e.users("list", "")
+
+	if want := "kim    user\nsimon  admin\n"; r.code != exitOK || r.stdout != want {
+		t.Fatalf("result = %+v, want stdout %q", r, want)
+	}
+	if strings.Contains(r.stdout, "argon2") {
+		t.Error("users list printed a hash")
+	}
+	if r = e.users("list", "", "extra"); r.code != exitUsage {
+		t.Errorf("extra argument: %+v", r)
 	}
 }

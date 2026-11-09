@@ -1,6 +1,7 @@
 import { changedSettings, foldersFixture, settingsFixture } from './settingsFixtures.ts';
 import { fnv1a } from '#lib/cover/cover.ts';
 import { letterOf } from '#lib/pages/libraryRows.ts';
+import { normalizeCode } from '#lib/pages/passwords.ts';
 import { discsOf } from './format.ts';
 import { partOf } from './indexPatch.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
@@ -9,6 +10,8 @@ import {
 	ArtistNotFoundError,
 	EditError,
 	LoginError,
+	PasswordError,
+	ResetError,
 	ServerError,
 	SetupError,
 	UnauthorizedError,
@@ -758,6 +761,24 @@ function plainCode(code: string): string {
 	return code.toLowerCase().replaceAll(/[\s-]/g, '');
 }
 
+/** The fixtures' one password: the You page's current password, and what's typed to sign in. */
+export const fixturePassword = 'correct horse';
+
+/** The reset code the fixtures' server logged. */
+export const fixtureResetCode = 'q2rv-8hx4-m0tn-j7cd';
+
+/** The People board's accounts, as minutes since each was last seen. */
+const boardAccounts: readonly [
+	name: string,
+	role: 'admin' | 'user',
+	minutesAgo: number | null,
+	sessions: number
+][] = [
+	['anna', 'user', 125, 2],
+	['dad', 'user', null, 0],
+	['marcus', 'user', 26 * 60, 1]
+];
+
 /** Each way an edit can go wrong, for the states the boards never drew. */
 export type FixtureEditFault = 'busy' | 'stale' | 'drift' | 'refused' | 'partial';
 
@@ -859,6 +880,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	let hasAccounts = options.setup === undefined || options.setup === 'done';
 	let signedOut = options.setup !== undefined;
 	let wrongCodes = 0;
+	let resetAsked = false;
 
 	function whoIsSignedIn(): Me {
 		if (signedOut) {
@@ -1057,6 +1079,57 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				codeRequired: !hasAccounts && options.setup === 'code'
 			})),
 		setup: (name, password, code) => respond(() => makeFirst(name, password, code)),
+		requestReset: () =>
+			respond(() => {
+				resetAsked = true;
+			}),
+		confirmReset: (_name, code, password) =>
+			respond(() => {
+				if (!resetAsked || normalizeCode(code) !== normalizeCode(fixtureResetCode)) {
+					throw new ResetError({ kind: 'code' });
+				}
+				if (password.length > 1024) {
+					throw new ResetError({ kind: 'password' });
+				}
+				resetAsked = false;
+				signedOut = false;
+				return signedIn;
+			}),
+		changePassword: (current, password) =>
+			respond(() => {
+				whoIsSignedIn();
+				if (current !== fixturePassword) {
+					throw new PasswordError({ kind: 'current' });
+				}
+				if ([...password].length < 8 || password.length > 1024) {
+					throw new PasswordError({ kind: 'password' });
+				}
+			}),
+		accounts: () =>
+			respond(() => {
+				adminOnly();
+				const now = Date.now();
+				return [
+					{ user: signedIn, lastSeen: new Date(now).toISOString(), sessions: 3 },
+					...boardAccounts.map(([name, accountRole, minutesAgo, sessions], index) => ({
+						user: { id: index + 2, name, role: accountRole, createdAt: '2026-02-01T00:00:00Z' },
+						...(minutesAgo === null
+							? {}
+							: { lastSeen: new Date(now - minutesAgo * 60_000).toISOString() }),
+						sessions
+					}))
+				].toSorted((a, b) => a.user.name.localeCompare(b.user.name));
+			}),
+		setPassword: (userId, password) =>
+			respond(() => {
+				adminOnly();
+				if (userId === signedIn.id) {
+					throw new ServerError(403);
+				}
+				if ([...password].length < 8 || password.length > 1024) {
+					throw new PasswordError({ kind: 'password' });
+				}
+			}),
 		logout: () => respond(() => undefined),
 		listening: () => respond(() => ({ plays: boardPlays, hearts: hearts.size, rated: stars.size })),
 		lastfm: () => respond(() => lastfm),

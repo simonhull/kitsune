@@ -759,6 +759,28 @@ export interface LibrarySource {
 	setupStatus(): Promise<SetupStatus>;
 	/** Makes the first account, an administrator, and signs in as it. Rejects with {@link SetupError}. */
 	setup(name: string, password: string, code?: string): Promise<User>;
+	/**
+	 * Asks for a reset code for whoever is called `name`, which the server puts in its log. The answer
+	 * is the same whether or not they exist. Rejects with {@link ResetError}: throttled or unavailable.
+	 */
+	requestReset(name: string): Promise<void>;
+	/**
+	 * Sets a new password with a reset code, ends every session of that person and signs in as them.
+	 * Rejects with {@link ResetError}.
+	 */
+	confirmReset(name: string, code: string, password: string): Promise<User>;
+	/**
+	 * Changes the caller's password. This session stays; their others end. Rejects with
+	 * {@link PasswordError}, or {@link UnauthorizedError} without a session.
+	 */
+	changePassword(current: string, password: string): Promise<void>;
+	/** Every account, for administrators, with how each signs in. */
+	accounts(): Promise<Account[]>;
+	/**
+	 * Sets someone else's password, for administrators, and ends their sessions. Rejects with
+	 * {@link PasswordError}: `password` for one the server won't take.
+	 */
+	setPassword(userId: number, password: string): Promise<void>;
 	/** Ends the session. */
 	logout(): Promise<void>;
 	/** Counts the caller's plays, hearts and rated tracks. */
@@ -893,6 +915,55 @@ export class LoginError extends Error {
 		super(`login failed: ${failure.kind}`);
 		this.failure = failure;
 	}
+}
+
+export type ResetFailure =
+	/** The code is wrong, used, replaced or stale, or nobody has the name: the server can't say which. */
+	| { kind: 'code' }
+	/** Too short or too long, as the server measures it. */
+	| { kind: 'password' }
+	/** Too many tries, or too many codes asked for: the server said when to come back. */
+	| { kind: 'throttled'; retryAfterSeconds: number }
+	/** A server error, or no answer at all. */
+	| { kind: 'unavailable' };
+
+export class ResetError extends Error {
+	override name = 'ResetError';
+	readonly failure: ResetFailure;
+
+	constructor(failure: ResetFailure) {
+		super(`reset failed: ${failure.kind}`);
+		this.failure = failure;
+	}
+}
+
+export type PasswordFailure =
+	/** The current password isn't the caller's. */
+	| { kind: 'current' }
+	/** Too short or too long, as the server measures it. */
+	| { kind: 'password' }
+	/** Too many wrong current passwords: the server said when to come back. */
+	| { kind: 'throttled'; retryAfterSeconds: number }
+	/** A server error, or no answer at all. */
+	| { kind: 'unavailable' };
+
+export class PasswordError extends Error {
+	override name = 'PasswordError';
+	readonly failure: PasswordFailure;
+
+	constructor(failure: PasswordFailure) {
+		super(`password not set: ${failure.kind}`);
+		this.failure = failure;
+	}
+}
+
+/** An account as an administrator sees it. */
+export interface Account {
+	user: User;
+	/** When the newest of their sessions was last used. Absent when there's none. */
+	lastSeen?: string;
+	/** How many sessions they have live: a device each, near enough. */
+	sessions: number;
 }
 
 /** What `GET /setup` says. */

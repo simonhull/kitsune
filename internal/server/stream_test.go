@@ -428,3 +428,25 @@ func TestStreamRequiresAuthentication(t *testing.T) {
 	resp := ss.send(t, call{method: http.MethodGet, path: streamPath(streamTrackID), invalid: true})
 	resp.problem(t, http.StatusUnauthorized)
 }
+
+// A WAV is big and sent as it is stored: a player reads its header first and
+// seeks by range, so the first bytes it asks for must come back alone.
+func TestStreamWAVRanges(t *testing.T) {
+	t.Parallel()
+	ss := newStreamServer(t)
+	const id = "01J00000000000000000000009"
+	wav := "RIFF\x2c\x00\x00\x00WAVEfmt " + streamBody // Enough of a header to seek past.
+	ss.write(t, ss.seed(t, id, "WAV"), wav, streamTime)
+	for _, tt := range []struct{ header, body, contentRange string }{
+		{"bytes=0-11", wav[:12], fmt.Sprintf("bytes 0-11/%d", len(wav))},
+		{"bytes=-4", wav[len(wav)-4:], fmt.Sprintf("bytes %d-%d/%d", len(wav)-4, len(wav)-1, len(wav))},
+	} {
+		resp := ss.get(t, id, rangeHeader, tt.header)
+		if resp.Status != http.StatusPartialContent || string(resp.Body) != tt.body || resp.Header.Get(contentRange) != tt.contentRange {
+			t.Errorf("%s: %d %q %q, want 206 %q", tt.header, resp.Status, resp.Header.Get(contentRange), resp.Body, tt.contentRange)
+		}
+		if got := resp.Header.Get(contentType); got != "audio/wav" {
+			t.Errorf("%s: Content-Type = %q, want audio/wav", tt.header, got)
+		}
+	}
+}

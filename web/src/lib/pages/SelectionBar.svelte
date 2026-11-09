@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { floor } from '#lib/shell/floor.svelte.ts';
 	import Icon, { heartPath } from '#lib/shell/Icon.svelte';
 	import { factsLine, type SongActions } from './songActions.ts';
 
@@ -77,7 +78,7 @@
 	</div>
 {/snippet}
 
-<div class="bar" class:compact role="toolbar" aria-label={`${label}. Esc clears.`}>
+<div class="bar" class:compact role="toolbar" use:floor aria-label={`${label}. Esc clears.`}>
 	<span class="count">{label}</span>
 	{#if !compact}<span class="facts">{facts}</span>{/if}
 	<button

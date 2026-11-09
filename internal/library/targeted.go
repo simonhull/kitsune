@@ -136,7 +136,7 @@ func (s *Scanner) surveyDirs(ctx context.Context, root string, dirs []string) (r
 			return rootSurvey{}, listErr
 		}
 	}
-	r := l.diff(root, states)
+	r := l.diff(root, states, s.reader)
 	if absent, live := len(r.mark), countLive(states); losesMost(absent, live, countNew(r.jobs)) {
 		s.log.ErrorContext(ctx, "a targeted scan would mark most of a library root's tracks missing; leaving it to the next scan",
 			"root", root, "vanished", absent, "live", live)
@@ -306,14 +306,14 @@ func knowsUnder(states map[string]store.FileState, rel string) bool {
 // jobs, and a state goes missing only when the folder holding it was read and
 // its file is gone, or the nearest folder above it that was read no longer
 // holds the subfolder it was in.
-func (l *dirListing) diff(root string, states map[string]store.FileState) rootSurvey {
+func (l *dirListing) diff(root string, states map[string]store.FileState, reader string) rootSurvey {
 	var r rootSurvey
 	seen := make(map[string]struct{}, len(l.files))
 	for i := range l.files {
 		f := &l.files[i]
 		seen[f.rel] = struct{}{}
 		st := states[f.rel]
-		if unchanged(&st, f) {
+		if unchanged(&st, f, reader) {
 			continue
 		}
 		r.jobs = append(r.jobs, job{
