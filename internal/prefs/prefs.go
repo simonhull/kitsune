@@ -58,6 +58,13 @@ const (
 	// ShuffleMemory is whether shuffle learns from skips and listen time, a
 	// boolean.
 	ShuffleMemory = "shuffle.memory"
+	// LibrarySort is how the Library orders its artists and their albums, a
+	// [LibrarySortValue]. Artist pages order their albums by it too.
+	LibrarySort = "library.sort"
+	// AlbumsSort is the Albums page's order, a [Sort].
+	AlbumsSort = "albums.sort"
+	// ArtistsSort is the Artists page's order, a [Sort].
+	ArtistsSort = "artists.sort"
 )
 
 // keys are every preference there is, by name.
@@ -69,6 +76,9 @@ var keys = map[string]Key{
 	ShuffleRatings: {name: ShuffleRatings, check: checkAmount},
 	ShuffleFlow:    {name: ShuffleFlow, check: checkAmount},
 	ShuffleMemory:  {name: ShuffleMemory, check: checkSwitch},
+	LibrarySort:    {name: LibrarySort, check: checkLibrarySort},
+	AlbumsSort:     {name: AlbumsSort, check: checkSortOf(albumsOrders)},
+	ArtistsSort:    {name: ArtistsSort, check: checkSortOf(artistsOrders)},
 }
 
 // Lookup returns the key named name, or an error wrapping [ErrUnknownKey].
