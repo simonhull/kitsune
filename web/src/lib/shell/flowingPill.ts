@@ -46,7 +46,9 @@ export function flowingPill(nav: HTMLElement, item: string | null) {
 	}
 
 	function tick(now: number): void {
-		const seconds = Math.min((now - last) / 1000, 0.05);
+		// rAF's timestamp is the frame's start, which can come before the `performance.now()` that
+		// queued it: a negative step would run the springs backwards for a frame.
+		const seconds = Math.min(Math.max(0, now - last) / 1000, 0.05);
 		last = now;
 		const movingRight = right.target >= right.value;
 		left.step(movingRight ? trailing : leading, seconds);

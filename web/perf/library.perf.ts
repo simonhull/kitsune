@@ -1,5 +1,5 @@
-import { runs, test } from './fixture.ts';
-import { libraryRows, menu, nextLoudAlbum, openLibrary, playing } from './pages.ts';
+import { expect, runs, test } from './fixture.ts';
+import { atRest, libraryRows, menu, nextLoudAlbum, openLibrary, playing } from './pages.ts';
 
 test('Library: play a song, open the menus', async ({ page, perf }) => {
 	await openLibrary(page);
@@ -58,6 +58,46 @@ test('Library: frames during a fling', async ({ page, perf }) => {
 			await page.mouse.wheel(0, step);
 		}
 		scroll.add(Math.max(...(await frames)));
+		await page.waitForTimeout(300);
+	}
+});
+
+test('Library: frames while the rail sweeps', async ({ page, perf }) => {
+	await openLibrary(page);
+	await atRest(page);
+	const sweep = perf.samples('rail-sweep');
+	for (let i = 0; i < runs; i++) {
+		// The list from end to end in 1.6 s, as a finger dragged down the rail: the lit letter
+		// changes every few frames while the rows under it are replaced.
+		const { longest, lit } = await page.evaluate(
+			async (down) => {
+				const end = document.documentElement.scrollHeight - innerHeight;
+				const [from, to] = down ? [0, end] : [end, 0];
+				scrollTo({ top: from, behavior: 'instant' });
+				const seen = new Set<string>();
+				const frames = window.perf.frames(1800);
+				const began = performance.now();
+				await new Promise<void>((done) => {
+					const run = (now: number) => {
+						const share = Math.min(1, (now - began) / 1600);
+						scrollTo({ top: from + (to - from) * share, behavior: 'instant' });
+						const current = document.querySelector('nav.rail [aria-current="true"]');
+						seen.add(current?.textContent ?? '');
+						if (share < 1) {
+							requestAnimationFrame(run);
+						} else {
+							done();
+						}
+					};
+					requestAnimationFrame(run);
+				});
+				return { longest: Math.max(...(await frames)), lit: seen.size };
+			},
+			i % 2 === 0
+		);
+		// It must have swept the rail, or it timed nothing.
+		expect(lit).toBeGreaterThan(5);
+		sweep.add(longest);
 		await page.waitForTimeout(300);
 	}
 });
