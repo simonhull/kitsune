@@ -26,6 +26,10 @@
 		type SongActions
 	} from '#lib/pages/songActions.ts';
 	import { letterOf, railHere, railLetters } from '#lib/pages/libraryRows.ts';
+	import { hasLetters, railFor, sortFields, turnedRailHere } from '#lib/library/libraryOrder.ts';
+	import { artistAlbumOrders, libraryArtistOrders, wayOf } from '#lib/library/sorts.ts';
+	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
+	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 	import { libraryView as view } from '#lib/pages/libraryView.svelte.ts';
 	import SongHeader from '#lib/pages/SongHeader.svelte';
 	import { player } from '#lib/player/player.svelte.ts';
@@ -71,8 +75,45 @@
 	const layout = $derived(view.layout);
 	const artist = $derived(layout.artists.at(view.here)?.artist);
 	const next = $derived(layout.artists.at(view.here + 1)?.artist);
+	const sort = $derived(sorts.library.value);
+	/** Only a name order has letters to jump to: under any other the rail goes. */
+	const lettered = $derived(hasLetters(sort));
 	const letter = $derived(artist === undefined ? undefined : letterOf(artist.sortName));
-	const letters = $derived(railLetters(layout, view.stacked));
+	const letters = $derived(railFor(railLetters(layout, view.stacked), sort));
+	const railAt = $derived(
+		letter === undefined
+			? undefined
+			: sort.artists.dir === 'desc'
+				? turnedRailHere(letters, letter)
+				: railHere(letters, letter)
+	);
+	/** The Sort menu: the artists' order, and their albums'. */
+	const sortGroups: SortGroup[] = $derived([
+		{
+			label: 'ARTISTS',
+			options: libraryArtistOrders,
+			current: sort.artists,
+			choose: (next) => {
+				view.toTop();
+				sorts.library.set({ ...sort, artists: next as typeof sort.artists });
+			}
+		},
+		{
+			label: 'THEIR ALBUMS',
+			options: artistAlbumOrders,
+			current: sort.albums,
+			choose: (next) => {
+				view.toTop();
+				sorts.library.set({ ...sort, albums: next as typeof sort.albums });
+			}
+		}
+	]);
+	/** What the button says: the artists' order, short enough for the frame line. */
+	const sortWords = $derived(
+		sort.artists.by === 'name'
+			? wayOf('name', sort.artists.dir)
+			: (libraryArtistOrders.find(({ by }) => by === sort.artists.by)?.label ?? '').toUpperCase()
+	);
 	const filtered = $derived(view.filter !== 'everything');
 	/** Under a filter, the letters it leaves empty: grey, and a jump to one goes on to the next. */
 	const quiet = $derived(
@@ -122,7 +163,8 @@
 			clearTimeout(done);
 		};
 	});
-	const fields = $derived(columnsView.fields);
+	/** What the columns show, and what the order reads. */
+	const fields = $derived([...new Set([...columnsView.fields, ...sortFields(sort)])]);
 	/** When "Yesterday" is, for Last played: read once a visit. */
 	const now = Date.now();
 
@@ -342,7 +384,7 @@
 
 	/** Puts a letter's first artist at the top, at once: a jump never animates a scroll. */
 	function jump(to: string): void {
-		scrollTo({ top: view.jump(to), behavior: 'instant' });
+		scrollTo({ top: view.jump(to, letters), behavior: 'instant' });
 		track();
 	}
 
@@ -353,11 +395,12 @@
 	// A scan or an edit ending asks again, and so do columns that need more. Untracked: a failure
 	// must wait for Try again. The columns come first, so the index is asked for once.
 	$effect(() => {
-		const wanted = fields.join(',');
+		const wanted = fields;
 		if (
 			facts !== null &&
 			columnsView.known &&
-			(library.indexStale || library.index.kind === 'loading' || library.indexFields !== wanted)
+			sorts.library.known &&
+			(library.indexStale || library.index.kind === 'loading' || !library.holdsFields(wanted))
 		) {
 			untrack(() => void library.loadIndex(fields));
 		}
@@ -389,6 +432,7 @@
 		addEventListener('resize', onScroll, { passive: true });
 		const stopWatching = view.watch();
 		void columnsView.load();
+		void sorts.library.load();
 		return () => {
 			cancelAnimationFrame(frame);
 			removeEventListener('scroll', onScroll);
@@ -467,10 +511,35 @@
 					}}
 				/>
 			</div>
+			{#if view.stacked}
+				<div class="sort-round">
+					<SortControl
+						groups={sortGroups}
+						words={sortWords}
+						look="round"
+						label="Sort the library"
+					/>
+				</div>
+			{/if}
 			{#if letter !== undefined}
-				<p class="frame" data-morph-part="intro" data-morph-key="frame">
-					{libraryLine(letter, layout.artists.length, layout.songs, layout.totalSongs)}
-				</p>
+				<div class="frame" data-morph-part="intro" data-morph-key="frame">
+					{#if !view.stacked}
+						<SortControl
+							groups={sortGroups}
+							words={sortWords}
+							look="line"
+							label="Sort the library"
+						/>
+					{/if}
+					<p class="frame-words">
+						{libraryLine(
+							lettered ? letter : undefined,
+							layout.artists.length,
+							layout.songs,
+							layout.totalSongs
+						)}
+					</p>
+				</div>
 			{:else if filtered}
 				<p class="frame none" role="status">
 					{view.filter === 'hearted' ? 'Nothing hearted yet.' : 'No song rated 4 or 5 yet.'}
@@ -583,7 +652,9 @@
 			{/each}
 		</div>
 
-		<LibraryRail {letters} {quiet} here={letter && railHere(letters, letter)} onjump={jump} />
+		{#if lettered}
+			<LibraryRail {letters} {quiet} here={railAt} onjump={jump} />
+		{/if}
 		{#if menu !== null}
 			<ColumnsMenu x={menu.x} y={menu.y} hiding={menu.hiding} onclose={closeMenu} />
 		{/if}
@@ -844,13 +915,37 @@
 		max-width: 560px;
 	}
 
+	/*
+	 * The Sort button stands first, so a narrow column cuts the counts, never the button. The line
+	 * is as tall as the words were with their margin, so the name pins where it always did.
+	 */
 	.frame {
-		margin-top: 14px;
+		margin-top: 2px;
+		height: 28px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
 		font-family: var(--font-mono);
 		font-size: var(--type-mono);
 		font-variant-numeric: tabular-nums;
 		letter-spacing: 0.08em;
 		color: var(--text-meta);
+	}
+
+	.frame :global(.sort) {
+		flex: none;
+		margin-left: -10px;
+	}
+
+	.frame-words {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.sort-round {
+		order: 3;
 	}
 
 	.next {

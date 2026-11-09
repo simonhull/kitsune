@@ -1,14 +1,31 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { artistFigure, orderArtists } from '#lib/library/artistOrder.ts';
 	import { artistCount } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import { artistOrders, wayOf } from '#lib/library/sorts.ts';
+	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
+	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 
 	const load = $derived(library.artists);
+	const sort = $derived(sorts.artists.value);
+	const shown = $derived(load.kind === 'ready' ? orderArtists(load.value, sort) : []);
+	const sortGroups: SortGroup[] = $derived([
+		{
+			label: 'SORT ARTISTS BY',
+			options: artistOrders,
+			current: sort,
+			choose: (next) => {
+				sorts.artists.set(next as typeof sort);
+			}
+		}
+	]);
 
 	onMount(() => {
 		// Every visit asks again: a list on screen stays up, and a scan may have found more.
 		void library.loadArtists();
+		void sorts.artists.load();
 	});
 </script>
 
@@ -21,6 +38,15 @@
 		<h1>Artists</h1>
 		{#if load.kind === 'ready' && load.value.length > 0}
 			<span class="summary">{artistCount(load.value.length)}</span>
+			<div class="sort">
+				<SortControl
+					groups={sortGroups}
+					words={artistOrders.find(({ by }) => by === sort.by)?.label ?? ''}
+					way={wayOf(sort.by, sort.dir)}
+					look="pill"
+					label="Sort the artists"
+				/>
+			</div>
 		{/if}
 	</div>
 
@@ -33,11 +59,11 @@
 		<p class="note" role="status">No artists yet. They arrive with the albums.</p>
 	{:else if load.kind === 'ready'}
 		<ul>
-			{#each load.value as artist (artist.id)}
+			{#each shown as artist (artist.id)}
 				<li>
 					<a href={resolve('/artists/[id]', { id: artist.id })}>
 						<span class="name" title={artist.name}>{artist.name}</span>
-						<span class="count">{artist.albumCount.toLocaleString('en-US')}</span>
+						<span class="count">{artistFigure(artist, sort)}</span>
 					</a>
 				</li>
 			{/each}
@@ -67,6 +93,11 @@
 		font-weight: 800;
 		letter-spacing: var(--tracking-display);
 		line-height: 0.9;
+	}
+
+	.sort {
+		margin-left: auto;
+		align-self: center;
 	}
 
 	.summary {

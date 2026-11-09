@@ -19,6 +19,7 @@
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import { libraryView } from '#lib/pages/libraryView.svelte.ts';
 	import { selection } from '#lib/pages/selection.svelte.ts';
+	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
@@ -109,6 +110,7 @@
 			albumsView.reset();
 			libraryView.reset();
 			columnsView.reset();
+			sorts.reset();
 			selection.clear();
 			shuffles.reset();
 			shuffleSettings.reset();
