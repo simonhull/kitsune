@@ -943,8 +943,8 @@ paths:
         through the other routes. Who hears what: `library`
         (`EventLibrary`), `scan` (`ScanStatus`, with the failure's reason for
         administrators only) and `ready`/`resync` (`EventStream`) go to
-        everyone; `fingerprints` (`FingerprintStatus`) and `settings`
-        (`EventSettings`) to administrators; `marks` (`EventMarks`), `prefs`
+        everyone; `fingerprints` (`FingerprintStatus`), `loudness`
+        (`LoudnessStatus`) and `settings` (`EventSettings`) to administrators; `marks` (`EventMarks`), `prefs`
         (`EventPrefs`), `shuffle-rules` (`EventShuffleRules`), `shuffle`
         (`EventShuffle`), `listening`
         (`EventListening`) and `lastfm` (`EventLastfm`) to the person they are
@@ -1705,7 +1705,9 @@ paths:
         Counts live tracks and albums that have a live track. `scan` says where
         scanning stands, so a client can poll this while a scan runs; the
         counts themselves move little until it ends. `fingerprints` says
-        where the background fingerprint pass stands.
+        where the background fingerprint pass stands, and `loudness` where the
+        loudness pass does, with how many songs without ReplayGain it has
+        measured.
       responses:
         "200":
           description: The library's counts.
@@ -1969,8 +1971,9 @@ components:
       required: true
       description: >-
         The preference: `library.columns`, `ui.theme`, `shuffle.ratings`,
-        `shuffle.flow`, `shuffle.memory`, `library.sort`, `albums.sort` or
-        `artists.sort`. The server knows which keys there are.
+        `shuffle.flow`, `shuffle.memory`, `library.sort`, `albums.sort`,
+        `artists.sort` or `playback.untagged_gain`. The server knows which keys
+        there are.
       schema: { type: string }
     ItemID:
       name: id
@@ -2384,11 +2387,19 @@ components:
     ReplayGain:
       type: object
       additionalProperties: false
+      description: >-
+        Gains in dB to the ReplayGain 2.0 reference of -18 LUFS, and peaks
+        linear, 1 being full scale; an absent value is unknown. `source` says
+        where they come from: the file's tags, or, for a file with no gain
+        tagged, Kitsune's own measure of it (EBU R 128, true peaks), which is
+        never written to the file.
+      required: [source]
       properties:
         trackGain: { type: number }
         albumGain: { type: number }
         trackPeak: { type: number }
         albumPeak: { type: number }
+        source: { type: string, enum: [tags, measured] }
     Track:
       type: object
       additionalProperties: false
@@ -3078,12 +3089,15 @@ components:
         durationMs: { type: integer, format: int64 }
         artwork: { $ref: "#/components/schemas/Artwork" }
     PrefValue:
-      description: A preference's value. Its key decides which of these it is.
-      oneOf:
+      description: >-
+        A preference's value. Its key decides which of these it is: two may
+        take the same number, so it is any of them, not one of them.
+      anyOf:
         - $ref: "#/components/schemas/LibraryColumns"
         - $ref: "#/components/schemas/UITheme"
         - $ref: "#/components/schemas/ShuffleAmount"
         - $ref: "#/components/schemas/ShuffleMemory"
+        - $ref: "#/components/schemas/UntaggedGain"
         - $ref: "#/components/schemas/LibrarySort"
         - $ref: "#/components/schemas/ListSort"
     LibrarySort:
@@ -3140,6 +3154,13 @@ components:
         0 (not at all) to 1; 0.5 when never set. `shuffle.flow`: how much the
         next song leans toward one that suits the last, from 0 (anything next)
         to 1; 0.3 when never set.
+    UntaggedGain:
+      type: number
+      minimum: -20
+      maximum: 0
+      description: >-
+        `playback.untagged_gain`: the gain in dB a song plays at while it has no
+        ReplayGain, neither tagged nor measured yet; -8 when never set.
     ShuffleMemory:
       type: boolean
       description: >-
@@ -3366,7 +3387,7 @@ components:
     LibraryFacts:
       type: object
       additionalProperties: false
-      required: [albums, tracks, durationMs, roots, issues, issueCounts, scan, fingerprints]
+      required: [albums, tracks, durationMs, roots, issues, issueCounts, scan, fingerprints, loudness]
       properties:
         albums: { type: integer, format: int64 }
         tracks: { type: integer, format: int64 }
@@ -3376,6 +3397,22 @@ components:
         issueCounts: { $ref: "#/components/schemas/IssueCounts" }
         scan: { $ref: "#/components/schemas/ScanStatus" }
         fingerprints: { $ref: "#/components/schemas/FingerprintStatus" }
+        loudness: { $ref: "#/components/schemas/LoudnessStatus" }
+    LoudnessStatus:
+      type: object
+      additionalProperties: false
+      description: >-
+        The background pass that measures the loudness of albums with a song
+        that has no ReplayGain tags, after a scan, so every song plays at the
+        same level. `done` and `total` are 0 while no pass runs. FLAC, MP3, and
+        uncompressed WAV and AIFF are measured; other formats can't be yet.
+      required: [done, total, ungained, measured, unmeasurable]
+      properties:
+        done: { type: integer, description: Files the pass has read. }
+        total: { type: integer, description: Files waiting for a measure when the pass began. }
+        ungained: { type: integer, description: Songs with no ReplayGain tags. }
+        measured: { type: integer, description: Of those, the ones Kitsune has measured. }
+        unmeasurable: { type: integer, description: Of those, the ones it can't measure yet. }
     FingerprintStatus:
       type: object
       additionalProperties: false

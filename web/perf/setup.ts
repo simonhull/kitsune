@@ -32,9 +32,9 @@ async function ready(url: string, server: ChildProcess, log: string): Promise<vo
 }
 
 /**
- * Waits for what a first scan leaves running in the background, the fingerprint pass, so the suite
- * times a server at rest: right after a first scan the pass reads every file, and a fling taken
- * then drops frames that no later one does.
+ * Waits for what a first scan leaves running in the background, the fingerprint and loudness
+ * passes, so the suite times a server at rest: right after a first scan the passes read files, and
+ * a fling taken then drops frames that no later one does.
  */
 async function idle(url: string): Promise<void> {
 	const login = await fetch(`${url}/api/v1/auth/login`, {
@@ -51,8 +51,17 @@ async function idle(url: string): Promise<void> {
 		const facts = (await response.json()) as {
 			scan: { state: string };
 			fingerprints: { done: number; total: number };
+			loudness: {
+				done: number;
+				total: number;
+				ungained: number;
+				measured: number;
+				unmeasurable: number;
+			};
 		};
-		if (facts.scan.state === 'idle' && facts.fingerprints.done >= facts.fingerprints.total) {
+		const { fingerprints, loudness } = facts;
+		const measured = loudness.measured + loudness.unmeasurable >= loudness.ungained;
+		if (facts.scan.state === 'idle' && fingerprints.done >= fingerprints.total && measured) {
 			return;
 		}
 		await new Promise((done) => setTimeout(done, 500));
@@ -114,7 +123,7 @@ export default async function setup(): Promise<() => Promise<void>> {
 		console.log(
 			`perf: ${library.name}: ${String(manifest.songs)} songs, ${String(manifest.albums)} albums, ` +
 				`${String(manifest.artists)} artists; library ${(wrote - started).toFixed(0)} ms, ` +
-				`first scan ${(scanned - wrote).toFixed(0)} ms, fingerprints ${(performance.now() - scanned).toFixed(0)} ms`
+				`first scan ${(scanned - wrote).toFixed(0)} ms, fingerprints and loudness ${(performance.now() - scanned).toFixed(0)} ms`
 		);
 	}
 	return async () => {

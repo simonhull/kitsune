@@ -28,6 +28,7 @@ const (
 	Library      Kind = "library"       // Albums added, changed or removed: everyone.
 	Scan         Kind = "scan"          // A scan's progress: everyone, the failure for admins.
 	Fingerprints Kind = "fingerprints"  // The fingerprint pass's progress: admins.
+	Loudness     Kind = "loudness"      // The loudness pass's progress: admins.
 	Marks        Kind = "marks"         // A person's hearts and stars.
 	Prefs        Kind = "prefs"         // A person's preference changed.
 	ShuffleRules Kind = "shuffle-rules" // A person's shuffle rules changed.

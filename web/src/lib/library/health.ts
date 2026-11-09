@@ -4,6 +4,7 @@ import type {
 	IssueCounts,
 	IssueKind,
 	LibraryFacts,
+	LoudnessStatus,
 	ScanIssue,
 	ScanMode,
 	ScanRefusal,
@@ -183,6 +184,22 @@ export function scanHelp({ issues, issueCounts }: LibraryFacts): string {
 	return issues + issueCounts.warnings > 0
 		? `${quick} Reading everything takes minutes and won't change the files below.`
 		: `${quick} Reading everything takes minutes.`;
+}
+
+/**
+ * What Health says of levelling: how many songs have no ReplayGain, and how many of those Kitsune
+ * has measured or can't yet. Null when every song has ReplayGain, or the server doesn't say.
+ */
+export function loudnessLine(status: LoudnessStatus | undefined): string | null {
+	if (status === undefined || status.ungained === 0) {
+		return null;
+	}
+	const { ungained, measured, unmeasurable, done, total } = status;
+	const songs = plural(ungained, 'song has', 'songs have');
+	const cant = unmeasurable === 0 ? '' : `, ${count(unmeasurable)} can't be measured yet`;
+	const running =
+		total > 0 ? ` Measuring in the background, ${count(done)} of ${count(total)}.` : '';
+	return `${songs} no ReplayGain: ${count(measured)} measured${cant}.${running}`;
 }
 
 const refusals: Record<ScanRefusal, string> = {

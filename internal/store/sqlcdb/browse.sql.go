@@ -292,36 +292,47 @@ func (q *Queries) ListAlbumTrackArtists(ctx context.Context, albumID int64) ([]L
 
 const listAlbumTracks = `-- name: ListAlbumTracks :many
 SELECT
-    id, ulid, title, disc_no, disc_total, disc_subtitle, track_no, track_total, year, duration_ms, format,
-    sample_rate, bit_depth, rg_track_gain, rg_track_peak, rg_album_gain, rg_album_peak,
-    size, mtime
-FROM tracks
-WHERE album_id = ? AND missing_since IS NULL
-ORDER BY coalesce(disc_no, 1), track_no NULLS LAST, title, id
+    t.id, t.ulid, t.title, t.disc_no, t.disc_total, t.disc_subtitle, t.track_no, t.track_total, t.year,
+    t.duration_ms, t.format, t.sample_rate, t.bit_depth,
+    t.rg_track_gain, t.rg_track_peak, t.rg_album_gain, t.rg_album_peak,
+    t.size, t.mtime,
+    l.integrated AS measured_integrated, l.true_peak AS measured_peak,
+    a.integrated AS measured_album_integrated, a.true_peak AS measured_album_peak
+FROM tracks t
+LEFT JOIN track_loudness l ON l.track_id = t.id AND l.size = t.size AND l.mtime = t.mtime AND l.outcome = 'measured'
+LEFT JOIN album_loudness a ON a.id = l.album_pool
+WHERE t.album_id = ? AND t.missing_since IS NULL
+ORDER BY coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id
 `
 
 type ListAlbumTracksRow struct {
-	ID           int64
-	Ulid         string
-	Title        string
-	DiscNo       *int64
-	DiscTotal    *int64
-	DiscSubtitle *string
-	TrackNo      *int64
-	TrackTotal   *int64
-	Year         *int64
-	DurationMs   int64
-	Format       string
-	SampleRate   *int64
-	BitDepth     *int64
-	RgTrackGain  *float64
-	RgTrackPeak  *float64
-	RgAlbumGain  *float64
-	RgAlbumPeak  *float64
-	Size         int64
-	Mtime        int64
+	ID                      int64
+	Ulid                    string
+	Title                   string
+	DiscNo                  *int64
+	DiscTotal               *int64
+	DiscSubtitle            *string
+	TrackNo                 *int64
+	TrackTotal              *int64
+	Year                    *int64
+	DurationMs              int64
+	Format                  string
+	SampleRate              *int64
+	BitDepth                *int64
+	RgTrackGain             *float64
+	RgTrackPeak             *float64
+	RgAlbumGain             *float64
+	RgAlbumPeak             *float64
+	Size                    int64
+	Mtime                   int64
+	MeasuredIntegrated      *float64
+	MeasuredPeak            *float64
+	MeasuredAlbumIntegrated *float64
+	MeasuredAlbumPeak       *float64
 }
 
+// With Kitsune's own loudness measure of each file, and of the album it was
+// pooled into: see migrations/0013_loudness.sql.
 func (q *Queries) ListAlbumTracks(ctx context.Context, albumID int64) ([]ListAlbumTracksRow, error) {
 	rows, err := q.query(ctx, q.listAlbumTracksStmt, listAlbumTracks, albumID)
 	if err != nil {
@@ -351,6 +362,10 @@ func (q *Queries) ListAlbumTracks(ctx context.Context, albumID int64) ([]ListAlb
 			&i.RgAlbumPeak,
 			&i.Size,
 			&i.Mtime,
+			&i.MeasuredIntegrated,
+			&i.MeasuredPeak,
+			&i.MeasuredAlbumIntegrated,
+			&i.MeasuredAlbumPeak,
 		); err != nil {
 			return nil, err
 		}

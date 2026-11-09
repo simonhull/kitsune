@@ -31,6 +31,7 @@ const kinds: readonly ServerEventKind[] = [
 	'library',
 	'scan',
 	'fingerprints',
+	'loudness',
 	'marks',
 	'prefs',
 	'shuffle-rules',

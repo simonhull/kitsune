@@ -54,12 +54,11 @@ type FingerprintStats struct {
 // Fingerprints returns the fingerprint pass's progress. It never waits.
 func (s *Scanner) Fingerprints() FingerprintProgress { return *s.fingerprints.Load() }
 
-// askForPass asks [Scanner.RunFingerprints] for a pass, without waiting.
+// askForPass asks [Scanner.RunFingerprints] and [Scanner.RunLoudness] for a
+// pass each, without waiting. One already asked for is enough.
 func (s *Scanner) askForPass() {
-	select {
-	case s.wantPass <- struct{}{}:
-	default: // A pass is already asked for.
-	}
+	signal(s.wantPass)
+	signal(s.wantLoudness)
 }
 
 // RunFingerprints runs the fingerprint pass at once, and again after every scan

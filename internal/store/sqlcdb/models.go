@@ -24,6 +24,14 @@ type AlbumHeart struct {
 	HeartedAt int64
 }
 
+type AlbumLoudness struct {
+	ID         int64
+	AlbumID    int64
+	Tracks     int64
+	Integrated *float64
+	TruePeak   *float64
+}
+
 type Artist struct {
 	ID       int64
 	Ulid     string
@@ -209,6 +217,19 @@ type TrackHeart struct {
 	UserID    int64
 	TrackID   int64
 	HeartedAt int64
+}
+
+type TrackLoudness struct {
+	TrackID    int64
+	Size       int64
+	Mtime      int64
+	Version    int64
+	Outcome    string
+	Integrated *float64
+	TruePeak   *float64
+	SamplePeak *float64
+	Blocks     []byte
+	AlbumPool  *int64
 }
 
 type TrackRating struct {

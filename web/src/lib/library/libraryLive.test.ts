@@ -101,6 +101,9 @@ describe('following the server', () => {
 		expect(library.facts?.scan).toEqual(running);
 		stream.send('fingerprints', { done: 1, total: 4 });
 		expect(library.facts?.fingerprints).toEqual({ done: 1, total: 4 });
+		const loudness = { done: 2, total: 5, ungained: 5, measured: 2, unmeasurable: 0 };
+		stream.send('loudness', loudness);
+		expect(library.facts?.loudness).toEqual(loudness);
 		const asked = facts.mock.calls.length;
 		stream.send('scan', { state: 'idle', read: 0, total: 0 });
 		await vi.waitFor(() => {

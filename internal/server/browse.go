@@ -13,6 +13,7 @@ import (
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/library"
+	"github.com/simonhull/kitsune/internal/loudness"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -166,11 +167,21 @@ func (s *Server) getLibrary(w http.ResponseWriter, r *http.Request) {
 		Albums: f.Albums, Tracks: f.Tracks, DurationMs: f.Duration.Milliseconds(),
 		Roots: len(s.scanner.Roots()), Issues: f.Issues, Scan: toAPIScan(s.scanner.Progress(), isAdmin(r.Context())),
 		Fingerprints: toAPIFingerprints(s.scanner.Fingerprints()),
+		Loudness:     toAPILoudness(s.scanner.Loudness()),
 		IssueCounts: api.IssueCounts{
 			Unreadable: f.Unreadable, Corrupted: f.Corrupted, Unsupported: f.Unsupported, Warnings: f.WarnedTracks,
 		},
 	}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
+}
+
+// toAPILoudness is the loudness pass's progress, and what it has measured, on
+// the wire.
+func toAPILoudness(p library.LoudnessProgress) api.LoudnessStatus {
+	return api.LoudnessStatus{
+		Done: p.Done, Total: p.Total,
+		Ungained: p.Counts.Ungained, Measured: p.Counts.Measured, Unmeasurable: p.Counts.Unmeasurable,
+	}
 }
 
 // toAPIFingerprints is the fingerprint pass's progress on the wire.
@@ -350,8 +361,26 @@ func toAPITrack(t *store.Track, genres []string) api.Track {
 		TrackTotal: t.TrackTotal, DiscTotal: t.DiscTotal, DiscSubtitle: t.DiscSubtitle, Year: t.Year,
 		Genres: append([]string{}, genres...), Etag: t.ETag,
 	}
-	if rg := t.ReplayGain; rg != (store.ReplayGain{}) {
-		out.ReplayGain = &api.ReplayGain{TrackGain: rg.TrackGain, AlbumGain: rg.AlbumGain, TrackPeak: rg.TrackPeak, AlbumPeak: rg.AlbumPeak}
+	out.ReplayGain = toAPIReplayGain(t)
+	return out
+}
+
+// toAPIReplayGain is the gain a track plays at: its tags' when it has a gain
+// tagged, else Kitsune's measure of its file, else none.
+func toAPIReplayGain(t *store.Track) *api.ReplayGain {
+	if rg := t.ReplayGain; rg.TrackGain != 0 || rg.AlbumGain != 0 {
+		return &api.ReplayGain{
+			TrackGain: rg.TrackGain, AlbumGain: rg.AlbumGain, TrackPeak: rg.TrackPeak, AlbumPeak: rg.AlbumPeak,
+			Source: api.GainFromTags,
+		}
+	}
+	m := t.Measured
+	if !m.HasTrack {
+		return nil
+	}
+	out := &api.ReplayGain{TrackGain: loudness.Gain(m.Track), TrackPeak: m.TrackPeak, Source: api.GainMeasured}
+	if m.HasAlbum {
+		out.AlbumGain, out.AlbumPeak = loudness.Gain(m.Album), m.AlbumPeak
 	}
 	return out
 }

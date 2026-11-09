@@ -124,7 +124,7 @@ function track(
 		format: 'FLAC',
 		sampleRate: 96_000,
 		bitDepth: 24,
-		...(gain === null ? {} : { replayGain: { trackGain: gain } }),
+		...(gain === null ? {} : { replayGain: { trackGain: gain, source: 'tags' as const } }),
 		trackTotal: album.trackCount,
 		discTotal: 1,
 		genres: boardTags,

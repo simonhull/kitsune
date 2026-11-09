@@ -8,6 +8,8 @@ ignore ./web/node_modules
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/hajimehoshi/go-mp3 v0.3.4
+	github.com/mewkiz/flac v1.0.14
 	github.com/ncruces/go-sqlite3 v0.36.0
 	github.com/pb33f/libopenapi v0.41.8
 	github.com/pb33f/libopenapi-validator v0.16.2
@@ -24,6 +26,9 @@ require (
 	github.com/basgys/goxml2json v1.1.1-0.20231018121955-e66ee54ceaad // indirect
 	github.com/buger/jsonparser v1.6.1 // indirect
 	github.com/go-openapi/jsonpointer v1.0.2 // indirect
+	github.com/icza/bitio v1.1.0 // indirect
+	github.com/mewkiz/pkg v0.0.0-20250417130911-3f050ff8c56d // indirect
+	github.com/mewpkg/term v0.0.0-20241026122259-37a80af23985 // indirect
 	github.com/ncruces/go-sqlite3-wasm/v6 v6.4.35401 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/pb33f/go-yaml v0.1.1 // indirect

@@ -153,6 +153,7 @@
 		}
 	}
 	import ShuffleCard from '#lib/shuffle/ShuffleCard.svelte';
+	import PlaybackCard from '#lib/player/PlaybackCard.svelte';
 </script>
 
 <svelte:head>
@@ -221,6 +222,11 @@
 		<section aria-labelledby="shuffle-head" class="shuffles" data-morph-part="panel">
 			<h2 id="shuffle-head" class="mono">HOW SHUFFLE CHOOSES</h2>
 			<ShuffleCard />
+		</section>
+
+		<section aria-labelledby="playback-head" class="shuffles" data-morph-part="panel">
+			<h2 id="playback-head" class="mono">HOW SONGS PLAY</h2>
+			<PlaybackCard />
 		</section>
 
 		<section aria-labelledby="where" class="where" data-morph-part="panel">
@@ -687,7 +693,7 @@
 	 * Passwords board puts how you sign in under who you are, where the left column had room.
 	 */
 	.left {
-		grid-row: span 3;
+		grid-row: span 4;
 		min-width: 0;
 	}
 

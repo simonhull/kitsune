@@ -136,6 +136,10 @@ func TestShuffleChecks(t *testing.T) {
 		{prefs.ShuffleRatings, `"0.5"`, ""},
 		{prefs.ShuffleMemory, "false", "false"},
 		{prefs.ShuffleMemory, "1", ""},
+		{prefs.PlaybackUntaggedGain, "-8", "-8"},
+		{prefs.PlaybackUntaggedGain, "0", "0"},
+		{prefs.PlaybackUntaggedGain, "-20.5", ""},
+		{prefs.PlaybackUntaggedGain, "3", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.key+" "+tt.in, func(t *testing.T) {

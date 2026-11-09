@@ -33,7 +33,7 @@ function album(id: string, count = 2, albumGain = -1): Album {
 		genres: [],
 		etag: '',
 		hearted: false,
-		replayGain: { albumGain, trackGain: -9 }
+		replayGain: { albumGain, trackGain: -9, source: 'tags' }
 	}));
 	return {
 		id,

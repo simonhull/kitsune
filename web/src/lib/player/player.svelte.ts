@@ -1,8 +1,9 @@
 import { cueOf, type NowPlaying } from '#lib/library/cue.ts';
 import { library, type Library, type PlayerView } from '#lib/library/library.svelte.ts';
 import type { Album, ListenEnding, Track } from '#lib/library/source.ts';
-import { appliedGain } from './gain.ts';
+import { playedGain } from './gain.ts';
 import { Listen } from './listen.ts';
+import { playbackSettings } from './playback.svelte.ts';
 import { HtmlOutput, mediaTypeOf, SilentOutput, type AudioOutput } from './output.ts';
 import {
 	albumOf,
@@ -73,6 +74,7 @@ export class Player implements PlayerView {
 	readonly onward: Partial<Record<Onward, (queue: Queue) => void>> = {};
 
 	readonly #library: Library;
+	readonly #untagged: () => number;
 	readonly #create: () => AudioOutput;
 	#built: AudioOutput | null = null;
 	/** Moves on with every new intent: anything older that answers late is ignored. */
@@ -91,10 +93,14 @@ export class Player implements PlayerView {
 	/** The listen Last.fm was last told about, as now playing. */
 	#announced: Listen | null = null;
 
-	/** Nothing audio-related exists until the first play: this module loads with no window. */
-	constructor(host: Library, create: () => AudioOutput) {
+	/**
+	 * Nothing audio-related exists until the first play: this module loads with no window.
+	 * `untagged` is the gain, in dB, of a song with no ReplayGain, read as each song loads.
+	 */
+	constructor(host: Library, create: () => AudioOutput, untagged: () => number = () => 0) {
 		this.#library = host;
 		this.#create = create;
+		this.#untagged = untagged;
 		host.follow(this);
 	}
 
@@ -458,7 +464,7 @@ export class Player implements PlayerView {
 	#load(track: Track): void {
 		const output = this.#output;
 		output.load(this.#source(track));
-		output.setGain(appliedGain(track, this.queue?.ordered ?? true) ?? 0);
+		output.setGain(playedGain(track, this.queue?.ordered ?? true, this.#untagged()));
 	}
 
 	#source({ id, durationMs }: Track): { url: string; seconds: number } {
@@ -631,6 +637,8 @@ function started(queue: Queue, from: StartedFrom): Queue {
 }
 
 /** The one player. The fixtures have nothing to hear, so they get the clock and no sound. */
-export const player = new Player(library, () =>
-	library.simulated ? new SilentOutput() : new HtmlOutput()
+export const player = new Player(
+	library,
+	() => (library.simulated ? new SilentOutput() : new HtmlOutput()),
+	() => playbackSettings.untaggedGain
 );

@@ -28,6 +28,7 @@
 	import { createCarrier } from '#lib/player/carry.ts';
 	import { togglesOnSpace } from '#lib/player/keys.ts';
 	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
+	import { playbackSettings } from '#lib/player/playback.svelte.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import { shuffles } from '#lib/shuffle/session.svelte.ts';
 	import { shuffleSettings } from '#lib/shuffle/settings.svelte.ts';
@@ -103,6 +104,13 @@
 		}
 	}
 
+	// Read as soon as someone is signed in, so the first song already plays at their level.
+	$effect(() => {
+		if (library.user !== null) {
+			void playbackSettings.load();
+		}
+	});
+
 	onMount(() => {
 		library.onExpired = async () => {
 			if (location.pathname !== resolve('/login')) {
@@ -117,6 +125,7 @@
 			selection.clear();
 			shuffles.reset();
 			shuffleSettings.reset();
+			playbackSettings.reset();
 			tagEdits.reset();
 			bulkEdits.reset();
 			matchSheet.reset();

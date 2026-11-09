@@ -103,15 +103,21 @@ type Scanner struct {
 	scanEnded chan struct{}             // Holds a token when a scan has ended, for the watcher.
 	walkedAt  atomic.Pointer[time.Time] // When the latest scan began walking every root.
 
-	notify      Notifier
-	libraryNote throttle // When the notifier last heard of changed albums.
-	scanNote    throttle // ...of a scan's progress.
-	passNote    throttle // ...of the pass's.
+	notify       Notifier
+	libraryNote  throttle // When the notifier last heard of changed albums.
+	scanNote     throttle // ...of a scan's progress.
+	passNote     throttle // ...of the pass's.
+	loudnessNote throttle // ...of the loudness pass's.
 
 	fingerprint  fingerprintFunc                     // Reads a file's fingerprint; tests replace it.
 	fingerprints atomic.Pointer[FingerprintProgress] // The pass's progress.
 	wantPass     chan struct{}                       // Holds a token when tracks may wait for a fingerprint.
-	passing      sync.Mutex                          // Held by the one fingerprint pass.
+	passing      sync.Mutex                          // Held by the one fingerprint pass, and a loudness batch.
+
+	measure      measureFunc                      // Measures a file's loudness; tests replace it.
+	loudness     atomic.Pointer[LoudnessProgress] // The loudness pass's progress.
+	wantLoudness chan struct{}                    // Holds a token when files may wait for a measure.
+	measuring    sync.Mutex                       // Held by the one loudness pass.
 }
 
 // NewScanner returns a scanner that writes to st.
@@ -121,6 +127,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
 		write: opts.Write, genres: opts.Genres, claim: newLibraryLock(), lock: newLibraryLock(),
 		fingerprint: readFingerprint, wantPass: make(chan struct{}, 1), redaily: make(chan struct{}, 1),
+		measure: measureFile, wantLoudness: make(chan struct{}, 1),
 		rerooted: make(chan struct{}, 1), scanEnded: make(chan struct{}, 1),
 	}
 	if s.workers <= 0 {
@@ -149,6 +156,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 	daily := opts.QuickScan
 	s.daily.Store(&daily)
 	s.fingerprints.Store(&FingerprintProgress{})
+	s.loudness.Store(&LoudnessProgress{})
 	return s
 }
 

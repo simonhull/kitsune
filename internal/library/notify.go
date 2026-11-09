@@ -26,6 +26,8 @@ type Notifier interface {
 	ScanChanged(p Progress)
 	// FingerprintsChanged gives the fingerprint pass's progress, the same way.
 	FingerprintsChanged(p FingerprintProgress)
+	// LoudnessChanged gives the loudness pass's progress, the same way.
+	LoudnessChanged(p LoudnessProgress)
 }
 
 // noNotify hears nothing.
@@ -34,6 +36,7 @@ type noNotify struct{}
 func (noNotify) LibraryChanged([]string, bool)           {}
 func (noNotify) ScanChanged(Progress)                    {}
 func (noNotify) FingerprintsChanged(FingerprintProgress) {}
+func (noNotify) LoudnessChanged(LoudnessProgress)        {}
 
 // throttle says when a running thing may tell again.
 type throttle struct {

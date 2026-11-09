@@ -65,6 +65,9 @@ const (
 	AlbumsSort = "albums.sort"
 	// ArtistsSort is the Artists page's order, a [Sort].
 	ArtistsSort = "artists.sort"
+	// PlaybackUntaggedGain is the gain, in dB from -20 to 0, a song plays at
+	// while it has no ReplayGain, its tags' or Kitsune's measure.
+	PlaybackUntaggedGain = "playback.untagged_gain"
 )
 
 // keys are every preference there is, by name.
@@ -79,6 +82,8 @@ var keys = map[string]Key{
 	LibrarySort:    {name: LibrarySort, check: checkLibrarySort},
 	AlbumsSort:     {name: AlbumsSort, check: checkSortOf(albumsOrders)},
 	ArtistsSort:    {name: ArtistsSort, check: checkSortOf(artistsOrders)},
+
+	PlaybackUntaggedGain: {name: PlaybackUntaggedGain, check: checkUntaggedGain},
 }
 
 // Lookup returns the key named name, or an error wrapping [ErrUnknownKey].
@@ -248,6 +253,31 @@ func checkSwitch(value []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
 	b, err := json.Marshal(on)
+	if err != nil {
+		return nil, fmt.Errorf("encode: %w", err)
+	}
+	return b, nil
+}
+
+// The range of [PlaybackUntaggedGain], in dB: it may only turn a song down,
+// since nothing says how far up it could go before it clips.
+const (
+	minUntaggedGain = -20
+	maxUntaggedGain = 0
+)
+
+var errUntaggedGain = errors.New("not a number of dB from -20 to 0")
+
+// checkUntaggedGain accepts a JSON number from -20 to 0.
+func checkUntaggedGain(value []byte) ([]byte, error) {
+	var gain float64
+	if err := json.Unmarshal(value, &gain); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	if !(gain >= minUntaggedGain && gain <= maxUntaggedGain) {
+		return nil, errUntaggedGain
+	}
+	b, err := json.Marshal(gain)
 	if err != nil {
 		return nil, fmt.Errorf("encode: %w", err)
 	}

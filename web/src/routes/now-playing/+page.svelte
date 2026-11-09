@@ -2,7 +2,7 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { emWidth } from '#lib/library/fit.ts';
-	import { balancedLines, credit, gain } from '#lib/library/format.ts';
+	import { balancedLines, credit, gain, gainMeasured } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
 	import { morph } from '#lib/morph/registry.ts';
@@ -87,7 +87,9 @@
 				<span class="chips">
 					<span class="chip">{playing.format}</span>
 					{#if rg !== null}
-						<span class="chip">RG {gain(rg)} dB</span>
+						<span class="chip"
+							>RG {gain(rg)} dB{gainMeasured(playing.track) ? ' · measured' : ''}</span
+						>
 					{/if}
 				</span>
 			</div>
