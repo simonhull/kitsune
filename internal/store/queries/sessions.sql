@@ -17,3 +17,9 @@ DELETE FROM sessions WHERE token_hash = ?;
 
 -- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions WHERE expires_at <= ?;
+
+-- name: DeleteSessionsOf :execrows
+DELETE FROM sessions WHERE user_id = ?;
+
+-- name: DeleteOtherSessionsOf :execrows
+DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?;

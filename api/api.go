@@ -66,6 +66,46 @@ type SetupRequest struct {
 	Code string `json:"code,omitzero"`
 }
 
+// PasswordChange is the body of POST /me/password.
+type PasswordChange struct {
+	Current string `json:"current"`
+	New     string `json:"new"`
+}
+
+// ResetRequest is the body of POST /auth/reset.
+type ResetRequest struct {
+	Name string `json:"name"`
+}
+
+// ResetConfirm is the body of POST /auth/reset/confirm.
+type ResetConfirm struct {
+	Name string `json:"name"`
+	// Code is the reset code from the server's log.
+	Code string `json:"code"`
+	New  string `json:"new"`
+	// Cookie asks for the session in a cookie instead of in the response body.
+	Cookie bool `json:"cookie,omitzero"`
+}
+
+// PasswordSet is the body of POST /admin/users/{id}/password.
+type PasswordSet struct {
+	New string `json:"new"`
+}
+
+// Accounts is the response to GET /admin/users.
+type Accounts struct {
+	Users []Account `json:"users"`
+}
+
+// Account is a user as an administrator sees them: who, and how they sign in.
+type Account struct {
+	User User `json:"user"`
+	// LastSeen is when the newest of their live sessions was last used. Absent with none.
+	LastSeen *time.Time `json:"lastSeen,omitzero"`
+	// Sessions counts their live sessions.
+	Sessions int `json:"sessions"`
+}
+
 // User is an account as the API shows it. It has no password-hash field.
 type User struct {
 	ID        int64     `json:"id"`

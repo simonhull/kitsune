@@ -3,6 +3,7 @@ package store_test
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -159,5 +160,110 @@ func TestSetPasswordHash(t *testing.T) {
 	}
 	if err = s.SetPasswordHash(t.Context(), u.ID+100, "x"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSetPasswordEndsSessions(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name     string
+		keep     []byte
+		wantGone []bool // Sessions 1, 2 and the other user's 3.
+	}{
+		{name: "all", keep: nil, wantGone: []bool{true, true, false}},
+		{name: "all but one", keep: hashN(2), wantGone: []bool{true, false, false}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := openUsers(t)
+			u := newSessionUser(t, s)
+			other, err := s.CreateUser(t.Context(), store.NewUser{Name: "kim", PasswordHash: "h", Role: store.RoleUser})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t0 := sessionT0()
+			for i, owner := range []int64{u.ID, u.ID, other.ID} {
+				ns := &store.NewSession{TokenHash: hashN(byte(i + 1)), UserID: owner, CreatedAt: t0, ExpiresAt: t0.Add(time.Hour)}
+				if err = s.CreateSession(t.Context(), ns); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err = s.SetPassword(t.Context(), u.ID, "new", tt.keep); err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.UserByName(t.Context(), simon)
+			if err != nil || got.PasswordHash != "new" {
+				t.Errorf("PasswordHash = %q, %v; want new", got.PasswordHash, err)
+			}
+			for i, want := range tt.wantGone {
+				_, err = s.SessionByTokenHash(t.Context(), hashN(byte(i+1)))
+				if gone := errors.Is(err, store.ErrNotFound); gone != want {
+					t.Errorf("session %d gone = %v, want %v", i+1, gone, want)
+				}
+			}
+		})
+	}
+}
+
+func TestSetPasswordUnknownUser(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	if err := s.SetPassword(t.Context(), 42, "x", nil); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestUsersListsByNameWithoutHashes(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	for _, n := range []string{"zoe", "Amy", "kim"} {
+		if _, err := s.CreateUser(t.Context(), store.NewUser{Name: n, PasswordHash: "secret-hash", Role: store.RoleUser}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	users, err := s.Users(t.Context(), sessionT0())
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(users))
+	for _, a := range users {
+		names = append(names, a.User.Name)
+		if a.User.PasswordHash != "" {
+			t.Errorf("%s carries a hash", a.User.Name)
+		}
+	}
+	if got := strings.Join(names, ","); got != "Amy,kim,zoe" {
+		t.Errorf("names = %s, want Amy,kim,zoe", got)
+	}
+}
+
+func TestUsersCountLiveSessions(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	u := newSessionUser(t, s)
+	if _, err := s.CreateUser(t.Context(), store.NewUser{Name: "amy", PasswordHash: "h", Role: store.RoleUser}); err != nil {
+		t.Fatal(err)
+	}
+	t0 := sessionT0()
+	for i, created := range []time.Time{t0, t0.Add(time.Hour), t0.Add(-48 * time.Hour)} {
+		expires := created.Add(24 * time.Hour) // The third has expired by t0 + 2h.
+		ns := &store.NewSession{TokenHash: hashN(byte(i + 1)), UserID: u.ID, CreatedAt: created, ExpiresAt: expires}
+		if err := s.CreateSession(t.Context(), ns); err != nil {
+			t.Fatal(err)
+		}
+	}
+	users, err := s.Users(t.Context(), t0.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("got %d accounts, want 2", len(users))
+	}
+	amy, simonAcct := users[0], users[1]
+	if amy.Sessions != 0 || !amy.LastSeen.IsZero() {
+		t.Errorf("amy = %+v, want no sessions and no last seen", amy)
+	}
+	if simonAcct.Sessions != 2 || !simonAcct.LastSeen.Equal(t0.Add(time.Hour)) {
+		t.Errorf("simon = %d sessions, last seen %v; want 2 and %v", simonAcct.Sessions, simonAcct.LastSeen, t0.Add(time.Hour))
 	}
 }

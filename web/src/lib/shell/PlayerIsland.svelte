@@ -7,6 +7,7 @@
 	import { player } from '#lib/player/player.svelte.ts';
 	import HeartButton from './HeartButton.svelte';
 	import Icon from './Icon.svelte';
+	import { floor } from './floor.svelte.ts';
 	import Scrubber from './Scrubber.svelte';
 	import { islandSlot } from './slot.svelte.ts';
 
@@ -67,6 +68,7 @@
 	class:expanded
 	class:away
 	inert={away}
+	use:floor={!away && !expanded}
 	style:--slot-left={slot === null ? undefined : `${String(slot.left)}px`}
 	style:--slot-top={slot === null ? undefined : `${String(slot.top)}px`}
 	style:--slot-width={slot === null ? undefined : `${String(slot.width)}px`}

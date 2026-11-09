@@ -218,6 +218,18 @@ export function turnedLetterTarget(
 	return named.find((index) => index !== undefined) ?? count - 1;
 }
 
+/**
+ * Finds the letter to light on a rail, either way round, for an artist under `letter`: it, or the
+ * nearest the rail draws before it.
+ */
+export function railLit(rail: readonly string[], letter: string): string | undefined {
+	const first = rail.at(0);
+	const last = rail.at(-1);
+	return first !== undefined && last !== undefined && first > last
+		? turnedRailHere(rail, letter)
+		: rail.findLast((each) => each <= letter);
+}
+
 /** Finds the letter to light on a turned rail for an artist under `letter`. */
 export function turnedRailHere(rail: readonly string[], letter: string): string | undefined {
 	return rail.findLast((each) => each >= letter);

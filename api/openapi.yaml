@@ -61,6 +61,62 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /auth/reset:
+    post:
+      operationId: requestPasswordReset
+      summary: Ask for a code that sets a new password.
+      description: >-
+        Kitsune sends no email: for a real account, the server makes a reset
+        code and writes it once to its log, at WARN, naming the account, so
+        only whoever runs the server can pass it on. The code works once, for
+        15 minutes, and asking again replaces it. Codes live in memory, so a
+        restart voids them. The answer is the same whether or not the account
+        exists. Requests are rate limited per client IP and per name.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetRequest" }
+      responses:
+        "202":
+          description: If the account exists, a code is in the server's log.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
+  /auth/reset/confirm:
+    post:
+      operationId: confirmPasswordReset
+      summary: Set a new password with a reset code, and sign in.
+      description: >-
+        On success the account's sessions all end and a new one starts, as at
+        login. A wrong code counts against the login rate limit, per client IP
+        and per account; a wrong code, an expired or used one and an unknown
+        name are the same 403.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetConfirm" }
+      responses:
+        "200":
+          description: >-
+            The new session. With `cookie: true` it is also set as the
+            kitsune_session cookie and the body carries no token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: The code is wrong, expired or used, or no account has the name.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
   /setup:
     get:
       operationId: getSetup
@@ -361,6 +417,44 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /me/password:
+    post:
+      operationId: changePassword
+      summary: Change the caller's password.
+      description: >-
+        Needs the current password. A wrong one counts against the login rate
+        limit, per client IP and per account. The new one follows the same
+        rules as everywhere else: at least 8 characters, at most 1024 bytes.
+        The session the request used stays signed in; the caller's others end.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordChange" }
+      responses:
+        "204":
+          description: Changed, and the caller's other sessions ended.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          description: >-
+            The current password is wrong, or a cookie-authenticated request
+            did not send X-Kitsune-Request.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
   /me/prefs/{key}:
     get:
       operationId: getPref
@@ -1280,6 +1374,71 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "403":
           $ref: "#/components/responses/Problem"
+  /admin/users:
+    get:
+      operationId: getUsers
+      summary: List every account.
+      description: >-
+        For administrators, by name. Each says when its newest live session was
+        last used and how many are live; neither ever carries a token.
+      responses:
+        "200":
+          description: Every account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Accounts" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+  /admin/users/{id}/password:
+    post:
+      operationId: setUserPassword
+      summary: Set someone's password.
+      description: >-
+        For administrators, for anyone but themselves: their own changes
+        through `POST /me/password`, which asks for the current one. Every
+        session of the person ends.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          description: The user's ID.
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordSet" }
+      responses:
+        "204":
+          description: Set, and the person's sessions ended.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          description: >-
+            Not an administrator, the caller's own account, or a
+            cookie-authenticated request without X-Kitsune-Request.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
   /admin/settings:
     get:
       operationId: getSettings
@@ -1664,6 +1823,15 @@ components:
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
+    TooManyAttempts:
+      description: Too many failed attempts; wait before trying again.
+      headers:
+        Retry-After:
+          description: Seconds to wait before trying again.
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
     EditFailure:
       description: >-
         An RFC 9457 problem. When a tag edit was refused or stopped, it says
@@ -1924,6 +2092,56 @@ components:
         name: { type: string, minLength: 1 }
         password: { type: string, minLength: 1 }
         cookie: { type: boolean, default: false }
+    PasswordChange:
+      type: object
+      additionalProperties: false
+      required: [current, new]
+      properties:
+        current: { type: string, minLength: 1 }
+        new: { type: string, minLength: 1 }
+    ResetRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+    ResetConfirm:
+      type: object
+      additionalProperties: false
+      required: [name, code, new]
+      properties:
+        name: { type: string, minLength: 1 }
+        code:
+          type: string
+          minLength: 1
+          description: The reset code from the server's log, in any case, with or without its dashes.
+        new: { type: string, minLength: 1 }
+        cookie: { type: boolean, default: false }
+    PasswordSet:
+      type: object
+      additionalProperties: false
+      required: [new]
+      properties:
+        new: { type: string, minLength: 1 }
+    Accounts:
+      type: object
+      additionalProperties: false
+      required: [users]
+      properties:
+        users:
+          type: array
+          items: { $ref: "#/components/schemas/Account" }
+    Account:
+      type: object
+      additionalProperties: false
+      required: [user, sessions]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        lastSeen:
+          type: string
+          format: date-time
+          description: When the newest live session was last used; absent with none.
+        sessions: { type: integer, minimum: 0, description: Live sessions. }
     SetupStatus:
       type: object
       additionalProperties: false

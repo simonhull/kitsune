@@ -3,6 +3,7 @@ import {
 	albumAdded,
 	hasLetters,
 	railFor,
+	railLit,
 	sortFields,
 	sortIndex,
 	turnedLetterTarget,
@@ -226,5 +227,15 @@ describe('the rail', () => {
 		expect(turnedRailHere(turned, 'B')).toBe('B');
 		expect(turnedRailHere(['Z', 'X', 'A'], 'Y')).toBe('Z');
 		expect(turnedRailHere(turned, '#')).toBe('#');
+	});
+});
+
+describe('railLit', () => {
+	it('lights the letter, or the nearest drawn before it, either way round', () => {
+		expect(railLit(['#', 'A', 'D', 'G'], 'E')).toBe('D');
+		expect(railLit(['#', 'A', 'D', 'G'], '#')).toBe('#');
+		expect(railLit(['G', 'D', 'A', '#'], 'E')).toBe('G');
+		expect(railLit(['G', 'D', 'A', '#'], 'D')).toBe('D');
+		expect(railLit(['G', 'D', 'A', '#'], '#')).toBe('#');
 	});
 });

@@ -17,6 +17,7 @@
 		roleLine,
 		type ConnectResult
 	} from '#lib/pages/you.ts';
+	import PasswordCard from '#lib/pages/PasswordCard.svelte';
 	import { theme, themeChoices, type Theme, type ThemeChoice } from '#lib/theme/theme.svelte.ts';
 
 	/** How often the words that depend on the clock are worked out again. */
@@ -160,20 +161,23 @@
 
 {#if user !== null}
 	<div class="you">
-		<div class="who" data-morph-part="intro" data-morph-key="who">
-			<p class="mono role">{roleLine(user.role)}</p>
-			<h1>{user.name}</h1>
-			<p class="mono counts" aria-live="polite">
-				{listening === null ? ' ' : countsLine(listening)}
-			</p>
-			<div class="who-actions">
-				{#if library.admin}
-					<a class="ghost" href={resolve('/server')}
-						>Server settings <span class="chevron" aria-hidden="true">›</span></a
-					>
-				{/if}
-				<button type="button" class="ghost" onclick={() => void signOut()}>Sign out</button>
+		<div class="left">
+			<div class="who" data-morph-part="intro" data-morph-key="who">
+				<p class="mono role">{roleLine(user.role)}</p>
+				<h1>{user.name}</h1>
+				<p class="mono counts" aria-live="polite">
+					{listening === null ? ' ' : countsLine(listening)}
+				</p>
+				<div class="who-actions">
+					{#if library.admin}
+						<a class="ghost" href={resolve('/server')}
+							>Server settings <span class="chevron" aria-hidden="true">›</span></a
+						>
+					{/if}
+					<button type="button" class="ghost" onclick={() => void signOut()}>Sign out</button>
+				</div>
 			</div>
+			<PasswordCard />
 		</div>
 
 		<section aria-labelledby="looks" class="looks" data-morph-part="panel">
@@ -678,9 +682,13 @@
 		display: none;
 	}
 
-	/* The Appearance board: how Kitsune looks heads the right column, and Last.fm follows it. */
-	.who {
+	/*
+	 * The Appearance board: how Kitsune looks heads the right column, and Last.fm follows it. The
+	 * Passwords board puts how you sign in under who you are, where the left column had room.
+	 */
+	.left {
 		grid-row: span 3;
+		min-width: 0;
 	}
 
 	.looks,
@@ -858,7 +866,7 @@
 			font-size: clamp(72px, 18vw, var(--type-hero));
 		}
 
-		.who,
+		.left,
 		.looks,
 		.shuffles,
 		.where {

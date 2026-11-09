@@ -25,8 +25,8 @@
 		type MenuTarget,
 		type SongActions
 	} from '#lib/pages/songActions.ts';
-	import { letterOf, railHere, railLetters } from '#lib/pages/libraryRows.ts';
-	import { hasLetters, railFor, sortFields, turnedRailHere } from '#lib/library/libraryOrder.ts';
+	import { letterOf, railLetters } from '#lib/pages/libraryRows.ts';
+	import { hasLetters, railFor, railLit, sortFields } from '#lib/library/libraryOrder.ts';
 	import { artistAlbumOrders, libraryArtistOrders, wayOf } from '#lib/library/sorts.ts';
 	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
 	import { sorts } from '#lib/pages/sortsView.svelte.ts';
@@ -79,14 +79,8 @@
 	/** Only a name order has letters to jump to: under any other the rail goes. */
 	const lettered = $derived(hasLetters(sort));
 	const letter = $derived(artist === undefined ? undefined : letterOf(artist.sortName));
-	const letters = $derived(railFor(railLetters(layout, view.stacked), sort));
-	const railAt = $derived(
-		letter === undefined
-			? undefined
-			: sort.artists.dir === 'desc'
-				? turnedRailHere(letters, letter)
-				: railHere(letters, letter)
-	);
+	const letters = $derived(railFor(railLetters(layout), sort));
+	const railAt = $derived(letter === undefined ? undefined : railLit(letters, letter));
 	/** The Sort menu: the artists' order, and their albums'. */
 	const sortGroups: SortGroup[] = $derived([
 		{

@@ -238,20 +238,15 @@ describe('letterOf', () => {
 describe('railLetters', () => {
 	const layout = layOut(index, metrics);
 
-	it('runs A to Z at desktop, with no # for a library that has none', () => {
-		const letters = railLetters(layout, false);
+	it('runs A to Z on every screen, with no # for a library that has none', () => {
+		const letters = railLetters(layout);
 		expect(letters).toHaveLength(26);
 		expect(letters.at(0)).toBe('A');
 	});
 
-	it('shows every other letter or so on a phone', () => {
-		expect(railLetters(layout, true).join('')).toBe('ADGJLNPRTVXZ');
-	});
-
 	it('puts # at the top when something files there', () => {
 		const numbered = layOut({ artists: [artist('3 Doors', [album('n', [song('n')])])] }, metrics);
-		expect(railLetters(numbered, false).at(0)).toBe('#');
-		expect(railLetters(numbered, true).at(0)).toBe('#');
+		expect(railLetters(numbered).at(0)).toBe('#');
 	});
 });
 
@@ -273,7 +268,7 @@ describe('letterTarget', () => {
 
 describe('railHere', () => {
 	it('lights the letter itself when the rail has it', () => {
-		expect(railHere(railLetters(layOut(index, metrics), false), 'M')).toBe('M');
+		expect(railHere(railLetters(layOut(index, metrics)), 'M')).toBe('M');
 	});
 
 	it('lights the letter before it on a rail that skips', () => {

@@ -279,12 +279,13 @@ export function letterOf(name: string): string {
 }
 
 const alphabet = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
-/** The phone's rail, off its board: 44 px targets leave room for about every other letter. */
-const everyOther = [...'ADGJLNPRTVXZ'];
 
-/** The letters on the rail. `#` is there only for a library with something to find under it. */
-export function railLetters({ letters }: Layout, stacked: boolean): string[] {
-	return [...(letters.has('#') ? ['#'] : []), ...(stacked ? everyOther : alphabet)];
+/**
+ * The letters on the rail, all of them on every screen: the rail folds what it can't fit. `#` is
+ * there only for a library with something to find under it.
+ */
+export function railLetters({ letters }: Layout): string[] {
+	return [...(letters.has('#') ? ['#'] : []), ...alphabet];
 }
 
 /** Finds the artist a letter jumps to: its first, or the first after it, or the very last. */
