@@ -47,8 +47,8 @@ const (
 	defaultRetries  = 3
 	defaultBackoff  = time.Second
 	defaultTimeout  = 30 * time.Second
-	// cacheFor is how long an answer is kept.
-	cacheFor = 24 * time.Hour
+	// CacheFor is how long an answer is kept.
+	CacheFor = 24 * time.Hour
 	// maxBody caps how much of an answer is read: a box set's tracklist is large.
 	maxBody = 8 << 20
 	// searchLimit is how many releases a search asks for.
@@ -208,7 +208,7 @@ func (c *MusicBrainz) Search(ctx context.Context, q *Query) ([]Release, error) {
 // the gate.
 func (c *MusicBrainz) get(ctx context.Context, key string) ([]byte, error) {
 	if c.cache != nil {
-		body, err := c.cache.Get(ctx, key, time.Now().Add(-cacheFor))
+		body, err := c.cache.Get(ctx, key, time.Now().Add(-CacheFor))
 		if err != nil {
 			c.log.WarnContext(ctx, "reading a kept MusicBrainz answer failed", "err", err)
 		}

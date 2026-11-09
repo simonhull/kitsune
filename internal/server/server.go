@@ -22,6 +22,7 @@ import (
 	"github.com/simonhull/kitsune/internal/auth"
 	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/library"
+	"github.com/simonhull/kitsune/internal/matching"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/shuffler"
@@ -83,6 +84,9 @@ type Config struct {
 	// Watcher follows the library folders; GET /admin/settings says how. Nil
 	// means none, and no folder says.
 	Watcher *library.Watcher
+	// Matcher finds albums' releases for POST /albums/{id}/matches and GET
+	// /matches/{id}. Nil means matching isn't set up: they answer 503.
+	Matcher *matching.Matcher
 	// Events is what GET /events streams, and where the handlers say what they
 	// changed. Nil means a hub of the server's own, which only its handlers
 	// publish to.
@@ -123,6 +127,7 @@ type Server struct {
 	watcher       *library.Watcher
 	events        *events.Hub
 	shuffles      *shuffler.Service
+	matcher       *matching.Matcher
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -170,6 +175,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		configDir:     cfg.ConfigDir,
 		watcher:       cfg.Watcher,
 		events:        cfg.Events,
+		matcher:       cfg.Matcher,
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
@@ -177,18 +183,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 	if s.now == nil {
 		s.now = time.Now
 	}
-	if s.clientIP == nil {
-		s.clientIP = remoteHost
-	}
-	if s.editContext == nil {
-		s.editContext = context.Background()
-	}
-	if s.events == nil {
-		s.events = events.New(events.Options{})
-	}
-	if s.genres == nil {
-		s.genres = library.NewGenres(cfg.Library)
-	}
+	s.fillDefaults(cfg.Library)
 	s.shuffles = shuffler.New(cfg.Library, s.genres, s.now)
 	s.outside = http.NotFoundHandler()
 	if cfg.Web != nil && cfg.BasePath == "" {
@@ -236,6 +231,22 @@ func remoteHost(r *http.Request) string {
 // ServeHTTP implements [http.Handler].
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handler.ServeHTTP(w, r)
+}
+
+// fillDefaults gives what the Config left out its default.
+func (s *Server) fillDefaults(st *store.Store) {
+	if s.clientIP == nil {
+		s.clientIP = remoteHost
+	}
+	if s.editContext == nil {
+		s.editContext = context.Background()
+	}
+	if s.events == nil {
+		s.events = events.New(events.Options{})
+	}
+	if s.genres == nil {
+		s.genres = library.NewGenres(st)
+	}
 }
 
 // guarded returns rt's handler behind the checks its route asks for.
@@ -293,6 +304,10 @@ func (s *Server) routes() []route {
 		{pattern: "POST /albums/{id}/edits", admin: true, handle: s.postAlbumEdit},
 		{pattern: "POST /edits", admin: true, handle: s.postEdits},
 		{pattern: "GET /albums/{id}/tags", admin: true, handle: s.getAlbumTags},
+		{pattern: "POST /albums/{id}/matches", admin: true, handle: s.postAlbumMatches},
+		{pattern: "GET /matches/{id}", admin: true, handle: s.getMatch},
+		{pattern: "GET /matching/queue", admin: true, handle: s.getMatchingQueue},
+		{pattern: "PUT /matching/albums/{id}", admin: true, handle: s.putMatchingAlbum},
 		{pattern: "GET /artists", handle: s.getArtists},
 		{pattern: "GET /artists/{id}", handle: s.getArtist},
 		{pattern: "GET /library", handle: s.getLibrary},
