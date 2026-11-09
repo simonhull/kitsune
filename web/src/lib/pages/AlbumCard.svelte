@@ -2,38 +2,54 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import type { AlbumEntry } from '#lib/library/source.ts';
+	import { library } from '#lib/library/library.svelte.ts';
 	import { morph } from '#lib/morph/registry.ts';
+	import CoverPlay from './CoverPlay.svelte';
 
 	interface Props {
 		album: AlbumEntry;
 	}
 
 	let { album }: Props = $props();
+
+	/** Asks for the songs as a pointer or focus comes near, so the cover's play starts at once. */
+	function warm(): void {
+		void library.loadAlbum(album.id);
+	}
 </script>
 
-<a
-	class="card"
-	data-morph-part="card"
-	data-morph-key={`card:${album.id}`}
-	href={resolve('/album/[id]', { id: album.id })}
->
-	<span class="art" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
-		><Cover albumId={album.id} entry={album} place="card" lazy /></span
+<!-- The cover's play sits beside the link, not in it: a button can't live inside a link. -->
+<div class="card" data-morph-part="card" data-morph-key={`card:${album.id}`}>
+	<a
+		class="open"
+		onpointerenter={warm}
+		onfocus={warm}
+		href={resolve('/album/[id]', { id: album.id })}
 	>
-	<span class="names">
-		<span
-			class="title"
-			title={album.title}
-			use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}>{album.title}</span
+		<span class="art" use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
+			><Cover albumId={album.id} entry={album} place="card" lazy /></span
 		>
-		<span class="artist" use:morph={{ id: `artist:${album.id}`, slot: 'card', kind: 'title' }}
-			>{album.artist}</span
-		>
-	</span>
-</a>
+		<span class="names">
+			<span
+				class="title"
+				title={album.title}
+				use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}>{album.title}</span
+			>
+			<span class="artist" use:morph={{ id: `artist:${album.id}`, slot: 'card', kind: 'title' }}
+				>{album.artist}</span
+			>
+		</span>
+	</a>
+	<CoverPlay {album} />
+</div>
 
 <style>
 	.card {
+		position: relative;
+		min-width: 0;
+	}
+
+	.open {
 		display: flex;
 		flex-direction: column;
 		gap: calc(12px * var(--step));
@@ -76,7 +92,7 @@
 		letter-spacing: var(--tracking-title);
 	}
 
-	.card:hover .title {
+	.open:hover .title {
 		color: var(--fox-text);
 	}
 

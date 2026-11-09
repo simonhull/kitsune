@@ -337,7 +337,11 @@
 		grid-row: 1;
 	}
 
+	/* A smaller card than a grid's, so a smaller play on it. */
 	.albums :global(.card) {
+		--cover-play-size: calc(40px * var(--step));
+		--cover-play-inset: calc(10px * var(--step));
+
 		margin-bottom: 16px;
 	}
 
