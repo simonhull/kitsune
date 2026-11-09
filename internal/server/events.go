@@ -141,6 +141,13 @@ func (e *LibraryEvents) FingerprintsChanged(p library.FingerprintProgress) {
 	publishJSON(e.hub, events.Fingerprints, events.Admins(), &status, nil)
 }
 
+// LoudnessChanged implements [library.Notifier]: administrators hear the
+// loudness pass's progress.
+func (e *LibraryEvents) LoudnessChanged(p library.LoudnessProgress) {
+	status := toAPILoudness(p)
+	publishJSON(e.hub, events.Loudness, events.Admins(), &status, nil)
+}
+
 // LastfmChanged returns what the scrobbler calls when a person's connection or
 // outbox changed: that person's devices hear it.
 func LastfmChanged(hub *events.Hub) func(userID int64) {

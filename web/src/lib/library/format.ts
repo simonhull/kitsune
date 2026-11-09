@@ -128,9 +128,14 @@ export function credit(
 	return guests.length < named.length ? `feat. ${guests.join(', ')}` : guests.join(', ');
 }
 
-/** The track's ReplayGain in dB, or null when the file has none. Other RG fields don't count. */
+/** The track's ReplayGain in dB, or null when it has none. Other RG fields don't count. */
 export function trackGain({ replayGain }: Track): number | null {
 	return replayGain?.trackGain ?? null;
+}
+
+/** Whether the track's ReplayGain is Kitsune's own measure rather than its file's tags. */
+export function gainMeasured({ replayGain }: Track): boolean {
+	return replayGain?.source === 'measured';
 }
 
 /** A track's format: `FLAC 24/96`, `FLAC 16/44.1`, or `MP3` where depth means nothing. */

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { formatOf, gain, trackGain } from '#lib/library/format.ts';
+	import { formatOf, gain, gainMeasured, trackGain } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { TrackTags } from '#lib/library/source.ts';
 	import { tagGroups } from '#lib/library/tags.ts';
@@ -31,7 +31,9 @@
 		const rg = trackGain(track);
 		return [
 			['Format', formatOf(track)],
-			...(rg === null ? [] : [['Track gain', `${gain(rg)} dB`]]),
+			...(rg === null
+				? []
+				: [['Track gain', `${gain(rg)} dB${gainMeasured(track) ? ', measured by Kitsune' : ''}`]]),
 			...(track.year === undefined ? [] : [['Year', String(track.year)]]),
 			...(track.genres.length === 0 ? [] : [['Genre', track.genres.join(', ')]])
 		];

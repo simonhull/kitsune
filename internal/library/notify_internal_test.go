@@ -16,6 +16,7 @@ type notes struct {
 	all    int
 	scans  []Progress
 	passes []FingerprintProgress
+	loud   []LoudnessProgress
 }
 
 // heard is a Notifier that keeps what it hears.
@@ -45,6 +46,12 @@ func (h *heard) FingerprintsChanged(p FingerprintProgress) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.passes = append(h.passes, p)
+}
+
+func (h *heard) LoudnessChanged(p LoudnessProgress) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.loud = append(h.loud, p)
 }
 
 // take returns what h heard and forgets it.

@@ -16,6 +16,21 @@ CREATE INDEX album_hearts_album ON album_hearts (album_id);
 --   key seqno=0 cid=1 name=album_id desc=0 coll=BINARY key=1
 --   key seqno=1 cid=0 name=user_id desc=0 coll=BINARY key=0
 
+-- table album_loudness
+CREATE TABLE album_loudness (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT, -- never reused: see above
+	album_id   INTEGER NOT NULL UNIQUE REFERENCES albums (id) ON DELETE CASCADE,
+	tracks     INTEGER NOT NULL, -- live tracks pooled
+	integrated REAL,             -- LUFS; NULL when nothing passed the gates
+	true_peak  REAL              -- linear, 1 being full scale; NULL with no audio measured
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=album_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=tracks type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=integrated type=REAL notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=true_peak type=REAL notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=albums from=album_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
 -- table albums
 CREATE TABLE albums (
 	id          INTEGER PRIMARY KEY,
@@ -433,6 +448,37 @@ CREATE INDEX track_hearts_track ON track_hearts (track_id);
 --   key seqno=0 cid=1 name=track_id desc=0 coll=BINARY key=1
 --   key seqno=1 cid=0 name=user_id desc=0 coll=BINARY key=0
 
+-- table track_loudness
+CREATE TABLE track_loudness (
+	track_id    INTEGER PRIMARY KEY REFERENCES tracks (id) ON DELETE CASCADE,
+	size        INTEGER NOT NULL,
+	mtime       INTEGER NOT NULL, -- Unix ms
+	version     INTEGER NOT NULL,
+	outcome     TEXT    NOT NULL CHECK (outcome IN ('measured', 'unsupported', 'unreadable')),
+	integrated  REAL,    -- LUFS; NULL when not measured, or nothing passed the gates
+	true_peak   REAL,    -- linear, as above
+	sample_peak REAL,
+	blocks      BLOB,    -- the gated blocks' histogram, for pooling an album
+	album_pool  INTEGER REFERENCES album_loudness (id) ON DELETE SET NULL
+) STRICT;
+--   column cid=0 name=track_id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=size type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=mtime type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=version type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=outcome type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=integrated type=REAL notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=true_peak type=REAL notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=sample_peak type=REAL notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=8 name=blocks type=BLOB notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=9 name=album_pool type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=album_loudness from=album_pool to=id on_update=NO ACTION on_delete=SET NULL match=NONE
+--   foreign key id=1 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index track_loudness_pool
+CREATE INDEX track_loudness_pool ON track_loudness (album_pool);
+--   key seqno=0 cid=9 name=album_pool desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
 -- table track_ratings
 CREATE TABLE track_ratings (
 	user_id  INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -566,6 +612,12 @@ CREATE INDEX tracks_undigested ON tracks (root, rel_path) WHERE audio_digest IS 
 --   key seqno=0 cid=2 name=root desc=0 coll=BINARY key=1
 --   key seqno=1 cid=3 name=rel_path desc=0 coll=BINARY key=1
 --   key seqno=2 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index tracks_ungained
+CREATE INDEX tracks_ungained ON tracks (album_id)
+	WHERE missing_since IS NULL AND rg_track_gain IS NULL AND rg_album_gain IS NULL;
+--   key seqno=0 cid=7 name=album_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
 
 -- table tracks_fts
 CREATE VIRTUAL TABLE tracks_fts USING fts5 (

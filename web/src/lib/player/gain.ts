@@ -23,6 +23,14 @@ export function appliedGain({ replayGain }: Track, ordered: boolean): number | n
 	return measured.gain === undefined ? null : limited(measured, measured.gain);
 }
 
+/**
+ * The gain to play a track at, in dB: its ReplayGain, tagged or measured, or `untagged` while it has
+ * none. A measure has peaks as tags do, so both are limited alike.
+ */
+export function playedGain(track: Track, ordered: boolean, untagged: number): number {
+	return appliedGain(track, ordered) ?? untagged;
+}
+
 /** Converts decibels to the multiplier a gain stage takes. */
 export function linear(decibels: number): number {
 	return 10 ** (decibels / 20);

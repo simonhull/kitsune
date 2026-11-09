@@ -332,7 +332,7 @@ func rawBody(key string) string {
 func TestEditRawTags(t *testing.T) {
 	t.Parallel()
 	fx := newEditFixture(t, &testServerOptions{TagWrites: true}, twoFLACs())
-	fx.retag(t, map[string][]string{"MOOD": {"Calm"}, "OLD": {"Gone"}, "REPLAYGAIN_TRACK_GAIN": {"-6.5 dB"}})
+	fx.retag(t, map[string][]string{"MOOD": {"Calm"}, "OLD": {"Gone"}, trackGainKey: {"-6.5 dB"}})
 	id := fx.album.Tracks[0].ID
 	body := `{"all":{"tags":[{"key":"MOOD","values":["Warm","Dark"]},{"key":"OLD","values":[]}]},` +
 		`"tracks":[{"id":"` + id + `","tags":[{"key":"MOOD","values":["Own"]}]}]}`
@@ -350,7 +350,7 @@ func TestEditRawTags(t *testing.T) {
 		if slices.ContainsFunc(tr.Tags, func(tag api.RawTag) bool { return tag.Key == "OLD" }) {
 			t.Errorf("tags = %+v, want OLD gone", tr.Tags)
 		}
-		j := slices.IndexFunc(tr.Tags, func(tag api.RawTag) bool { return tag.Key == "REPLAYGAIN_TRACK_GAIN" })
+		j := slices.IndexFunc(tr.Tags, func(tag api.RawTag) bool { return tag.Key == trackGainKey })
 		if j < 0 || !tr.Tags[j].ReadOnly {
 			t.Errorf("tags = %+v, want gain read-only", tr.Tags)
 		}
@@ -513,7 +513,7 @@ func TestEditRefusedByTheFile(t *testing.T) {
 		{name: "a compilation flag that is not on", samples: twoFLACs(), body: `{"all":{"set":{"compilation":["0"]}}}`, want: http.StatusUnprocessableEntity},
 		{name: "a lower-case tag", samples: twoFLACs(), body: rawBody("mood"), want: http.StatusUnprocessableEntity},
 		{name: "a tag a field owns", samples: twoFLACs(), body: rawBody("ALBUMARTIST"), want: http.StatusUnprocessableEntity},
-		{name: "a gain tag", samples: twoFLACs(), body: rawBody("REPLAYGAIN_TRACK_GAIN"), want: http.StatusUnprocessableEntity},
+		{name: "a gain tag", samples: twoFLACs(), body: rawBody(trackGainKey), want: http.StatusUnprocessableEntity},
 		{name: "a false frame", samples: mp3Album, body: rawBody("APIC"), want: http.StatusUnprocessableEntity},
 		{name: "a new frame", samples: mp3Album, body: rawBody("TMED"), want: http.StatusUnprocessableEntity},
 		{name: "a year MP3 can't hold", samples: mp3Album, body: `{"all":{"set":{"date":["1850"]}}}`, want: http.StatusUnprocessableEntity},

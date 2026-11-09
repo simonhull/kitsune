@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ReplayGain, Track } from '#lib/library/source.ts';
-import { appliedGain, linear } from './gain';
+import { appliedGain, linear, playedGain } from './gain';
 
-function track(replayGain?: ReplayGain): Track {
+function track(gains?: Omit<ReplayGain, 'source'>): Track {
+	const replayGain: ReplayGain | undefined =
+		gains === undefined ? undefined : { source: 'tags', ...gains };
 	return {
 		id: 't',
 		title: 'T',
@@ -72,5 +74,12 @@ describe('linear', () => {
 		expect(linear(0)).toBe(1);
 		expect(linear(-20)).toBeCloseTo(0.1, 10);
 		expect(linear(6)).toBeCloseTo(1.995, 3);
+	});
+});
+
+describe('playedGain', () => {
+	it('plays the ReplayGain a track has, and the untagged gain without one', () => {
+		expect(playedGain(track({ trackGain: -7 }), false, -8)).toBe(-7);
+		expect(playedGain(track(), false, -8)).toBe(-8);
 	});
 });

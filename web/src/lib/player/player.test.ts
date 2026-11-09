@@ -334,7 +334,7 @@ describe('Player', () => {
 
 	it('plays at album gain in order and track gain shuffled', async () => {
 		const { player, output } = setup();
-		const gained = album(2, 'a', { replayGain: { albumGain: -3, trackGain: -8 } });
+		const gained = album(2, 'a', { replayGain: { albumGain: -3, trackGain: -8, source: 'tags' } });
 		player.play(gained);
 		await settle();
 		expect(output.gain).toBe(-3);
@@ -345,11 +345,29 @@ describe('Player', () => {
 
 	it('plays an untagged track as it is', async () => {
 		const { player, output } = setup();
-		player.play(album(2, 'a', { replayGain: { trackGain: -8 } }));
+		player.play(album(2, 'a', { replayGain: { trackGain: -8, source: 'tags' } }));
 		await settle();
 		player.play(album(1, 'b'));
 		await settle();
 		expect(output.gain).toBe(0);
+	});
+
+	it('plays a measured gain as a tagged one, and turns down a song with none', async () => {
+		const { library, output, create } = setup();
+		let untagged = -8;
+		const player = new Player(library, create, () => untagged);
+		player.play(
+			album(1, 'a', { replayGain: { trackGain: -12, trackPeak: 1.1, source: 'measured' } })
+		);
+		await settle();
+		expect(output.gain).toBe(-12);
+		player.play(album(1, 'b'));
+		await settle();
+		expect(output.gain).toBe(-8);
+		untagged = -3; // Read as each song loads.
+		player.play(album(1, 'c'));
+		await settle();
+		expect(output.gain).toBe(-3);
 	});
 });
 

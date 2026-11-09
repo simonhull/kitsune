@@ -30,8 +30,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.albumHeartedStmt, err = db.PrepareContext(ctx, albumHearted); err != nil {
 		return nil, fmt.Errorf("error preparing query AlbumHearted: %w", err)
 	}
+	if q.albumLoudnessInputsStmt, err = db.PrepareContext(ctx, albumLoudnessInputs); err != nil {
+		return nil, fmt.Errorf("error preparing query AlbumLoudnessInputs: %w", err)
+	}
 	if q.albumRowIDStmt, err = db.PrepareContext(ctx, albumRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query AlbumRowID: %w", err)
+	}
+	if q.albumsToPoolStmt, err = db.PrepareContext(ctx, albumsToPool); err != nil {
+		return nil, fmt.Errorf("error preparing query AlbumsToPool: %w", err)
 	}
 	if q.anyMissingWithDigestStmt, err = db.PrepareContext(ctx, anyMissingWithDigest); err != nil {
 		return nil, fmt.Errorf("error preparing query AnyMissingWithDigest: %w", err)
@@ -47,6 +53,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.countLiveAlbumsStmt, err = db.PrepareContext(ctx, countLiveAlbums); err != nil {
 		return nil, fmt.Errorf("error preparing query CountLiveAlbums: %w", err)
+	}
+	if q.countLoudnessWaitingStmt, err = db.PrepareContext(ctx, countLoudnessWaiting); err != nil {
+		return nil, fmt.Errorf("error preparing query CountLoudnessWaiting: %w", err)
 	}
 	if q.countScanIssuesByKindStmt, err = db.PrepareContext(ctx, countScanIssuesByKind); err != nil {
 		return nil, fmt.Errorf("error preparing query CountScanIssuesByKind: %w", err)
@@ -77,6 +86,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteAlbumHeartStmt, err = db.PrepareContext(ctx, deleteAlbumHeart); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAlbumHeart: %w", err)
+	}
+	if q.deleteAlbumLoudnessStmt, err = db.PrepareContext(ctx, deleteAlbumLoudness); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAlbumLoudness: %w", err)
 	}
 	if q.deleteArtistHeartStmt, err = db.PrepareContext(ctx, deleteArtistHeart); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteArtistHeart: %w", err)
@@ -155,6 +167,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertAlbumHeartStmt, err = db.PrepareContext(ctx, insertAlbumHeart); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAlbumHeart: %w", err)
+	}
+	if q.insertAlbumLoudnessStmt, err = db.PrepareContext(ctx, insertAlbumLoudness); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertAlbumLoudness: %w", err)
 	}
 	if q.insertArtistHeartStmt, err = db.PrepareContext(ctx, insertArtistHeart); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertArtistHeart: %w", err)
@@ -369,6 +384,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.liveTrackFactsStmt, err = db.PrepareContext(ctx, liveTrackFacts); err != nil {
 		return nil, fmt.Errorf("error preparing query LiveTrackFacts: %w", err)
 	}
+	if q.loudnessCountsStmt, err = db.PrepareContext(ctx, loudnessCounts); err != nil {
+		return nil, fmt.Errorf("error preparing query LoudnessCounts: %w", err)
+	}
+	if q.loudnessWaitingStmt, err = db.PrepareContext(ctx, loudnessWaiting); err != nil {
+		return nil, fmt.Errorf("error preparing query LoudnessWaiting: %w", err)
+	}
 	if q.markLastfmSentStmt, err = db.PrepareContext(ctx, markLastfmSent); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkLastfmSent: %w", err)
 	}
@@ -386,6 +407,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.moveAlbumHeartsStmt, err = db.PrepareContext(ctx, moveAlbumHearts); err != nil {
 		return nil, fmt.Errorf("error preparing query MoveAlbumHearts: %w", err)
+	}
+	if q.poolTrackLoudnessStmt, err = db.PrepareContext(ctx, poolTrackLoudness); err != nil {
+		return nil, fmt.Errorf("error preparing query PoolTrackLoudness: %w", err)
 	}
 	if q.pruneAlbumsStmt, err = db.PrepareContext(ctx, pruneAlbums); err != nil {
 		return nil, fmt.Errorf("error preparing query PruneAlbums: %w", err)
@@ -437,6 +461,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setPasswordHashStmt, err = db.PrepareContext(ctx, setPasswordHash); err != nil {
 		return nil, fmt.Errorf("error preparing query SetPasswordHash: %w", err)
+	}
+	if q.setTrackLoudnessStmt, err = db.PrepareContext(ctx, setTrackLoudness); err != nil {
+		return nil, fmt.Errorf("error preparing query SetTrackLoudness: %w", err)
 	}
 	if q.settleAlbumStmt, err = db.PrepareContext(ctx, settleAlbum); err != nil {
 		return nil, fmt.Errorf("error preparing query SettleAlbum: %w", err)
@@ -516,9 +543,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing albumHeartedStmt: %w", cerr)
 		}
 	}
+	if q.albumLoudnessInputsStmt != nil {
+		if cerr := q.albumLoudnessInputsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing albumLoudnessInputsStmt: %w", cerr)
+		}
+	}
 	if q.albumRowIDStmt != nil {
 		if cerr := q.albumRowIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing albumRowIDStmt: %w", cerr)
+		}
+	}
+	if q.albumsToPoolStmt != nil {
+		if cerr := q.albumsToPoolStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing albumsToPoolStmt: %w", cerr)
 		}
 	}
 	if q.anyMissingWithDigestStmt != nil {
@@ -544,6 +581,11 @@ func (q *Queries) Close() error {
 	if q.countLiveAlbumsStmt != nil {
 		if cerr := q.countLiveAlbumsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countLiveAlbumsStmt: %w", cerr)
+		}
+	}
+	if q.countLoudnessWaitingStmt != nil {
+		if cerr := q.countLoudnessWaitingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countLoudnessWaitingStmt: %w", cerr)
 		}
 	}
 	if q.countScanIssuesByKindStmt != nil {
@@ -594,6 +636,11 @@ func (q *Queries) Close() error {
 	if q.deleteAlbumHeartStmt != nil {
 		if cerr := q.deleteAlbumHeartStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteAlbumHeartStmt: %w", cerr)
+		}
+	}
+	if q.deleteAlbumLoudnessStmt != nil {
+		if cerr := q.deleteAlbumLoudnessStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAlbumLoudnessStmt: %w", cerr)
 		}
 	}
 	if q.deleteArtistHeartStmt != nil {
@@ -724,6 +771,11 @@ func (q *Queries) Close() error {
 	if q.insertAlbumHeartStmt != nil {
 		if cerr := q.insertAlbumHeartStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertAlbumHeartStmt: %w", cerr)
+		}
+	}
+	if q.insertAlbumLoudnessStmt != nil {
+		if cerr := q.insertAlbumLoudnessStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertAlbumLoudnessStmt: %w", cerr)
 		}
 	}
 	if q.insertArtistHeartStmt != nil {
@@ -1081,6 +1133,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing liveTrackFactsStmt: %w", cerr)
 		}
 	}
+	if q.loudnessCountsStmt != nil {
+		if cerr := q.loudnessCountsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing loudnessCountsStmt: %w", cerr)
+		}
+	}
+	if q.loudnessWaitingStmt != nil {
+		if cerr := q.loudnessWaitingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing loudnessWaitingStmt: %w", cerr)
+		}
+	}
 	if q.markLastfmSentStmt != nil {
 		if cerr := q.markLastfmSentStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing markLastfmSentStmt: %w", cerr)
@@ -1109,6 +1171,11 @@ func (q *Queries) Close() error {
 	if q.moveAlbumHeartsStmt != nil {
 		if cerr := q.moveAlbumHeartsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing moveAlbumHeartsStmt: %w", cerr)
+		}
+	}
+	if q.poolTrackLoudnessStmt != nil {
+		if cerr := q.poolTrackLoudnessStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing poolTrackLoudnessStmt: %w", cerr)
 		}
 	}
 	if q.pruneAlbumsStmt != nil {
@@ -1194,6 +1261,11 @@ func (q *Queries) Close() error {
 	if q.setPasswordHashStmt != nil {
 		if cerr := q.setPasswordHashStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setPasswordHashStmt: %w", cerr)
+		}
+	}
+	if q.setTrackLoudnessStmt != nil {
+		if cerr := q.setTrackLoudnessStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setTrackLoudnessStmt: %w", cerr)
 		}
 	}
 	if q.settleAlbumStmt != nil {
@@ -1342,12 +1414,15 @@ type Queries struct {
 	tx                               *sql.Tx
 	albumGroupKeyStmt                *sql.Stmt
 	albumHeartedStmt                 *sql.Stmt
+	albumLoudnessInputsStmt          *sql.Stmt
 	albumRowIDStmt                   *sql.Stmt
+	albumsToPoolStmt                 *sql.Stmt
 	anyMissingWithDigestStmt         *sql.Stmt
 	artistRowIDStmt                  *sql.Stmt
 	artistToRenameStmt               *sql.Stmt
 	countAlbumTracksStmt             *sql.Stmt
 	countLiveAlbumsStmt              *sql.Stmt
+	countLoudnessWaitingStmt         *sql.Stmt
 	countScanIssuesByKindStmt        *sql.Stmt
 	countUndigestedStmt              *sql.Stmt
 	countUserListeningStmt           *sql.Stmt
@@ -1358,6 +1433,7 @@ type Queries struct {
 	createUserStmt                   *sql.Stmt
 	deferLastfmStmt                  *sql.Stmt
 	deleteAlbumHeartStmt             *sql.Stmt
+	deleteAlbumLoudnessStmt          *sql.Stmt
 	deleteArtistHeartStmt            *sql.Stmt
 	deleteExcludedStmt               *sql.Stmt
 	deleteExpiredSessionsStmt        *sql.Stmt
@@ -1384,6 +1460,7 @@ type Queries struct {
 	getTrackFileStmt                 *sql.Stmt
 	groupKeyTakenStmt                *sql.Stmt
 	insertAlbumHeartStmt             *sql.Stmt
+	insertAlbumLoudnessStmt          *sql.Stmt
 	insertArtistHeartStmt            *sql.Stmt
 	insertExcludedStmt               *sql.Stmt
 	insertPlayStmt                   *sql.Stmt
@@ -1455,12 +1532,15 @@ type Queries struct {
 	listTrackRowIDsStmt              *sql.Stmt
 	listWarnedTracksStmt             *sql.Stmt
 	liveTrackFactsStmt               *sql.Stmt
+	loudnessCountsStmt               *sql.Stmt
+	loudnessWaitingStmt              *sql.Stmt
 	markLastfmSentStmt               *sql.Stmt
 	markMissingStmt                  *sql.Stmt
 	matchKeyTakenStmt                *sql.Stmt
 	mergeAlbumIntoStmt               *sql.Stmt
 	missingByDigestStmt              *sql.Stmt
 	moveAlbumHeartsStmt              *sql.Stmt
+	poolTrackLoudnessStmt            *sql.Stmt
 	pruneAlbumsStmt                  *sql.Stmt
 	pruneArtistsStmt                 *sql.Stmt
 	pruneArtworkStmt                 *sql.Stmt
@@ -1478,6 +1558,7 @@ type Queries struct {
 	setDigestStmt                    *sql.Stmt
 	setLastfmStateStmt               *sql.Stmt
 	setPasswordHashStmt              *sql.Stmt
+	setTrackLoudnessStmt             *sql.Stmt
 	settleAlbumStmt                  *sql.Stmt
 	touchSessionStmt                 *sql.Stmt
 	trackAlbumRowStmt                *sql.Stmt
@@ -1507,12 +1588,15 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		tx:                               tx,
 		albumGroupKeyStmt:                q.albumGroupKeyStmt,
 		albumHeartedStmt:                 q.albumHeartedStmt,
+		albumLoudnessInputsStmt:          q.albumLoudnessInputsStmt,
 		albumRowIDStmt:                   q.albumRowIDStmt,
+		albumsToPoolStmt:                 q.albumsToPoolStmt,
 		anyMissingWithDigestStmt:         q.anyMissingWithDigestStmt,
 		artistRowIDStmt:                  q.artistRowIDStmt,
 		artistToRenameStmt:               q.artistToRenameStmt,
 		countAlbumTracksStmt:             q.countAlbumTracksStmt,
 		countLiveAlbumsStmt:              q.countLiveAlbumsStmt,
+		countLoudnessWaitingStmt:         q.countLoudnessWaitingStmt,
 		countScanIssuesByKindStmt:        q.countScanIssuesByKindStmt,
 		countUndigestedStmt:              q.countUndigestedStmt,
 		countUserListeningStmt:           q.countUserListeningStmt,
@@ -1523,6 +1607,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createUserStmt:                   q.createUserStmt,
 		deferLastfmStmt:                  q.deferLastfmStmt,
 		deleteAlbumHeartStmt:             q.deleteAlbumHeartStmt,
+		deleteAlbumLoudnessStmt:          q.deleteAlbumLoudnessStmt,
 		deleteArtistHeartStmt:            q.deleteArtistHeartStmt,
 		deleteExcludedStmt:               q.deleteExcludedStmt,
 		deleteExpiredSessionsStmt:        q.deleteExpiredSessionsStmt,
@@ -1549,6 +1634,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTrackFileStmt:                 q.getTrackFileStmt,
 		groupKeyTakenStmt:                q.groupKeyTakenStmt,
 		insertAlbumHeartStmt:             q.insertAlbumHeartStmt,
+		insertAlbumLoudnessStmt:          q.insertAlbumLoudnessStmt,
 		insertArtistHeartStmt:            q.insertArtistHeartStmt,
 		insertExcludedStmt:               q.insertExcludedStmt,
 		insertPlayStmt:                   q.insertPlayStmt,
@@ -1620,12 +1706,15 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listTrackRowIDsStmt:              q.listTrackRowIDsStmt,
 		listWarnedTracksStmt:             q.listWarnedTracksStmt,
 		liveTrackFactsStmt:               q.liveTrackFactsStmt,
+		loudnessCountsStmt:               q.loudnessCountsStmt,
+		loudnessWaitingStmt:              q.loudnessWaitingStmt,
 		markLastfmSentStmt:               q.markLastfmSentStmt,
 		markMissingStmt:                  q.markMissingStmt,
 		matchKeyTakenStmt:                q.matchKeyTakenStmt,
 		mergeAlbumIntoStmt:               q.mergeAlbumIntoStmt,
 		missingByDigestStmt:              q.missingByDigestStmt,
 		moveAlbumHeartsStmt:              q.moveAlbumHeartsStmt,
+		poolTrackLoudnessStmt:            q.poolTrackLoudnessStmt,
 		pruneAlbumsStmt:                  q.pruneAlbumsStmt,
 		pruneArtistsStmt:                 q.pruneArtistsStmt,
 		pruneArtworkStmt:                 q.pruneArtworkStmt,
@@ -1643,6 +1732,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setDigestStmt:                    q.setDigestStmt,
 		setLastfmStateStmt:               q.setLastfmStateStmt,
 		setPasswordHashStmt:              q.setPasswordHashStmt,
+		setTrackLoudnessStmt:             q.setTrackLoudnessStmt,
 		settleAlbumStmt:                  q.settleAlbumStmt,
 		touchSessionStmt:                 q.touchSessionStmt,
 		trackAlbumRowStmt:                q.trackAlbumRowStmt,

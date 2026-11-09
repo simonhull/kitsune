@@ -8,6 +8,7 @@
 		discHeads,
 		formatLine,
 		gain,
+		gainMeasured,
 		isMultiDisc,
 		trackGain,
 		trackLabel
@@ -137,7 +138,11 @@
 						{#if rg === null}
 							<span class="mono gain missing">no RG</span>
 						{:else}
-							<span class="mono gain">RG {gain(rg)}</span>
+							<span class="mono gain"
+								>RG {gain(rg)}{#if gainMeasured(track)}<span class="measured">
+										measured</span
+									>{/if}</span
+							>
 						{/if}
 					</button>
 					<StarButtons trackId={track.id} title={track.title} />
@@ -392,6 +397,11 @@
 
 	.gain.missing {
 		color: var(--fox-text);
+	}
+
+	/* Kitsune's own measure, not the file's tags: said, quieter. */
+	.measured {
+		color: var(--text-meta);
 	}
 
 	.length {

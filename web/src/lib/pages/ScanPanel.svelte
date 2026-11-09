@@ -2,6 +2,7 @@
 	import { emWidth } from '#lib/library/fit.ts';
 	import {
 		lastScan,
+		loudnessLine,
 		minutesLeft,
 		refusalLine,
 		scanHelp,
@@ -30,6 +31,7 @@
 	const running = $derived(scan.state === 'running');
 	const last = $derived(scan.last === undefined ? null : lastScan(scan.last, now));
 	const failed = $derived(scan.last?.outcome === 'failed');
+	const levelling = $derived(loudnessLine(facts.loudness));
 
 	// Not state: it's this derived's own memory of what it last showed.
 	let shownMinutes: number | null = null;
@@ -97,6 +99,10 @@
 		{:else}
 			<div class="facts"><span class="line">NO SCAN SINCE THE SERVER STARTED</span></div>
 			<p class="below"></p>
+		{/if}
+
+		{#if levelling !== null}
+			<p class="levelling">{levelling}</p>
 		{/if}
 
 		{#if admin}
@@ -267,6 +273,12 @@
 
 	.ghost:hover:enabled {
 		background: color-mix(in srgb, var(--fox-ink) 12%, transparent);
+	}
+
+	.levelling {
+		margin-top: 14px;
+		font-size: 13px;
+		line-height: 1.4;
 	}
 
 	.help {

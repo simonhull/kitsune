@@ -18,13 +18,13 @@ const (
 	heldByNone holder = iota
 	heldByScan
 	heldByEdit
-	heldByPass // The fingerprint pass, which gives way to everyone else.
+	heldByPass // A background pass, fingerprints or loudness, which gives way to everyone else.
 )
 
 // libraryLock is the one lock over the library's files. A scan holds it from
 // the walk to the last write, and an edit for all its files, because a walk
 // during a rename-replace can miss a live file and a batch read before an edit
-// can put old tags back. The fingerprint pass holds it for one batch at a time.
+// can put old tags back. The background passes hold it for one batch at a time.
 // Readers never take it: browsing and streaming go on through all three.
 //
 // It knows its holder so that an edit can wait out a batch of the pass, which
@@ -118,6 +118,13 @@ func (l *libraryLock) waitFree(ctx context.Context) error {
 			return fmt.Errorf("wait for the library: %w", ctx.Err())
 		}
 	}
+}
+
+// contended reports whether a scan or an edit is waiting for the lock.
+func (l *libraryLock) contended() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.waiting > 0
 }
 
 func (l *libraryLock) unlock() {

@@ -58,6 +58,9 @@ const (
 	// ShuffleMemory is whether shuffle learns from skips and listen time, a
 	// boolean.
 	ShuffleMemory = "shuffle.memory"
+	// PlaybackUntaggedGain is the gain, in dB from -20 to 0, a song plays at
+	// while it has no ReplayGain, its tags' or Kitsune's measure.
+	PlaybackUntaggedGain = "playback.untagged_gain"
 )
 
 // keys are every preference there is, by name.
@@ -69,6 +72,8 @@ var keys = map[string]Key{
 	ShuffleRatings: {name: ShuffleRatings, check: checkAmount},
 	ShuffleFlow:    {name: ShuffleFlow, check: checkAmount},
 	ShuffleMemory:  {name: ShuffleMemory, check: checkSwitch},
+
+	PlaybackUntaggedGain: {name: PlaybackUntaggedGain, check: checkUntaggedGain},
 }
 
 // Lookup returns the key named name, or an error wrapping [ErrUnknownKey].
@@ -208,6 +213,31 @@ func checkSwitch(value []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
 	b, err := json.Marshal(on)
+	if err != nil {
+		return nil, fmt.Errorf("encode: %w", err)
+	}
+	return b, nil
+}
+
+// The range of [PlaybackUntaggedGain], in dB: it may only turn a song down,
+// since nothing says how far up it could go before it clips.
+const (
+	minUntaggedGain = -20
+	maxUntaggedGain = 0
+)
+
+var errUntaggedGain = errors.New("not a number of dB from -20 to 0")
+
+// checkUntaggedGain accepts a JSON number from -20 to 0.
+func checkUntaggedGain(value []byte) ([]byte, error) {
+	var gain float64
+	if err := json.Unmarshal(value, &gain); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	if !(gain >= minUntaggedGain && gain <= maxUntaggedGain) {
+		return nil, errUntaggedGain
+	}
+	b, err := json.Marshal(gain)
 	if err != nil {
 		return nil, fmt.Errorf("encode: %w", err)
 	}

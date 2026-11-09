@@ -87,6 +87,19 @@ type Track struct {
 	SampleRate            int // 0 is unknown.
 	BitDepth              int // 0 is unknown.
 	ReplayGain            ReplayGain
+	// Measured is Kitsune's own measure of the file and its album, when it
+	// has one: never the file's tags.
+	Measured MeasuredLoudness
+}
+
+// MeasuredLoudness is what Kitsune measured of a track and the album it was
+// pooled into, in LUFS, with true peaks linear. Each loudness is there only
+// with its Has flag: a silent file, or one not measured yet, has none.
+type MeasuredLoudness struct {
+	Track, TrackPeak float64
+	HasTrack         bool
+	Album, AlbumPeak float64
+	HasAlbum         bool
 }
 
 // TrackFile says where a live track's file is and what it holds.
@@ -399,6 +412,12 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 			ReplayGain: ReplayGain{
 				TrackGain: floatOr0(t.RgTrackGain), TrackPeak: floatOr0(t.RgTrackPeak),
 				AlbumGain: floatOr0(t.RgAlbumGain), AlbumPeak: floatOr0(t.RgAlbumPeak),
+			},
+			Measured: MeasuredLoudness{
+				Track: floatOr0(t.MeasuredIntegrated), TrackPeak: floatOr0(t.MeasuredPeak),
+				HasTrack: t.MeasuredIntegrated != nil,
+				Album:    floatOr0(t.MeasuredAlbumIntegrated), AlbumPeak: floatOr0(t.MeasuredAlbumPeak),
+				HasAlbum: t.MeasuredAlbumIntegrated != nil,
 			},
 		}
 		d.Tracks = append(d.Tracks, tr)

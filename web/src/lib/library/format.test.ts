@@ -162,9 +162,9 @@ describe('credit', () => {
 
 describe('trackGain', () => {
 	it('means the track gain, and nothing else', () => {
-		expect(trackGain(track({ replayGain: { trackGain: -6.2 } }))).toBe(-6.2);
-		expect(trackGain(track({ replayGain: { trackGain: 0 } }))).toBe(0);
-		expect(trackGain(track({ replayGain: { albumGain: -6.2 } }))).toBeNull();
+		expect(trackGain(track({ replayGain: { trackGain: -6.2, source: 'tags' } }))).toBe(-6.2);
+		expect(trackGain(track({ replayGain: { trackGain: 0, source: 'tags' } }))).toBe(0);
+		expect(trackGain(track({ replayGain: { albumGain: -6.2, source: 'tags' } }))).toBeNull();
 		expect(trackGain(track())).toBeNull();
 	});
 });

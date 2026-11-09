@@ -55,6 +55,8 @@ export interface ReplayGain {
 	albumGain?: number;
 	trackPeak?: number;
 	albumPeak?: number;
+	/** The file's tags, or Kitsune's own measure of a file with no gain tagged. */
+	source: 'tags' | 'measured';
 }
 
 export interface Track {
@@ -383,6 +385,8 @@ export interface Prefs {
 	'shuffle.flow': number;
 	/** Whether shuffle learns from skips and how much of a song is heard. */
 	'shuffle.memory': boolean;
+	/** The gain in dB, from -20 to 0, a song plays at while it has no ReplayGain. */
+	'playback.untagged_gain': number;
 }
 
 export type PrefKey = keyof Prefs;
@@ -453,6 +457,20 @@ export interface LibraryFacts {
 	scan: ScanStatus;
 	/** The background pass that fingerprints files after a scan. Both 0 while none runs; the fixtures leave it out. */
 	fingerprints?: FingerprintStatus;
+	/** The background pass that measures songs with no ReplayGain, and what it has measured. */
+	loudness?: LoudnessStatus;
+}
+
+export interface LoudnessStatus {
+	/** Files read, of `total` waiting when the pass began; both 0 while none runs. */
+	done: number;
+	total: number;
+	/** Songs with no ReplayGain tags. */
+	ungained: number;
+	/** Of those, the ones Kitsune has measured. */
+	measured: number;
+	/** Of those, the ones it can't measure yet. */
+	unmeasurable: number;
 }
 
 export interface FingerprintStatus {

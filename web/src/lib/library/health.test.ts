@@ -4,6 +4,7 @@ import {
 	filesState,
 	issueGroups,
 	lastScan,
+	loudnessLine,
 	minutesLeft,
 	refusalLine,
 	scanHelp,
@@ -372,5 +373,29 @@ describe('splitPath', () => {
 
 	it('has no folder for a file at the top of a root', () => {
 		expect(splitPath('loose.wav')).toEqual({ folder: '', name: 'loose.wav' });
+	});
+});
+
+describe('loudnessLine', () => {
+	const none = { done: 0, total: 0, ungained: 0, measured: 0, unmeasurable: 0 };
+
+	it('says nothing when every song has ReplayGain, or the server does not say', () => {
+		expect(loudnessLine(undefined)).toBeNull();
+		expect(loudnessLine(none)).toBeNull();
+	});
+
+	it('counts the songs without ReplayGain, measured and not', () => {
+		expect(loudnessLine({ ...none, ungained: 1200, measured: 1000, unmeasurable: 40 })).toBe(
+			"1,200 songs have no ReplayGain: 1,000 measured, 40 can't be measured yet."
+		);
+		expect(loudnessLine({ ...none, ungained: 1, measured: 1 })).toBe(
+			'1 song has no ReplayGain: 1 measured.'
+		);
+	});
+
+	it('says how far the pass has got while it runs', () => {
+		expect(loudnessLine({ ...none, ungained: 9, measured: 2, done: 3, total: 9 })).toBe(
+			'9 songs have no ReplayGain: 2 measured. Measuring in the background, 3 of 9.'
+		);
 	});
 });

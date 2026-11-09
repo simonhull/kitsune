@@ -440,7 +440,8 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.work.Go(func() { a.scanner.Run(bgCtx, func() { a.scanned.Store(true) }) })
 	a.work.Go(func() { a.followLibrary(bgCtx) })
 	a.work.Go(func() { a.followRest(bgCtx) })
-	a.work.Go(func() { a.scanner.RunFingerprints(bgCtx) }) // Readiness never waits for it.
+	a.work.Go(func() { a.scanner.RunFingerprints(bgCtx) }) // Readiness never waits for it,
+	a.work.Go(func() { a.scanner.RunLoudness(bgCtx) })     // nor for this.
 	a.work.Go(func() { a.watcher.Run(bgCtx) })
 
 	served := make(chan error, 1)

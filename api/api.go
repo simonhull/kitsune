@@ -251,13 +251,22 @@ type AlbumPage struct {
 	NextCursor string `json:"nextCursor,omitzero"`
 }
 
-// ReplayGain holds loudness values; an absent one is unknown.
+// ReplayGain holds loudness values; an absent one is unknown. Source says
+// where they come from: the file's tags, or Kitsune's measure of the file,
+// which is never written to it.
 type ReplayGain struct {
 	TrackGain float64 `json:"trackGain,omitzero"`
 	AlbumGain float64 `json:"albumGain,omitzero"`
 	TrackPeak float64 `json:"trackPeak,omitzero"`
 	AlbumPeak float64 `json:"albumPeak,omitzero"`
+	Source    string  `json:"source"`
 }
+
+// Where a [ReplayGain] comes from.
+const (
+	GainFromTags = "tags"
+	GainMeasured = "measured"
+)
 
 // Track is a track as an album shows it.
 type Track struct {
@@ -643,6 +652,21 @@ type LibraryFacts struct {
 	Scan ScanStatus `json:"scan"`
 	// Fingerprints says where the background fingerprint pass stands.
 	Fingerprints FingerprintStatus `json:"fingerprints"`
+	// Loudness says where the background loudness pass stands, and what it
+	// has measured.
+	Loudness LoudnessStatus `json:"loudness"`
+}
+
+// LoudnessStatus is the background loudness pass's progress, Done of the
+// Total files waiting when it began, both 0 while no pass runs; and the songs
+// with no ReplayGain tags, how many of them Kitsune has measured, and how many
+// it can't measure yet.
+type LoudnessStatus struct {
+	Done         int `json:"done"`
+	Total        int `json:"total"`
+	Ungained     int `json:"ungained"`
+	Measured     int `json:"measured"`
+	Unmeasurable int `json:"unmeasurable"`
 }
 
 // FingerprintStatus is the background fingerprint pass's progress: Done of the
