@@ -7,7 +7,7 @@
  * track is silence, which FLAC stores in almost nothing, so 50,000 songs fit in about a gigabyte.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, linkSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** A library the suite runs on. */
@@ -25,11 +25,16 @@ export interface LoudAlbum {
 
 /** What the generator wrote. */
 export interface Manifest {
+	/** Which way the library was written: one written another way is written again. */
+	form: number;
 	songs: number;
 	albums: number;
 	artists: number;
 	loud: LoudAlbum[];
 }
+
+/** The library's form: 2 tags every song but the loud albums' with ReplayGain. */
+const libraryForm = 2;
 
 const coverCount = 48;
 const silentSeconds = 30;
@@ -198,7 +203,11 @@ function safe(name: string): string {
 export function writeLibrary(root: string, work: string, shape: Shape): Manifest {
 	const manifestPath = join(root, 'manifest.json');
 	if (existsSync(manifestPath)) {
-		return JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
+		const written = JSON.parse(readFileSync(manifestPath, 'utf8')) as Partial<Manifest>;
+		if (written.form === libraryForm) {
+			return written as Manifest;
+		}
+		rmSync(root, { recursive: true, force: true }); // Written another way: start again.
 	}
 	mkdirSync(work, { recursive: true });
 	const silentPath = join(work, 'silent.flac');
@@ -231,7 +240,13 @@ export function writeLibrary(root: string, work: string, shape: Shape): Manifest
 		loudArtists.add(artist.name);
 		loudCount += artist.albums.length;
 	}
-	const manifest: Manifest = { songs: 0, albums: 0, artists: artists.length, loud: [] };
+	const manifest: Manifest = {
+		form: libraryForm,
+		songs: 0,
+		albums: 0,
+		artists: artists.length,
+		loud: []
+	};
 	for (const artist of artists) {
 		const isLoud = loudArtists.has(artist.name);
 		for (const album of artist.albums) {
@@ -254,7 +269,15 @@ export function writeLibrary(root: string, work: string, shape: Shape): Manifest
 					DATE: album.year,
 					GENRE: album.genre
 				};
-				const file = flacWith(isLoud && number <= 2 ? loud : silent, tags);
+				// The loud albums have no ReplayGain, so the server measures them, as it would a real
+				// library's untagged albums; every other song is tagged, so the suite needn't wait for
+				// 50,000 files to be measured before it times anything.
+				const file = flacWith(
+					isLoud && number <= 2 ? loud : silent,
+					isLoud
+						? tags
+						: { ...tags, REPLAYGAIN_TRACK_GAIN: '-6.00 dB', REPLAYGAIN_TRACK_PEAK: '0.5' }
+				);
 				writeFileSync(join(dir, `${String(number).padStart(2, '0')} ${safe(song)}.flac`), file);
 				manifest.songs += 1;
 			});

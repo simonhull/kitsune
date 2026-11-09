@@ -564,6 +564,7 @@ export interface ServerEvents {
 	library: LibraryEvent;
 	scan: ScanStatus;
 	fingerprints: FingerprintStatus;
+	loudness: LoudnessStatus;
 	marks: MarksEvent;
 	prefs: { key: string };
 	'shuffle-rules': Record<string, never>;

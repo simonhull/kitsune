@@ -268,6 +268,16 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   passes messages through `StripRoot`; `GET /library` gives everyone counts by kind.
 - Scans remove audiometa's temp files (`isWriteTemp`), and only with `library.tag_writes` on: off,
   nothing under a root ever changes.
+- Loudness is measured where ReplayGain is missing (`loudness.go`, `Scanner.RunLoudness`): every file
+  of an album with a song that has no gain tagged, then the album from its files' gated blocks pooled
+  (`loudness.Pool`), never their mean. `internal/loudness` is the pure BS.1770-4 / R 128 meter, held
+  to EBU Tech 3341/3342 in its tests; `internal/pcm` decodes FLAC, MP3 and uncompressed WAV and AIFF,
+  and nothing else is measured yet. A measure is Kitsune's own (`track_loudness`, `album_loudness`),
+  kept per file by size, mtime and `loudnessVersion`, which a change to either package's numbers
+  raises; it is never written to a file. The pass runs after the fingerprint pass, one file at a time
+  in path order, a batch under the library lock, and stops midway through a file for a waiting scan
+  or edit. A track's `replayGain` is its tags' when it has a gain tagged, else the measure, and says
+  which (`source`).
 
 ## Shuffle
 - `internal/shuffle` is the pure engine: units, weights, a finite order and an endless stream, given
@@ -359,7 +369,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes
   only under `$KITSUNE_PERF_DIR` (default `kitsune-perf` in the temp directory) and reuses the
   libraries there. Each server starts on a fresh database, and nothing is timed until its first scan
-  and the fingerprint pass after it are done: the suite measures a server at rest. `KITSUNE_PERF_CHROMIUM` picks a local Chromium, `KITSUNE_PERF_LIBRARIES=1k` measures
+  and the fingerprint and loudness passes after it are done: the suite measures a server at rest.
+  Only the loud albums lack ReplayGain, so the loudness pass has little to do. `KITSUNE_PERF_CHROMIUM` picks a local Chromium, `KITSUNE_PERF_LIBRARIES=1k` measures
   one size, `KITSUNE_PERF_VERBOSE=1` prints every sample. The speed tests skip under `-race`.
 - Nothing new may wait on the play path, from a click to the `playing` event. A change on that path,
   or to a budget, carries the suite's numbers before and after, and no change is called faster without them.

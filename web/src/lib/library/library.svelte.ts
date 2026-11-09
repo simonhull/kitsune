@@ -320,6 +320,11 @@ export class Library {
 						fingerprints: (pass) => {
 							this.#heardPass(pass);
 						},
+						loudness: (loudness) => {
+							if (this.facts !== null && !this.deck) {
+								this.facts = { ...this.facts, loudness };
+							}
+						},
 						marks: (change) => {
 							this.marks.heard(change);
 						},
