@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createFixtureSource } from '#lib/library/fixtures.ts';
 import { Library } from '#lib/library/library.svelte.ts';
+import { sortIndex } from '#lib/library/libraryOrder.ts';
+import { defaultLibrarySort, type LibrarySort } from '#lib/library/sorts.ts';
 import type { Album, LibraryAlbum, LibraryIndex, Track } from '#lib/library/source.ts';
 import { SilentOutput } from '#lib/player/output.ts';
 import { Player } from '#lib/player/player.svelte.ts';
@@ -51,12 +53,21 @@ function album(id: string, count = 2, albumGain = -1): Album {
 	};
 }
 
+/** The years the albums came out: none in the order they're listed. */
+const years = new Map([
+	['a', 2003],
+	['b', 2001],
+	['c', 2004],
+	['d', 2002]
+]);
+
 function listed({ id, title, tracks }: Album): LibraryAlbum {
 	return {
 		id,
 		title,
 		artist: 'B',
 		compilation: false,
+		year: years.get(id),
 		hearted: false,
 		tracks: tracks.map(({ id: track, title: name, durationMs }) => ({
 			id: track,
@@ -74,8 +85,9 @@ async function settle(): Promise<void> {
 }
 
 /**
- * A player and the Library's list, with albums `a` to `d` under one artist each, in that order.
- * Albums are fetched as the app fetches them: `fetched` says which were asked for.
+ * A player and the Library's list, with albums `a` to `d` under one artist each, in that order, or
+ * all under one with `together`. The list shows them in `sort`, as the Library page does. Albums
+ * are fetched as the app fetches them: `fetched` says which were asked for.
  */
 function setup() {
 	const records = new Map(['a', 'b', 'c', 'd'].map((id) => [id, album(id)]));
@@ -88,16 +100,30 @@ function setup() {
 	const list = {
 		order: ['a', 'b', 'c', 'd'],
 		filter: 'everything' as LibraryFilter,
-		hearted: new Set<string>()
+		hearted: new Set<string>(),
+		sort: defaultLibrarySort as LibrarySort,
+		together: false
 	};
-	const index = (): LibraryIndex => ({
-		artists: list.order.flatMap((id) => {
+	const albums = (): LibraryAlbum[] =>
+		list.order.flatMap((id) => {
 			const record = records.get(id);
-			return record === undefined
-				? []
-				: [{ id, name: id, sortName: id, hearted: false, albums: [listed(record)] }];
-		})
-	});
+			return record === undefined ? [] : [listed(record)];
+		});
+	const index = (): LibraryIndex =>
+		sortIndex(
+			{
+				artists: list.together
+					? [{ id: 'x', name: 'x', sortName: 'x', hearted: false, albums: albums() }]
+					: albums().map((record) => ({
+							id: record.id,
+							name: record.id,
+							sortName: record.id,
+							hearted: false,
+							albums: [record]
+						}))
+			},
+			list.sort
+		);
 	const marks = {
 		hearted: (kind: string, id: string) => kind === 'albums' && list.hearted.has(id),
 		stars: () => null
@@ -235,6 +261,37 @@ describe('LibraryContinues', () => {
 		list.order = ['c', 'a', 'd', 'b'];
 		await finish();
 		expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['a0', 'a1', 'd0', 'd1']);
+	});
+
+	it('goes on in the order the list is sorted in: artists Z to A', async () => {
+		const { player, list, play, finish } = setup();
+		list.sort = { ...defaultLibrarySort, artists: { by: 'name', dir: 'desc' } };
+		play('c');
+		await settle();
+		await finish();
+		// The list reads d, c, b, a: after c comes b, not d.
+		expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['c0', 'c1', 'b0', 'b1']);
+		await finish();
+		expect(player.album?.id).toBe('b');
+		await finish();
+		await finish();
+		expect(player.album?.id).toBe('a');
+	});
+
+	it('goes on in the order the list is sorted in: an artist’s albums oldest first', async () => {
+		const { player, list, play, finish } = setup();
+		list.together = true;
+		list.sort = { ...defaultLibrarySort, albums: { by: 'year', dir: 'asc' } };
+		play('d');
+		await settle();
+		await finish();
+		// By year the artist's albums read b (2001), d (2002), a (2003), c (2004).
+		expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['d0', 'd1', 'a0', 'a1']);
+		await finish();
+		expect(player.album?.id).toBe('a');
+		await finish();
+		await finish();
+		expect(player.album?.id).toBe('c');
 	});
 
 	it('swaps an album put after the queue that hasn’t begun, for a list that changed', async () => {
