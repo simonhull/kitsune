@@ -395,11 +395,12 @@
 	}
 
 	/*
-	 * The songs keep to a width a row reads across, growing with the step, and stand at the hero's
-	 * words: the list centres itself in its gutters, so the cap counts both of them in.
+	 * The songs keep the share of the window they have at 1920, two thirds, and never less than a
+	 * width a row reads across at the step, so a 4K screen gets the room and not a gap. They stand at
+	 * the hero's words: the list centres itself in its gutters, so the cap counts both of them in.
 	 */
 	.songs {
-		max-width: calc(1280px * var(--step) + 2 * max(64px, var(--gutter)));
+		max-width: calc(max(1280px * var(--step), 200vw / 3) + 2 * max(64px, var(--gutter)));
 	}
 
 	/* The last row must clear the bar as well as the island. */
