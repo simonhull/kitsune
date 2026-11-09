@@ -157,8 +157,8 @@
 		--drop: calc(var(--full) - min(760px, 100dvh - 120px));
 
 		position: fixed;
-		left: 48px;
-		right: 48px;
+		left: var(--gutter);
+		right: var(--gutter);
 		bottom: 0;
 		z-index: 5;
 		height: var(--full);
@@ -283,11 +283,10 @@
 	/* One step up: releases and review side by side, every size a step larger. */
 	/* Zoomed: lengths it takes from the screen are divided back out. */
 	.sheet.huge {
-		--step: 1.25;
 		--full: calc((100dvh - 124px) / var(--step));
 
-		left: calc(96px / var(--step));
-		right: calc(96px / var(--step));
+		left: calc(var(--gutter) / var(--step));
+		right: calc(var(--gutter) / var(--step));
 		padding: 36px 40px 0;
 		border-radius: 40px 40px 0 0;
 		zoom: var(--step);
@@ -340,8 +339,6 @@
 
 	@media (max-width: 1100px) and (min-width: 721px) {
 		.sheet {
-			left: 24px;
-			right: 24px;
 			padding: 24px 24px 0;
 		}
 	}
