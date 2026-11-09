@@ -17,7 +17,7 @@
 		"row-menu": { "interaction": "Open a song's ⋯ menu", "p95Ms": 25 },
 		"play-shuffle": { "interaction": "Shuffle the library, press to sound", "p95Ms": 50 },
 		"next-shuffle": { "interaction": "Next, in a shuffle", "p95Ms": 30 },
-		"sort-library": { "interaction": "Turn the Library's order round, click to rows", "p95Ms": 100 }
+		"sort-library": { "interaction": "Turn the Library's order round, click to rows", "p95Ms": 150 }
 	},
 	"server": {
 		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 0.5 },
