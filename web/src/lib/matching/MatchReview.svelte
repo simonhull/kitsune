@@ -1206,11 +1206,13 @@
 
 	.narrow .facts {
 		font-size: 12px;
+		white-space: normal;
 	}
 
 	.narrow .body {
 		display: flex;
 		flex-direction: column;
+		align-items: stretch;
 		gap: 22px;
 	}
 
