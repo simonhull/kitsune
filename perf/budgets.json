@@ -16,7 +16,9 @@
 		"columns-menu": { "interaction": "Open the columns menu", "p95Ms": 30 },
 		"row-menu": { "interaction": "Open a song's ⋯ menu", "p95Ms": 25 },
 		"play-shuffle": { "interaction": "Shuffle the library, press to sound", "p95Ms": 50 },
-		"next-shuffle": { "interaction": "Next, in a shuffle", "p95Ms": 30 }
+		"next-shuffle": { "interaction": "Next, in a shuffle", "p95Ms": 30 },
+		"track-change": { "interaction": "A song ends, the next one sounds", "p95Ms": 12 },
+		"album-change": { "interaction": "An album ends, the next down the Library sounds", "p95Ms": 12 }
 	},
 	"server": {
 		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 0.5 },
