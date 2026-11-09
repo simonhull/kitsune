@@ -12,7 +12,10 @@ const upNextShown = 3;
 export interface NowPlaying {
 	album: Album;
 	track: Track;
-	/** Its place in the queue, from 0. Track numbers can repeat or be missing. */
+	/**
+	 * Its place in the queue, from 0, or in its album for a queue going on through a list. Track
+	 * numbers can repeat or be missing.
+	 */
 	index: number;
 	trackCount: number;
 	format: string;
