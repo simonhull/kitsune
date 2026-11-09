@@ -1,6 +1,10 @@
 import { library } from '#lib/library/library.svelte.ts';
 import type { ColumnsPref, IndexField } from '#lib/library/source.ts';
-import { defaultColumns, fieldsFor, savedColumns } from './columns.ts';
+import type { ColumnId } from '#lib/library/source.ts';
+import { defaultColumns, fieldsFor, resized, savedColumns } from './columns.ts';
+
+/** How long a resize waits for the next before it's saved: one write for a drag, or a run of keys. */
+const resizeSaveMs = 400;
 
 /**
  * The person's song columns. They start as the defaults and become what the server has once it
@@ -12,6 +16,7 @@ class ColumnsView {
 	known = $state(false);
 	readonly fields: IndexField[] = $derived(fieldsFor(this.pref.order));
 	#asked: Promise<void> | null = null;
+	#saving: ReturnType<typeof setTimeout> | undefined;
 
 	constructor() {
 		// Columns chosen on another device follow here, as the theme does.
@@ -34,12 +39,24 @@ class ColumnsView {
 	}
 
 	set(next: ColumnsPref): void {
+		clearTimeout(this.#saving);
 		this.pref = next;
 		this.known = true;
 		library.prefs.put('library.columns', next);
 	}
 
+	/** A column dragged or nudged to a width, at the base step: shown at once, saved once it settles. */
+	resize(id: ColumnId, width: number): void {
+		this.pref = resized(this.pref, id, width);
+		this.known = true;
+		clearTimeout(this.#saving);
+		this.#saving = setTimeout(() => {
+			library.prefs.put('library.columns', this.pref);
+		}, resizeSaveMs);
+	}
+
 	reset(): void {
+		clearTimeout(this.#saving);
 		this.pref = defaultColumns;
 		this.known = false;
 		this.#asked = null;

@@ -261,3 +261,59 @@ describe('Shuffles', () => {
 		expect(units).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe('Up next', () => {
+	async function shuffling(): Promise<ReturnType<typeof setup>> {
+		const context = setup();
+		await context.library.loadAlbum('c');
+		context.shuffles.start(sourceOf([unitOf('c-1')]));
+		await settle();
+		return context;
+	}
+
+	const keys = (shuffles: Shuffles): string[] =>
+		(shuffles.current?.upNext ?? []).slice(0, 5).map(({ key }) => key);
+
+	it('plays next straight after the song playing, and the shuffle carries on after it', async () => {
+		const { library, player, shuffles } = await shuffling();
+		await library.loadAlbum('t');
+		const album = library.album('t');
+		const song = album?.tracks.at(0);
+		if (album === undefined || song === undefined) {
+			throw new Error('no album t');
+		}
+		player.playNext([{ album, track: song }]);
+		expect(keys(shuffles)).toEqual(['t-0', 'a-0', 'a-1', 'a-2', 'b-0']);
+		expect(shuffles.current?.active).toBe(true);
+		player.next();
+		await settle();
+		expect(player.current?.id).toBe('t-0');
+		player.next();
+		await settle();
+		expect(player.current?.id).toBe('a-0');
+		expect(shuffles.current?.active).toBe(true);
+	});
+
+	it('takes songs out, queued or still to queue, and tops the queue up again', async () => {
+		const { player, shuffles } = await shuffling();
+		shuffles.current?.remove(['a-1', 'b-1']);
+		await settle();
+		expect(keys(shuffles)).toEqual(['a-0', 'a-2', 'b-0', 'b-2', 'c-0']);
+		const queue = player.queue;
+		expect((queue?.tracks.length ?? 0) - (queue?.index ?? 0) - 1).toBeGreaterThanOrEqual(3);
+	});
+
+	it('moves a song up or down, across what is queued and what is still to queue', async () => {
+		const { shuffles } = await shuffling();
+		const shuffle = shuffles.current;
+		await shuffle?.move('a-0', 1);
+		expect(keys(shuffles)).toEqual(['a-1', 'a-0', 'a-2', 'b-0', 'b-1']);
+		// a-2 is the last queued, b-0 the first pick: they trade places.
+		await shuffle?.move('a-2', 1);
+		expect(keys(shuffles)).toEqual(['a-1', 'a-0', 'b-0', 'a-2', 'b-1']);
+		expect(shuffle?.upNext.at(2)?.queued).toBe(true);
+		expect(shuffle?.upNext.at(3)?.queued).toBe(false);
+		await shuffle?.move('b-1', -1);
+		expect(keys(shuffles)).toEqual(['a-1', 'a-0', 'b-0', 'b-1', 'a-2']);
+	});
+});

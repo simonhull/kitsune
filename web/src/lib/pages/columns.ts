@@ -1,4 +1,4 @@
-import { clock } from '#lib/library/format.ts';
+import { clock, gain } from '#lib/library/format.ts';
 import type {
 	ColumnId,
 	ColumnsPref,
@@ -130,6 +130,15 @@ export const columnSpecs: readonly ColumnSpec[] = [
 		end: true,
 		field: 'bitrate',
 		look: 'fact'
+	},
+	{
+		id: 'gain',
+		label: 'ReplayGain',
+		head: 'RG',
+		width: [64, 84],
+		end: true,
+		field: 'gain',
+		look: 'fact'
 	}
 ];
 
@@ -154,13 +163,103 @@ export function savedColumns(saved: ColumnsPref | null): ColumnsPref {
 		return defaultColumns;
 	}
 	const order = [...new Set(saved.order)].filter((id) => specs.has(id));
-	return { order, artistWhenDifferent: saved.artistWhenDifferent };
+	const widths = Object.fromEntries(
+		Object.entries(saved.widths ?? {}).flatMap(([id, width]) =>
+			specs.has(id as ColumnId) && typeof width === 'number'
+				? [[id, clampWidth(id as ColumnId, width)]]
+				: []
+		)
+	) as Partial<Record<ColumnId, number>>;
+	return Object.keys(widths).length === 0
+		? { order, artistWhenDifferent: saved.artistWhenDifferent }
+		: { order, artistWhenDifferent: saved.artistWhenDifferent, widths };
 }
+
+/** How wide a column may be dragged, at the base step: never under its label, never silly wide. */
+export function widthRange(id: ColumnId): { min: number; max: number } {
+	const spec = specOf(id);
+	const base = spec.width[0];
+	if (spec.look === 'heart') {
+		return { min: 20, max: 48 };
+	}
+	if (spec.look === 'stars') {
+		return { min: 76, max: 160 };
+	}
+	// The label in the header's 11 px mono, and a little room; an empty label, as an icon's, 48.
+	const label = spec.head === '' ? 48 : Math.ceil(spec.head.length * 7.6) + 4;
+	return { min: Math.min(base, Math.max(36, label)), max: Math.max(base * 3, 360) };
+}
+
+export function clampWidth(id: ColumnId, width: number): number {
+	const { min, max } = widthRange(id);
+	return Math.round(Math.min(max, Math.max(min, width)));
+}
+
+/** A column's width at the base step: the person's, or its default. */
+export function baseWidth(id: ColumnId, widths: ColumnsPref['widths']): number {
+	return widths?.[id] ?? specOf(id).width[0];
+}
+
+/** How a column's width scales from the base step to `step`, as its default widths do. */
+export function widthScale(id: ColumnId, step: Exclude<Step, 'phone'>): number {
+	const [columns, large] = specOf(id).width;
+	return step === 'large' ? large / columns : 1;
+}
+
+/** A column's width at a step: the person's base width, taken up the step with it. */
+export function widthAt(
+	id: ColumnId,
+	widths: ColumnsPref['widths'],
+	step: Exclude<Step, 'phone'>
+): number {
+	return Math.round(baseWidth(id, widths) * widthScale(id, step));
+}
+
+/** The preference with a column dragged to `width` at the base step, kept in its range. */
+export function resized(pref: ColumnsPref, id: ColumnId, width: number): ColumnsPref {
+	return { ...pref, widths: { ...pref.widths, [id]: clampWidth(id, width) } };
+}
+
+/** A divider's arrow key: 8 px a press, 16 with Shift. */
+export function nudged(width: number, key: string, shift: boolean): number {
+	const by = shift ? 16 : 8;
+	if (key === 'ArrowLeft') {
+		return width - by;
+	}
+	return key === 'ArrowRight' ? width + by : width;
+}
+
+/**
+ * The columns' widths as the custom properties the grid reads (`--col-genre: 120px`), set on the
+ * list's container: a drag changes one property there, and no row.
+ */
+export function columnVars(
+	order: readonly ColumnId[],
+	widths: ColumnsPref['widths'],
+	step: Exclude<Step, 'phone'>
+): string {
+	return order.map((id) => `--col-${id}: ${String(widthAt(id, widths, step))}px`).join('; ');
+}
+
+/**
+ * The parts of a row a list turns on beside the box, the title, the time and ⋯, which every row
+ * has: a queue's drag handle, a cover, and the number.
+ */
+export interface RowParts {
+	handle: boolean;
+	cover: boolean;
+	number: boolean;
+}
+
+/** The Library's and an album's: a number, and no cover or handle. */
+export const numbered: RowParts = { handle: false, cover: false, number: true };
 
 /** The columns that are always there, and the room between them, at a step. */
 export interface Frame {
 	box: number;
 	number: number;
+	handle: number;
+	cover: number;
 	time: number;
 	more: number;
 	gap: number;
@@ -170,8 +269,28 @@ export interface Frame {
 }
 
 const frames: Record<Exclude<Step, 'phone'>, Frame> = {
-	columns: { box: 20, number: 28, time: 44, more: 36, gap: 12, pad: 14, title: 200 },
-	large: { box: 24, number: 32, time: 56, more: 44, gap: 16, pad: 18, title: 200 }
+	columns: {
+		box: 20,
+		number: 28,
+		handle: 20,
+		cover: 40,
+		time: 44,
+		more: 36,
+		gap: 12,
+		pad: 14,
+		title: 200
+	},
+	large: {
+		box: 24,
+		number: 32,
+		handle: 24,
+		cover: 52,
+		time: 56,
+		more: 44,
+		gap: 16,
+		pad: 18,
+		title: 200
+	}
 };
 
 export function frameOf(step: Exclude<Step, 'phone'>): Frame {
@@ -180,6 +299,16 @@ export function frameOf(step: Exclude<Step, 'phone'>): Frame {
 
 const atStep = (widths: Widths, step: Exclude<Step, 'phone'>): number =>
 	step === 'large' ? widths[1] : widths[0];
+
+/** The tracks every row has before its columns, in order, at a step. */
+function leading(frame: Frame, parts: RowParts): number[] {
+	return [
+		...(parts.handle ? [frame.handle] : []),
+		frame.box,
+		...(parts.cover ? [frame.cover] : []),
+		...(parts.number ? [frame.number] : [])
+	];
+}
 
 export interface Fit {
 	shown: ColumnId[];
@@ -191,16 +320,27 @@ export interface Fit {
  * Finds the columns a row `width` wide has room for, taking them in the person's order and dropping
  * from the end: once one doesn't fit, nothing after it shows either. Title keeps its least width.
  */
-export function fit(order: readonly ColumnId[], width: number, step: Exclude<Step, 'phone'>): Fit {
+export function fit(
+	order: readonly ColumnId[],
+	width: number,
+	step: Exclude<Step, 'phone'>,
+	parts: RowParts = numbered,
+	widths?: ColumnsPref['widths']
+): Fit {
 	const frame = frameOf(step);
-	// Box, number, title, time and ⋯: five tracks and the four gaps between them.
+	// What comes before the title, the title, time and ⋯, and the gaps between them.
+	const fixed = [...leading(frame, parts), frame.title, frame.time, frame.more];
 	let room =
-		width - 2 * frame.pad - frame.box - frame.number - frame.time - frame.more - 4 * frame.gap;
-	room -= frame.title;
+		width -
+		2 * frame.pad -
+		fixed.reduce((sum, each) => sum + each, 0) -
+		(fixed.length - 1) * frame.gap;
 	const shown: ColumnId[] = [];
 	for (const id of order) {
 		const spec = specOf(id);
-		const need = atStep(spec.least ?? spec.width, step) + frame.gap;
+		const wide = widthAt(id, widths, step);
+		const need =
+			Math.min(spec.least === undefined ? wide : atStep(spec.least, step), wide) + frame.gap;
 		if (need > room) {
 			break;
 		}
@@ -211,23 +351,64 @@ export function fit(order: readonly ColumnId[], width: number, step: Exclude<Ste
 }
 
 /** The grid every row and the header share, for the columns shown. */
-export function template(shown: readonly ColumnId[], step: Exclude<Step, 'phone'>): string {
+export function template(
+	shown: readonly ColumnId[],
+	step: Exclude<Step, 'phone'>,
+	parts: RowParts = numbered,
+	titleLeast = frameOf(step).title
+): string {
 	const frame = frameOf(step);
+	// Each width is the container's `--col-<id>`, so a drag changes the property and not the grid.
 	const columns = shown.map((id) => {
 		const spec = specOf(id);
-		const width = atStep(spec.width, step);
+		const width = `var(--col-${id}, ${String(atStep(spec.width, step))}px)`;
 		return spec.least === undefined
-			? `${String(width)}px`
-			: `minmax(${String(atStep(spec.least, step))}px, ${String(width)}px)`;
+			? width
+			: `minmax(min(${String(atStep(spec.least, step))}px, ${width}), ${width})`;
 	});
 	return [
-		`${String(frame.box)}px`,
-		`${String(frame.number)}px`,
-		`minmax(${String(frame.title)}px, 1fr)`,
+		...leading(frame, parts).map((each) => `${String(each)}px`),
+		`minmax(${String(titleLeast)}px, 1fr)`,
 		...columns,
 		`${String(frame.time)}px`,
 		`${String(frame.more)}px`
 	].join(' ');
+}
+
+/**
+ * Where a list stands, for the columns: the Library shows every one chosen; an album page never
+ * Album, which it is; search results come from everywhere, so they always say whose and from what.
+ */
+export type ColumnsContext = 'library' | 'album' | 'search';
+
+/** The person's columns as a list shows them, in their order. */
+export function columnsIn(order: readonly ColumnId[], context: ColumnsContext): ColumnId[] {
+	switch (context) {
+		case 'library':
+			return [...order];
+		case 'album':
+			return order.filter((id) => id !== 'album');
+		case 'search': {
+			// Artist and Album always, Album right after Artist when the person hasn't placed it.
+			const out = order.includes('artist') ? [...order] : ['artist' as const, ...order];
+			if (!out.includes('album')) {
+				out.splice(out.indexOf('artist') + 1, 0, 'album');
+			}
+			return out;
+		}
+	}
+}
+
+/** The Artist switch as a list applies it: an album page always leaves the album's own artist out. */
+export function artistWhenDifferentIn(pref: ColumnsPref, context: ColumnsContext): boolean {
+	switch (context) {
+		case 'library':
+			return pref.artistWhenDifferent;
+		case 'album':
+			return true;
+		case 'search':
+			return false;
+	}
 }
 
 /**
@@ -245,15 +426,19 @@ export function fieldsFor(order: readonly ColumnId[]): IndexField[] {
 		'bitrate',
 		'added',
 		'plays',
-		'lastPlayed'
+		'lastPlayed',
+		'gain'
 	];
 	return [...all.filter((field) => wanted.has(field)), 'shuffle'];
 }
 
+/** As much of an album as a song row shows. */
+export type RowAlbum = Pick<LibraryAlbum, 'id' | 'title' | 'artist' | 'year' | 'artwork'>;
+
 /** What a cell needs to say its piece. */
 export interface CellContext {
 	track: LibraryTrack;
-	album: LibraryAlbum;
+	album: RowAlbum;
 	stars: number | null;
 	hearted: boolean;
 	artistWhenDifferent: boolean;
@@ -262,7 +447,11 @@ export interface CellContext {
 }
 
 export type Cell =
-	| { look: 'name' | 'fact'; text: string }
+	| {
+			look: 'name' | 'fact';
+			text: string;
+			/** Says something is missing, in the fox. */ warn?: true;
+	  }
 	| { look: 'stars'; stars: number }
 	| { look: 'heart'; hearted: boolean };
 
@@ -310,11 +499,7 @@ export function formatCell({ format, bitDepth, sampleRate, bitrate }: LibraryTra
 }
 
 /** The track's artists as Artist shows them: nothing, under the switch, where they're the album's. */
-export function artistCell(
-	track: LibraryTrack,
-	album: LibraryAlbum,
-	whenDifferent: boolean
-): string {
+export function artistCell(track: LibraryTrack, album: RowAlbum, whenDifferent: boolean): string {
 	const named = track.artists.filter((artist) => artist !== '').join(', ');
 	return whenDifferent && named === album.artist ? '' : named;
 }
@@ -352,11 +537,42 @@ export function cellOf(id: ColumnId, context: CellContext): Cell {
 			return fact(formatCell(track));
 		case 'bitrate':
 			return fact(track.bitrate === undefined ? '' : String(track.bitrate));
+		case 'gain':
+			return track.trackGain === undefined
+				? { look: 'fact', text: 'no RG', warn: true }
+				: fact(`${gain(track.trackGain)} dB`);
 	}
 }
 
+/**
+ * The columns that say the same for every song of an album: a phone's line leaves them to the
+ * album's heading.
+ */
+export function sameOnAlbum(
+	order: readonly ColumnId[],
+	album: RowAlbum & { tracks: readonly LibraryTrack[] },
+	artistWhenDifferent: boolean,
+	now: number
+): Set<ColumnId> {
+	const same = order.filter((id) => {
+		const texts = album.tracks.map((track) => {
+			const cell = cellOf(id, {
+				track,
+				album,
+				stars: null,
+				hearted: false,
+				artistWhenDifferent,
+				now
+			});
+			return cell.look === 'name' || cell.look === 'fact' ? cell.text : '';
+		});
+		return texts.every((text) => text === texts[0]);
+	});
+	return new Set(same);
+}
+
 /** Columns that say something of each song, so they're never left out for being shared. */
-const perSong = new Set<ColumnId>(['artist', 'rating', 'heart', 'plays']);
+const perSong = new Set<ColumnId>(['artist', 'rating', 'heart', 'plays', 'gain']);
 
 /**
  * What a phone row's second line says, from the person's columns in their order, before its time.
@@ -386,7 +602,7 @@ function phonePart(
 	id: ColumnId,
 	context: CellContext,
 	track: LibraryTrack,
-	album: LibraryAlbum
+	album: RowAlbum
 ): string {
 	const cell = cellOf(id, context);
 	switch (id) {
@@ -413,6 +629,8 @@ function phonePart(
 			return track.lastPlayedAt === undefined ? '' : lastWhen(track.lastPlayedAt, context.now);
 		case 'bitrate':
 			return track.bitrate === undefined ? '' : `${String(track.bitrate)} kbps`;
+		case 'gain':
+			return track.trackGain === undefined ? 'no RG' : `RG ${gain(track.trackGain)}`;
 		default:
 			return cell.look === 'name' || cell.look === 'fact' ? cell.text : '';
 	}

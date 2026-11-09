@@ -3,6 +3,7 @@
 	"ciMultiplier": 1.8,
 	"browser": {
 		"play-library": { "interaction": "Play a song from the Library", "p95Ms": 45 },
+		"play-library-cell": { "interaction": "Play a song from the Library, clicking a cell", "p95Ms": 45 },
 		"play-album": { "interaction": "Play a song on its album page", "p95Ms": 70 },
 		"next": { "interaction": "Next", "p95Ms": 35 },
 		"previous": { "interaction": "Previous", "p95Ms": 45 },

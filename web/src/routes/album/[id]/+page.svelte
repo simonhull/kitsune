@@ -1,18 +1,34 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
-	import type { Album } from '#lib/library/source.ts';
+	import type { Album, ColumnId } from '#lib/library/source.ts';
 	import { whenSettled } from '#lib/morph/settled.ts';
 	import AlbumHero from '#lib/pages/AlbumHero.svelte';
 	import BulkEditor from '#lib/pages/BulkEditor.svelte';
 	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
-	import { matchAlbum, matchFromBulk, matchFromEditor } from '#lib/matching/hooks.ts';
+	import { matchFromBulk, matchFromEditor } from '#lib/matching/hooks.ts';
 	import TagBar from '#lib/pages/TagBar.svelte';
 	import TagRows from '#lib/pages/TagRows.svelte';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
-	import TrackList from '#lib/pages/TrackList.svelte';
+	import AlbumSongs from '#lib/pages/AlbumSongs.svelte';
+	import { rowsOf } from '#lib/pages/albumSongs.ts';
+	import { clock } from '#lib/library/format.ts';
+	import ColumnsMenu from '#lib/pages/ColumnsMenu.svelte';
+	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
+	import RowMenu from '#lib/pages/RowMenu.svelte';
+	import SelectionBar from '#lib/pages/SelectionBar.svelte';
+	import { onScreen, Selection } from '#lib/pages/selection.svelte.ts';
+	import {
+		actionsFor,
+		menuTarget,
+		pickedFacts,
+		type MenuTarget,
+		type SongActions,
+		type SongFacts
+	} from '#lib/pages/songActions.ts';
+	import { focusRow, SongList } from '#lib/pages/songRow.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import type { PageProps } from './$types';
 
@@ -30,9 +46,121 @@
 			: null
 	);
 
+	/** The album's songs as rows show them: the index's, with the columns' fields, once here. */
+	const rows = $derived(
+		library.albumRows(id, columnsView.fields) ?? (album === undefined ? undefined : rowsOf(album))
+	);
+	$effect(() => {
+		const wanted = id;
+		const fields = columnsView.fields;
+		if (columnsView.known && !untrack(() => library.indexHolds(wanted, fields))) {
+			untrack(() => void library.loadAlbumRows([wanted], fields));
+		}
+	});
+	onMount(() => {
+		void columnsView.load();
+	});
+
+	/** The songs picked on this page: its own, and gone with it. */
+	const selection = new Selection();
+	onMount(() => onScreen.show(selection));
+	const order = $derived(rows?.tracks.map((track) => track.id) ?? []);
+	let songsElement: HTMLElement | undefined = $state();
+	const list = new SongList(selection, {
+		order: () => order,
+		reveal: (trackId) => {
+			focusRow(songsElement, trackId);
+		}
+	});
+	// Another album is another list.
+	$effect(() => {
+		void id;
+		untrack(() => {
+			selection.clear();
+		});
+	});
+	const albumOf = $derived(new Map(order.map((trackId) => [trackId, id])));
+	const songFacts: SongFacts = (trackId) => {
+		const track = rows?.tracks.find((each) => each.id === trackId);
+		return track === undefined ? undefined : { albumId: id, durationMs: track.durationMs };
+	};
+	const picked = $derived(selection.inOrder(order));
+	const pickedActions = $derived(actionsFor(picked, albumOf));
+	const canEditTags = $derived(library.user?.canEditTags === true);
+
+	/** The ⋯ menu and the columns menu, where each was opened, and what opened it, to go back to. */
+	let rowMenu = $state<{ x: number; y: number; target: MenuTarget; actions: SongActions } | null>(
+		null
+	);
+	let columnsMenu = $state<{ x: number; y: number; hiding: ColumnId | undefined } | null>(null);
+	let opener: HTMLElement | null = null;
+
+	function openRowMenu(trackId: string, x: number, y: number): void {
+		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		const target = menuTarget(
+			trackId,
+			selection,
+			() => picked,
+			songFacts,
+			(each) => {
+				const track = rows?.tracks.find((one) => one.id === each);
+				if (track === undefined || entry === undefined) {
+					return undefined;
+				}
+				const disc = (rows?.discs?.length ?? 0) > 1 ? ` · DISC ${String(track.discNo ?? 1)}` : '';
+				return {
+					albumId: id,
+					title: track.title,
+					line: `${entry.title.toUpperCase()}${disc} · ${clock(track.durationMs / 1000)}`,
+					artistId: album?.artists.at(0)?.id
+				};
+			}
+		);
+		if (target !== undefined) {
+			rowMenu = {
+				x,
+				y,
+				target,
+				actions: target.kind === 'picked' ? pickedActions : actionsFor([trackId], albumOf)
+			};
+		}
+	}
+
+	function openColumns(x: number, y: number, hiding?: ColumnId): void {
+		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		columnsMenu = { x, y, hiding };
+	}
+
+	function closeMenus(refocus: boolean): void {
+		rowMenu = null;
+		columnsMenu = null;
+		if (refocus) {
+			opener?.focus();
+		}
+	}
+
+	/** Edit N songs: the album's own editor for many, on the songs picked. */
+	function editPicked(): void {
+		const chosen = rows?.tracks.filter((track) => selection.has(track.id)) ?? [];
+		selection.clear();
+		bulkEdits.open(
+			'album',
+			chosen.map((track) => ({ id: track.id, albumId: id, title: track.title })),
+			canEditTags
+		);
+	}
+
+	function onWindowKey(event: KeyboardEvent): void {
+		list.windowKey(
+			event,
+			rowMenu !== null || columnsMenu !== null || bulk !== null || session !== undefined
+		);
+	}
+
 	let editButton: HTMLButtonElement | undefined = $state();
 	let eyebrow: HTMLElement | undefined = $state();
 	let announcement = $state('');
+	let innerWidth = $state(1280);
 
 	// Never awaited: the first frame is built from the list entry, and tracks stream in.
 	$effect(() => {
@@ -144,6 +272,8 @@
 	{/if}
 {/snippet}
 
+<svelte:window onkeydown={onWindowKey} bind:innerWidth />
+
 <svelte:head>
 	<title>{entry?.title ?? 'Album'} · Kitsune</title>
 </svelte:head>
@@ -160,7 +290,6 @@
 			{entry}
 			{album}
 			edit={library.user?.canEditTags === true ? () => void openEditor() : undefined}
-			match={library.user?.canEditTags === true ? () => matchAlbum(id) : undefined}
 			bind:editButton
 			{session}
 			picking={bulk === null
@@ -181,27 +310,52 @@
 				match={matchFromBulk(bulk)}
 			/>
 		{:else}
-			<TrackList
-				{album}
-				{cuedId}
-				sounding={player.sounding}
-				play={(index) => {
-					if (album !== undefined) {
-						player.play(album, index);
-					}
-				}}
-				playDisc={(disc) => {
-					if (album !== undefined) {
-						player.playDisc(album, disc);
-					}
-				}}
-				gone={library.failed(id)}
-				unavailable={library.unavailable(id)}
-				retry={() => void library.loadAlbum(id)}
-				editing={session !== undefined}
-				one={session?.open != null}
-				editor={session?.tags == null ? undefined : editor}
-			/>
+			<div class="songs" bind:this={songsElement}>
+				<AlbumSongs
+					{album}
+					{rows}
+					pref={columnsView.pref}
+					{cuedId}
+					sounding={player.sounding}
+					{selection}
+					{list}
+					play={(trackId) => {
+						const index = album?.tracks.findIndex((track) => track.id === trackId) ?? -1;
+						if (album !== undefined && index >= 0) {
+							player.play(album, index);
+						}
+					}}
+					playDisc={(disc) => {
+						if (album !== undefined) {
+							player.playDisc(album, disc);
+						}
+					}}
+					openMenu={openRowMenu}
+					{openColumns}
+					gone={library.failed(id)}
+					unavailable={library.unavailable(id)}
+					retry={() => void library.loadAlbum(id)}
+					editing={session !== undefined}
+					one={session?.open != null}
+					editor={session?.tags == null ? undefined : editor}
+				/>
+			</div>
+			{#if selection.any && session === undefined}
+				{@const facts = pickedFacts(picked, songFacts)}
+				<SelectionBar
+					count={selection.size}
+					hidden={0}
+					albums={facts.albums}
+					durationMs={facts.durationMs}
+					hearted={picked.every((trackId) => library.marks.hearted('tracks', trackId))}
+					actions={pickedActions}
+					compact={innerWidth < 700}
+					edit={canEditTags ? editPicked : undefined}
+					onclear={() => {
+						selection.clear();
+					}}
+				/>
+			{/if}
 		{/if}
 		{#if session !== undefined}
 			<TagBar
@@ -214,6 +368,25 @@
 		{/if}
 		<p class="visually-hidden" role="status">{announcement}</p>
 	</div>
+	{#if rowMenu !== null}
+		<RowMenu
+			x={rowMenu.x}
+			y={rowMenu.y}
+			target={rowMenu.target}
+			actions={rowMenu.actions}
+			here="album"
+			onclose={closeMenus}
+		/>
+	{/if}
+	{#if columnsMenu !== null}
+		<ColumnsMenu
+			x={columnsMenu.x}
+			y={columnsMenu.y}
+			hiding={columnsMenu.hiding}
+			context="album"
+			onclose={closeMenus}
+		/>
+	{/if}
 {/if}
 
 <style>

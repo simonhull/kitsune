@@ -5,19 +5,32 @@
 	import { heartPath } from '#lib/shell/Icon.svelte';
 	import FileInfo from './FileInfo.svelte';
 	import Floating from './Floating.svelte';
-	import type { MenuTarget, SongActions } from './songActions.ts';
+	import { rowMenuItems, type MenuTarget, type SongActions } from './songActions.ts';
 
 	interface Props {
 		x: number;
 		y: number;
 		target: MenuTarget;
 		actions: SongActions;
+		/** The page it's on, whose own link it leaves out: no Go to album on the album. */
+		here?: 'album' | 'artist' | undefined;
+		/** Takes the songs out of the queue, in Up next. */
+		remove?: (() => void) | undefined;
 		onclose: (refocus: boolean) => void;
 	}
 
-	let { x, y, target, actions, onclose }: Props = $props();
+	let { x, y, target, actions, here, remove, onclose }: Props = $props();
 
 	let info = $state(false);
+	const items = $derived(
+		new Set(
+			rowMenuItems(target, {
+				here,
+				editable: actions.editTags !== undefined,
+				removable: remove !== undefined
+			})
+		)
+	);
 
 	const ids = $derived(target.kind === 'song' ? [target.trackId] : target.trackIds);
 	const hearted = $derived(ids.every((id) => library.marks.hearted('tracks', id)));
@@ -55,7 +68,7 @@
 	{#if info && target.kind === 'song'}
 		<FileInfo albumId={target.albumId} trackId={target.trackId} />
 	{:else}
-		{#if target.kind === 'picked'}
+		{#if items.has('play')}
 			<button type="button" role="menuitem" class="item" data-menu-item onclick={then(actions.play)}
 				>Play</button
 			>
@@ -105,7 +118,7 @@
 				>
 			{/each}
 		</div>
-		{#if actions.editTags !== undefined}
+		{#if items.has('editTags') && actions.editTags !== undefined}
 			<button
 				type="button"
 				role="menuitem"
@@ -114,17 +127,25 @@
 				onclick={then(actions.editTags)}>Edit tags…</button
 			>
 		{/if}
+		{#if items.has('remove') && remove !== undefined}
+			<button type="button" role="menuitem" class="item" data-menu-item onclick={then(remove)}
+				>Remove from queue</button
+			>
+		{/if}
 		{#if target.kind === 'song'}
 			{@const { albumId, artistId } = target}
 			<div class="rule"></div>
-			<button
-				type="button"
-				role="menuitem"
-				class="item quiet"
-				data-menu-item
-				onclick={then(() => void goto(resolve('/album/[id]', { id: albumId })))}>Go to album</button
-			>
-			{#if artistId !== undefined}
+			{#if items.has('goToAlbum')}
+				<button
+					type="button"
+					role="menuitem"
+					class="item quiet"
+					data-menu-item
+					onclick={then(() => void goto(resolve('/album/[id]', { id: albumId })))}
+					>Go to album</button
+				>
+			{/if}
+			{#if items.has('goToArtist') && artistId !== undefined}
 				<button
 					type="button"
 					role="menuitem"

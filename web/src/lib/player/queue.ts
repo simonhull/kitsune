@@ -210,6 +210,86 @@ function shifted(continues: Continues | undefined, at: number, by: number): Cont
 	return { ...continues, ahead: { ...ahead, at: ahead.at + by } };
 }
 
+/** Takes songs out of what's still to play. The one playing, and those before it, stay. */
+export function without(queue: Queue, ids: readonly string[]): Queue {
+	const rest = aheadPlaces(queue).filter((at) => {
+		const track = queue.tracks.at(at);
+		return track !== undefined && !ids.includes(track.id);
+	});
+	return rest.length === queue.tracks.length - queue.index - 1 ? queue : rearranged(queue, rest);
+}
+
+/**
+ * Puts the songs still to play in a new order, `ahead` naming each of them once. Anything it
+ * doesn't name keeps its place after them; a name it doesn't hold is passed over.
+ */
+export function reordered(queue: Queue, ahead: readonly string[]): Queue {
+	const rest = aheadPlaces(queue);
+	const idAt = (at: number): string | undefined => queue.tracks.at(at)?.id;
+	const byId = new Map(rest.map((at) => [idAt(at), at]));
+	const named = ahead.flatMap((id) => byId.get(id) ?? []);
+	const left = rest.filter((at) => {
+		const id = idAt(at);
+		return id === undefined || !ahead.includes(id);
+	});
+	return rearranged(queue, [...named, ...left]);
+}
+
+/** Where the songs still to play are in the queue. */
+function aheadPlaces(queue: Queue): number[] {
+	return Array.from(
+		{ length: Math.max(0, queue.tracks.length - queue.index - 1) },
+		(_, offset) => queue.index + 1 + offset
+	);
+}
+
+/**
+ * The queue with what's still to play replaced by the songs at `rest`, places in the queue as it
+ * was, in their new order. An album a list put after the queue stays withdrawable while its songs
+ * are still together and in order; once they aren't, the person has made it theirs, and the list
+ * goes on after it as from any album that has begun.
+ */
+function rearranged(queue: Queue, rest: readonly number[]): Queue {
+	const tracks = [
+		...queue.tracks.slice(0, queue.index + 1),
+		...rest.flatMap((at) => queue.tracks.at(at) ?? [])
+	];
+	return {
+		...queue,
+		tracks,
+		ordered: false,
+		albums: albumsOf(queue),
+		continues: regrouped(queue, rest)
+	};
+}
+
+/** Where a list's pending album is after a rearrangement, if it can still be taken back whole. */
+function regrouped(queue: Queue, rest: readonly number[]): Continues | undefined {
+	const { continues } = queue;
+	const ahead = pendingAlbum(queue);
+	if (continues === undefined || ahead === undefined) {
+		return continues;
+	}
+	const kept = rest.flatMap((at, place) =>
+		at >= ahead.at && at < ahead.at + ahead.count ? [{ at, place }] : []
+	);
+	const first = kept.at(0);
+	// Next to each other, and in the album's order.
+	const together = kept.every((entry, k) => {
+		const before = kept.at(k - 1);
+		return (
+			k === 0 || (before !== undefined && entry.place === before.place + 1 && entry.at > before.at)
+		);
+	});
+	if (first === undefined || !together) {
+		return { album: continues.album };
+	}
+	return {
+		...continues,
+		ahead: { ...ahead, at: queue.index + 1 + first.place, count: kept.length }
+	};
+}
+
 /** Queues an album as it stands, starting at `index`. */
 export function inOrder(album: Album, index = 0): Queue {
 	return { album, tracks: album.tracks, index, ordered: true };
