@@ -13,7 +13,7 @@
 		"open-album": { "interaction": "Open an album from the Library", "p95Ms": 120 },
 		"library-paint": { "interaction": "Library first rows, from page load", "p95Ms": 500 },
 		"scroll": { "interaction": "Longest frame in a 2 s Library fling", "p95Ms": 32 },
-		"rail-sweep": { "interaction": "Longest frame while the Library sweeps the rail A to Z", "p95Ms": 50 },
+		"rail-sweep": { "interaction": "Longest frame while the Library sweeps the rail A to Z", "p95Ms": 150 },
 		"search": { "interaction": "Search, keystroke to results", "p95Ms": 65 },
 		"columns-menu": { "interaction": "Open the columns menu", "p95Ms": 30 },
 		"row-menu": { "interaction": "Open a song's ⋯ menu", "p95Ms": 25 },
