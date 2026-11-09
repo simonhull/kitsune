@@ -7,7 +7,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { clock } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import type { ColumnId, LibraryTrack, TrackHit } from '#lib/library/source.ts';
+	import type { ColumnId, LibraryTrack, MovableId, TrackHit } from '#lib/library/source.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import {
 		artistWhenDifferentIn,
@@ -17,6 +17,8 @@
 		fit,
 		largeFrom,
 		monoAdvance,
+		movable,
+		reorderIn,
 		template,
 		type RowAlbum,
 		type RowParts
@@ -219,6 +221,12 @@
 			onresize={(id, to) => {
 				columnsView.resize(id, to);
 			}}
+			onreorder={(id: MovableId, to: number, keys: boolean) => {
+				columnsView.reorder(reorderIn(columnsView.pref, 'search', fitted.shown, id, to), {
+					debounce: keys
+				});
+			}}
+			movable={(id: MovableId) => movable(id, columnsView.pref)}
 		/>
 	{/if}
 	<div class="rows" {...events}>

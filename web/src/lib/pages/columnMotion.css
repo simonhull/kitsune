@@ -1,0 +1,280 @@
+/*
+ * A column on the move (columnDrag.ts). Where each column is drawn is its rule in columnMotion.ts;
+ * here is how each phase moves them, and the held column's own rules: written out per column, since
+ * CSS can't compare the list's `data-held` with a cell's `data-col` (columnMotion.test.ts checks
+ * that every column has them).
+ * Only `translate` changes: nothing lays out while a column moves.
+ */
+
+/* How each phase moves what isn't under the pointer. */
+.song-list[data-phase='drag'] [data-col] {
+	transition: translate var(--morph-room) var(--curve-room);
+}
+
+.song-list[data-phase='commit'] [data-col] {
+	transition: none;
+}
+
+.song-list[data-phase='settle'] [data-col] {
+	transition: translate var(--morph-drop) var(--curve-settle);
+}
+
+.song-list[data-phase='flip'] [data-col] {
+	transition: translate var(--morph-room) var(--curve-room);
+}
+
+.song-list[data-phase='reset'] [data-col] {
+	transition: translate var(--morph-fast) var(--curve-morph);
+}
+
+.song-list[data-phase='cancel'] [data-col] {
+	transition: translate var(--morph-fall) var(--curve-fall);
+}
+
+/* number */
+.song-list[data-held='number'] [data-col='number'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='number'] [data-col='number'] {
+	transition: none;
+}
+
+/* title */
+.song-list[data-held='title'] [data-col='title'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='title'] [data-col='title'] {
+	transition: none;
+}
+
+/* artist */
+.song-list[data-held='artist'] [data-col='artist'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='artist'] [data-col='artist'] {
+	transition: none;
+}
+
+/* albumArtist */
+.song-list[data-held='albumArtist'] [data-col='albumArtist'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='albumArtist'] [data-col='albumArtist'] {
+	transition: none;
+}
+
+/* album */
+.song-list[data-held='album'] [data-col='album'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='album'] [data-col='album'] {
+	transition: none;
+}
+
+/* genre */
+.song-list[data-held='genre'] [data-col='genre'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='genre'] [data-col='genre'] {
+	transition: none;
+}
+
+/* year */
+.song-list[data-held='year'] [data-col='year'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='year'] [data-col='year'] {
+	transition: none;
+}
+
+/* rating */
+.song-list[data-held='rating'] [data-col='rating'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='rating'] [data-col='rating'] {
+	transition: none;
+}
+
+/* heart */
+.song-list[data-held='heart'] [data-col='heart'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='heart'] [data-col='heart'] {
+	transition: none;
+}
+
+/* plays */
+.song-list[data-held='plays'] [data-col='plays'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='plays'] [data-col='plays'] {
+	transition: none;
+}
+
+/* lastPlayed */
+.song-list[data-held='lastPlayed'] [data-col='lastPlayed'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='lastPlayed'] [data-col='lastPlayed'] {
+	transition: none;
+}
+
+/* added */
+.song-list[data-held='added'] [data-col='added'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='added'] [data-col='added'] {
+	transition: none;
+}
+
+/* composer */
+.song-list[data-held='composer'] [data-col='composer'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='composer'] [data-col='composer'] {
+	transition: none;
+}
+
+/* format */
+.song-list[data-held='format'] [data-col='format'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='format'] [data-col='format'] {
+	transition: none;
+}
+
+/* bitrate */
+.song-list[data-held='bitrate'] [data-col='bitrate'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='bitrate'] [data-col='bitrate'] {
+	transition: none;
+}
+
+/* gain */
+.song-list[data-held='gain'] [data-col='gain'] {
+	position: relative;
+	z-index: 3;
+}
+
+.song-list[data-phase='drag'][data-held='gain'] [data-col='gain'] {
+	transition: none;
+}
+
+/* The lane: the held column's cells ride on one raised strip, above the rest and under them. */
+.column-lane {
+	position: absolute;
+	z-index: 2;
+	pointer-events: none;
+	border-radius: var(--radius-12);
+	background: var(--card-raised);
+	border: 1px solid var(--edge-strong);
+	box-shadow: var(--shadow-float);
+}
+
+.column-lane::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	opacity: var(--grain-alpha);
+	background-image: var(--grain);
+}
+
+.song-list[data-phase='settle'] .column-lane {
+	transition:
+		translate var(--morph-drop) var(--curve-settle),
+		opacity 200ms ease-out 120ms;
+}
+
+.song-list[data-phase='cancel'] .column-lane {
+	transition:
+		translate var(--morph-fall) var(--curve-fall),
+		opacity 120ms ease-in;
+}
+
+.column-lane[data-landing] {
+	opacity: 0;
+}
+
+/* The hole: where it will land. Dashed in the header, hatched down the rows: a cut-out, not a glow. */
+.column-hole {
+	position: absolute;
+	z-index: 1;
+	pointer-events: none;
+	transition: translate var(--morph-room) var(--curve-room);
+}
+
+.column-hole-head {
+	position: absolute;
+	top: 6px;
+	left: -7px;
+	right: -7px;
+	height: calc(var(--head-height, 40px) - 12px);
+	border: 1.5px dashed var(--edge-hover);
+	border-radius: 8px;
+}
+
+.column-hole-rows {
+	position: absolute;
+	top: var(--head-height, 40px);
+	bottom: 0;
+	left: 0;
+	right: 0;
+	border-radius: 6px;
+	background: repeating-linear-gradient(-45deg, var(--edge-strong) 0 1.5px, transparent 1.5px 8px);
+}
+
+:root[data-grabbing],
+:root[data-grabbing] * {
+	cursor: grabbing !important;
+}
+
+/* The one place a move speaks, for every list. */
+.column-live {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* Reduced motion: the held column still follows the pointer, since it is the pointer. */
+@media (prefers-reduced-motion: reduce) {
+	.song-list[data-moving] [data-col],
+	.column-lane,
+	.column-hole {
+		transition: none !important;
+	}
+}

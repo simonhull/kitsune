@@ -418,7 +418,10 @@ export interface Prefs {
 
 export type PrefKey = keyof Prefs;
 
-/** A song column a person may choose. Checkbox, number, title, time and ⋯ are always there. */
+/**
+ * A song column a person may choose. Checkbox, time and ⋯ are always there, in their places; the
+ * number and the title are always there too, but may be moved ({@link MovableId}).
+ */
 export type ColumnId =
 	| 'artist'
 	| 'albumArtist'
@@ -435,9 +438,16 @@ export type ColumnId =
 	| 'bitrate'
 	| 'gain';
 
+/** The number and the title: always shown, never chosen or sized, but placed like any column. */
+export type FrameId = 'number' | 'title';
+
+/** What an order places: the columns chosen, and the number and the title among them. */
+export type MovableId = ColumnId | FrameId;
+
 /** `library.columns`: the columns shown, in their order, and the Artist switch. */
 export interface ColumnsPref {
-	order: ColumnId[];
+	/** The server puts back a number or a title an old value lacks, so both are always here. */
+	order: MovableId[];
 	/** Leave Artist empty where the track's artists are the album's. */
 	artistWhenDifferent: boolean;
 	/** The widths columns were dragged to, at the base size step. One not named has its default. */

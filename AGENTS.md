@@ -372,6 +372,11 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   (`indexPatch.ts`, from `GET /library/index?albums=`), so the Library page keeps its song on screen;
   a gap the server can't fill (`resync`, or a stream reopened after the browser gave up) reads everything
   again. While events arrive nothing polls for scans. Nothing on the way to playback waits for any of it.
+- Song columns are one order for every list (`library.columns`), the number and the title in it:
+  they move but never hide, and an old value without them gets them back first. A column dragged
+  moves by its own style rule (`columnMotion.ts`, written through the CSSOM: a custom property on the
+  list restyled everything under it), one resized by `--col-<id>` on the list; neither changes a row
+  or any state until the task that ends it. `reorderIn` keeps which columns fit the same on a drop.
 - `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.
@@ -388,7 +393,7 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   libraries there. Each server starts on a fresh database, and nothing is timed until its first scan
   and the fingerprint and loudness passes after it are done: the suite measures a server at rest.
   Only the loud albums lack ReplayGain, so the loudness pass has little to do. `KITSUNE_PERF_CHROMIUM` picks a local Chromium, `KITSUNE_PERF_LIBRARIES=1k` measures
-  one size, `KITSUNE_PERF_VERBOSE=1` prints every sample. The speed tests skip under `-race`.
+  one size, `KITSUNE_PERF_VERBOSE=1` prints every sample, and `KITSUNE_PERF_PORT` moves the servers off 14610, for a second worktree measuring at once. The speed tests skip under `-race`.
 - Nothing new may wait on the play path, from a click to the `playing` event. A change on that path,
   or to a budget, carries the suite's numbers before and after, and no change is called faster without them.
 

@@ -1,6 +1,7 @@
 package prefs_test
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -21,6 +22,9 @@ func TestLookup(t *testing.T) {
 	}
 }
 
+// The default columns, as a value reads back: the number and the title first.
+const defaults = `{"order":["number","title","artist","genre","rating","plays","lastPlayed","format"],"artistWhenDifferent":true}`
+
 func TestColumnsCheck(t *testing.T) {
 	t.Parallel()
 	key, lookupErr := prefs.Lookup(prefs.LibraryColumns)
@@ -31,22 +35,34 @@ func TestColumnsCheck(t *testing.T) {
 		name, in, want string // An empty want is a refusal.
 	}{
 		{
-			"defaults", `{"order":["artist","genre","rating","plays","lastPlayed","format"],"artistWhenDifferent":true}`,
-			`{"order":["artist","genre","rating","plays","lastPlayed","format"],"artistWhenDifferent":true}`,
+			"saved before number and title moved", `{"order":["artist","genre","rating","plays","lastPlayed","format"],"artistWhenDifferent":true}`,
+			defaults,
 		},
-		{"none shown", `{"artistWhenDifferent":false,"order":[]}`, `{"order":[],"artistWhenDifferent":false}`},
+		{
+			"defaults", defaults, defaults,
+		},
+		{
+			"moved", `{"order":["artist","title","genre","number"],"artistWhenDifferent":false}`,
+			`{"order":["artist","title","genre","number"],"artistWhenDifferent":false}`,
+		},
+		{"title only", `{"order":["genre","title"],"artistWhenDifferent":true}`, `{"order":["number","genre","title"],"artistWhenDifferent":true}`},
+		{"number only", `{"order":["genre","number"],"artistWhenDifferent":true}`, `{"order":["genre","number","title"],"artistWhenDifferent":true}`},
+		{"none shown", `{"artistWhenDifferent":false,"order":[]}`, `{"order":["number","title"],"artistWhenDifferent":false}`},
 		{
 			"widths", `{"order":["genre"],"artistWhenDifferent":true,"widths":{"rating":96,"genre":180}}`,
-			`{"order":["genre"],"artistWhenDifferent":true,"widths":{"genre":180,"rating":96}}`,
+			`{"order":["number","title","genre"],"artistWhenDifferent":true,"widths":{"genre":180,"rating":96}}`,
 		},
-		{"no widths", `{"order":[],"artistWhenDifferent":true,"widths":{}}`, `{"order":[],"artistWhenDifferent":true}`},
+		{"no widths", `{"order":[],"artistWhenDifferent":true,"widths":{}}`, `{"order":["number","title"],"artistWhenDifferent":true}`},
 		{"width of nothing", `{"order":[],"artistWhenDifferent":true,"widths":{"skips":80}}`, ""},
+		{"width of the title", `{"order":[],"artistWhenDifferent":true,"widths":{"title":300}}`, ""},
+		{"width of the number", `{"order":[],"artistWhenDifferent":true,"widths":{"number":30}}`, ""},
 		{"too narrow", `{"order":[],"artistWhenDifferent":true,"widths":{"genre":15}}`, ""},
 		{"too wide", `{"order":[],"artistWhenDifferent":true,"widths":{"genre":961}}`, ""},
 		{"not a width", `{"order":[],"artistWhenDifferent":true,"widths":{"genre":"wide"}}`, ""},
-		{"spaced", "{ \"order\" : [ \"bitrate\" ] , \"artistWhenDifferent\" : true }", `{"order":["bitrate"],"artistWhenDifferent":true}`},
+		{"spaced", "{ \"order\" : [ \"bitrate\" ] , \"artistWhenDifferent\" : true }", `{"order":["number","title","bitrate"],"artistWhenDifferent":true}`},
 		{"unknown", `{"order":["skips"],"artistWhenDifferent":true}`, ""},
 		{"twice", `{"order":["year","year"],"artistWhenDifferent":true}`, ""},
+		{"title twice", `{"order":["title","year","title"],"artistWhenDifferent":true}`, ""},
 		{"missing", `{"order":[]}`, ""},
 		{"null", `{"order":null,"artistWhenDifferent":true}`, ""},
 		{"extra", `{"order":[],"artistWhenDifferent":true,"x":1}`, ""},
@@ -82,6 +98,32 @@ func TestColumnsListsEachOnce(t *testing.T) {
 	}
 	if len(seen) != 14 {
 		t.Errorf("%d columns, want the spec's 14", len(seen))
+	}
+	placed := prefs.Placed()
+	if len(placed) != 16 || placed[0] != prefs.ColumnNumber || placed[1] != prefs.ColumnTitle {
+		t.Errorf("Placed() = %v, want number, title and the 14", placed)
+	}
+}
+
+// A checked value checks to itself: the way out accepts what the way in wrote.
+func TestColumnsCheckIsStable(t *testing.T) {
+	t.Parallel()
+	key, lookupErr := prefs.Lookup(prefs.LibraryColumns)
+	if lookupErr != nil {
+		t.Fatal(lookupErr)
+	}
+	for _, in := range []string{
+		`{"order":["artist"],"artistWhenDifferent":true}`,
+		`{"order":["title","artist","number"],"artistWhenDifferent":false,"widths":{"artist":150}}`,
+	} {
+		once, err := key.Check([]byte(in))
+		if err != nil {
+			t.Fatalf("Check(%s) = %v", in, err)
+		}
+		twice, err := key.Check(once)
+		if err != nil || !bytes.Equal(twice, once) {
+			t.Errorf("Check(%s) = %s, %v, want %s", once, twice, err, once)
+		}
 	}
 }
 

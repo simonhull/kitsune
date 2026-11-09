@@ -27,7 +27,7 @@ export interface Probe {
  * What a measurement can start at: an input event, the start of the page load, or the latest end
  * of a song (an `<audio>` element's `ended`), for what plays next without anyone asking.
  */
-export type InputType = 'click' | 'contextmenu' | 'keydown' | 'navigation' | 'ended';
+export type InputType = 'click' | 'contextmenu' | 'keydown' | 'pointerup' | 'navigation' | 'ended';
 
 /** Where a test leaves a {@link Wait} for the next page load to arm at its very start. */
 export const armOnLoadKey = 'perf:arm';
@@ -41,6 +41,11 @@ export type Wait =
 	/** An element is there and an `img` in it has decoded, as the cover on an album page. */
 	| { kind: 'loaded'; selector: string; image: string; path?: string }
 	| { kind: 'attribute'; selector: string; name: string; value: string; path?: string }
+	/**
+	 * A list's columns are in `order`: its header's cells (under `selector`), and the first and the
+	 * last of its rows on screen.
+	 */
+	| { kind: 'columns'; selector: string; order: string[]; path?: string }
 	/** An `<audio>` element whose source has `src` in it fires `playing`: sound is coming out. */
 	| { kind: 'playing'; src: string };
 
@@ -55,7 +60,7 @@ export function installProbe(): void {
 	// The default keeps 250 entries, and a long run fetches more than that.
 	performance.setResourceTimingBufferSize(100_000);
 	const input: Record<string, number> = {};
-	for (const type of ['click', 'contextmenu', 'keydown']) {
+	for (const type of ['click', 'contextmenu', 'keydown', 'pointerup']) {
 		addEventListener(
 			type,
 			(event) => {
@@ -104,6 +109,26 @@ export function installProbe(): void {
 			}
 			case 'attribute':
 				return element.getAttribute(what.name) === what.value;
+			case 'columns': {
+				const want = what.order.join(' ');
+				const said = (line: Element): string =>
+					[...line.querySelectorAll(':scope > [data-col]')]
+						.map((cell) => cell.getAttribute('data-col'))
+						.join(' ');
+				const rows = [...document.querySelectorAll('.row[data-track]')].filter((row) => {
+					const { top, bottom } = row.getBoundingClientRect();
+					return bottom > 0 && top < innerHeight;
+				});
+				const first = rows.at(0);
+				const last = rows.at(-1);
+				return (
+					said(element) === want &&
+					first !== undefined &&
+					last !== undefined &&
+					said(first) === want &&
+					said(last) === want
+				);
+			}
 		}
 	}
 
