@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Album, Track } from '#lib/library/source.ts';
 import {
 	albumOf,
+	albumRun,
 	appended,
 	continued,
 	currentOf,
@@ -263,6 +264,12 @@ describe('a queue going on through a list', () => {
 		expect(ids(added.tracks)).toEqual(['t0', 't1', 'y', 'bt0', 'bt1']);
 		expect(added.continues?.ahead?.at).toBe(3);
 		expect(ids(appended({ ...added, index: 3 }, [stray('z')]).tracks).at(-1)).toBe('z');
+	});
+
+	it('says where a song is in its album, among the albums around it', () => {
+		const queue = continued(throughList(inOrder(album(2), 1)), other);
+		expect(albumRun(queue)).toEqual({ index: 1, trackCount: 2 });
+		expect(albumRun({ ...queue, index: 2 })).toEqual({ index: 0, trackCount: 2 });
 	});
 
 	it('comes to rest at the end, going no further', () => {

@@ -51,6 +51,29 @@ export function onwardOf({ shuffle, continues }: Queue): Onward {
 	return continues === undefined ? 'rest' : 'list';
 }
 
+/**
+ * Where the song playing is among the songs of its album around it, from 0, and how many there
+ * are: its place in the album, for a queue made of whole albums.
+ */
+export function albumRun(queue: Queue): { index: number; trackCount: number } {
+	const current = queue.tracks.at(queue.index);
+	if (current === undefined) {
+		return { index: queue.index, trackCount: queue.tracks.length };
+	}
+	const album = albumOf(queue, current).id;
+	const same = (track: Track | undefined): boolean =>
+		track !== undefined && albumOf(queue, track).id === album;
+	let start = queue.index;
+	while (start > 0 && same(queue.tracks.at(start - 1))) {
+		start -= 1;
+	}
+	let end = queue.index + 1;
+	while (same(queue.tracks.at(end))) {
+		end += 1;
+	}
+	return { index: queue.index - start, trackCount: end - start };
+}
+
 /** Marks a queue started from a list at `album`, so it goes on through the list after it. */
 export function throughList(queue: Queue): Queue {
 	return { ...queue, continues: { album: queue.album.id } };

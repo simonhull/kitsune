@@ -6,6 +6,7 @@ import { Listen } from './listen.ts';
 import { HtmlOutput, mediaTypeOf, SilentOutput, type AudioOutput } from './output.ts';
 import {
 	albumOf,
+	albumRun,
 	appended,
 	continued,
 	currentOf,
@@ -108,7 +109,13 @@ export class Player implements PlayerView {
 	/** What the island and Now playing should name: the player owns the order. */
 	get cue(): NowPlaying | null {
 		const { queue } = this;
-		return queue === null ? null : cueOf(queue.album, queue.tracks, queue.index, queue.albums);
+		if (queue === null) {
+			return null;
+		}
+		const cue = cueOf(queue.album, queue.tracks, queue.index, queue.albums);
+		// Going on through a list, the queue grows an album at a time: the place that means
+		// something is the song's in its album.
+		return cue === null || queue.continues === undefined ? cue : { ...cue, ...albumRun(queue) };
 	}
 
 	/** The album of the song playing, which in a queue of picked songs changes as it goes. */

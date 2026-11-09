@@ -76,6 +76,21 @@ describe('what the system is told', () => {
 		expect(metadataOf(player)).toMatchObject({ title: 'T1', artist: 'B' });
 	});
 
+	it('names the album of the song sounding, in a queue of more than one', () => {
+		const { player } = setup();
+		const other: Album = { ...album, id: 'o', title: 'O', artwork: undefined };
+		const [first] = album.tracks;
+		const [second] = other.tracks;
+		if (first !== undefined && second !== undefined) {
+			player.playSongs([
+				{ album, track: first },
+				{ album: other, track: { ...second, id: 'o0' } }
+			]);
+		}
+		player.next();
+		expect(metadataOf(player)).toMatchObject({ album: 'O', artwork: [] });
+	});
+
 	it('says what state it is in', () => {
 		const { player } = setup();
 		expect(playbackOf(player)).toBe('none');

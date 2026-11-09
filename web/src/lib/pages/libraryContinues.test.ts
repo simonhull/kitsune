@@ -84,6 +84,7 @@ function setup() {
 	const player = new Player(library, () => output);
 	const here = new Map<string, Album>();
 	const fetched: string[] = [];
+	const prefetched: string[] = [];
 	const list = {
 		order: ['a', 'b', 'c', 'd'],
 		filter: 'everything' as LibraryFilter,
@@ -102,15 +103,21 @@ function setup() {
 		stars: () => null
 	};
 	const reports = vi.spyOn(library, 'reportListen').mockImplementation(() => undefined);
+	const load = (id: string): Promise<void> => {
+		fetched.push(id);
+		const record = records.get(id);
+		if (record !== undefined) {
+			here.set(id, record);
+		}
+		return Promise.resolve();
+	};
 	const continues = new LibraryContinues({
 		album: (id) => here.get(id),
-		loadAlbum: (id) => {
-			fetched.push(id);
-			const record = records.get(id);
-			if (record !== undefined) {
-				here.set(id, record);
-			}
-			return Promise.resolve();
+		loadAlbum: load,
+		// The app waits a moment first, off the play path; here it's at once.
+		prefetch: (id) => {
+			prefetched.push(id);
+			void load(id);
 		},
 		get queue() {
 			return player.queue;
@@ -136,7 +143,7 @@ function setup() {
 		reports.mock.calls.flatMap(([report]) =>
 			report.ended === undefined ? [] : [`${report.trackId} ${report.ended}`]
 		);
-	return { player, output, list, continues, fetched, finish, play, ended, records };
+	return { player, output, list, continues, fetched, prefetched, finish, play, ended, records };
 }
 
 describe('albumAfter', () => {
@@ -158,10 +165,12 @@ describe('albumAfter', () => {
 
 describe('LibraryContinues', () => {
 	it('goes on into the next album in the list, as a completed song, to the end of the list', async () => {
-		const { player, output, play, finish, ended } = setup();
+		const { player, output, play, finish, ended, prefetched } = setup();
 		play('c');
 		await settle();
-		// The next album's record comes while the first song plays: nothing waits at the change.
+		// The next album's record comes while the first song plays, off the play path: nothing
+		// waits at the change.
+		expect(prefetched).toEqual(['d']);
 		expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['c0', 'c1']);
 		await finish();
 		// The last song of the album begins: the next album is put after it, and shows in Up next.
@@ -171,6 +180,8 @@ describe('LibraryContinues', () => {
 		await finish();
 		expect(player.current?.id).toBe('d0');
 		expect(player.album?.id).toBe('d');
+		// Now playing counts the song in its album, not in a queue that grows album by album.
+		expect(player.cue).toMatchObject({ index: 0, trackCount: 2 });
 		expect(output.url).toBe('d0');
 		expect(player.status).toBe('playing');
 		await finish();

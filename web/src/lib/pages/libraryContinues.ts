@@ -8,6 +8,11 @@ export interface ContinuesHost {
 	album(id: string): Album | undefined;
 	/** Fetches an album. It never rejects: `album` afterwards says how that went. */
 	loadAlbum(id: string): Promise<void>;
+	/**
+	 * Fetches an album a little later, off the play path: a song that has just begun is sounding
+	 * by then, so the fetch never competes with it.
+	 */
+	prefetch(id: string): void;
 	/** The queue playing. */
 	readonly queue: Queue | null;
 	/** Says which album follows `after` in the queue, as the player's `continueList` does. */
@@ -48,9 +53,9 @@ export class LibraryContinues {
 		const after = ahead?.after ?? queue.continues.album;
 		const want = this.#host.albumAfter(after);
 		if (ahead === undefined && upcoming(queue) !== undefined) {
-			// Songs still to play before the end: the next album's record comes now, while they do.
+			// Songs still to play before the end: the next album's record comes while they do.
 			if (want !== null) {
-				void this.#host.loadAlbum(want);
+				this.#host.prefetch(want);
 			}
 			return;
 		}

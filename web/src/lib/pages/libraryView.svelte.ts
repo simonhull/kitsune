@@ -21,6 +21,12 @@ import { columnsFrom, coverFor, largeFrom, stepFor, type Step } from './columns.
 import { albumAfter, LibraryContinues } from './libraryContinues.ts';
 import { createTapper } from './libraryTap.ts';
 
+/**
+ * How long after a song from the list begins the next album's record is fetched: past its first
+ * sound, so the fetch never shares the play path, and long before the album's end.
+ */
+const prefetchDelayMs = 1000;
+
 /** Where the columns stack. The page's styles say the same. */
 const stackedQuery = '(max-width: 1024px)';
 /** Where song rows have columns, and a header over them. Narrower, they're two lines. */
@@ -186,6 +192,11 @@ class LibraryView {
 	readonly #continues = new LibraryContinues({
 		album: (id) => library.album(id),
 		loadAlbum: (id) => library.loadAlbum(id),
+		prefetch: (id) => {
+			setTimeout(() => {
+				void library.loadAlbum(id);
+			}, prefetchDelayMs);
+		},
 		get queue() {
 			return player.queue;
 		},
