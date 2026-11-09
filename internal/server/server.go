@@ -109,6 +109,7 @@ type Server struct {
 	genres        *library.Genres
 	editContext   context.Context //nolint:containedctx // Config.Context: the server's lifetime, not a request's.
 	limiter       *loginLimiter
+	resetLimiter  *loginLimiter // Reset-code requests, apart from logins, so asking can't lock anyone out.
 	lastfm        *scrobbler.Scrobbler
 	publicURL     string
 	lastfmStates  lastfmStates
@@ -157,6 +158,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		genres:        cfg.Genres,
 		editContext:   cfg.Context,
 		limiter:       newLoginLimiter(maxLimiterKeys),
+		resetLimiter:  newLoginLimiter(maxLimiterKeys),
 		lastfm:        cfg.Lastfm,
 		publicURL:     cfg.PublicURL,
 		lastfmStates:  lastfmStates{byUser: map[int64]pendingState{}},
@@ -255,6 +257,8 @@ func (s *Server) routes() []route {
 		{pattern: "GET /healthz", public: true, handle: s.getHealth},
 		{pattern: "GET /readyz", public: true, handle: s.getReady},
 		{pattern: "POST /auth/login", public: true, handle: s.login},
+		{pattern: "POST /auth/reset", public: true, handle: s.postReset},
+		{pattern: "POST /auth/reset/confirm", public: true, handle: s.postResetConfirm},
 		{pattern: "GET /setup", public: true, handle: s.getSetup},
 		{pattern: "POST /setup", public: true, handle: s.postSetup},
 		{pattern: "POST /auth/logout", handle: s.logout},
@@ -263,7 +267,10 @@ func (s *Server) routes() []route {
 		{pattern: "GET /admin/settings", admin: true, handle: s.getSettings},
 		{pattern: "PATCH /admin/settings", admin: true, handle: s.patchSettings},
 		{pattern: "GET /admin/folders", admin: true, handle: s.getFolders},
+		{pattern: "GET /admin/users", admin: true, handle: s.getUsers},
+		{pattern: "POST /admin/users/{id}/password", admin: true, handle: s.postUserPassword},
 		{pattern: "GET /me", handle: s.getMe},
+		{pattern: "POST /me/password", handle: s.postMyPassword},
 		{pattern: "POST /me/plays", handle: s.postPlay},
 		{pattern: "POST /me/listens", handle: s.postListen},
 		{pattern: "PUT /me/hearts/{kind}/{id}", handle: s.putHeart},

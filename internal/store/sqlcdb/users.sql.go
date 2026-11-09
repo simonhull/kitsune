@@ -68,6 +68,55 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (int64, 
 	return id, err
 }
 
+const listUsers = `-- name: ListUsers :many
+SELECT u.id, u.name, u.role, u.created_at,
+       CAST(coalesce(max(s.last_seen), 0) AS INTEGER) AS last_seen,
+       count(s.token_hash) AS sessions
+FROM users AS u
+LEFT JOIN sessions AS s ON s.user_id = u.id AND s.expires_at > ?1
+GROUP BY u.id
+ORDER BY u.name, u.id
+`
+
+type ListUsersRow struct {
+	ID        int64
+	Name      string
+	Role      string
+	CreatedAt int64
+	LastSeen  int64
+	Sessions  int64
+}
+
+func (q *Queries) ListUsers(ctx context.Context, now int64) ([]ListUsersRow, error) {
+	rows, err := q.query(ctx, q.listUsersStmt, listUsers, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUsersRow
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Role,
+			&i.CreatedAt,
+			&i.LastSeen,
+			&i.Sessions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setPasswordHash = `-- name: SetPasswordHash :execrows
 UPDATE users SET password_hash = ? WHERE id = ?
 `
