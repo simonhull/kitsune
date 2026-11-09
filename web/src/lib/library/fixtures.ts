@@ -339,6 +339,10 @@ function fieldsOf(
 	if (fields.has('added')) {
 		out.addedAt = album.addedAt;
 	}
+	// Most files carry their gain; one in seven doesn't, so "no RG" has something to show.
+	if (fields.has('gain') && seed % 7 !== 0) {
+		out.trackGain = -((seed % 110) / 10);
+	}
 	if (fields.has('plays') && plays > 0) {
 		out.plays = plays;
 	}

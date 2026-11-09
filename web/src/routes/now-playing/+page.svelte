@@ -60,7 +60,7 @@
 		<a href={resolve('/')} data-sveltekit-reset="false">Back to Home</a>
 	</div>
 {:else}
-	<div class="stage">
+	<div class="stage stepped">
 		<div class="column" class:shuffling={shuffle !== null}>
 			<div class="top" data-morph-part="chrome">
 				<a
@@ -129,6 +129,14 @@
 			{#if shuffle !== null}
 				<div class="up-next-slot" data-morph-part="panel">
 					<UpNext
+						{shuffle}
+						playing={{
+							id: playing.track.id,
+							title: playing.track.title,
+							artist: playing.track.artists.at(0) ?? playing.album.artist,
+							durationMs: playing.track.durationMs,
+							album: playing.album
+						}}
 						items={shuffle.upNext}
 						mode={shuffle.source.mode}
 						songs={shuffle.songs}
@@ -194,7 +202,7 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		font-size: min(230px, 25.6dvh, calc((100cqw - 32px) / var(--width)));
+		font-size: min(calc(230px * var(--step)), 25.6dvh, calc((100cqw - 32px) / var(--width)));
 		font-weight: 900;
 		letter-spacing: -0.075em;
 		line-height: 0.8;
@@ -205,7 +213,7 @@
 	.column {
 		position: relative;
 		min-height: 100dvh;
-		padding: 24px 32px;
+		padding: 24px var(--gutter);
 		display: flex;
 		flex-direction: column;
 	}
@@ -290,7 +298,7 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 28px;
+		gap: calc(28px * var(--step));
 		padding: 24px 0 8px;
 	}
 
@@ -298,7 +306,7 @@
 	.art {
 		position: relative;
 		display: block;
-		width: min(400px, 46dvh, 100%);
+		width: min(calc(400px * var(--step)), 46dvh, 100%);
 		aspect-ratio: 1;
 		border-radius: var(--radius-28);
 		overflow: hidden;
@@ -323,8 +331,8 @@
 		-webkit-line-clamp: 2;
 		line-clamp: 2;
 		overflow: hidden;
-		max-width: min(640px, 100cqw - 32px);
-		font-size: 28px;
+		max-width: min(calc(640px * var(--step)), 100cqw - 32px);
+		font-size: calc(28px * var(--step));
 		font-weight: 800;
 		letter-spacing: -0.03em;
 		line-height: 1.15;
@@ -332,9 +340,9 @@
 	}
 
 	.artist {
-		font-size: 16px;
+		font-size: calc(16px * var(--step));
 		color: var(--wash);
-		max-width: min(640px, 100cqw - 32px);
+		max-width: min(calc(640px * var(--step)), 100cqw - 32px);
 	}
 
 	.artist strong {
@@ -362,7 +370,7 @@
 	}
 
 	.controls-slot {
-		width: min(640px, 100%);
+		width: min(calc(640px * var(--step)), 100%);
 		height: 90px;
 	}
 
@@ -392,8 +400,8 @@
 	.dot {
 		position: relative;
 		flex: none;
-		width: 36px;
-		height: 36px;
+		width: calc(36px * var(--step));
+		height: calc(36px * var(--step));
 		border-radius: 50%;
 		overflow: hidden;
 	}
@@ -404,7 +412,7 @@
 
 	.pill-name {
 		overflow: hidden;
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
@@ -414,11 +422,11 @@
 	}
 
 	.more {
-		height: 48px;
+		height: calc(48px * var(--step));
 		padding: 0 16px;
 		display: flex;
 		align-items: center;
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		color: var(--wash);
 	}
 
@@ -461,9 +469,21 @@
 		}
 	}
 
+	/*
+	 * From 2560 the stage keeps the share of the screen it has at 1920: the cover and the poster
+	 * scale with the height, not stopping at a size a desktop picked.
+	 */
 	@media (min-width: 2560px) {
 		.column.shuffling {
 			grid-template-columns: minmax(0, 1fr) minmax(0, 1000px);
+		}
+
+		.art {
+			width: min(37dvh, 100%);
+		}
+
+		.poster {
+			font-size: min(21.3dvh, calc((100cqw - 32px) / var(--width)));
 		}
 	}
 

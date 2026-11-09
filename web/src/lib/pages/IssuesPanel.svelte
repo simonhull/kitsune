@@ -137,7 +137,7 @@
 		position: relative;
 		overflow: hidden;
 		min-height: var(--panel-height);
-		padding: 28px 32px;
+		padding: calc(28px * var(--step)) calc(32px * var(--step));
 		border-radius: var(--radius-28);
 		background: var(--card);
 		display: flex;
@@ -202,13 +202,13 @@
 
 	.warned .note {
 		margin-top: 4px;
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 	}
 
 	/* Where the list goes, until it's there: quiet, since the heading has already said how many. */
 	.files-status {
 		margin-top: 8px;
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		color: var(--text-meta);
 	}
 
@@ -217,7 +217,7 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		font-size: 12px;
+		font-size: calc(12px * var(--step));
 		color: var(--text-meta);
 	}
 
@@ -242,7 +242,7 @@
 		align-items: center;
 		gap: 12px;
 		font-family: var(--font-mono);
-		font-size: 13px;
+		font-size: calc(13px * var(--step));
 	}
 
 	li.stacked {
@@ -278,7 +278,7 @@
 		padding: 0;
 		border: 0;
 		background: none;
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		color: var(--text-meta);
 	}
 

@@ -54,16 +54,16 @@
 		display: flex;
 		flex-direction: column;
 		justify-content: flex-end;
-		padding: 32px;
+		padding: calc(32px * var(--step));
 	}
 
 	.art {
 		position: absolute;
-		right: 32px;
-		top: 32px;
-		width: 220px;
-		height: 220px;
-		border-radius: 18px;
+		right: calc(32px * var(--step));
+		top: calc(32px * var(--step));
+		width: calc(220px * var(--step));
+		height: calc(220px * var(--step));
+		border-radius: calc(18px * var(--step));
 		overflow: hidden;
 		box-shadow: var(--shadow-tile);
 		transform: rotate(4deg);
@@ -73,12 +73,12 @@
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: calc(12px * var(--step));
 		min-width: 0;
 	}
 
 	.label {
-		font-size: 13px;
+		font-size: calc(13px * var(--step));
 		font-weight: 600;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -87,7 +87,7 @@
 
 	/* Fit to one line if it can, then two, and a long title is cut rather than left to spill. */
 	.title {
-		--fit: calc((100cqw - 64px) / max(var(--width), 1));
+		--fit: calc((100cqw - 64px * var(--step)) / max(var(--width), 1));
 
 		display: -webkit-box;
 		-webkit-box-orient: vertical;
@@ -98,7 +98,7 @@
 		max-width: 100%;
 		padding-bottom: 0.09em;
 		margin-bottom: -0.09em;
-		font-size: clamp(30px, var(--fit), 64px);
+		font-size: clamp(30px, var(--fit), calc(64px * var(--step)));
 		font-weight: 800;
 		letter-spacing: -0.05em;
 		line-height: 0.96;

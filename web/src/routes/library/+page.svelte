@@ -7,7 +7,7 @@
 	import { emptyLine } from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { ColumnId } from '#lib/library/source.ts';
-	import { fit, monoAdvance, template } from '#lib/pages/columns.ts';
+	import { columnVars, fit, monoAdvance, numbered, template } from '#lib/pages/columns.ts';
 	import ColumnsMenu from '#lib/pages/ColumnsMenu.svelte';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import LibraryAlbum from '#lib/pages/LibraryAlbum.svelte';
@@ -19,12 +19,17 @@
 	import SelectionBar from '#lib/pages/SelectionBar.svelte';
 	import { matchFromBulk } from '#lib/matching/hooks.ts';
 	import TagBar from '#lib/pages/TagBar.svelte';
-	import { selection } from '#lib/pages/selection.svelte.ts';
+	import PickBox from '#lib/pages/PickBox.svelte';
+	import { onScreen, selection } from '#lib/pages/selection.svelte.ts';
+	import { rowEvents, SongList } from '#lib/pages/songRow.ts';
 	import {
 		actionsFor,
 		albumsByTrack,
+		menuTarget,
+		pickedFacts as pickedFactsOf,
 		type MenuTarget,
-		type SongActions
+		type SongActions,
+		type SongFacts
 	} from '#lib/pages/songActions.ts';
 	import { letterOf, railLetters } from '#lib/pages/libraryRows.ts';
 	import { hasLetters, railFor, railLit, sortFields } from '#lib/library/libraryOrder.ts';
@@ -136,7 +141,9 @@
 	let songsWidth = $state(0);
 	/** The columns' step: the phone has none, so it fits as the step above it would. */
 	const columnStep = $derived(view.step === 'large' ? 'large' : 'columns');
-	const fitted = $derived(fit(columnsView.pref.order, songsWidth, columnStep));
+	const fitted = $derived(
+		fit(columnsView.pref.order, songsWidth, columnStep, numbered, columnsView.pref.widths)
+	);
 	const grid = $derived(template(fitted.shown, columnStep));
 	/**
 	 * Set for a moment when the width crosses a step, so what changes size moves to it. Nothing
@@ -198,11 +205,14 @@
 	const albumOf = $derived(albumsByTrack(load.kind === 'ready' ? load.value : { artists: [] }));
 	const picked = $derived(selection.inOrder(order));
 	const pickedActions = $derived(actionsFor(picked, albumOf));
-	const pickedFacts = $derived({
-		albums: new Set(picked.map((id) => songs.get(id)?.album.id).filter((id) => id !== undefined))
-			.size,
-		durationMs: picked.reduce((sum, id) => sum + (songs.get(id)?.track.durationMs ?? 0), 0)
-	});
+	/** What the list knows of a song: its album and its length. */
+	const songFacts: SongFacts = (id) => {
+		const song = songs.get(id);
+		return song === undefined
+			? undefined
+			: { albumId: song.album.id, durationMs: song.track.durationMs };
+	};
+	const pickedFacts = $derived(pickedFactsOf(picked, songFacts));
 	const box = $derived(selection.boxFor(order));
 	/** Bulk editing a selection takes the page, over the list, which keeps its place beneath. */
 	const bulk = $derived(bulkEdits.current?.layout === 'selection' ? bulkEdits.current : null);
@@ -243,44 +253,40 @@
 		null
 	);
 
-	function pick(trackId: string, how: 'toggle' | 'range'): void {
-		if (how === 'range') {
-			selection.extend(trackId, order);
-		} else {
-			selection.toggle(trackId);
-		}
-	}
+	/** The list's rules for picking: its order, and how a row is brought into view. */
+	const list = new SongList(selection, {
+		order: () => order,
+		reveal: (trackId) => void focusRow(trackId)
+	});
 
 	/** Opens the ⋯ menu: on the picked songs, when it's opened on one of them. */
 	function openRowMenu(trackId: string, x: number, y: number): void {
 		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-		if (selection.has(trackId) && selection.size > 1) {
-			const facts = `${String(pickedFacts.albums)} ${pickedFacts.albums === 1 ? 'ALBUM' : 'ALBUMS'} · ${clock(pickedFacts.durationMs / 1000)}`;
+		const target = menuTarget(
+			trackId,
+			selection,
+			() => picked,
+			songFacts,
+			(id) => {
+				const song = songs.get(id);
+				return song === undefined
+					? undefined
+					: {
+							albumId: song.album.id,
+							title: song.track.title,
+							line: `${song.album.title.toUpperCase()} · ${clock(song.track.durationMs / 1000)}`,
+							artistId: song.artist.id
+						};
+			}
+		);
+		if (target !== undefined) {
 			rowMenu = {
 				x,
 				y,
-				target: { kind: 'picked', count: picked.length, line: facts, trackIds: picked },
-				actions: pickedActions
+				target,
+				actions: target.kind === 'picked' ? pickedActions : actionsFor([trackId], albumOf)
 			};
-			return;
 		}
-		const song = songs.get(trackId);
-		if (song === undefined) {
-			return;
-		}
-		rowMenu = {
-			x,
-			y,
-			target: {
-				kind: 'song',
-				trackId,
-				albumId: song.album.id,
-				title: song.track.title,
-				line: `${song.album.title.toUpperCase()} · ${clock(song.track.durationMs / 1000)}`,
-				artistId: song.artist.id
-			},
-			actions: actionsFor([trackId], albumOf)
-		};
 	}
 
 	function closeRowMenu(refocus: boolean): void {
@@ -306,39 +312,30 @@
 		document.querySelector<HTMLElement>(`[data-track="${CSS.escape(trackId)}"] .play`)?.focus();
 	}
 
-	/** Space picks the focused song; the arrows move, and with Shift take the songs passed. */
-	function rowKey(event: KeyboardEvent, trackId: string): void {
-		if (event.key === ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
-			event.preventDefault();
-			selection.toggle(trackId);
-			return;
-		}
-		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
-			return;
-		}
-		event.preventDefault();
-		const at = order.indexOf(trackId);
-		const next = order.at(at + (event.key === 'ArrowDown' ? 1 : -1));
-		if (at < 0 || next === undefined || (at === 0 && event.key === 'ArrowUp')) {
-			return;
-		}
-		if (event.shiftKey) {
-			selection.add(trackId);
-			selection.add(next);
-		}
-		void focusRow(next);
+	/** The rows' one set of handlers: a row's song plays in its album, from where it is. */
+	const events = rowEvents({
+		play: (trackId, albumId) => {
+			view.play(albumId, trackId);
+		},
+		pick: (trackId, how) => {
+			list.pick(trackId, how);
+		},
+		menu: openRowMenu,
+		key: (event, trackId) => {
+			list.key(event, trackId);
+		},
+		rate: (trackId, stars) => {
+			library.marks.press(trackId, stars);
+		},
+		picked: (trackId) => selection.has(trackId)
+	});
+
+	function resize(id: ColumnId, width: number): void {
+		columnsView.resize(id, width);
 	}
 
 	function onWindowKey(event: KeyboardEvent): void {
-		if (
-			event.key === 'Escape' &&
-			selection.any &&
-			menu === null &&
-			rowMenu === null &&
-			bulk === null
-		) {
-			selection.clear();
-		}
+		list.windowKey(event, menu !== null || rowMenu !== null || bulk !== null);
 	}
 
 	/** The columns menu, where it was opened, and what opened it, to go back to. */
@@ -415,6 +412,8 @@
 		landed = true;
 	});
 
+	onMount(() => onScreen.show(selection));
+
 	onMount(() => {
 		let frame = 0;
 		function onScroll(): void {
@@ -444,26 +443,24 @@
 <svelte:window onkeydown={onWindowKey} />
 
 {#snippet headerBox()}
-	<input
-		type="checkbox"
-		class="all"
-		aria-label={box === 'all' ? 'Clear every song in view' : 'Select every song in view'}
-		checked={box === 'all'}
-		indeterminate={box === 'some'}
-		onclick={(event) => {
-			selection.toggleAll(order);
-			event.currentTarget.checked = selection.boxFor(order) === 'all';
-			event.currentTarget.indeterminate = selection.boxFor(order) === 'some';
+	<PickBox
+		state={box}
+		label={box === 'all' ? 'Clear every song in view' : 'Select every song in view'}
+		ontoggle={() => {
+			list.toggleAll();
 		}}
 	/>
 {/snippet}
 
 <div
-	class="library"
+	class="library song-list"
 	class:large={view.step === 'large'}
 	class:stepping
 	style:--cover={`${String(view.cover)}px`}
 	style:--list-line={`${String(view.frame.line)}px`}
+	style:--song-grid={grid}
+	style={columnVars(fitted.shown, columnsView.pref.widths, columnStep)}
+	data-selecting={selection.any ? '' : undefined}
 >
 	<h1>Library</h1>
 
@@ -551,9 +548,11 @@
 				<SongHeader
 					shown={fitted.shown}
 					hiddenCount={fitted.hiddenCount}
-					{grid}
 					{openMenu}
 					box={headerBox}
+					widths={columnsView.pref.widths}
+					step={columnStep}
+					onresize={resize}
 				/>
 			</div>
 		{/if}
@@ -564,7 +563,7 @@
 			</div>
 		{/if}
 
-		<div class="list" style:height={`${String(layout.height)}px`}>
+		<div class="list" style:height={`${String(layout.height)}px`} {...events}>
 			<div class="measure" aria-hidden="true" bind:clientWidth={songsWidth}></div>
 			{#each view.mounted as { index, block, albums } (index)}
 				{@const { name, id } = block.artist}
@@ -605,8 +604,10 @@
 									<SongHeader
 										shown={fitted.shown}
 										hiddenCount={fitted.hiddenCount}
-										{grid}
 										{openMenu}
+										widths={columnsView.pref.widths}
+										step={columnStep}
+										onresize={resize}
 										box={headerBox}
 									/>
 								</div>
@@ -625,21 +626,15 @@
 								cover={view.cover}
 								lineChars={Math.floor((songsWidth - 96 - (selection.any ? 26 : 0)) / monoAdvance)}
 								shown={fitted.shown}
-								{grid}
 								pref={columnsView.pref}
 								{now}
 								{cuedId}
 								sounding={player.sounding}
 								trouble={view.trouble === album.album.id}
-								play={(trackId) => {
-									view.play(album.album.id, trackId);
-								}}
 								playDisc={(disc) => {
 									view.playDisc(album.album.id, disc);
 								}}
-								{pick}
-								openMenu={openRowMenu}
-								{rowKey}
+								{selection}
 							/>
 						{/each}
 					</div>
@@ -731,14 +726,6 @@
 		--cover-gap: 32px;
 		--songs-right: 64px;
 		--head-top: 96px;
-		--head-row: 40px;
-		--head-type: 11px;
-		--col-gap: 12px;
-		--row-pad: 14px;
-		--cell-type: 14px;
-		--star-type: 13px;
-		--box-size: 16px;
-		--more-size: 36px;
 		--songs-left: calc(var(--page-edge) + var(--name-column) + var(--name-gap));
 		/* Shuffle and its line, above the filters: libraryView's shuffleRow. */
 		--shuffle-row: 112px;
@@ -754,14 +741,6 @@
 		--cover-gap: 48px;
 		--songs-right: 120px;
 		--head-top: 128px;
-		--head-row: 50px;
-		--head-type: 13px;
-		--col-gap: 16px;
-		--row-pad: 18px;
-		--cell-type: 17px;
-		--star-type: 16px;
-		--box-size: 20px;
-		--more-size: 44px;
 		--shuffle-row: 140px;
 		--type-display: 132px;
 		--type-title: 22px;
@@ -1012,21 +991,6 @@
 
 	.list {
 		position: relative;
-	}
-
-	.all {
-		width: var(--box-size, 16px);
-		height: var(--box-size, 16px);
-		margin: 0;
-		accent-color: var(--fox);
-		opacity: 0.5;
-	}
-
-	.all:checked,
-	.all:indeterminate,
-	.all:hover,
-	.all:focus-visible {
-		opacity: 1;
 	}
 
 	/* As wide as a song row: what the columns are fitted to. */

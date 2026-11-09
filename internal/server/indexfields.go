@@ -25,6 +25,7 @@ const (
 	fieldAdded
 	fieldPlays
 	fieldLastPlayed
+	fieldGain
 	fieldShuffle
 )
 
@@ -41,6 +42,7 @@ var indexFieldNames = map[string]indexFields{
 	"added":       fieldAdded,
 	"plays":       fieldPlays,
 	"lastPlayed":  fieldLastPlayed,
+	"gain":        fieldGain,
 	"shuffle":     fieldShuffle,
 }
 
@@ -77,7 +79,7 @@ func (f indexFields) options() store.IndexOptions {
 		keys = append(keys, library.ComposerKeys()...)
 	}
 	return store.IndexOptions{
-		Details:      f&(fieldYear|fieldFormat|fieldBitrate|fieldAdded) != 0,
+		Details:      f&(fieldYear|fieldFormat|fieldBitrate|fieldAdded|fieldGain) != 0,
 		AlbumArtists: f.has(fieldAlbumArtist),
 		Plays:        f.has(fieldPlays) || f.has(fieldLastPlayed),
 		Shuffle:      f.has(fieldShuffle),
@@ -110,6 +112,7 @@ func (w *fieldWriter) add(out *api.LibraryTrack, track *store.IndexTrack) {
 	out.TrackFields = &api.TrackFields{}
 	w.addNames(out.TrackFields, t)
 	w.addFacts(out.TrackFields, t)
+	w.addPlays(out.TrackFields, t)
 }
 
 // addNames sets the fields that name people and genres.
@@ -126,7 +129,7 @@ func (w *fieldWriter) addNames(out *api.TrackFields, t *store.IndexExtra) {
 	}
 }
 
-// addFacts sets the fields that are about the file and the caller's plays.
+// addFacts sets the fields that are about the file.
 func (w *fieldWriter) addFacts(out *api.TrackFields, t *store.IndexExtra) {
 	f := w.fields
 	if f.has(fieldYear) {
@@ -141,6 +144,14 @@ func (w *fieldWriter) addFacts(out *api.TrackFields, t *store.IndexExtra) {
 	if f.has(fieldAdded) {
 		out.AddedAt = t.AddedAt
 	}
+	if f.has(fieldGain) && t.TrackGain != nil {
+		out.TrackGain = new(*t.TrackGain)
+	}
+}
+
+// addPlays sets the fields that are the caller's own: plays and shuffle rules.
+func (w *fieldWriter) addPlays(out *api.TrackFields, t *store.IndexExtra) {
+	f := w.fields
 	if f.has(fieldPlays) {
 		out.Plays = t.Plays
 	}

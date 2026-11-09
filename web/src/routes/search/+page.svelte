@@ -9,7 +9,7 @@
 	import { queryIn, searchFor } from '#lib/library/searchUrl.ts';
 	import AlbumCard from '#lib/pages/AlbumCard.svelte';
 	import TopResult from '#lib/pages/TopResult.svelte';
-	import TrackHits from '#lib/pages/TrackHits.svelte';
+	import SearchSongs from '#lib/pages/SearchSongs.svelte';
 
 	/** The URL waits this long on a word in progress, so history isn't a key-by-key record. */
 	const debounceMs = 180;
@@ -110,7 +110,7 @@
 	<title>{query === '' ? 'Search' : query} · Kitsune</title>
 </svelte:head>
 
-<div class="search" data-answered={search.answered}>
+<div class="page-frame search" data-answered={search.answered}>
 	<h1>Search</h1>
 	<form role="search" onsubmit={submitted}>
 		<!-- A box that wraps, so a query past what shrinking can fit still shows every word. -->
@@ -174,7 +174,7 @@
 			{#if found.tracks.length > 0}
 				<section class="wide" aria-labelledby="found-tracks">
 					<h2 id="found-tracks">Tracks</h2>
-					<TrackHits tracks={found.tracks} />
+					<SearchSongs tracks={found.tracks} />
 				</section>
 			{/if}
 		</div>
@@ -183,12 +183,9 @@
 
 <style>
 	.search {
-		--gutter: 64px;
+		--frame-top: 96px;
 
 		container-type: inline-size;
-		max-width: 1440px;
-		margin: 0 auto;
-		padding: 96px var(--gutter) 140px;
 	}
 
 	/* The box says what the page is: this one is for whoever can't see it. */
@@ -203,8 +200,8 @@
 
 	/* Everything inside sizes from here, so the box and its ruler can't disagree. */
 	.box {
-		--largest: clamp(56px, 8cqw, 96px);
-		--smallest: clamp(28px, 3.4cqw, 44px);
+		--largest: clamp(56px, 8cqw, calc(96px * var(--step)));
+		--smallest: clamp(28px, 3.4cqw, calc(44px * var(--step)));
 		--fit: calc(100cqw / max(var(--width), 1));
 
 		min-height: calc(var(--largest) * 1.28 + 2px);
@@ -268,7 +265,7 @@
 		gap: 8px 20px;
 		font-family: var(--font-mono);
 		font-size: var(--type-mono);
-		line-height: 16px;
+		line-height: calc(16px * var(--step));
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--text-meta);
@@ -303,13 +300,16 @@
 		color: var(--fox-text);
 	}
 
-	/* One grid, so albums past the first row come back under the Top result. */
+	/*
+	 * One grid, so albums past the first row come back under the Top result. It has as many columns
+	 * as fit, seven at 1280, so a wider screen shows more albums beside it rather than bigger ones.
+	 */
 	.found {
-		margin-top: 24px;
+		margin-top: calc(24px * var(--step));
 		display: grid;
-		grid-template-columns: repeat(7, minmax(0, 1fr));
-		grid-template-rows: 16px;
-		gap: 12px 16px;
+		grid-template-columns: repeat(auto-fill, minmax(calc(150px * var(--step)), 1fr));
+		grid-template-rows: calc(16px * var(--step));
+		gap: calc(12px * var(--step)) calc(16px * var(--step));
 	}
 
 	.found :global(.top) {
@@ -337,7 +337,11 @@
 		grid-row: 1;
 	}
 
+	/* A smaller card than a grid's, so a smaller play on it. */
 	.albums :global(.card) {
+		--cover-play-size: calc(40px * var(--step));
+		--cover-play-inset: calc(10px * var(--step));
+
 		margin-bottom: 16px;
 	}
 
@@ -354,7 +358,7 @@
 		font-family: var(--font-mono);
 		font-size: var(--type-mono);
 		font-weight: 400;
-		line-height: 16px;
+		line-height: calc(16px * var(--step));
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--text-meta);
@@ -386,10 +390,6 @@
 	}
 
 	@media (max-width: 1160px) {
-		.search {
-			--gutter: 32px;
-		}
-
 		.found {
 			grid-template-columns: repeat(4, minmax(0, 1fr));
 			grid-template-rows: none;
@@ -410,10 +410,7 @@
 
 	@media (max-width: 720px) {
 		.search {
-			--gutter: 16px;
-
-			padding-top: 98px;
-			padding-bottom: 128px;
+			--frame-top: 98px;
 		}
 
 		.found {

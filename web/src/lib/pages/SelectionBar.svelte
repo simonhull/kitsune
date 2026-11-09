@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { clock } from '#lib/library/format.ts';
 	import { floor } from '#lib/shell/floor.svelte.ts';
 	import Icon, { heartPath } from '#lib/shell/Icon.svelte';
-	import type { SongActions } from './songActions.ts';
+	import { factsLine, type SongActions } from './songActions.ts';
 
 	interface Props {
 		count: number;
@@ -33,9 +32,7 @@
 	const label = $derived(
 		`${count.toLocaleString('en-US')} selected${hidden > 0 ? `, ${hidden.toLocaleString('en-US')} hidden` : ''}`
 	);
-	const facts = $derived(
-		`${albums.toLocaleString('en-US')} ${albums === 1 ? 'ALBUM' : 'ALBUMS'} · ${clock(durationMs / 1000)}`
-	);
+	const facts = $derived(factsLine({ albums, durationMs }));
 
 	function rate(stars: number | null): void {
 		actions.rate(stars);

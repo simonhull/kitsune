@@ -50,6 +50,37 @@ button {
 	outline-offset: 2px;
 }
 
+/*
+ * A page's frame: the whole window less the gutter, clear of both islands. A page puts its own
+ * layout inside, and grows by columns.
+ */
+.page-frame {
+	padding: calc(var(--frame-top) * var(--step)) var(--gutter) var(--frame-bottom);
+}
+
+/*
+ * The step, for what a frame holds, or a page that draws its own stage: the type, radii and targets
+ * every component reads go one size up. The Library has steps of its own, and the islands stay put.
+ */
+@media (min-width: 2560px) {
+	.page-frame,
+	.stepped {
+		--type-hero: calc(168px * var(--step));
+		--type-display: calc(88px * var(--step));
+		--type-section: calc(40px * var(--step));
+		--type-title: calc(17px * var(--step));
+		--type-body: calc(15px * var(--step));
+		--type-mono: calc(12px * var(--step));
+		--radius-12: calc(12px * var(--step));
+		--radius-16: calc(16px * var(--step));
+		--radius-20: calc(20px * var(--step));
+		--radius-24: calc(24px * var(--step));
+		--radius-28: calc(28px * var(--step));
+		--radius-32: calc(32px * var(--step));
+		--target: calc(44px * var(--step));
+	}
+}
+
 /* Read out and never seen: a real label where the layout already says it. */
 .visually-hidden {
 	position: absolute;
@@ -78,4 +109,38 @@ button {
 :root.theme-fading::view-transition-new(root) {
 	animation-duration: 200ms;
 	animation-timing-function: var(--curve-morph);
+}
+
+/*
+ * A list of songs: what SongRow and its header are sized by, in every list (plan 047). From 2560
+ * they take one step up together (row 56, title 18, box 20), so a 4K screen reads like 1920.
+ */
+.song-list {
+	--song-row: 44px;
+	--song-cover: 40px;
+	--col-gap: 12px;
+	--row-pad: 14px;
+	--cell-type: 14px;
+	--star-type: 13px;
+	--box-size: 16px;
+	--more-size: 36px;
+	--head-row: 40px;
+	--head-type: 11px;
+}
+
+@media (min-width: 2560px) {
+	.song-list {
+		--song-row: 56px;
+		--song-cover: 52px;
+		--col-gap: 16px;
+		--row-pad: 18px;
+		--cell-type: 17px;
+		--star-type: 16px;
+		--box-size: 20px;
+		--more-size: 44px;
+		--head-row: 50px;
+		--head-type: 13px;
+		--type-body: 18px;
+		--type-mono: 15px;
+	}
 }

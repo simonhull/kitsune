@@ -134,7 +134,7 @@
 		position: sticky;
 		top: 96px;
 		min-height: var(--panel-height);
-		padding: 32px;
+		padding: calc(32px * var(--step));
 		border-radius: var(--radius-28);
 		background: var(--fox);
 		color: var(--fox-ink);
@@ -168,7 +168,7 @@
 
 	.headline {
 		margin-top: 16px;
-		font-size: 22px;
+		font-size: calc(22px * var(--step));
 		font-weight: 700;
 		letter-spacing: var(--tracking-title);
 		text-wrap: balance;
@@ -224,7 +224,7 @@
 		border-radius: var(--radius-16);
 		background: var(--fox-ink);
 		color: var(--on-fox-ink);
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		font-weight: 600;
 		line-height: 1.35;
 		overflow-wrap: anywhere;
@@ -241,7 +241,7 @@
 		height: 48px;
 		padding: 0 22px;
 		border-radius: var(--radius-pill);
-		font-size: 14px;
+		font-size: calc(14px * var(--step));
 		font-weight: 700;
 		transition: opacity var(--morph-fast) var(--curve-morph);
 	}
@@ -283,7 +283,7 @@
 
 	.help {
 		margin-top: 10px;
-		font-size: 13px;
+		font-size: calc(13px * var(--step));
 		line-height: 1.4;
 	}
 

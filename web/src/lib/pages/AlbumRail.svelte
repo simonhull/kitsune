@@ -80,13 +80,13 @@
 		flex-direction: column;
 		align-items: center;
 		font-family: var(--font-mono);
-		font-size: 13px;
+		font-size: calc(13px * var(--step));
 		color: var(--text-meta);
 	}
 
 	button {
 		width: 100%;
-		height: min(25px, calc(var(--room) / var(--marks)));
+		height: min(calc(25px * var(--step)), calc(var(--room) / var(--marks)));
 		padding: 0;
 		border: 0;
 		background: none;

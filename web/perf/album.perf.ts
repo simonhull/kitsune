@@ -1,7 +1,16 @@
 import { runs, test } from './fixture.ts';
-import { albumPage, albumTracks, nextLoudAlbum, openLibrary, playing } from './pages.ts';
+import { albumPage, albumTracks, atRest, nextLoudAlbum, openLibrary, playing } from './pages.ts';
 
 test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
+	// Hearts and stars on a song are its Heart and Rating columns: the person's, here with Heart on.
+	const columns = {
+		order: ['artist', 'genre', 'rating', 'plays', 'lastPlayed', 'format', 'heart'],
+		artistWhenDifferent: true
+	};
+	await page.request.put('/api/v1/me/prefs/library.columns', {
+		data: columns,
+		headers: { 'X-Kitsune-Request': '1' }
+	});
 	await openLibrary(page);
 	const open = perf.samples('open-album');
 	const play = perf.samples('play-album');
@@ -22,8 +31,11 @@ test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
 		const art = page.locator(`main a.art[href="/album/${album.id}"]`);
 		await art.scrollIntoViewIfNeeded();
 		await perf.time(open, 'click', albumPage(album.id), () => art.click());
+		// Someone looks before they press: the page has landed, and only the press is timed.
+		await atRest(page);
 
 		const rows = page.locator('main section[aria-label="Tracks"] .row');
+		const thirdRow = `main section[aria-label="Tracks"] .row[data-track="${third}"]`;
 		await perf.time(play, 'click', playing(first), () => rows.nth(0).locator('.play').click());
 		await perf.time(next, 'click', playing(second), () =>
 			island.getByRole('button', { name: 'Next' }).click()
@@ -34,7 +46,7 @@ test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
 		);
 		await island.locator('button.pause').click();
 
-		const row = rows.nth(2);
+		const row = page.locator(thirdRow);
 		const heartButton = row.locator('button.heart');
 		await row.hover();
 		await perf.time(
@@ -42,7 +54,7 @@ test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
 			'click',
 			{
 				kind: 'attribute',
-				selector: `main section[aria-label="Tracks"] .row:nth-child(3) button.heart`,
+				selector: `${thirdRow} button.heart`,
 				name: 'aria-pressed',
 				value: 'true'
 			},
@@ -67,11 +79,11 @@ test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
 			'click',
 			{
 				kind: 'attribute',
-				selector: `main section[aria-label="Tracks"] .row:nth-child(3) .stars button:nth-child(4)`,
+				selector: `${thirdRow} .rate button:nth-child(4)`,
 				name: 'aria-pressed',
 				value: 'true'
 			},
-			() => row.locator('.stars button').nth(3).click()
+			() => row.locator('.rate button').nth(3).click()
 		);
 		await page.goBack();
 		await page.locator('main .row[data-track]').first().waitFor();

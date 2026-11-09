@@ -42,6 +42,7 @@ func (ts *testServer) fieldsLibrary(t *testing.T) {
 		{Key: library.ComposerKeys()[0], Value: " M. Vey "},
 		{Key: "COMMENT", Value: "not asked for"},
 	}
+	first.ReplayGain = store.ReplayGain{TrackGain: -7.25, TrackPeak: 0.98}
 	second := write(1, "Salt in the Lungs")
 	third := write(2, "Kelp Line")
 	third.Format, third.Codec, third.SampleRate, third.BitDepth, third.Bitrate = mp3Name, "mp3", 44100, 0, 320_000
@@ -104,7 +105,7 @@ func TestLibraryIndexSendsTheFieldsAskedFor(t *testing.T) {
 		}
 	}
 	var index api.LibraryIndex
-	ts.getJSON(t, sess.token, indexPath+"?fields=albumArtist,genre,year,composer,format,added,plays,lastPlayed", &index)
+	ts.getJSON(t, sess.token, indexPath+"?fields=albumArtist,genre,year,composer,format,added,plays,lastPlayed,gain", &index)
 	tracks := index.Artists[0].Albums[0].Tracks
 	added := ts.Clock.Now().UTC().Truncate(time.Millisecond)
 	want := []api.TrackFields{
@@ -112,6 +113,7 @@ func TestLibraryIndexSendsTheFieldsAskedFor(t *testing.T) {
 			AlbumArtists: []string{annName}, DisplayGenres: []string{"Dream pop", "Shoegaze"},
 			Composers: []string{"I. Marrow", "M. Vey"}, Year: 2021, Format: streamFormat, SampleRate: 44100,
 			BitDepth: 16, Bitrate: 912, AddedAt: added, Plays: 2, LastPlayedAt: added.Add(-time.Hour),
+			TrackGain: new(-7.25),
 		},
 		{AlbumArtists: []string{annName}, Year: 2021, Format: streamFormat, SampleRate: 44100, BitDepth: 16, Bitrate: 912, AddedAt: added},
 		// An MP3 with nothing to say but its format.

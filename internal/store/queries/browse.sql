@@ -135,7 +135,7 @@ ORDER BY ta.track_id, ta.ord;
 -- stays as fast as it was.
 
 -- name: ListIndexTrackDetails :many
-SELECT id, year, format, sample_rate, bit_depth, bitrate, added_at
+SELECT id, year, format, sample_rate, bit_depth, bitrate, added_at, rg_track_gain
 FROM tracks
 WHERE missing_since IS NULL;
 
@@ -186,7 +186,7 @@ WHERE a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND t.missing_since I
 ORDER BY ta.track_id, ta.ord;
 
 -- name: ListIndexTrackDetailsOf :many
-SELECT t.id, t.year, t.format, t.sample_rate, t.bit_depth, t.bitrate, t.added_at
+SELECT t.id, t.year, t.format, t.sample_rate, t.bit_depth, t.bitrate, t.added_at, t.rg_track_gain
 FROM albums a
 CROSS JOIN tracks t
 WHERE a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND t.missing_since IS NULL;

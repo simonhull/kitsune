@@ -82,21 +82,7 @@
 			class:open
 			aria-label={`Why ${title} came up: ${line}`}
 			aria-expanded={open}
-			onclick={show}><span class="who">{item.artist} · </span>{line}</button
-		>
-		<button
-			type="button"
-			class="why-more"
-			aria-label={`Why ${title} came up`}
-			aria-expanded={open}
-			onclick={show}
-			><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
-				><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle
-					cx="19"
-					cy="12"
-					r="1.8"
-				></circle></svg
-			></button
+			onclick={show}>{line}</button
 		>
 		{#if open}
 			<div
@@ -143,18 +129,21 @@
 		display: contents;
 	}
 
+	/* The second line of the song's row: quiet, and the factors on a press. */
 	.why-open {
-		flex: none;
-		max-width: 300px;
-		min-height: 44px;
+		min-width: 0;
+		max-width: 100%;
 		padding: 0;
 		border: 0;
 		background: none;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 		font-family: var(--font-mono);
 		font-size: 11px;
 		line-height: 1.5;
-		letter-spacing: 0.04em;
-		text-align: right;
+		letter-spacing: 0.06em;
+		text-align: left;
 		text-transform: uppercase;
 		color: var(--text-meta);
 		cursor: pointer;
@@ -163,25 +152,6 @@
 	.why-open:hover,
 	.why-open.open {
 		color: var(--fox-text);
-	}
-
-	.who,
-	.why-more {
-		display: none;
-	}
-
-	.why-more {
-		width: 44px;
-		height: 44px;
-		place-items: center;
-		border: 0;
-		border-radius: var(--radius-pill);
-		background: transparent;
-		color: var(--text-meta);
-	}
-
-	circle {
-		fill: currentcolor;
 	}
 
 	.pop {
@@ -251,31 +221,8 @@
 		color: var(--text-meta);
 	}
 
-	/* A phone: the line goes under the title with the artist, ⋯ opens the factors from the bottom. */
+	/* A phone: the factors rise from the bottom. */
 	@media (max-width: 720px) {
-		.why-open {
-			grid-column: 2;
-			grid-row: 2;
-			max-width: none;
-			min-height: 0;
-			overflow: hidden;
-			white-space: nowrap;
-			text-overflow: ellipsis;
-			text-align: left;
-			text-transform: none;
-			pointer-events: none;
-		}
-
-		.who {
-			display: inline;
-		}
-
-		.why-more {
-			grid-column: 3;
-			grid-row: 1 / span 2;
-			display: grid;
-		}
-
 		.pop.sheet {
 			left: 8px;
 			right: 8px;
@@ -290,7 +237,6 @@
 
 	@media (min-width: 2560px) {
 		.why-open {
-			max-width: 440px;
 			font-size: 15px;
 		}
 

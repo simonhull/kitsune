@@ -1,5 +1,6 @@
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
+import { clock } from '#lib/library/format.ts';
 import { library } from '#lib/library/library.svelte.ts';
 import type { LibraryIndex } from '#lib/library/source.ts';
 import { player } from '#lib/player/player.svelte.ts';
@@ -53,6 +54,100 @@ export type MenuTarget =
 			artistId: string | undefined;
 	  }
 	| { kind: 'picked'; count: number; line: string; trackIds: readonly string[] };
+
+/** How many albums some songs are on, and how long they last together. */
+export interface PickedFacts {
+	albums: number;
+	durationMs: number;
+}
+
+/** What a list knows of a song it shows: its album and its length. */
+export type SongFacts = (trackId: string) => { albumId: string; durationMs: number } | undefined;
+
+export function pickedFacts(trackIds: readonly string[], facts: SongFacts): PickedFacts {
+	const known = trackIds.flatMap((id) => facts(id) ?? []);
+	return {
+		albums: new Set(known.map(({ albumId }) => albumId)).size,
+		durationMs: known.reduce((sum, { durationMs }) => sum + durationMs, 0)
+	};
+}
+
+/** The facts as the menu and the bar say them: `1 ALBUM · 28:58`. */
+export function factsLine({ albums, durationMs }: PickedFacts): string {
+	return `${albums.toLocaleString('en-US')} ${albums === 1 ? 'ALBUM' : 'ALBUMS'} · ${clock(durationMs / 1000)}`;
+}
+
+/**
+ * What the ⋯ menu opens on, from a row: the picked songs when it's one of several picked, or else
+ * the song alone. `song` says what the menu needs of a song the list holds. `picked` is asked for
+ * only when it's needed: in the Library it runs over every song.
+ */
+export function menuTarget(
+	trackId: string,
+	selection: { has(id: string): boolean; readonly size: number },
+	pickedOf: () => readonly string[],
+	facts: SongFacts,
+	song: (
+		trackId: string
+	) => Omit<Extract<MenuTarget, { kind: 'song' }>, 'kind' | 'trackId'> | undefined
+): MenuTarget | undefined {
+	if (selection.size > 1 && selection.has(trackId)) {
+		const picked = pickedOf();
+		return {
+			kind: 'picked',
+			count: picked.length,
+			line: factsLine(pickedFacts(picked, facts)),
+			trackIds: picked
+		};
+	}
+	const one = song(trackId);
+	return one === undefined ? undefined : { kind: 'song', trackId, ...one };
+}
+
+/** An item of a song's ⋯ menu. */
+export type RowMenuItem =
+	| 'play'
+	| 'playNext'
+	| 'addToQueue'
+	| 'heart'
+	| 'rating'
+	| 'editTags'
+	| 'remove'
+	| 'goToAlbum'
+	| 'goToArtist'
+	| 'fileInfo';
+
+/**
+ * What a song's ⋯ menu holds, in order. One song: Play next and Add to queue, never Play, which a
+ * click on the row does. Songs picked: Play first. Then the marks and Edit tags…, Remove from queue
+ * in Up next, and where to go, less the page it's opened on.
+ */
+export function rowMenuItems(
+	target: Pick<MenuTarget, 'kind'> & { artistId?: string | undefined },
+	context: { here?: 'album' | 'artist' | undefined; editable: boolean; removable: boolean }
+): RowMenuItem[] {
+	const items: RowMenuItem[] = [];
+	if (target.kind === 'picked') {
+		items.push('play');
+	}
+	items.push('playNext', 'addToQueue', 'heart', 'rating');
+	if (context.editable) {
+		items.push('editTags');
+	}
+	if (context.removable) {
+		items.push('remove');
+	}
+	if (target.kind === 'song') {
+		if (context.here !== 'album') {
+			items.push('goToAlbum');
+		}
+		if (target.artistId !== undefined && context.here !== 'artist') {
+			items.push('goToArtist');
+		}
+		items.push('fileInfo');
+	}
+	return items;
+}
 
 /** What can be done with songs, one or picked: the bar's actions and the ⋯ menu's. */
 export interface SongActions {

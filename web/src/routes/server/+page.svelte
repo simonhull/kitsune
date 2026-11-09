@@ -564,9 +564,7 @@
 		--headline: var(--type-hero);
 
 		box-sizing: border-box;
-		max-width: 2560px;
-		margin: 0 auto;
-		padding: 128px 64px 200px;
+		padding: 128px max(64px, var(--gutter)) 200px;
 		display: grid;
 		grid-template-columns: var(--intro-width) minmax(0, 1fr);
 		gap: 56px;
@@ -1014,8 +1012,7 @@
 			--intro-width: 880px;
 			--headline: 260px;
 
-			max-width: none;
-			padding: 200px 96px 240px;
+			padding: 200px var(--gutter) 240px;
 			gap: 64px;
 			font-size: 18px;
 		}

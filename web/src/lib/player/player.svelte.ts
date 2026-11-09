@@ -23,6 +23,8 @@ import {
 	retagged,
 	rewound,
 	shuffled,
+	without,
+	reordered,
 	throughList,
 	upcoming,
 	extended,
@@ -235,6 +237,24 @@ export class Player implements PlayerView {
 		}
 	}
 
+	/** Takes songs out of what's still to play. */
+	removeAhead(ids: readonly string[]): void {
+		if (this.queue !== null) {
+			this.queue = without(this.queue, ids);
+			this.#ahead = null;
+			this.#show();
+		}
+	}
+
+	/** Puts what's still to play in a new order, by track ID. */
+	reorderAhead(ahead: readonly string[]): void {
+		if (this.queue !== null) {
+			this.queue = reordered(this.queue, ahead);
+			this.#ahead = null;
+			this.#show();
+		}
+	}
+
 	shuffle(album: Album): void {
 		this.#fresh();
 		this.#begin(shuffled(album, Math.floor(Math.random() * 2 ** 32)), this.#movedOn());
@@ -291,6 +311,15 @@ export class Player implements PlayerView {
 			this.#fresh();
 			this.#advance(this.#movedOn());
 		}
+	}
+
+	/** Skips on to a song further along the queue, by its place in it: the songs passed are skipped. */
+	skipTo(index: number): void {
+		if (this.queue === null || index <= this.queue.index || index >= this.queue.tracks.length) {
+			return;
+		}
+		this.#fresh();
+		this.#begin({ ...this.queue, index }, this.#movedOn());
 	}
 
 	/** Goes back to the start of the track, or past that to the one before. */
