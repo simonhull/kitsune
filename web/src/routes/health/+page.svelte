@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { staleFor } from '#lib/library/health.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import MatchingCard from '#lib/matching/MatchingCard.svelte';
 	import IssuesPanel from '#lib/pages/IssuesPanel.svelte';
 	import ScanPanel from '#lib/pages/ScanPanel.svelte';
 
@@ -71,6 +72,7 @@
 	<div class="page-frame health">
 		<ScanPanel {facts} {admin} down={library.down} {now} />
 		<IssuesPanel {facts} {admin} issues={library.issues} {gaveUp} {retry} />
+		{#if admin}<div class="matching"><MatchingCard /></div>{/if}
 	</div>
 {/if}
 
@@ -87,6 +89,11 @@
 		grid-template-columns: minmax(0, 552fr) minmax(0, 800fr);
 		align-items: start;
 		gap: calc(24px * var(--step));
+	}
+
+	/* Under the panels, a card as wide as the scan's. */
+	.matching {
+		grid-column: 1;
 	}
 
 	@media (max-width: 900px) {

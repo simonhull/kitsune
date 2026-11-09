@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
@@ -22,6 +23,14 @@ type ArtistSummary struct {
 	AlbumCount int // The albums the artist owns.
 }
 
+// ArtistEntry is an artist in the list of them all, with what the list sorts by.
+type ArtistEntry struct {
+	ArtistSummary
+
+	AddedAt time.Time // When the newest album it owns arrived.
+	Plays   int       // How often the person the list was read for played the songs of its albums.
+}
+
 // ArtistDetail is an artist with its albums, newest first. Albums are the ones
 // the artist owns: as an album artist, or as the first artist of an album that
 // names none. AppearsOn are the others it has a track on. A joined name is one
@@ -33,17 +42,35 @@ type ArtistDetail struct {
 }
 
 // Artists returns every artist who owns an album with a live track, whole,
-// ordered by sort name ignoring case. Various Artists is not one of them.
-func (s *Store) Artists(ctx context.Context) ([]ArtistSummary, error) {
-	rows, err := s.rq.ListOwningArtists(ctx)
+// ordered by sort name ignoring case, then ID, with the plays of the user userID.
+// Various Artists is not one of them. One read transaction covers it, so a scan
+// can't split the artists from their plays.
+func (s *Store) Artists(ctx context.Context, userID int64) ([]ArtistEntry, error) {
+	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("artists: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // Nothing was written: there is nothing to undo.
+	q := s.rq.WithTx(tx)
+	rows, err := q.ListOwningArtists(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("artists: %w", err)
 	}
-	out := make([]ArtistSummary, 0, len(rows))
+	played, err := q.ListOwningArtistPlays(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("artists: plays: %w", err)
+	}
+	plays := make(map[int64]int, len(played))
+	for _, p := range played {
+		plays[p.ArtistID] = int(p.Plays)
+	}
+	out := make([]ArtistEntry, 0, len(rows))
 	for i := range rows {
 		r := &rows[i]
 		if !isVarious(r.MatchKey, r.Mbid) {
-			out = append(out, ArtistSummary{ID: r.Ulid, Name: r.Name, AlbumCount: int(r.AlbumCount)})
+			e := ArtistEntry{AddedAt: fromMS(r.AddedAt), Plays: plays[r.ID]}
+			e.ID, e.Name, e.AlbumCount = r.Ulid, r.Name, int(r.AlbumCount)
+			out = append(out, e)
 		}
 	}
 	return out, nil

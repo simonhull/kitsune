@@ -25,6 +25,7 @@ const table = {
 	'/artists': { look: 'home', current: 'artists', journey: 'artists' },
 	'/artists/[id]': { look: 'home', current: 'artists', journey: 'artist' },
 	'/health': { look: 'home', current: null, journey: 'health' },
+	'/health/matching': { look: 'home', current: null, journey: 'health' },
 	'/library': { look: 'home', current: 'library', journey: 'library' },
 	'/login': { look: 'door', current: 'home', journey: 'login' },
 	'/now-playing': { look: 'gone', current: null, journey: 'now-playing' },

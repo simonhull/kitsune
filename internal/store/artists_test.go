@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +41,13 @@ type artistAlbum struct {
 func seedArtistAlbums(t *testing.T, albums ...artistAlbum) *store.Store {
 	t.Helper()
 	s, _ := openBrowse(t)
+	writeArtistAlbums(t, s, albums...)
+	return s
+}
+
+// writeArtistAlbums writes the albums in one batch.
+func writeArtistAlbums(t *testing.T, s *store.Store, albums ...artistAlbum) {
+	t.Helper()
 	b := &store.Batch{}
 	for _, a := range albums {
 		for i, artists := range a.tracks {
@@ -56,12 +64,11 @@ func seedArtistAlbums(t *testing.T, albums ...artistAlbum) *store.Store {
 	if err := s.WriteBatch(t.Context(), b); err != nil {
 		t.Fatal(err)
 	}
-	return s
 }
 
 func listed(t *testing.T, s *store.Store) map[string]int {
 	t.Helper()
-	artists, err := s.Artists(t.Context())
+	artists, err := s.Artists(t.Context(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +95,54 @@ func TestArtistsListsOwners(t *testing.T) {
 	}
 }
 
+func TestArtistsSayWhenTheyArrivedAndHowOftenTheyPlayed(t *testing.T) {
+	t.Parallel()
+	s, clock := openBrowse(t)
+	first := clock.Now()
+	writeArtistAlbums(t, s,
+		artistAlbum{n: 1, albumArtists: []string{ann}, tracks: [][]string{{ann}, {ann, bob}}},
+		artistAlbum{n: 2, tracks: [][]string{{bob}}},
+	)
+	clock.Advance(time.Hour)
+	writeArtistAlbums(t, s, artistAlbum{n: 3, albumArtists: []string{ann}, tracks: [][]string{{ann}}})
+	listener, err := s.CreateUser(t.Context(), store.NewUser{Name: "listener", PasswordHash: "h", Role: store.RoleUser})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := s.CreateUser(t.Context(), store.NewUser{Name: "someone else", PasswordHash: "h", Role: store.RoleUser})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Bob is a guest on Ann's second song: its plays are hers, since she owns the album.
+	for i, play := range []struct {
+		user  int64
+		track int
+	}{{listener.ID, 100}, {listener.ID, 101}, {listener.ID, 101}, {listener.ID, 200}, {other.ID, 300}} {
+		recordErr := s.RecordPlay(t.Context(), &store.NewPlay{
+			UserID: play.user, TrackID: fmt.Sprintf("01J%023d", play.track), PlayedAt: first, Source: "test", ClientID: strconv.Itoa(i),
+		})
+		if recordErr != nil {
+			t.Fatal(recordErr)
+		}
+	}
+	artists, err := s.Artists(t.Context(), listener.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type fact struct {
+		added time.Time
+		plays int
+	}
+	got := map[string]fact{}
+	for i := range artists {
+		got[artists[i].Name] = fact{artists[i].AddedAt, artists[i].Plays}
+	}
+	want := map[string]fact{ann: {first.Add(time.Hour), 3}, bob: {first, 1}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("artists = %v, want %v", got, want)
+	}
+}
+
 func TestArtistsOrder(t *testing.T) {
 	t.Parallel()
 	s, _ := openBrowse(t)
@@ -101,7 +156,7 @@ func TestArtistsOrder(t *testing.T) {
 	if err := s.WriteBatch(t.Context(), b); err != nil {
 		t.Fatal(err)
 	}
-	artists, err := s.Artists(t.Context())
+	artists, err := s.Artists(t.Context(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,8 +216,8 @@ func TestArtistSections(t *testing.T) {
 	if got, want := albumIDs(d.Albums), []string{albumID(2), albumID(3), albumID(1)}; !reflect.DeepEqual(got, want) {
 		t.Errorf("albums = %q, want %q, newest first", got, want)
 	}
-	if got, want := albumIDs(d.AppearsOn), []string{albumID(5), albumID(4)}; !reflect.DeepEqual(got, want) {
-		t.Errorf("appears on = %q, want %q, unknown years last", got, want)
+	if got, want := albumIDs(d.AppearsOn), []string{albumID(4), albumID(5)}; !reflect.DeepEqual(got, want) {
+		t.Errorf("appears on = %q, want %q, compilations last, even the newest", got, want)
 	}
 	if d.Albums[0].TrackCount != 1 {
 		t.Errorf("track count = %d, want 1", d.Albums[0].TrackCount)

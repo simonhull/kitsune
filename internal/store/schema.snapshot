@@ -206,6 +206,35 @@ CREATE INDEX listens_track ON listens (track_id);
 --   key seqno=0 cid=1 name=track_id desc=0 coll=BINARY key=1
 --   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
 
+-- table lookups
+CREATE TABLE lookups (
+	source     TEXT    NOT NULL,
+	key        TEXT    NOT NULL,
+	body       BLOB    NOT NULL,
+	fetched_at INTEGER NOT NULL,
+	PRIMARY KEY (source, key)
+) STRICT;
+--   column cid=0 name=source type=TEXT notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=key type=TEXT notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=body type=BLOB notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=fetched_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+
+-- index lookups_fetched
+CREATE INDEX lookups_fetched ON lookups (fetched_at);
+--   key seqno=0 cid=3 name=fetched_at desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- table match_states
+CREATE TABLE match_states (
+	album_id INTEGER PRIMARY KEY REFERENCES albums (id) ON DELETE CASCADE,
+	state    TEXT    NOT NULL CHECK (state IN ('skipped', 'matched')),
+	at       INTEGER NOT NULL
+) STRICT;
+--   column cid=0 name=album_id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=state type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=albums from=album_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
 -- table plays
 CREATE TABLE plays (
 	user_id   INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,

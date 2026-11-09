@@ -19,7 +19,10 @@
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import { libraryView } from '#lib/pages/libraryView.svelte.ts';
 	import { selection } from '#lib/pages/selection.svelte.ts';
+	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
+	import MatchSheet from '#lib/matching/MatchSheet.svelte';
+	import { matchSheet } from '#lib/matching/sheet.svelte.ts';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
 	import { togglesOnSpace } from '#lib/player/keys.ts';
@@ -109,11 +112,13 @@
 			albumsView.reset();
 			libraryView.reset();
 			columnsView.reset();
+			sorts.reset();
 			selection.clear();
 			shuffles.reset();
 			shuffleSettings.reset();
 			tagEdits.reset();
 			bulkEdits.reset();
+			matchSheet.reset();
 		};
 		void Promise.all(routeIds.map((route) => preloadCode(route)));
 		const leaveSession = followMediaSession(player);
@@ -180,6 +185,7 @@
 		/>
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
+	{#if library.admin && !atDoor}<MatchSheet />{/if}
 	{#if import.meta.env.DEV}<Hud />{/if}
 </div>
 

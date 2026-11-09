@@ -9,8 +9,9 @@
 
 	let { filter, choose }: Props = $props();
 
-	const chips: readonly { filter: LibraryFilter; label: string }[] = [
-		{ filter: 'everything', label: 'Everything' },
+	/** `short` is what a phone shows, to leave room for Shuffle and Sort beside them. */
+	const chips: readonly { filter: LibraryFilter; label: string; short?: string }[] = [
+		{ filter: 'everything', label: 'Everything', short: 'All' },
 		{ filter: 'hearted', label: 'Hearted' },
 		{ filter: 'rated', label: '★ 4 and up' }
 	];
@@ -32,7 +33,11 @@
 					><path d={heartPath}></path></svg
 				>
 			{/if}
-			{chip.label}
+			{#if chip.short === undefined}
+				{chip.label}
+			{:else}
+				<span class="long">{chip.label}</span><span class="short">{chip.short}</span>
+			{/if}
 		</button>
 	{/each}
 </div>
@@ -80,7 +85,21 @@
 		stroke-width: 2;
 	}
 
-	/* The narrowest phones keep the three, and Shuffle beside them, on one line. */
+	.short {
+		display: none;
+	}
+
+	/* A phone keeps the three, and Shuffle and Sort beside them, on one line. */
+	@media (max-width: 600px) {
+		.long {
+			display: none;
+		}
+
+		.short {
+			display: inline;
+		}
+	}
+
 	@media (max-width: 400px) {
 		button {
 			padding: 0 12px;

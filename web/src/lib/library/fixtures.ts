@@ -22,7 +22,7 @@ import {
 	type AlbumSort,
 	type AlbumTags,
 	type ArtistDetail,
-	type ArtistEntry,
+	type ListedArtist,
 	type ArtistLink,
 	type IndexField,
 	type LastfmStatus,
@@ -480,10 +480,16 @@ function detailOf(link: ArtistLink): ArtistDetail {
 	};
 }
 
-const owners: ArtistEntry[] = artistLinks
+const owners: ListedArtist[] = artistLinks
 	.map(detailOf)
 	.filter(({ albumCount }) => albumCount > 0)
-	.map(({ id, name, albumCount }) => ({ id, name, albumCount }));
+	.map(({ id, name, albumCount, albums: owned }) => ({
+		id,
+		name,
+		albumCount,
+		addedAt: owned.map(({ addedAt = '' }) => addedAt).reduce((a, b) => (a > b ? a : b), ''),
+		plays: 0
+	}));
 
 function hit(album: Album, entry: Track): TrackHit {
 	const { id, title, artists, durationMs } = entry;

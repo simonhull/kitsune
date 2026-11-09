@@ -3,7 +3,6 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import {
-		albumOrders,
 		albumsQueryIn,
 		albumsSearch,
 		markAt,
@@ -16,6 +15,9 @@
 	import AlbumGrid from '#lib/pages/AlbumGrid.svelte';
 	import AlbumRail from '#lib/pages/AlbumRail.svelte';
 	import { albumsView as view } from '#lib/pages/albumsView.svelte.ts';
+	import { albumOrders, wayOf } from '#lib/library/sorts.ts';
+	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
+	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 
 	/** How many genres get a chip of their own: as many as the board's row holds. */
 	const chipCount = 5;
@@ -37,7 +39,19 @@
 		albumsLine(view.albums.length, total, whole ? view.genres.length : 0, whole ? view.genre : null)
 	);
 	const here = $derived(markAt(view.marks, view.grid.reached));
-	const railLabel = $derived(view.order === 'year' ? 'Jump to a decade' : 'Jump to a letter');
+	const railLabel = $derived(view.order.by === 'year' ? 'Jump to a decade' : 'Jump to a letter');
+	const sortGroups: SortGroup[] = $derived([
+		{
+			label: 'SORT ALBUMS BY',
+			options: albumOrders,
+			current: view.order,
+			choose: (next) => {
+				view.sortBy(next as typeof view.order);
+				scrollTo({ top: 0, behavior: 'instant' });
+			}
+		}
+	]);
+	const sortWords = $derived(albumOrders.find(({ by }) => by === view.order.by)?.label ?? '');
 
 	// Before the template, so a first frame already shows what the URL asks for.
 	$effect.pre(() => {
@@ -53,6 +67,16 @@
 		}
 	});
 
+	$effect(() => {
+		void sorts.albums.load();
+	});
+
+	// Plays and ratings are the songs': those orders read the Library's index, once.
+	$effect(() => {
+		void view.order;
+		void view.readIndex();
+	});
+
 	function ask(query: AlbumsQuery): void {
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- Built from resolve('/albums').
 		void goto(`${resolve('/albums')}${albumsSearch(query)}`, { replace: true, reset: false });
@@ -61,9 +85,9 @@
 	}
 
 	function chooseGenre(name: string): void {
-		const { order, genre } = view;
+		const { genre } = view;
 		everyGenre = false;
-		ask({ order, genre: genre !== null && sameGenre(name, genre) ? null : name });
+		ask({ genre: genre !== null && sameGenre(name, genre) ? null : name });
 	}
 
 	function isChosen(name: string): boolean {
@@ -89,17 +113,14 @@
 		</p>
 	{:else if library.albums.length > 0}
 		<div class="controls">
-			<div class="sorts" role="group" aria-label="Sort by">
-				{#each albumOrders as { order, label } (order)}
-					<button
-						type="button"
-						class="sort"
-						aria-pressed={view.order === order}
-						onclick={() => {
-							ask({ order, genre: view.genre });
-						}}>{label}</button
-					>
-				{/each}
+			<div class="sorts">
+				<SortControl
+					groups={sortGroups}
+					words={sortWords}
+					way={wayOf(view.order.by, view.order.dir)}
+					look="pill"
+					label="Sort the albums"
+				/>
 			</div>
 			{#if chips.length > 0}
 				<span class="rule" aria-hidden="true"></span>
@@ -152,7 +173,7 @@
 				<button
 					type="button"
 					onclick={() => {
-						ask({ order: view.order, genre: null });
+						ask({ genre: null });
 					}}>Show every album</button
 				>
 			</p>
@@ -212,7 +233,6 @@
 		gap: 8px;
 	}
 
-	.sorts,
 	.chips {
 		min-width: 0;
 		display: flex;
@@ -220,7 +240,6 @@
 		gap: 8px;
 	}
 
-	.sort,
 	.chip,
 	.all {
 		height: var(--target);
@@ -234,16 +253,8 @@
 		white-space: nowrap;
 	}
 
-	.sort {
-		padding: 0 calc(18px * var(--step));
-		border: 1px solid var(--edge-strong);
-		background: transparent;
-	}
-
-	.sort[aria-pressed='true'] {
-		border-color: var(--text);
-		background: var(--text);
-		color: var(--ground);
+	.sorts {
+		flex: none;
 	}
 
 	.rule {
@@ -275,7 +286,6 @@
 		color: var(--fox-text);
 	}
 
-	.sort[aria-pressed='false']:hover,
 	.chip[aria-pressed='false']:hover,
 	.all:hover {
 		color: var(--fox-text);
@@ -337,16 +347,6 @@
 
 			padding-right: 36px;
 			gap: 20px;
-		}
-
-		.sorts {
-			flex: 1 0 100%;
-			flex-wrap: nowrap;
-			gap: 6px;
-		}
-
-		.sort {
-			padding: 0 14px;
 		}
 
 		.chips {

@@ -442,11 +442,15 @@ type AlbumDetail struct {
 	Hearted bool `json:"hearted"`
 }
 
-// ArtistEntry is an artist as a list shows it. AlbumCount counts the albums it owns.
+// ArtistEntry is an artist as a list shows it. AlbumCount counts the albums it
+// owns, AddedAt is when the newest of them arrived, and Plays is how often the
+// caller played their songs.
 type ArtistEntry struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	AlbumCount int    `json:"albumCount"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	AlbumCount int       `json:"albumCount"`
+	AddedAt    time.Time `json:"addedAt"`
+	Plays      int       `json:"plays"`
 }
 
 // ArtistList is the response to GET /artists.
@@ -865,4 +869,139 @@ type Setting struct {
 	// PendingRestart says the value has changed since the server started and
 	// waits for a restart.
 	PendingRestart bool `json:"pendingRestart,omitzero"`
+}
+
+// MatchRequest is the body of POST /albums/{id}/matches. Empty terms ask for
+// the album's own. Code is a catalog number or a barcode.
+type MatchRequest struct {
+	Artist   string `json:"artist,omitzero"`
+	Album    string `json:"album,omitzero"`
+	Code     string `json:"code,omitzero"`
+	Prefetch bool   `json:"prefetch,omitzero"`
+}
+
+// MatchList is the response to POST /albums/{id}/matches.
+type MatchList struct {
+	Source     string           `json:"source"`
+	Asked      MatchTerms       `json:"asked"`
+	Candidates []MatchCandidate `json:"candidates"`
+}
+
+// MatchTerms is what a search asked for.
+type MatchTerms struct {
+	Artist        string `json:"artist"`
+	Album         string `json:"album"`
+	CatalogNumber string `json:"catalogNumber"`
+	Barcode       string `json:"barcode"`
+}
+
+// MatchCandidate is a release an album may be. ID is opaque, for GET /matches/{id}.
+type MatchCandidate struct {
+	ID       string          `json:"id"`
+	Score    int             `json:"score"`
+	Evidence []MatchEvidence `json:"evidence"`
+	Release  MatchRelease    `json:"release"`
+	Cover    string          `json:"cover,omitzero"`
+	Page     string          `json:"page"`
+}
+
+// MatchEvidence is one thing a confidence rests on, as facts.
+type MatchEvidence struct {
+	Kind    string `json:"kind"`
+	Verdict string `json:"verdict"`
+	Count   int    `json:"count,omitzero"`
+	Of      int    `json:"of,omitzero"`
+	Format  string `json:"format,omitzero"`
+}
+
+// MatchRelease is a release as a source describes it, without its tracks.
+type MatchRelease struct {
+	ID           string        `json:"id"`
+	GroupID      string        `json:"groupId,omitzero"`
+	Title        string        `json:"title"`
+	Artist       string        `json:"artist"`
+	Artists      []MatchCredit `json:"artists"`
+	Date         string        `json:"date,omitzero"`
+	OriginalDate string        `json:"originalDate,omitzero"`
+	Country      string        `json:"country,omitzero"`
+	Barcode      string        `json:"barcode,omitzero"`
+	Status       string        `json:"status,omitzero"`
+	Labels       []MatchLabel  `json:"labels"`
+	Media        []MatchMedium `json:"media"`
+	TrackCount   int           `json:"trackCount"`
+}
+
+// MatchCredit is one artist of a credit.
+type MatchCredit struct {
+	Name string `json:"name"`
+	ID   string `json:"id,omitzero"`
+	Join string `json:"join"`
+}
+
+// MatchLabel is a label a release came out on, and its catalog number there.
+type MatchLabel struct {
+	Name          string `json:"name"`
+	CatalogNumber string `json:"catalogNumber"`
+}
+
+// MatchMedium is one medium of a release.
+type MatchMedium struct {
+	Position   int    `json:"position"`
+	Format     string `json:"format"`
+	Title      string `json:"title"`
+	TrackCount int    `json:"trackCount"`
+}
+
+// MatchReview is the response to GET /matches/{id}.
+type MatchReview struct {
+	Candidate MatchCandidate      `json:"candidate"`
+	Album     map[string][]string `json:"album"`
+	AlbumIDs  map[string][]string `json:"albumIds"`
+	Tracks    []MatchTrack        `json:"tracks"`
+	Pairs     []MatchPair         `json:"pairs"`
+}
+
+// MatchTrack is one track of a release, and what it would write.
+type MatchTrack struct {
+	Disc     int                 `json:"disc"`
+	Position int                 `json:"position"`
+	Title    string              `json:"title"`
+	Artist   string              `json:"artist"`
+	LengthMS int64               `json:"lengthMs,omitzero"`
+	Proposed map[string][]string `json:"proposed"`
+	IDs      map[string][]string `json:"ids"`
+}
+
+// MatchPair is an album track and the release track it pairs with. Release is
+// nil when none does.
+type MatchPair struct {
+	Track   string `json:"track"`
+	Release *int   `json:"release,omitzero"`
+}
+
+// MatchQueue is the response to GET /matching/queue.
+type MatchQueue struct {
+	Counts MatchCounts   `json:"counts"`
+	Albums []QueuedAlbum `json:"albums"`
+}
+
+// MatchCounts counts the queue's albums by state.
+type MatchCounts struct {
+	ToDo    int `json:"todo"`
+	Skipped int `json:"skipped"`
+	Matched int `json:"matched"`
+}
+
+// QueuedAlbum is an album of the matching queue.
+type QueuedAlbum struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Artist string `json:"artist"`
+	Songs  int    `json:"songs"`
+	State  string `json:"state"`
+}
+
+// MatchStateChange is the body of PUT /matching/albums/{id}.
+type MatchStateChange struct {
+	State string `json:"state"`
 }

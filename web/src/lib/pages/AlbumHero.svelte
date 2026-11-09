@@ -33,6 +33,8 @@
 		picking?: { picked: number; of: number } | undefined;
 		/** Goes from the album page's editor to many tracks at once. */
 		many?: (() => void) | undefined;
+		/** Finds the album's release on MusicBrainz. Left out for anyone who can't edit. */
+		match?: (() => void) | undefined;
 	}
 
 	let {
@@ -44,7 +46,8 @@
 		session,
 		eyebrow = $bindable(),
 		picking,
-		many
+		many,
+		match
 	}: Props = $props();
 
 	/** Editing of either kind: the page draws up the same way for both. */
@@ -163,6 +166,11 @@
 						disabled={!playable}
 						bind:this={editButton}
 						onclick={edit}>Edit tags</button
+					>
+				{/if}
+				{#if match !== undefined}
+					<button type="button" class="ghost" disabled={!playable} onclick={match}
+						>Find matches</button
 					>
 				{/if}
 				{#if stars !== null}

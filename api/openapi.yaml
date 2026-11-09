@@ -1204,6 +1204,166 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/EditFailure"
+  /albums/{id}/matches:
+    post:
+      operationId: postAlbumMatches
+      summary: Find the releases an album may be, on MusicBrainz.
+      description: >-
+        For administrators. Proposes only: nothing is written. Asks for the
+        album's own title and album artist, or for the terms in the body, and
+        always for the releases its files already name. Each candidate has a
+        confidence from 0 to 100 and the evidence it rests on, as facts for the
+        client to word. MusicBrainz takes a request a second, so a first ask
+        can take seconds; answers are kept for a day. `prefetch` marks work done
+        ahead, such as the queue asking for the next albums: it waits behind
+        anything a person is waiting on.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MatchRequest" }
+      responses:
+        "200":
+          description: The candidates, best first. None is not a failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatchList" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: >-
+            MusicBrainz can't be reached, or stayed busy, or matching isn't
+            set up here.
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /matches/{id}:
+    get:
+      operationId: getMatch
+      summary: Look at one candidate closely, against its album.
+      description: >-
+        For administrators. The release's values as fields, what every track
+        would take, and which release track each album track pairs with.
+        Fields the release has nothing for are left out: matching never
+        proposes taking a value away. `albumIds` and each track's `ids` are the
+        MusicBrainz IDs, which a client writes with whatever is accepted.
+        Applying is `POST /albums/{id}/edits`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: A candidate's `id`, from `POST /albums/{id}/matches`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The candidate, closely.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatchReview" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: >-
+            MusicBrainz can't be reached, or stayed busy, or matching isn't
+            set up here.
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /matching/queue:
+    get:
+      operationId: getMatchingQueue
+      summary: List the albums to match.
+      description: >-
+        For administrators. Every album with live songs and no MusicBrainz
+        release ID is to do, unless it was skipped; albums matched here stay,
+        as matched. In sort order.
+      responses:
+        "200":
+          description: The queue.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatchQueue" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+  /matching/albums/{id}:
+    put:
+      operationId: putMatchingAlbum
+      summary: Say where an album stands in the matching queue.
+      description: >-
+        For administrators. `skipped` sets it aside, `matched` records it as
+        matched here, and `todo` forgets either.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MatchStateChange" }
+      responses:
+        "204":
+          description: Saved.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
   /edits:
     post:
       operationId: postEdits
@@ -1270,8 +1430,8 @@ paths:
       description: >-
         An album belongs to its album artists; with none, to the first artist of
         its tracks, unless it is a compilation. Sorted by sort name, ignoring
-        case. Various Artists is never listed. Guests are found through search
-        and links.
+        case, then ID: a client orders its copy as it likes. Various Artists is
+        never listed. Guests are found through search and links.
       responses:
         "200":
           description: The artists.
@@ -1808,8 +1968,8 @@ components:
       required: true
       description: >-
         The preference: `library.columns`, `ui.theme`, `shuffle.ratings`,
-        `shuffle.flow` or `shuffle.memory`. The server knows which keys there
-        are.
+        `shuffle.flow`, `shuffle.memory`, `library.sort`, `albums.sort` or
+        `artists.sort`. The server knows which keys there are.
       schema: { type: string }
     ItemID:
       name: id
@@ -2566,7 +2726,11 @@ components:
         old one whole. A value a file can't hold is a 422. `compilation` takes
         `1`, and clearing it turns it off. `album`, `artists`, `albumArtists`
         and `compilation` decide which album a track groups into: an album
-        renamed whole keeps its ID.
+        renamed whole keeps its ID. The `musicbrainz…Id` fields take
+        MusicBrainz IDs, lower-case; `musicbrainzRecordingId` is the
+        recording, `musicbrainzTrackId` the release's track. A change of
+        `artists` or `albumArtists` drops their IDs unless the same edit
+        gives new ones.
       type: object
       additionalProperties: false
       properties:
@@ -2603,6 +2767,189 @@ components:
         sortArtist: { $ref: "#/components/schemas/Values" }
         sortAlbum: { $ref: "#/components/schemas/Values" }
         sortAlbumArtist: { $ref: "#/components/schemas/Values" }
+        musicbrainzAlbumId: { $ref: "#/components/schemas/Values" }
+        musicbrainzReleaseGroupId: { $ref: "#/components/schemas/Values" }
+        musicbrainzAlbumArtistId: { $ref: "#/components/schemas/Values" }
+        musicbrainzArtistId: { $ref: "#/components/schemas/Values" }
+        musicbrainzRecordingId: { $ref: "#/components/schemas/Values" }
+        musicbrainzTrackId: { $ref: "#/components/schemas/Values" }
+    MatchRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        artist: { type: string, description: "Search for this artist instead." }
+        album: { type: string, description: "Search for this title instead." }
+        code:
+          type: string
+          description: A catalog number, or a barcode when it is all digits and at least 8 long.
+        prefetch: { type: boolean, description: "Work done ahead, which waits for people." }
+    MatchList:
+      type: object
+      additionalProperties: false
+      required: [source, asked, candidates]
+      properties:
+        source: { type: string, enum: [musicbrainz] }
+        asked: { $ref: "#/components/schemas/MatchTerms" }
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/MatchCandidate" }
+    MatchTerms:
+      type: object
+      additionalProperties: false
+      description: What was asked for. Empty members weren't.
+      required: [artist, album, catalogNumber, barcode]
+      properties:
+        artist: { type: string }
+        album: { type: string }
+        catalogNumber: { type: string }
+        barcode: { type: string }
+    MatchCandidate:
+      type: object
+      additionalProperties: false
+      required: [id, score, evidence, release, page]
+      properties:
+        id: { type: string, description: "Opaque: for GET /matches/{id}." }
+        score: { type: integer, minimum: 0, maximum: 100, description: "Confidence." }
+        evidence:
+          type: array
+          items: { $ref: "#/components/schemas/MatchEvidence" }
+        release: { $ref: "#/components/schemas/MatchRelease" }
+        cover: { type: string, description: "The front cover's URL, about 250 pixels across, when there is one." }
+        page: { type: string, description: "The release's page on MusicBrainz." }
+    MatchEvidence:
+      type: object
+      additionalProperties: false
+      description: >-
+        One thing a confidence rests on. `lengths`: `count` of `of` paired
+        songs are within ±3 s. `titleArtist`: both are the release's.
+        `title`, `artist`: that one differs. `tagged`: `count` songs' files
+        carry this release's ID. `discs`: the release has `count` media of
+        `format`, the album `of` discs. `songs`: the release has `count`
+        songs, the album `of`. `fingerprint` is for matching by sound, later.
+      required: [kind, verdict]
+      properties:
+        kind: { type: string, enum: [lengths, titleArtist, title, artist, tagged, discs, songs, fingerprint] }
+        verdict: { type: string, enum: [agrees, neutral, differs] }
+        count: { type: integer }
+        of: { type: integer }
+        format: { type: string }
+    MatchRelease:
+      type: object
+      additionalProperties: false
+      required: [id, title, artist, artists, labels, media, trackCount]
+      properties:
+        id: { type: string, description: "The release MBID." }
+        groupId: { type: string }
+        title: { type: string }
+        artist: { type: string, description: "The credit as it reads." }
+        artists:
+          type: array
+          items: { $ref: "#/components/schemas/MatchCredit" }
+        date: { type: string }
+        originalDate: { type: string }
+        country: { type: string }
+        barcode: { type: string }
+        status: { type: string }
+        labels:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, catalogNumber]
+            properties:
+              name: { type: string }
+              catalogNumber: { type: string }
+        media:
+          type: array
+          items: { $ref: "#/components/schemas/MatchMedium" }
+        trackCount: { type: integer }
+    MatchCredit:
+      type: object
+      additionalProperties: false
+      required: [name, join]
+      properties:
+        name: { type: string, description: "As credited." }
+        id: { type: string }
+        join: { type: string, description: "What joins it to the next, such as \" feat. \"." }
+    MatchMedium:
+      type: object
+      additionalProperties: false
+      required: [position, format, title, trackCount]
+      properties:
+        position: { type: integer }
+        format: { type: string }
+        title: { type: string }
+        trackCount: { type: integer }
+    MatchReview:
+      type: object
+      additionalProperties: false
+      required: [candidate, album, albumIds, tracks, pairs]
+      properties:
+        candidate: { $ref: "#/components/schemas/MatchCandidate" }
+        album: { $ref: "#/components/schemas/FieldValues" }
+        albumIds: { $ref: "#/components/schemas/FieldValues" }
+        tracks:
+          type: array
+          description: The release's tracks, medium by medium.
+          items: { $ref: "#/components/schemas/MatchTrack" }
+        pairs:
+          type: array
+          description: One for each live track of the album, in album order.
+          items: { $ref: "#/components/schemas/MatchPair" }
+    MatchTrack:
+      type: object
+      additionalProperties: false
+      required: [disc, position, title, artist, proposed, ids]
+      properties:
+        disc: { type: integer, description: "Its medium's position." }
+        position: { type: integer }
+        title: { type: string }
+        artist: { type: string, description: "The credit as it reads." }
+        lengthMs: { type: integer, format: int64 }
+        proposed: { $ref: "#/components/schemas/FieldValues" }
+        ids: { $ref: "#/components/schemas/FieldValues" }
+    MatchPair:
+      type: object
+      additionalProperties: false
+      required: [track]
+      properties:
+        track: { type: string, description: "The album track's ID." }
+        release: { type: integer, description: "Index into `tracks`; missing when nothing pairs." }
+    MatchQueue:
+      type: object
+      additionalProperties: false
+      required: [counts, albums]
+      properties:
+        counts:
+          type: object
+          additionalProperties: false
+          required: [todo, skipped, matched]
+          properties:
+            todo: { type: integer }
+            skipped: { type: integer }
+            matched: { type: integer }
+        albums:
+          type: array
+          items: { $ref: "#/components/schemas/QueuedAlbum" }
+    QueuedAlbum:
+      type: object
+      additionalProperties: false
+      required: [id, title, artist, songs, state]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        songs: { type: integer }
+        state: { $ref: "#/components/schemas/MatchState" }
+    MatchState:
+      type: string
+      enum: [todo, skipped, matched]
+    MatchStateChange:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state: { $ref: "#/components/schemas/MatchState" }
     Values:
       type: array
       items: { type: string }
@@ -2672,11 +3019,18 @@ components:
     ArtistEntry:
       type: object
       additionalProperties: false
-      required: [id, name, albumCount]
+      required: [id, name, albumCount, addedAt, plays]
       properties:
         id: { type: string }
         name: { type: string }
         albumCount: { type: integer, description: The albums it owns. }
+        addedAt:
+          type: string
+          format: date-time
+          description: When the newest album it owns arrived.
+        plays:
+          type: integer
+          description: How often the caller played the songs of the albums it owns.
     ArtistList:
       type: object
       additionalProperties: false
@@ -2729,6 +3083,47 @@ components:
         - $ref: "#/components/schemas/UITheme"
         - $ref: "#/components/schemas/ShuffleAmount"
         - $ref: "#/components/schemas/ShuffleMemory"
+        - $ref: "#/components/schemas/LibrarySort"
+        - $ref: "#/components/schemas/ListSort"
+    LibrarySort:
+      type: object
+      additionalProperties: false
+      description: >-
+        `library.sort`: how the Library orders its artists, and each artist's
+        albums; artist pages order their albums the same way. Artists A to Z
+        and albums newest first when never set. Ties go by name, then ID.
+      required: [artists, albums]
+      properties:
+        artists:
+          type: object
+          additionalProperties: false
+          required: [by, dir]
+          properties:
+            by: { type: string, enum: [name, added, plays] }
+            dir: { $ref: "#/components/schemas/SortDirection" }
+        albums:
+          type: object
+          additionalProperties: false
+          required: [by, dir]
+          properties:
+            by: { type: string, enum: [year, name, added] }
+            dir: { $ref: "#/components/schemas/SortDirection" }
+    ListSort:
+      type: object
+      additionalProperties: false
+      description: >-
+        `albums.sort`: the Albums page's order, `by` one of `name`, `artist`,
+        `year`, `added`, `plays` or `rating`. `artists.sort`: the Artists page's,
+        `by` one of `name`, `albums`, `added` or `plays`. Name A to Z when never
+        set. Ties go by name, then ID.
+      required: [by, dir]
+      properties:
+        by: { type: string, enum: [name, artist, year, added, plays, rating, albums] }
+        dir: { $ref: "#/components/schemas/SortDirection" }
+    SortDirection:
+      type: string
+      description: Which way the order runs. What is unknown, such as a missing year, goes last either way.
+      enum: [asc, desc]
     UITheme:
       type: string
       description: >-

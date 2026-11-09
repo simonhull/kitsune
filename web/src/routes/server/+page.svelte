@@ -6,6 +6,7 @@
 	import ScanCard from '#lib/pages/ScanCard.svelte';
 	import FolderPicker from '#lib/pages/FolderPicker.svelte';
 	import SettingsSection from '#lib/pages/SettingsSection.svelte';
+	import MatchingSettings from '#lib/matching/MatchingSettings.svelte';
 	import PeopleCard from '#lib/pages/PeopleCard.svelte';
 	import {
 		afterSave,
@@ -409,6 +410,8 @@
 					{/if}
 				</div>
 			</SettingsSection>
+
+			<MatchingSettings />
 
 			<SettingsSection
 				id="scanning"

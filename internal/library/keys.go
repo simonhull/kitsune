@@ -43,9 +43,13 @@ var (
 	keysCompilation     = []string{"COMPILATION", "TCMP", "cpil"}
 	keysAlbumMBID       = []string{"MUSICBRAINZ_ALBUMID", "MUSICBRAINZ ALBUM ID"}
 	keysTrackMBID       = []string{"MUSICBRAINZ_TRACKID", "MUSICBRAINZ TRACK ID"}
-	keysGenre           = []string{"GENRE", "TCON", "\xA9gen", "IGNR"}
-	keysDate            = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day", keyICRD}
-	keysOriginalDate    = []string{"TDOR", "TORY", "ORIGINALDATE"}
+	// keysReleaseGroupMBID and keysReleaseTrackMBID are written by a match, and
+	// read only by the tag editor.
+	keysReleaseGroupMBID = []string{"MUSICBRAINZ_RELEASEGROUPID", "MUSICBRAINZ RELEASE GROUP ID"}
+	keysReleaseTrackMBID = []string{"MUSICBRAINZ_RELEASETRACKID", "MUSICBRAINZ RELEASE TRACK ID"}
+	keysGenre            = []string{"GENRE", "TCON", "\xA9gen", "IGNR"}
+	keysDate             = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day", keyICRD}
+	keysOriginalDate     = []string{"TDOR", "TORY", "ORIGINALDATE"}
 	// keysDiscSubtitle hold a disc's name. ID3v2.4 has a frame for it, which
 	// ID3v2.3 lacks: there, and in Vorbis and M4A, it is a DISCSUBTITLE text.
 	keysDiscSubtitle = []string{"TSST", "DISCSUBTITLE"}
