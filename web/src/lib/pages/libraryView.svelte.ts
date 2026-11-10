@@ -89,7 +89,7 @@ export function frameFor(step: Step, stacked: boolean, cover: number): Frame {
 			albumMin: cover + (large ? coverNames.large : coverNames.columns),
 			artistHead: 0,
 			// Where the name pins, under Shuffle and the filters, then its three lines and its facts.
-			artistMin: large ? 460 + shuffleRow.large : 382 + shuffleRow.columns,
+			artistMin: large ? 468 + shuffleRow.large : 390 + shuffleRow.columns,
 			albumGap: large ? 56 : 40,
 			artistGap: large ? 96 : 72
 		},
@@ -102,7 +102,7 @@ export function frameFor(step: Step, stacked: boolean, cover: number): Frame {
  * How tall Shuffle and its settings line stand above the filters, at each step: the page's
  * `--shuffle-row`, which the name pins under.
  */
-export const shuffleRow = { columns: 112, large: 140 } as const;
+export const shuffleRow = { columns: 128, large: 160 } as const;
 
 /** How far up from the bottom of the screen the NEXT panel reaches, at its two lines. */
 const nextReach = 340;
