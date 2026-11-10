@@ -198,7 +198,10 @@
 	// Rows near the screen are mounted, whatever the count: the Library's windowing.
 	let listElement: HTMLElement | undefined = $state();
 	let mounted = $state<RowWindow>({ first: 0, last: -1 });
+	/** The frame line is pinned under the nav: only then does a veil stand over the rows above it. */
+	let pinned = $state(false);
 	function track(): void {
+		pinned = expanded && (lineElement?.getBoundingClientRect().top ?? Infinity) <= pinTop + 1;
 		const y = -(listElement?.getBoundingClientRect().top ?? 0);
 		const next =
 			albums === null
@@ -969,6 +972,7 @@
 <section
 	class="songs song-list"
 	class:expanded
+	class:pinned
 	class:grouped
 	class:large
 	class:stacked
@@ -1261,7 +1265,7 @@
 	}
 
 	/* Rows leave upward behind the nav, under a veil, as the Library's header has them. */
-	.expanded .line::before {
+	.pinned .line::before {
 		content: '';
 		position: absolute;
 		left: 0;
