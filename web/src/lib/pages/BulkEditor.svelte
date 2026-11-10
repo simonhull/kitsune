@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { bulkFields, effective, shownOf } from '#lib/library/bulk.ts';
 	import { clock } from '#lib/library/format.ts';
@@ -10,9 +10,11 @@
 
 	interface Props {
 		session: BulkSession;
+		/** What acts on the edit: the tag bar, which stands at the foot of the fields' column. */
+		bar?: Snippet;
 	}
 
-	let { session }: Props = $props();
+	let { session, bar }: Props = $props();
 
 	/** Why the Tags tab can't edit, when it can't: the Shuffle tab still can. */
 	const noTags = $derived(
@@ -179,116 +181,120 @@
 		{/if}
 	</section>
 
-	<section
-		class="edit"
-		aria-label={selection ? 'Edit the selected songs' : 'Tags for the picked tracks'}
-	>
-		{#if !selection}
-			<h2>{plural(picked, 'track')}</h2>
-		{/if}
-		<div class="tabs" role="tablist" aria-label="What to edit">
-			<button
-				type="button"
-				role="tab"
-				id="bulk-tab-tags"
-				aria-selected={tab === 'tags'}
-				aria-controls="bulk-panel"
-				onclick={() => (tab = 'tags')}>Tags</button
-			>
-			<button
-				type="button"
-				role="tab"
-				id="bulk-tab-shuffle"
-				aria-selected={tab === 'shuffle'}
-				aria-controls="bulk-panel"
-				onclick={() => (tab = 'shuffle')}>Shuffle</button
-			>
-		</div>
-		<div id="bulk-panel" role="tabpanel" aria-labelledby={`bulk-tab-${tab}`}>
-			{#if tab === 'shuffle'}
-				<ShuffleTab {session} />
-			{:else if !session.canTag}
-				<p class="hint">{noTags}</p>
-			{:else if picked === 0}
-				<p class="hint">Pick a song to edit its tags.</p>
-			{:else}
-				<p class="hint">
-					What they share is filled in. Leave "Mixed" alone and each {selection ? 'song' : 'track'} keeps
-					its own.
-				</p>
-				<div class="grid" onfocusout={left}>
-					{#each bulkFields as spec (spec.key)}
-						<BulkField {spec} {session} />
-					{/each}
-				</div>
-				{#if albumMixed}
-					<p class="move">
-						Album is mixed: giving these songs one album name moves them into that album, and the
-						Library follows.
-					</p>
-				{/if}
-				<p class="jobs-label">QUICK JOBS</p>
-				<div class="jobs">
-					{#if !selection}
-						<button
-							type="button"
-							onclick={() => {
-								session.numberFromOne();
-							}}>Number from 1</button
-						>
-					{/if}
-					{#if selection}
-						<button
-							type="button"
-							onclick={() => {
-								session.titleCase();
-							}}>Title Case</button
-						>
-						<button type="button" aria-expanded={finding} onclick={() => (finding = !finding)}
-							>Find and replace</button
-						>
-					{/if}
-					<button
-						type="button"
-						onclick={() => {
-							session.titlesFromFiles();
-						}}>Titles from file names</button
-					>
-					{#if !selection}
-						<button
-							type="button"
-							onclick={() => {
-								session.titleCase();
-							}}>Title Case</button
-						>
-						<button type="button" aria-expanded={finding} onclick={() => (finding = !finding)}
-							>Find and replace</button
-						>
-					{/if}
-				</div>
-				{#if finding}
-					<form
-						class="find"
-						onsubmit={(event) => {
-							event.preventDefault();
-							replaceAll();
-						}}
-					>
-						<label>
-							<span>Find in titles</span>
-							<!-- svelte-ignore a11y_autofocus -->
-							<input type="text" autocomplete="off" autofocus bind:value={find} />
-						</label>
-						<label>
-							<span>Replace with</span>
-							<input type="text" autocomplete="off" bind:value={replace} />
-						</label>
-						<button type="submit" class="go" disabled={find === ''}>Replace</button>
-					</form>
-				{/if}
+	<div class="side">
+		<section
+			class="edit"
+			aria-label={selection ? 'Edit the selected songs' : 'Tags for the picked tracks'}
+		>
+			{#if !selection}
+				<h2>{plural(picked, 'track')}</h2>
 			{/if}
-		</div>
-	</section>
+			<div class="tabs" role="tablist" aria-label="What to edit">
+				<button
+					type="button"
+					role="tab"
+					id="bulk-tab-tags"
+					aria-selected={tab === 'tags'}
+					aria-controls="bulk-panel"
+					onclick={() => (tab = 'tags')}>Tags</button
+				>
+				<button
+					type="button"
+					role="tab"
+					id="bulk-tab-shuffle"
+					aria-selected={tab === 'shuffle'}
+					aria-controls="bulk-panel"
+					onclick={() => (tab = 'shuffle')}>Shuffle</button
+				>
+			</div>
+			<div id="bulk-panel" role="tabpanel" aria-labelledby={`bulk-tab-${tab}`}>
+				{#if tab === 'shuffle'}
+					<ShuffleTab {session} />
+				{:else if !session.canTag}
+					<p class="hint">{noTags}</p>
+				{:else if picked === 0}
+					<p class="hint">Pick a song to edit its tags.</p>
+				{:else}
+					<p class="hint">
+						What they share is filled in. Leave "Mixed" alone and each {selection
+							? 'song'
+							: 'track'} keeps its own.
+					</p>
+					<div class="grid" onfocusout={left}>
+						{#each bulkFields as spec (spec.key)}
+							<BulkField {spec} {session} />
+						{/each}
+					</div>
+					{#if albumMixed}
+						<p class="move">
+							Album is mixed: giving these songs one album name moves them into that album, and the
+							Library follows.
+						</p>
+					{/if}
+					<p class="jobs-label">QUICK JOBS</p>
+					<div class="jobs">
+						{#if !selection}
+							<button
+								type="button"
+								onclick={() => {
+									session.numberFromOne();
+								}}>Number from 1</button
+							>
+						{/if}
+						{#if selection}
+							<button
+								type="button"
+								onclick={() => {
+									session.titleCase();
+								}}>Title Case</button
+							>
+							<button type="button" aria-expanded={finding} onclick={() => (finding = !finding)}
+								>Find and replace</button
+							>
+						{/if}
+						<button
+							type="button"
+							onclick={() => {
+								session.titlesFromFiles();
+							}}>Titles from file names</button
+						>
+						{#if !selection}
+							<button
+								type="button"
+								onclick={() => {
+									session.titleCase();
+								}}>Title Case</button
+							>
+							<button type="button" aria-expanded={finding} onclick={() => (finding = !finding)}
+								>Find and replace</button
+							>
+						{/if}
+					</div>
+					{#if finding}
+						<form
+							class="find"
+							onsubmit={(event) => {
+								event.preventDefault();
+								replaceAll();
+							}}
+						>
+							<label>
+								<span>Find in titles</span>
+								<!-- svelte-ignore a11y_autofocus -->
+								<input type="text" autocomplete="off" autofocus bind:value={find} />
+							</label>
+							<label>
+								<span>Replace with</span>
+								<input type="text" autocomplete="off" bind:value={replace} />
+							</label>
+							<button type="submit" class="go" disabled={find === ''}>Replace</button>
+						</form>
+					{/if}
+				{/if}
+			</div>
+		</section>
+		{@render bar?.()}
+	</div>
 </div>
 
 <style>
@@ -334,7 +340,18 @@
 	.edit {
 		min-width: 0;
 		border-radius: var(--radius-28);
+	}
+
+	.songs {
 		align-self: start;
+	}
+
+	/* The fields' column runs the whole row, so the bar at its foot stays in view down a long list. */
+	.side {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		min-width: 0;
 	}
 
 	.songs {
@@ -594,6 +611,11 @@
 		.head,
 		.bulk {
 			zoom: 1.5;
+		}
+
+		/* The bar takes the step too; this keeps its offset from the island in window pixels. */
+		.bulk {
+			--dock-zoom: 1.5;
 		}
 	}
 
