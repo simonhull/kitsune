@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { emWidth } from '#lib/library/fit.ts';
 	import { artistFacts } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { artistAlbums } from '#lib/library/albumOrder.ts';
 	import { artistAlbumOrders, wayOf } from '#lib/library/sorts.ts';
 	import AlbumShelf from '#lib/pages/AlbumShelf.svelte';
+	import ArtistSongs from '#lib/pages/ArtistSongs.svelte';
 	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
 	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 	import type { PageProps } from './$types';
@@ -36,11 +39,32 @@
 		void sorts.library.load();
 	});
 
-	// Never awaited, like an album's tracks. Untracked: a failure must wait for Try again.
+	// Never awaited, like an album's tracks. Untracked: a failure must wait for Try again. The songs
+	// are asked for beside it, by the section, so neither waits for the other.
 	$effect(() => {
 		const wanted = id;
 		untrack(() => void library.loadArtist(wanted));
 	});
+
+	/** The full list of songs shows: a view in the URL, so Back folds it and a link lands on it. */
+	const expanded = $derived(page.url.searchParams.has('songs'));
+	/** Set when this visit added the `?songs` entry, so folding is going back to the one before. */
+	let pushed = false;
+
+	function expand(): void {
+		pushed = true;
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- Built from resolve('/artists/[id]').
+		void goto(`${resolve('/artists/[id]', { id })}?songs`, { reset: false });
+	}
+
+	function fold(): void {
+		if (pushed) {
+			pushed = false;
+			history.back();
+			return;
+		}
+		void goto(resolve('/artists/[id]', { id }), { replace: true, reset: false });
+	}
 </script>
 
 <svelte:head>
@@ -65,31 +89,40 @@
 				This artist couldn't be loaded.
 				<button type="button" onclick={() => void library.loadArtist(id)}>Try again</button>
 			</p>
-		{:else if artist !== undefined}
-			{#if artist.albums.length > 0}
-				<section aria-labelledby="own-albums">
-					<div class="heading">
-						<h2 id="own-albums">Albums</h2>
-						<SortControl
-							groups={sortGroups}
-							words={artistAlbumOrders.find(({ by }) => by === order.by)?.label ?? ''}
-							way={wayOf(order.by, order.dir)}
-							look="pill"
-							label="Sort the albums"
-						/>
-					</div>
-					<AlbumShelf albums={artistAlbums(artist.albums, order)} />
-				</section>
-			{/if}
-			{#if artist.appearsOn.length > 0}
-				<section aria-labelledby="appears-on">
-					<h2 id="appears-on">Appears on</h2>
-					<AlbumShelf albums={artistAlbums(artist.appearsOn, order)} />
-				</section>
-			{/if}
-			{#if artist.albums.length === 0 && artist.appearsOn.length === 0}
-				<p class="note" role="status">Nothing of theirs is in the library right now.</p>
-			{/if}
+		{:else}
+			<!-- Before the artist comes, its songs may: the section holds its place either way. -->
+			<div class="body">
+				<ArtistSongs {id} {name} detail={artist} {expanded} {expand} {fold}>
+					{#snippet shelves()}
+						{#if artist !== undefined}
+							{#if artist.albums.length > 0}
+								<section aria-labelledby="own-albums">
+									<div class="heading">
+										<h2 id="own-albums">Albums</h2>
+										<SortControl
+											groups={sortGroups}
+											words={artistAlbumOrders.find(({ by }) => by === order.by)?.label ?? ''}
+											way={wayOf(order.by, order.dir)}
+											look="pill"
+											label="Sort the albums"
+										/>
+									</div>
+									<AlbumShelf albums={artistAlbums(artist.albums, order)} />
+								</section>
+							{/if}
+							{#if artist.appearsOn.length > 0}
+								<section aria-labelledby="appears-on">
+									<h2 id="appears-on">Appears on</h2>
+									<AlbumShelf albums={artistAlbums(artist.appearsOn, order)} />
+								</section>
+							{/if}
+							{#if artist.albums.length === 0 && artist.appearsOn.length === 0}
+								<p class="note" role="status">Nothing of theirs is in the library right now.</p>
+							{/if}
+						{/if}
+					{/snippet}
+				</ArtistSongs>
+			</div>
 		{/if}
 	</div>
 {/if}
@@ -135,6 +168,11 @@
 		line-height: 0.92;
 		overflow-wrap: anywhere;
 		text-wrap: balance;
+	}
+
+	.body {
+		display: flex;
+		flex-direction: column;
 	}
 
 	section {

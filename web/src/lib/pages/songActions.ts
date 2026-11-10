@@ -163,10 +163,14 @@ export interface SongActions {
 	editTags: (() => void) | undefined;
 }
 
-/** The actions on some songs, in the order they should play. */
+/**
+ * The actions on some songs, in the order they should play. `index` is the list they're in, which
+ * a shuffle of them picks its first from: the Library's, unless a page holds its own.
+ */
 export function actionsFor(
 	trackIds: readonly string[],
-	albumOf: ReadonlyMap<string, string>
+	albumOf: ReadonlyMap<string, string>,
+	index?: () => LibraryIndex
 ): SongActions {
 	const albums = new Set(trackIds.map((id) => albumOf.get(id)));
 	const [only] = albums;
@@ -181,7 +185,7 @@ export function actionsFor(
 			player.playSongs(songs);
 		}),
 		shuffle() {
-			shuffles.start(selectionSource(trackIds));
+			shuffles.start(selectionSource(trackIds, index));
 		},
 		playNext: queued((songs) => {
 			player.playNext(songs);
