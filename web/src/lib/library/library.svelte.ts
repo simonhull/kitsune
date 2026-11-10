@@ -185,6 +185,17 @@ async function cardFor(entry: AlbumEntry): Promise<AlbumEntry> {
 }
 
 /** The client's view of the library. List entries seed the first frame of the next page. */
+/** An artist's songs as read for its page. */
+interface ArtistSongsRead {
+	/** The fields asked for, joined by commas. */
+	fields: string;
+	/** A change has come since: the next look reads them again. */
+	stale: boolean;
+	/** Which read this is: only the latest may settle. */
+	run: number;
+	load: Load<LibraryIndex>;
+}
+
 export class Library {
 	user = $state.raw<Me | null>(null);
 	facts = $state.raw<LibraryFacts | null>(null);
@@ -252,6 +263,10 @@ export class Library {
 	readonly #loading = new SvelteMap<string, Promise<void>>();
 	readonly #artists = new SvelteMap<string, Load<ArtistDetail>>();
 	readonly #artistNames = new SvelteMap<string, string>();
+	/** Each artist's songs read for its page, with the fields they carry and whether they're behind. */
+	readonly #artistSongs = new SvelteMap<string, ArtistSongsRead>();
+	/** The latest read of each artist's songs: an older answer that comes late is let go. */
+	#artistSongsRuns = 0;
 	/** The scan the index was last read after, by when it ended. */
 	#indexedAfter: string | undefined;
 	#indexLoad: Promise<void> | null = null;
@@ -1113,6 +1128,7 @@ export class Library {
 	/** Says an edit has changed what the index holds: the next look reads it again. */
 	markIndexStale(): void {
 		this.#indexEdited = true;
+		this.#artistSongsChanged();
 	}
 
 	/**
@@ -1172,6 +1188,8 @@ export class Library {
 			return; // A first scan's deck follows the library its own way.
 		}
 		void this.#refreshHome();
+		// An artist's songs can gain an album nobody has read yet, so any change reads them again.
+		this.#artistSongsChanged();
 		const held = all ? [...this.#albums.keys()] : albums.filter((id) => this.#albums.has(id));
 		for (const id of held) {
 			void this.#refreshAlbum(id);
@@ -1325,8 +1343,82 @@ export class Library {
 			void this.#refreshAlbum(id);
 		}
 		this.settingsHeard += 1;
+		this.#artistSongsChanged();
 		if (this.index.kind === 'ready') {
 			await this.loadIndex(this.#fields());
+		}
+	}
+
+	/**
+	 * Marks every artist's songs behind: an artist page on screen reads its own again at once, as
+	 * {@link Library.holdsArtistSongs} says, and any other the next time it's opened.
+	 */
+	#artistSongsChanged(): void {
+		for (const [id, read] of this.#artistSongs) {
+			this.#artistSongs.set(id, { ...read, stale: true });
+		}
+	}
+
+	/** Returns how far an artist's songs have got. Nothing asked for yet is on its way. */
+	artistSongs(id: string): Load<LibraryIndex> {
+		return this.#artistSongs.get(id)?.load ?? { kind: 'loading' };
+	}
+
+	/**
+	 * Whether an artist's songs are here, or on their way, with every one of `fields` and not behind
+	 * a change: a page that needs less never reads them again to drop some.
+	 */
+	holdsArtistSongs(id: string, fields: readonly IndexField[]): boolean {
+		const read = this.#artistSongs.get(id);
+		if (read === undefined || read.stale || read.load.kind === 'unavailable') {
+			return false;
+		}
+		const held = read.fields.split(',');
+		return fields.every((field) => held.includes(field));
+	}
+
+	/**
+	 * Reads the songs an artist is on, with what `fields` asks for besides. What's here stays through
+	 * a refresh, a failed one included, unless the server says the artist has gone.
+	 */
+	async loadArtistSongs(id: string, fields: readonly IndexField[]): Promise<void> {
+		const epoch = this.#epoch;
+		this.#artistSongsRuns += 1;
+		const run = this.#artistSongsRuns;
+		const asked = fields.join(',');
+		const held = this.#artistSongs.get(id);
+		this.#artistSongs.set(id, {
+			fields: asked,
+			stale: false,
+			run,
+			load: held?.load.kind === 'ready' ? held.load : { kind: 'loading' }
+		});
+		/** Whether this is still the latest read, and if a change has come since it began. */
+		const latest = (): { stale: boolean } | null => {
+			const read = this.#artistSongs.get(id);
+			return epoch === this.#epoch && read?.run === run ? { stale: read.stale } : null;
+		};
+		const settle = (load: Load<LibraryIndex>, still: { stale: boolean }): void => {
+			this.#artistSongs.set(id, { fields: asked, stale: still.stale, run, load });
+		};
+		try {
+			const index = await this.#source.artistSongs(id, fields);
+			const still = latest();
+			if (still !== null) {
+				this.#rememberIndex(index);
+				this.marks.seedIndex(index);
+				settle({ kind: 'ready', value: index }, still);
+			}
+		} catch (error) {
+			const still = latest();
+			if (still === null || error instanceof UnauthorizedError) {
+				return;
+			}
+			if (error instanceof ArtistNotFoundError) {
+				settle({ kind: 'missing' }, still);
+			} else if (this.artistSongs(id).kind !== 'ready') {
+				settle({ kind: 'unavailable' }, still);
+			}
 		}
 	}
 
@@ -1647,6 +1739,7 @@ export class Library {
 		this.#indexEdited = false;
 		this.#artists.clear();
 		this.#artistNames.clear();
+		this.#artistSongs.clear();
 		this.marks.reset();
 		this.search.reset();
 	}

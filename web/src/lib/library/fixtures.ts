@@ -478,11 +478,47 @@ function entryOf({
 function detailOf(link: ArtistLink): ArtistDetail {
 	const everything = [...albums.values()];
 	const albumsOwned = everything.filter((album) => owns(album, link));
+	const songs = artistIndexOf(indexFixture(), link).artists.flatMap((artist) =>
+		artist.albums.flatMap((album) => album.tracks)
+	);
 	return {
 		...link,
 		albumCount: albumsOwned.length,
 		albums: albumsOwned.map(entryOf),
-		appearsOn: everything.filter((album) => !owns(album, link) && isOn(album, link)).map(entryOf)
+		appearsOn: everything.filter((album) => !owns(album, link) && isOn(album, link)).map(entryOf),
+		songCount: songs.length
+	};
+}
+
+/**
+ * As `GET /library/index?artist=` has it: the songs an artist is on, under one heading, the albums
+ * it owns first and then those it appears on, each newest first and with just its songs.
+ */
+function artistIndexOf(index: LibraryIndex, link: ArtistLink): LibraryIndex {
+	const all = index.artists.flatMap((artist) => artist.albums);
+	const owned = (album: LibraryAlbum): boolean => {
+		const full = albums.get(album.id) ?? listOnly.get(album.id);
+		return full !== undefined && owns(full, link);
+	};
+	const newest = (a: LibraryAlbum, b: LibraryAlbum): number => (b.year ?? 0) - (a.year ?? 0);
+	const appears = all
+		.filter((album) => !owned(album))
+		.map((album) => ({
+			...album,
+			tracks: album.tracks.filter(({ artists }) => artists.includes(link.name))
+		}))
+		.filter(({ tracks }) => tracks.length > 0);
+	const heading = index.artists.find(({ id }) => id === link.id);
+	return {
+		artists: [
+			{
+				id: link.id,
+				name: link.name,
+				sortName: heading?.sortName ?? link.name,
+				hearted: heading?.hearted ?? false,
+				albums: [...all.filter(owned).toSorted(newest), ...appears.toSorted(newest)]
+			}
+		]
 	};
 }
 
@@ -1166,6 +1202,14 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		facts: () => respond(() => ({ ...counts, ...scans.facts() })),
 		libraryIndex: (fields) => respond(() => markedIndex(fields)),
 		libraryIndexOf: (albums, fields) => respond(() => partOf(markedIndex(fields), albums)),
+		artistSongs: (id, fields) =>
+			respond(() => {
+				const link = artistLinks.find((artist) => artist.id === id);
+				if (link === undefined) {
+					throw new ArtistNotFoundError(id);
+				}
+				return artistIndexOf(markedIndex(fields), link);
+			}),
 		pref: <K extends PrefKey>(key: K) => respond(() => (prefs.get(key) ?? null) as Prefs[K] | null),
 		setPref: (key, value) =>
 			respond(() => {

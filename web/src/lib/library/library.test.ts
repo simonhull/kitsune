@@ -310,6 +310,45 @@ describe('Library', () => {
 		expect(down.artist('a').kind).toBe('unavailable');
 	});
 
+	it("loads an artist's songs, and reads them again after a change", async () => {
+		let reads = 0;
+		const fixtures = createFixtureSource();
+		const library = new Library(
+			source({
+				artistSongs: (id, fields) => {
+					reads += 1;
+					return fixtures.artistSongs(id, fields);
+				}
+			})
+		);
+		expect(library.artistSongs('artist-low-tide-choir').kind).toBe('loading');
+		await library.loadArtistSongs('artist-low-tide-choir', ['plays']);
+		const songs = library.artistSongs('artist-low-tide-choir');
+		expect(songs.kind).toBe('ready');
+		expect(library.holdsArtistSongs('artist-low-tide-choir', ['plays'])).toBe(true);
+		expect(library.holdsArtistSongs('artist-low-tide-choir', ['plays', 'genre'])).toBe(false);
+		// A change marks them behind: the page on screen reads them again, keeping what it has.
+		library.markIndexStale();
+		expect(library.holdsArtistSongs('artist-low-tide-choir', ['plays'])).toBe(false);
+		await library.loadArtistSongs('artist-low-tide-choir', ['plays']);
+		expect(reads).toBe(2);
+		expect(library.holdsArtistSongs('artist-low-tide-choir', ['plays'])).toBe(true);
+		library.reset();
+		expect(library.artistSongs('artist-low-tide-choir').kind).toBe('loading');
+	});
+
+	it("tells a missing artist's songs from ones that could not be fetched", async () => {
+		const missing = new Library(
+			source({ artistSongs: (id) => Promise.reject(new ArtistNotFoundError(id)) })
+		);
+		await missing.loadArtistSongs('a', []);
+		expect(missing.artistSongs('a').kind).toBe('missing');
+		const down = new Library(source({ artistSongs: () => Promise.reject(new ServerError(500)) }));
+		await down.loadArtistSongs('a', []);
+		expect(down.artistSongs('a').kind).toBe('unavailable');
+		expect(down.holdsArtistSongs('a', [])).toBe(false);
+	});
+
 	it('knows an artist by name from whatever linked to it', async () => {
 		const library = new Library(source());
 		await library.loadAlbum('glasshouse-66');

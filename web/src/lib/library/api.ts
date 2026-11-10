@@ -478,6 +478,23 @@ export function createApiSource({
 			return read<LibraryIndex>(`/library/index?${query.toString().replaceAll('%2C', ',')}`);
 		},
 
+		async artistSongs(id, fields = []) {
+			const query = new URLSearchParams({ artist: id });
+			if (fields.length > 0) {
+				query.set('fields', fields.join(','));
+			}
+			try {
+				return await read<LibraryIndex>(
+					`/library/index?${query.toString().replaceAll('%2C', ',')}`
+				);
+			} catch (error) {
+				if (error instanceof ServerError && error.status === 404) {
+					throw new ArtistNotFoundError(id);
+				}
+				throw error;
+			}
+		},
+
 		async pref(key) {
 			try {
 				return await read<Prefs[typeof key]>(`/me/prefs/${encodeURIComponent(key)}`);
