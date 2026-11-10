@@ -47,17 +47,30 @@
 	});
 
 	/** The full list of songs shows: a view in the URL, so Back folds it and a link lands on it. */
-	const expanded = $derived(page.url.searchParams.has('songs'));
+	const inUrl = $derived(page.url.searchParams.has('songs'));
+	/**
+	 * A press shows its view at once, inside the press, and the URL follows: a navigation is a few
+	 * promises long, and nothing a person sees waits for it.
+	 */
+	let pressed = $state<boolean | null>(null);
+	const expanded = $derived(pressed ?? inUrl);
+	// The URL has caught up, or Back or Forward moved it: it says again.
+	$effect(() => {
+		void inUrl;
+		pressed = null;
+	});
 	/** Set when this visit added the `?songs` entry, so folding is going back to the one before. */
 	let pushed = false;
 
 	function expand(): void {
 		pushed = true;
+		pressed = true;
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- Built from resolve('/artists/[id]').
 		void goto(`${resolve('/artists/[id]', { id })}?songs`, { reset: false });
 	}
 
 	function fold(): void {
+		pressed = false;
 		if (pushed) {
 			pushed = false;
 			history.back();
