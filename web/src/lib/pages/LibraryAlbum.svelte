@@ -12,6 +12,7 @@
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsShown from '#lib/shell/StarsShown.svelte';
 	import { numbered, sameOnAlbum } from './columns.ts';
+	import CoverPlay from './CoverPlay.svelte';
 	import type { AlbumBlock, Row } from './libraryRows.ts';
 	import PickBox from './PickBox.svelte';
 	import type { Selection } from './selection.svelte.ts';
@@ -106,21 +107,25 @@
 			data-morph-key={`cover:${album.id}`}
 			data-morph-pinned={stacked ? undefined : ''}
 		>
-			<a class="art" href={resolve('/album/[id]', { id: album.id })} aria-label={album.title}>
-				<span
-					class="square"
-					style:--glow={glow}
-					use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
-				>
-					<Cover
-						albumId={album.id}
-						entry={album}
-						place={stacked ? 'small' : 'card'}
-						box={cover}
-						lazy
-					/>
-				</span>
-			</a>
+			<!-- The cover and its play, beside the link: a button can't live inside one. -->
+			<div class="cover-box">
+				<a class="art" href={resolve('/album/[id]', { id: album.id })} aria-label={album.title}>
+					<span
+						class="square"
+						style:--glow={glow}
+						use:morph={{ id: `cover:${album.id}`, slot: 'card', kind: 'cover' }}
+					>
+						<Cover
+							albumId={album.id}
+							entry={album}
+							place={stacked ? 'small' : 'card'}
+							box={cover}
+							lazy
+						/>
+					</span>
+				</a>
+				<CoverPlay {album} from="list" />
+			</div>
 			<div class="names">
 				<div class="title-line">
 					<a
@@ -254,6 +259,18 @@
 	.pin {
 		position: sticky;
 		top: var(--list-line, 152px);
+	}
+
+	/*
+	 * The cover's play, sized by the cover: as the Albums cards have it at 208 (48 in 12 from the
+	 * corner), the Recent row's at a stacked 112, and no bigger than a thumb's reach at 420.
+	 */
+	.cover-box {
+		--cover-play-size: clamp(36px, calc(var(--cover, 208px) * 0.23), 72px);
+		--cover-play-inset: clamp(8px, calc(var(--cover, 208px) * 0.058), 18px);
+
+		position: relative;
+		width: var(--cover, 208px);
 	}
 
 	.art {
@@ -444,7 +461,7 @@
 			gap: 16px;
 		}
 
-		.square {
+		.cover-box {
 			flex: none;
 		}
 

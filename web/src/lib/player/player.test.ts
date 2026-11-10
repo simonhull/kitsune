@@ -238,6 +238,24 @@ describe('Player', () => {
 		expect(player.status).toBe('playing');
 	});
 
+	it('plays an album from a list on through it, and toggles it while it sounds there', async () => {
+		const { player } = setup();
+		const a = album(2, 'a');
+		player.playOrToggle(a, 'list');
+		await settle();
+		expect(player.queue?.continues).toEqual({ album: 'a' });
+		expect(player.current?.id).toBe('t0');
+		player.playOrToggle(a, 'list');
+		expect(player.status).toBe('paused');
+		player.playOrToggle(a, 'list');
+		await settle();
+		expect(player.status).toBe('playing');
+		// Another album from elsewhere comes to rest after it.
+		player.playOrToggle(album(2, 'b'));
+		await settle();
+		expect(player.queue?.continues).toBeUndefined();
+	});
+
 	it('plays picked songs, puts songs next and adds them at the end', async () => {
 		const { player } = setup();
 		const a = album(2, 'a');
