@@ -13,6 +13,7 @@ import {
 	currentOf,
 	holds,
 	inOrder,
+	listed,
 	next,
 	onDisc,
 	onwardOf,
@@ -23,12 +24,15 @@ import {
 	retagged,
 	rewound,
 	shuffled,
+	takenIn,
 	without,
 	reordered,
 	throughList,
 	upcoming,
 	extended,
 	withdrawn,
+	type AlbumLookup,
+	type ListEntry,
 	type Onward,
 	type Queue,
 	type Queued,
@@ -44,6 +48,11 @@ export type StartedFrom = 'list' | 'elsewhere';
 const mostFailures = 3;
 /** How far before the end the next track starts loading. */
 const preloadSeconds = 15;
+/**
+ * How long after a song from a list queue begins the next song's album is fetched: past its first
+ * sound, so the fetch never shares the play path, and long before the song's end.
+ */
+export const listPrefetchMs = 1000;
 /** Past this far into a track, Previous means the start of it. */
 const restartSeconds = 3;
 /** How far a track must play on from a reload for the file to count as sound again. */
@@ -121,9 +130,17 @@ export class Player implements PlayerView {
 			return null;
 		}
 		const cue = cueOf(queue.album, queue.tracks, queue.index, queue.albums);
+		if (cue === null) {
+			return null;
+		}
+		// A list queue holds its songs ahead as names: the place is the song's in the whole list.
+		const later = queue.later?.length ?? 0;
+		if (later > 0) {
+			return { ...cue, trackCount: cue.trackCount + later, moreCount: cue.moreCount + later };
+		}
 		// Going on through a list, the queue grows an album at a time: the place that means
 		// something is the song's in its album.
-		return cue === null || queue.continues === undefined ? cue : { ...cue, ...albumRun(queue) };
+		return queue.continues === undefined ? cue : { ...cue, ...albumRun(queue) };
 	}
 
 	/** The album of the song playing, which in a queue of picked songs changes as it goes. */
@@ -176,6 +193,76 @@ export class Player implements PlayerView {
 			this.#fresh();
 			this.#begin(shuffle === undefined ? queue : { ...queue, shuffle }, this.#movedOn());
 		}
+	}
+
+	/**
+	 * Plays a list that only names its songs, from `first`, whose album is here: what plays on is
+	 * `later`, in order, each song's album fetched after the song before it has begun, and the
+	 * queue comes to rest after the last. Nothing waits on the server before the first sound.
+	 */
+	playList(first: Queued, later: readonly ListEntry[]): void {
+		this.#fresh();
+		this.#begin(listed(first, later, this.#lookup), this.#movedOn());
+	}
+
+	/** What a list queue knows of an album: here, never to be had, or not yet. */
+	readonly #lookup: AlbumLookup = (id) => {
+		const album = this.#library.album(id);
+		if (album !== undefined) {
+			return album;
+		}
+		return this.#library.failed(id) || this.#library.unavailable(id) ? 'gone' : undefined;
+	};
+
+	/**
+	 * Keeps a list queue's next song ahead of it: once a song has begun, and is sounding, the album
+	 * of the next song it only names is fetched, and its songs go in.
+	 */
+	#feedList(queue: Queue): void {
+		const next = queue.later?.at(0);
+		if (next === undefined) {
+			return;
+		}
+		setTimeout(() => {
+			void this.#library.loadAlbum(next.albumId).then(() => {
+				this.#takeInList();
+			});
+		}, listPrefetchMs);
+	}
+
+	/** Takes into the queue playing whatever of its list has its albums here now. */
+	#takeInList(): void {
+		const { queue } = this;
+		if (queue?.later === undefined) {
+			return;
+		}
+		const grown = takenIn(queue, this.#lookup);
+		if (grown !== queue) {
+			this.queue = grown;
+			this.#show();
+		}
+	}
+
+	/**
+	 * A list queue whose next song's album hasn't come by the end of the song before it: the one
+	 * case anything waits, and only for that album.
+	 */
+	#awaitList(queue: Queue, ending: ListenEnding): void {
+		const next = queue.later?.at(0);
+		if (next === undefined) {
+			this.#finish(queue, ending);
+			return;
+		}
+		this.#run += 1;
+		const run = this.#run;
+		this.status = 'loading';
+		void this.#library.loadAlbum(next.albumId).then(() => {
+			if (run !== this.#run || this.queue !== queue) {
+				return;
+			}
+			this.queue = takenIn(queue, this.#lookup);
+			this.#advance(ending);
+		});
 	}
 
 	/** Puts songs after the one playing; with nothing started, plays them. */
@@ -432,6 +519,7 @@ export class Player implements PlayerView {
 		this.#listen = this.#listenFromHere();
 		this.#show();
 		this.onward[onwardOf(queue)]?.(queue);
+		this.#feedList(queue);
 		const track = currentOf(queue);
 		if (track === undefined) {
 			return;
@@ -555,10 +643,19 @@ export class Player implements PlayerView {
 			return;
 		}
 		const onward = next(this.queue);
-		if (onward === null) {
-			this.#finish(this.queue, ending);
-		} else {
+		if (onward !== null) {
 			this.#begin(onward, ending);
+			return;
+		}
+		// A list queue takes in what has come for it; what hasn't, it waits for.
+		const grown = takenIn(this.queue, this.#lookup);
+		const after = next(grown);
+		if (after !== null) {
+			this.#begin(after, ending);
+		} else if (grown.later === undefined) {
+			this.#finish(grown, ending);
+		} else {
+			this.#awaitList(grown, ending);
 		}
 	}
 

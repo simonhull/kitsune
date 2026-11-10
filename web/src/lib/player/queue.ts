@@ -17,7 +17,22 @@ export interface Queue {
 	shuffle?: ShuffleRef;
 	/** Set when it goes on through a list, album by album, past its last song. */
 	continues?: Continues;
+	/**
+	 * The songs of a list still to come after its last song, by ID: a list that only names its songs,
+	 * an artist page's. Each goes in once its album is here ({@link takenIn}); past the last of them
+	 * the queue comes to rest.
+	 */
+	later?: readonly ListEntry[];
 }
+
+/** A song a list names: its track, and the album that holds it. */
+export interface ListEntry {
+	trackId: string;
+	albumId: string;
+}
+
+/** What a list queue knows of an album now: here, never to be had, or not yet. */
+export type AlbumLookup = (id: string) => Album | 'gone' | undefined;
 
 /**
  * A queue going on through a list, the Library's, an album at a time. The list's order is never
@@ -155,6 +170,48 @@ export function picked(songs: readonly Queued[]): Queue | null {
 		index: 0,
 		ordered: false,
 		albums: new Map(songs.map(({ album, track }) => [track.id, album]))
+	};
+}
+
+/**
+ * Queues a list that names its songs from `first`, whose album is here: the rest wait as IDs, and
+ * as many as have their albums here already go in at once.
+ */
+export function listed(first: Queued, later: readonly ListEntry[], lookup: AlbumLookup): Queue {
+	const queue = picked([first]) ?? inOrder(first.album);
+	return takenIn(later.length === 0 ? queue : { ...queue, later }, lookup);
+}
+
+/**
+ * Takes in the list's songs after the queue, in order, as far as their albums are here: a song whose
+ * album is gone, or that its album no longer holds, is passed over. The first whose album hasn't
+ * come yet waits, and everything after it.
+ */
+export function takenIn(queue: Queue, lookup: AlbumLookup): Queue {
+	const { later } = queue;
+	if (later === undefined) {
+		return queue;
+	}
+	const songs: Queued[] = [];
+	let taken = 0;
+	for (const { trackId, albumId } of later) {
+		const album = lookup(albumId);
+		if (album === undefined) {
+			break;
+		}
+		taken += 1;
+		const track = album === 'gone' ? undefined : album.tracks.find(({ id }) => id === trackId);
+		if (album !== 'gone' && track !== undefined) {
+			songs.push({ album, track });
+		}
+	}
+	if (taken === 0) {
+		return queue;
+	}
+	const rest = later.slice(taken);
+	return {
+		...spliced(queue, queue.tracks.length, songs),
+		later: rest.length > 0 ? rest : undefined
 	};
 }
 
@@ -354,7 +411,7 @@ export function previous(queue: Queue): Queue | null {
  * what it holds, and nothing past it.
  */
 export function rewound(queue: Queue): Queue {
-	return { ...queue, index: 0, continues: undefined };
+	return { ...queue, index: 0, continues: undefined, later: undefined };
 }
 
 /** Takes in an album just edited, keeping the order and the place. Renumbering moves neither. */
