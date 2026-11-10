@@ -15,7 +15,12 @@ export interface Shape {
 	songs: number;
 	/** How many albums get pink noise in their first two tracks: the ones the suite plays. */
 	loudAlbums: number;
+	/** One artist with many songs, for its page: its own albums, and its guest spots. */
+	prolific: { albums: number; perAlbum: number; guests: number };
 }
+
+/** The prolific artist: last in the Library's order, so nothing else the suite finds moves. */
+export const prolificName = 'Zola Tide Choir';
 
 /** An album the suite can play. */
 export interface LoudAlbum {
@@ -31,10 +36,15 @@ export interface Manifest {
 	albums: number;
 	artists: number;
 	loud: LoudAlbum[];
+	/** The prolific artist's songs: its own and its guest spots. */
+	prolific: { name: string; songs: number };
 }
 
-/** The library's form: 2 tags every song but the loud albums' with ReplayGain. */
-const libraryForm = 2;
+/**
+ * The library's form: 2 tags every song but the loud albums' with ReplayGain; 3 adds the prolific
+ * artist after everything else, from a generator of its own, so the rest is written as it was.
+ */
+const libraryForm = 3;
 
 const coverCount = 48;
 const silentSeconds = 30;
@@ -245,7 +255,8 @@ export function writeLibrary(root: string, work: string, shape: Shape): Manifest
 		songs: 0,
 		albums: 0,
 		artists: artists.length,
-		loud: []
+		loud: [],
+		prolific: { name: prolificName, songs: 0 }
 	};
 	for (const artist of artists) {
 		const isLoud = loudArtists.has(artist.name);
@@ -283,6 +294,73 @@ export function writeLibrary(root: string, work: string, shape: Shape): Manifest
 			});
 		}
 	}
+	writeProlific(root, shape.prolific, manifest, { silent, loud });
 	writeFileSync(manifestPath, JSON.stringify(manifest));
 	return manifest;
+}
+
+/**
+ * Writes the prolific artist: its own albums, newest first by year, and guest spots on compilations
+ * beside a session band. The newest two albums are real noise, every song of them, as they're what
+ * its page lists first with nothing played. Every song has ReplayGain, so nothing waits to be
+ * measured. Its names come from a generator of their own, so the rest of the library is unchanged.
+ */
+function writeProlific(
+	root: string,
+	{ albums, perAlbum, guests }: Shape['prolific'],
+	manifest: Manifest,
+	templates: { silent: Template; loud: Template }
+): void {
+	const next = random(55);
+	const gain = { REPLAYGAIN_TRACK_GAIN: '-6.00 dB', REPLAYGAIN_TRACK_PEAK: '0.5' };
+	const write = (dir: string, number: number, tags: Record<string, string>, noisy: boolean) => {
+		writeFileSync(
+			join(dir, `${String(number).padStart(2, '0')} ${safe(tags['TITLE'] ?? '')}.flac`),
+			flacWith(noisy ? templates.loud : templates.silent, { ...tags, ...gain })
+		);
+		manifest.songs += 1;
+	};
+	for (let a = 0; a < albums; a++) {
+		const album = `Tide ${title(next, 1)} ${String(a + 1)}`;
+		const year = String(2026 - a);
+		const genre = genres[Math.floor(next() * genres.length)] ?? 'Rock';
+		const dir = join(root, safe(prolificName), safe(album));
+		mkdirSync(dir, { recursive: true });
+		manifest.albums += 1;
+		for (let s = 1; s <= perAlbum; s++) {
+			write(
+				dir,
+				s,
+				{
+					TITLE: title(next, 1 + Math.floor(next() * 3)),
+					ARTIST: prolificName,
+					ALBUMARTIST: prolificName,
+					ALBUM: album,
+					TRACKNUMBER: String(s),
+					DISCNUMBER: '1',
+					DATE: year,
+					GENRE: genre
+				},
+				a < 2
+			);
+		}
+	}
+	for (let g = 0; g < guests; g++) {
+		const album = `Harbor Sessions ${String(g + 1)}`;
+		const dir = join(root, 'Various Artists', safe(album));
+		mkdirSync(dir, { recursive: true });
+		manifest.albums += 1;
+		const common = {
+			ALBUMARTIST: 'Various Artists',
+			ALBUM: album,
+			COMPILATION: '1',
+			DISCNUMBER: '1',
+			DATE: String(2020 - (g % 20)),
+			GENRE: 'Folk'
+		};
+		write(dir, 1, { ...common, TITLE: title(next, 2), ARTIST: prolificName, TRACKNUMBER: '1' }, false);
+		write(dir, 2, { ...common, TITLE: title(next, 2), ARTIST: 'Zuma Session Band', TRACKNUMBER: '2' }, false);
+	}
+	manifest.prolific.songs = albums * perAlbum + guests;
+	manifest.artists += 2;
 }

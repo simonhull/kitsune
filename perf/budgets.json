@@ -28,7 +28,18 @@
 			"p95Ms": 100
 		},
 		"column-drop": { "interaction": "Drop a column, release to rows in their new order", "p95Ms": 210 },
-		"column-key": { "interaction": "Alt+→ on a column header, key to rows in their new order", "p95Ms": 215 }
+		"column-key": { "interaction": "Alt+→ on a column header, key to rows in their new order", "p95Ms": 215 },
+		"artist-songs-paint": {
+			"interaction": "Open an artist with 800 songs from its album, click to Top songs' rows",
+			"p95Ms": 9999
+		},
+		"artist-expand": { "interaction": "All N songs, click to the full list's rows", "p95Ms": 9999 },
+		"artist-regroup": { "interaction": "An artist's songs, flat to by album, click to rows", "p95Ms": 9999 },
+		"play-artist": { "interaction": "Play a song from an artist's flat list", "p95Ms": 9999 },
+		"artist-scroll": {
+			"interaction": "Longest frame in a 2 s fling of an artist's 800 songs",
+			"p95Ms": 9999
+		}
 	},
 	"server": {
 		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 0.5 },
