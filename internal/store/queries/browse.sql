@@ -240,6 +240,69 @@ CROSS JOIN plays p INDEXED BY plays_track -- Else plays_recent: every play of th
 WHERE p.user_id = sqlc.arg(user_id) AND a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND p.track_id = t.id
 GROUP BY p.track_id;
 
+-- The same, for the songs one artist is on, as an artist or an album artist, by
+-- the artist's row ID: the artist page's list, the artist shuffle scope's songs.
+-- Each has the columns of its whole-library twin above, in the same order. The
+-- songs come from track_artists_artist, and each track by its row ID.
+
+-- name: ListIndexTracksByArtist :many
+SELECT t.id, t.album_id, t.ulid, t.title, t.disc_no, t.disc_subtitle, t.track_no, t.duration_ms
+FROM tracks t
+WHERE t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = sqlc.arg(artist_id))
+  AND t.missing_since IS NULL
+ORDER BY t.album_id, coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id;
+
+-- name: ListIndexTrackArtistsByArtist :many
+SELECT ta.track_id, ar.name
+FROM tracks t
+CROSS JOIN track_artists ta
+CROSS JOIN artists ar
+WHERE t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = sqlc.arg(artist_id))
+  AND t.missing_since IS NULL AND ta.track_id = t.id AND ta.role = 'artist' AND ar.id = ta.artist_id
+ORDER BY ta.track_id, ta.ord;
+
+-- name: ListIndexTrackDetailsByArtist :many
+SELECT t.id, t.year, t.format, t.sample_rate, t.bit_depth, t.bitrate, t.added_at, t.rg_track_gain
+FROM tracks t
+WHERE t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = sqlc.arg(artist_id))
+  AND t.missing_since IS NULL;
+
+-- name: ListIndexTrackMeasuresByArtist :many
+SELECT t.id, l.integrated
+FROM tracks t
+CROSS JOIN track_loudness l
+WHERE t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = sqlc.arg(artist_id))
+  AND t.missing_since IS NULL AND t.rg_track_gain IS NULL AND t.rg_album_gain IS NULL
+  AND l.track_id = t.id AND l.size = t.size AND l.mtime = t.mtime
+  AND l.outcome = 'measured' AND l.integrated IS NOT NULL;
+
+-- name: ListIndexTrackAlbumArtistsByArtist :many
+SELECT ta.track_id, ar.name
+FROM tracks t
+CROSS JOIN track_artists ta
+CROSS JOIN artists ar
+WHERE t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = sqlc.arg(artist_id))
+  AND t.missing_since IS NULL AND ta.track_id = t.id AND ta.role = 'album_artist' AND ar.id = ta.artist_id
+ORDER BY ta.track_id, ta.ord;
+
+-- name: ListIndexTrackTagsByArtist :many
+SELECT tt.track_id, tt.key, tt.value
+FROM tracks t
+CROSS JOIN track_tags tt
+-- artist_id comes first: sqlc numbers a named argument, which a slice before it would shift.
+WHERE t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = sqlc.arg(artist_id))
+  AND t.missing_since IS NULL AND tt.track_id = t.id AND tt.key IN (sqlc.slice(tag_keys))
+ORDER BY tt.track_id, tt.key, tt.ord;
+
+-- name: ListIndexPlaysByArtist :many
+SELECT p.track_id, count(*) AS plays, CAST(max(p.played_at) AS INTEGER) AS last_played
+FROM tracks t
+CROSS JOIN plays p INDEXED BY plays_track -- Else plays_recent: every play of the person, per track.
+WHERE p.user_id = sqlc.arg(user_id)
+  AND t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = sqlc.arg(artist_id))
+  AND p.track_id = t.id
+GROUP BY p.track_id;
+
 -- name: CountLiveAlbums :one
 SELECT count(*) FROM albums a
 WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL);

@@ -35,6 +35,10 @@
 		"library-index": {
 			"interaction": "GET /library/index, 50k songs, default fields, gzip",
 			"p95Ms": 250
+		},
+		"artist-index": {
+			"interaction": "GET /library/index?artist=, 825 songs of 50k, default fields, gzip",
+			"p95Ms": 24
 		}
 	}
 }

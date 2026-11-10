@@ -39,6 +39,9 @@ type ArtistDetail struct {
 	ArtistSummary
 
 	Albums, AppearsOn []AlbumSummary
+	// SongCount is how many live songs it is on, as an artist or an album artist:
+	// the songs of its index ([IndexOptions.Artist]).
+	SongCount int
 }
 
 // Artists returns every artist who owns an album with a live track, whole,
@@ -90,7 +93,11 @@ func (s *Store) Artist(ctx context.Context, id string) (ArtistDetail, error) {
 	if err != nil {
 		return ArtistDetail{}, fmt.Errorf("artist %s: albums: %w", id, err)
 	}
-	d := ArtistDetail{ID: row.Ulid, Name: row.Name}
+	songs, err := s.rq.CountArtistTracks(ctx, row.ID)
+	if err != nil {
+		return ArtistDetail{}, fmt.Errorf("artist %s: songs: %w", id, err)
+	}
+	d := ArtistDetail{ID: row.Ulid, Name: row.Name, SongCount: int(songs)}
 	for i := range albums {
 		a := &albums[i]
 		summary := summarize(&sqlcdb.ListAlbumsByNameRow{

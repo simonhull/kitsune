@@ -202,11 +202,20 @@ func (s *Server) getLibraryIndex(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, r, http.StatusBadRequest, "albums must be at most 500 album ids, joined by commas")
 		return
 	}
+	artist := r.URL.Query().Get("artist")
+	if artist != "" && albums != nil {
+		writeProblem(w, r, http.StatusBadRequest, "artist and albums can't be asked for together")
+		return
+	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
 	opts := fields.options()
-	opts.Albums = albums
+	opts.Albums, opts.Artist = albums, artist
 	index, err := s.library.LibraryIndex(r.Context(), user.ID, &opts)
 	if r.Context().Err() != nil {
+		return
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		writeProblem(w, r, http.StatusNotFound, "no such artist")
 		return
 	}
 	if err != nil {

@@ -1771,6 +1771,18 @@ paths:
             type: array
             maxItems: 500
             items: { type: string }
+        - name: artist
+          in: query
+          required: false
+          description: >-
+            Only the songs this artist is on, by id, as an artist or an album
+            artist: the songs the `artist` shuffle scope draws from, and the
+            artist page's list. They come in the index's shape, under one
+            heading of that artist: the albums it owns, then the albums it
+            appears on, each run newest first as `GET /artists/{id}` has them,
+            and each album with just the artist's songs. No album has `after`.
+            With `albums`, a 400. An unknown artist is a 404.
+          schema: { type: string }
       responses:
         "200":
           description: Every artist with an album, its albums and their tracks.
@@ -1793,6 +1805,8 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
   /search:
     get:
       operationId: getSearch
@@ -3055,11 +3069,16 @@ components:
     ArtistDetail:
       type: object
       additionalProperties: false
-      required: [id, name, albumCount, albums, appearsOn]
+      required: [id, name, albumCount, albums, appearsOn, songCount]
       properties:
         id: { type: string }
         name: { type: string }
         albumCount: { type: integer, description: The albums it owns. }
+        songCount:
+          type: integer
+          description: >-
+            The songs it is on, as an artist or an album artist: those
+            `GET /library/index?artist=` lists.
         albums:
           type: array
           description: The albums it owns, newest first.

@@ -375,6 +375,61 @@ func (ts *testServer) seedBench(tb testing.TB, tracks, albums, artists int) stri
 	return sess.token
 }
 
+// A prolific artist's shape: 40 albums of 20 songs, and a guest spot on 25
+// albums of others.
+const (
+	prolificAlbums   = 40
+	prolificPerAlbum = 20
+	prolificGuest    = 25
+	prolificSongs    = prolificAlbums*prolificPerAlbum + prolificGuest
+)
+
+// seedProlific writes a prolific artist's albums and guest spots, numbered
+// after the albums already written, and returns the artist's ID. A third of its
+// songs are played once, by the person seedBench signed in.
+func (ts *testServer) seedProlific(tb testing.TB, after int) string {
+	tb.Helper()
+	user, err := ts.Store.UserByName(tb.Context(), simonName)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	star := person(after+1, "Prolific")
+	tws := make([]store.TrackWrite, 0, prolificSongs)
+	add := func(n, songs int, owner store.ArtistWrite, by []store.ArtistWrite) {
+		album := store.AlbumWrite{
+			GroupKey: fmt.Sprintf("g%d", n), ULID: albumULID(n), Name: fmt.Sprintf("Album %d", n),
+			SortName: fmt.Sprintf("Album %d", n), Artist: owner.Name, Year: 1960 + n%60,
+		}
+		for t := range songs {
+			tws = append(tws, store.TrackWrite{
+				ULID: fmt.Sprintf("01J%020d%03d", n, t), Root: musicBase, RelPath: fmt.Sprintf("a%d/%d.flac", n, t),
+				Format: streamFormat, Codec: flacFormat, Duration: 4 * time.Minute, SampleRate: 44100, BitDepth: 16,
+				Bitrate: 900_000, Lossless: true, Title: fmt.Sprintf("Track %d", t), TrackNo: t + 1,
+				Year: album.Year, Album: album, Artists: by, AlbumArtists: []store.ArtistWrite{owner},
+				Tags: []store.Tag{{Key: library.GenreKeys()[0], Value: fmt.Sprintf("Genre %d", n%30)}},
+			})
+		}
+	}
+	for i := range prolificAlbums {
+		add(after+1+i, prolificPerAlbum, star, []store.ArtistWrite{star})
+	}
+	for i := range prolificGuest {
+		host := person(after+2+i, fmt.Sprintf("Host %d", i))
+		add(after+1+prolificAlbums+i, 1, host, []store.ArtistWrite{host, star})
+	}
+	if err = ts.Store.WriteBatch(tb.Context(), &store.Batch{Tracks: tws}); err != nil {
+		tb.Fatal(err)
+	}
+	for i := 0; i < len(tws); i += 3 {
+		if err = ts.Store.RecordPlay(tb.Context(), &store.NewPlay{
+			UserID: user.ID, TrackID: tws[i].ULID, PlayedAt: ts.Clock.Now(), Source: "bench", ClientID: "p" + strconv.Itoa(i),
+		}); err != nil {
+			tb.Fatal(err)
+		}
+	}
+	return star.ULID
+}
+
 // benchDisc places track t of album i, of count, on a disc: one album in five
 // has two, numbered afresh on each, and half of those name them. The rest have
 // one disc and no disc number.
