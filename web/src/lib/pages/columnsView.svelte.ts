@@ -12,6 +12,17 @@ export const columnsSaveMs = 400;
 /** How long Reset offers to undo itself. */
 export const undoResetMs = 6000;
 
+/** Runs `then` once the next frame has painted, or in a moment where nothing paints. */
+function afterPaint(then: () => void): void {
+	if (typeof requestAnimationFrame === 'function') {
+		requestAnimationFrame(() => {
+			setTimeout(then, 0);
+		});
+	} else {
+		setTimeout(then, 0);
+	}
+}
+
 /** What the view needs of the library: its preferences, and word of another device's change. */
 export interface ColumnsHome {
 	prefs: Pick<PrefsStore, 'get' | 'put' | 'flush'>;
@@ -75,7 +86,8 @@ export class ColumnsView {
 
 	/**
 	 * A new order: a drop saves at once, and a run of keys once it stops. The same order again (a
-	 * drop in place) saves nothing.
+	 * drop in place) saves nothing. A drop's request goes once its frame has painted, so the work of
+	 * sending it stays off the frame that shows the new order.
 	 */
 	reorder(next: ColumnsPref, { debounce = false }: { debounce?: boolean } = {}): void {
 		if (next === this.pref) {
@@ -86,10 +98,12 @@ export class ColumnsView {
 		clearTimeout(this.#saving);
 		if (debounce) {
 			this.#saving = setTimeout(() => {
-				this.#save();
+				this.#home.prefs.put('library.columns', this.pref);
+				void this.#home.prefs.flush();
 			}, columnsSaveMs);
 		} else {
-			this.#save();
+			this.#home.prefs.put('library.columns', this.pref);
+			afterPaint(() => void this.#home.prefs.flush());
 		}
 	}
 
@@ -145,11 +159,6 @@ export class ColumnsView {
 		this.#asked = null;
 		this.#holding = false;
 		this.#held = null;
-	}
-
-	#save(): void {
-		this.#home.prefs.put('library.columns', this.pref);
-		void this.#home.prefs.flush();
 	}
 }
 

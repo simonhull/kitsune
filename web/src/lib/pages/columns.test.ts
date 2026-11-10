@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ColumnsPref, LibraryAlbum, LibraryTrack } from '#lib/library/source.ts';
+import type { ColumnsPref, LibraryAlbum, LibraryTrack, MovableId } from '#lib/library/source.ts';
 import {
 	artistWhenDifferentIn,
 	cellOf,
@@ -458,6 +458,15 @@ describe('column widths', () => {
 		expect(widthAt('rating', pref.widths, 'large')).toBe(110);
 		expect(columnVars(['genre', 'plays'], pref.widths, 'columns')).toBe(
 			'--col-genre: 160px; --col-plays: 48px'
+		);
+	});
+
+	it('says the widths the same whatever the order, so a move leaves the list’s style alone', () => {
+		const order: MovableId[] = ['number', 'title', 'artist', 'genre', 'rating', 'plays'];
+		const moved = reorderIn({ ...defaultColumns, order }, 'library', order, 'plays', 2);
+		expect(moved.order).not.toEqual(order);
+		expect(columnVars(moved.order, undefined, 'columns')).toBe(
+			columnVars(order, undefined, 'columns')
 		);
 	});
 

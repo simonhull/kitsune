@@ -58,6 +58,7 @@
 	} from './columns.ts';
 	import ColumnsMenu from './ColumnsMenu.svelte';
 	import { columnsView } from './columnsView.svelte.ts';
+	import { songGrid } from './songGrid.ts';
 	import LibraryAlbum from './LibraryAlbum.svelte';
 	import { windowAt, type RowWindow } from './libraryRows.ts';
 	import { frameFor } from './libraryView.svelte.ts';
@@ -973,7 +974,7 @@
 	class:stacked
 	aria-labelledby="artist-songs"
 	bind:this={root}
-	style:--song-grid={grid}
+	use:songGrid={grid}
 	style:--cover={`${String(cover)}px`}
 	style:--cover-gap={`${String(coverGap)}px`}
 	style:--pin-top={`${String(pinTop)}px`}

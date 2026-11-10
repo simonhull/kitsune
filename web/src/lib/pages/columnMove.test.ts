@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { landingLeft, moveFrame, movedTo, rubber, rubberMax, type Slot } from './columnMove.ts';
+import {
+	landingLeft,
+	moveFrame,
+	movedTo,
+	relaid,
+	rubber,
+	rubberMax,
+	type Slot
+} from './columnMove.ts';
 
 const gap = 12;
 /** Four columns, 100, 50, 80 and 60 wide, a gap apart. */
@@ -75,5 +83,28 @@ describe('movedTo', () => {
 		expect(movedTo(['a', 'b', 'c'], 0, 2)).toEqual(['b', 'c', 'a']);
 		expect(movedTo(['a', 'b', 'c'], 2, 0)).toEqual(['c', 'a', 'b']);
 		expect(movedTo(['a', 'b', 'c'], 1, 9)).toEqual(['a', 'c', 'b']);
+	});
+});
+
+describe('relaid', () => {
+	const before = new Map(slots.map((slot, index) => [`c${String(index)}`, slot] as const));
+
+	it('places the same widths in the new order, a gap apart, from the same start', () => {
+		expect([...(relaid(before, ['c1', 'c0', 'c2', 'c3'], gap) ?? [])]).toEqual([
+			['c1', 0],
+			['c0', 62],
+			['c2', 174],
+			['c3', 266]
+		]);
+	});
+
+	it('is the layout before when nothing moved', () => {
+		const same = relaid(before, ['c0', 'c1', 'c2', 'c3'], gap);
+		expect([...(same?.values() ?? [])]).toEqual(slots.map(({ left }) => left));
+	});
+
+	it('knows nothing of columns that weren’t there', () => {
+		expect(relaid(before, ['c0', 'c1', 'c2'], gap)).toBeNull();
+		expect(relaid(before, ['c0', 'c1', 'c2', 'c9'], gap)).toBeNull();
 	});
 });

@@ -22,11 +22,18 @@ async function prolific(page: Page, name: string): Promise<{ id: string; album: 
 
 /** Top songs' rows, on the artist's page. */
 function topRows(id: string): Wait {
-	return { kind: 'selector', selector: 'main .songs .list > .row[data-track]', path: `/artists/${id}` };
+	return {
+		kind: 'selector',
+		selector: 'main .songs .list > .row[data-track]',
+		path: `/artists/${id}`
+	};
 }
 
 /** The full list's rows past Top's ten. */
-const allRows: Wait = { kind: 'selector', selector: 'main .songs.expanded .list > .row:nth-child(12)' };
+const allRows: Wait = {
+	kind: 'selector',
+	selector: 'main .songs.expanded .list > .row:nth-child(12)'
+};
 
 /** By album's first block, with its rows. */
 const albumRows: Wait = {

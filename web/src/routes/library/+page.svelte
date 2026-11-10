@@ -18,6 +18,7 @@
 	} from '#lib/pages/columns.ts';
 	import ColumnsMenu from '#lib/pages/ColumnsMenu.svelte';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
+	import { songGrid } from '#lib/pages/songGrid.ts';
 	import LibraryAlbum from '#lib/pages/LibraryAlbum.svelte';
 	import LinePill from '#lib/pages/LinePill.svelte';
 	import LibraryFilters from '#lib/pages/LibraryFilters.svelte';
@@ -476,7 +477,7 @@
 	class:stepping
 	style:--cover={`${String(view.cover)}px`}
 	style:--list-line={`${String(view.frame.line)}px`}
-	style:--song-grid={grid}
+	use:songGrid={grid}
 	style={columnVars(fitted.shown, columnsView.pref.widths, columnStep)}
 	data-selecting={selection.any ? '' : undefined}
 >
@@ -786,7 +787,8 @@
 	}
 
 	/* Crossing a step, what changes size moves to it; nothing else animates a resize. */
-	.stepping :global(:is(.artist, .album, .side, .square, .songs, .row, .disc, .header, h2)) {
+	.stepping
+		:global(:is(.artist, .album, .side, .cover-box, .square, .songs, .row, .disc, .header, h2)) {
 		transition:
 			top var(--morph) var(--curve-morph),
 			height var(--morph) var(--curve-morph),

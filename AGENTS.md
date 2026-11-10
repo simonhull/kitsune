@@ -381,6 +381,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   moves by its own style rule (`columnMotion.ts`, written through the CSSOM: a custom property on the
   list restyled everything under it), one resized by `--col-<id>` on the list; neither changes a row
   or any state until the task that ends it. `reorderIn` keeps which columns fit the same on a drop.
+  A list's grid is a rule too (`songGrid.ts`), and the task that ends a move reads no layout back;
+  the settle starts after the frame that shows the new order, and the save is sent after it.
 - An artist page's queue is its list as shown, and stops at its end: `player.playList` holds the songs
   ahead as track and album IDs (`Queue.later`) and fetches each next album after the song before it
   has begun, so nothing waits on the play path.

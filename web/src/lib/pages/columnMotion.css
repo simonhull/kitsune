@@ -255,9 +255,12 @@
 	background: repeating-linear-gradient(-45deg, var(--edge-strong) 0 1.5px, transparent 1.5px 8px);
 }
 
-:root[data-grabbing],
-:root[data-grabbing] * {
-	cursor: grabbing !important;
+/* Over the page while a column is held, for the closed hand; the held label has the pointer. */
+.column-grab {
+	position: fixed;
+	inset: 0;
+	z-index: 2147483647;
+	cursor: grabbing;
 }
 
 /* The one place a move speaks, for every list. */

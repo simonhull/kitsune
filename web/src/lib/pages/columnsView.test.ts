@@ -52,12 +52,14 @@ describe('ColumnsView', () => {
 		vi.useRealTimers();
 	});
 
-	it('saves a drop at once, once', () => {
+	it('saves a drop at once, once, sent after its frame', async () => {
 		const at = home();
 		const view = new ColumnsView(at);
 		view.reorder(moved);
-		expect(at.sent).toEqual([moved]);
 		expect(view.pref).toBe(moved);
+		expect(at.sent).toEqual([]);
+		await vi.advanceTimersByTimeAsync(20);
+		expect(at.sent).toEqual([moved]);
 	});
 
 	it('saves nothing for a drop in place', () => {

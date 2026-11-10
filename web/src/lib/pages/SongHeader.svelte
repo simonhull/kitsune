@@ -24,7 +24,7 @@
 		/** What the rows place, in order: the number, the title and the columns that fit. */
 		shown: readonly MovableId[];
 		hiddenCount: number;
-		/** The parts the rows have, whose grid is the list's `--song-grid`. */
+		/** The parts the rows have, whose grid is the list's (songGrid.ts). */
 		parts?: RowParts;
 		/** Opens the columns menu at a place, offering to hide a column if one was pointed at. */
 		openMenu: (x: number, y: number, hiding?: ColumnId) => void;
@@ -290,6 +290,7 @@
 
 <div
 	class="header"
+	data-song-header
 	role="group"
 	aria-label={onreorder === undefined
 		? 'Columns. On a label, the menu key or Shift+F10 chooses them.'
@@ -401,7 +402,7 @@
 		height: var(--head-row, 40px);
 		box-sizing: border-box;
 		display: grid;
-		grid-template-columns: var(--song-grid);
+		/* Its columns are the list's grid, a rule of songGrid.ts's. */
 		align-items: center;
 		column-gap: var(--col-gap, 12px);
 		padding: 0 var(--row-pad, 14px);

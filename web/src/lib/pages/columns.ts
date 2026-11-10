@@ -275,15 +275,19 @@ export function nudged(width: number, key: string, shift: boolean): number {
 
 /**
  * The columns' widths as the custom properties the grid reads (`--col-genre: 120px`), set on the
- * list's container: a drag changes one property there, and no row.
+ * list's container: a drag changes one property there, and no row. They come in the columns' own
+ * order, not the person's, so a move leaves the text as it was and the list's style untouched: a
+ * new style there restyles everything under it.
  */
 export function columnVars(
 	order: readonly MovableId[],
 	widths: ColumnsPref['widths'],
 	step: Exclude<Step, 'phone'>
 ): string {
-	return columnsOf(order)
-		.map((id) => `--col-${id}: ${String(widthAt(id, widths, step))}px`)
+	const shown = new Set(columnsOf(order));
+	return columnSpecs
+		.filter(({ id }) => shown.has(id))
+		.map(({ id }) => `--col-${id}: ${String(widthAt(id, widths, step))}px`)
 		.join('; ');
 }
 

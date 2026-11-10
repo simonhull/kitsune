@@ -16,6 +16,7 @@ import {
 	pendingAlbum,
 	picked,
 	playingNext,
+	playsAlbum,
 	previous,
 	retagged,
 	rewound,
@@ -288,6 +289,22 @@ describe('a queue going on through a list', () => {
 		const queue = continued(throughList(inOrder(album(2), 1)), other);
 		expect(albumRun(queue)).toEqual({ index: 1, trackCount: 2 });
 		expect(albumRun({ ...queue, index: 2 })).toEqual({ index: 0, trackCount: 2 });
+	});
+
+	it('says which album a cover’s play pauses: the queue’s own, and from the list the one sounding', () => {
+		const queue = continued(throughList(inOrder(album(2), 1)), other);
+		expect(playsAlbum(null, 'a', 'list')).toBe(false);
+		expect(playsAlbum(throughList(inOrder(album(2))), 'a', 'elsewhere')).toBe(true);
+		// Once the next album is in, the queue is more than one album: only the list knows it.
+		expect(playsAlbum(queue, 'a', 'list')).toBe(true);
+		expect(playsAlbum(queue, 'a', 'elsewhere')).toBe(false);
+		expect(playsAlbum(queue, 'b', 'list')).toBe(false);
+		expect(playsAlbum({ ...queue, index: 2 }, 'b', 'list')).toBe(true);
+		expect(playsAlbum({ ...queue, index: 2 }, 'a', 'list')).toBe(false);
+		expect(playsAlbum({ ...queue, index: 2 }, 'b', 'elsewhere')).toBe(false);
+		// Songs picked from that album, not going through a list, aren't the album playing.
+		const songs = picked([{ album: other, track: other.tracks[0] as Track }]);
+		expect(playsAlbum(songs, 'b', 'list')).toBe(false);
 	});
 
 	it('comes to rest at the end, going no further', () => {

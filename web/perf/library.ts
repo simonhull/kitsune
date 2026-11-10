@@ -358,8 +358,18 @@ function writeProlific(
 			DATE: String(2020 - (g % 20)),
 			GENRE: 'Folk'
 		};
-		write(dir, 1, { ...common, TITLE: title(next, 2), ARTIST: prolificName, TRACKNUMBER: '1' }, false);
-		write(dir, 2, { ...common, TITLE: title(next, 2), ARTIST: 'Zuma Session Band', TRACKNUMBER: '2' }, false);
+		write(
+			dir,
+			1,
+			{ ...common, TITLE: title(next, 2), ARTIST: prolificName, TRACKNUMBER: '1' },
+			false
+		);
+		write(
+			dir,
+			2,
+			{ ...common, TITLE: title(next, 2), ARTIST: 'Zuma Session Band', TRACKNUMBER: '2' },
+			false
+		);
 	}
 	manifest.prolific.songs = albums * perAlbum + guests;
 	manifest.artists += 2;
