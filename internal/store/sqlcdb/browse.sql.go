@@ -154,7 +154,7 @@ SELECT t.id, t.ulid, t.root, t.rel_path, t.size, t.mtime, t.album_id, a.group_ke
 FROM tracks t
 JOIN albums a ON a.id = t.album_id
 WHERE a.ulid = ? AND t.missing_since IS NULL
-ORDER BY coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id
+ORDER BY t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.id
 `
 
 type ListAlbumFilesRow struct {
@@ -291,6 +291,7 @@ func (q *Queries) ListAlbumTrackArtists(ctx context.Context, albumID int64) ([]L
 }
 
 const listAlbumTracks = `-- name: ListAlbumTracks :many
+
 SELECT
     t.id, t.ulid, t.title, t.disc_no, t.disc_total, t.disc_subtitle, t.track_no, t.track_total, t.year,
     t.duration_ms, t.format, t.sample_rate, t.bit_depth,
@@ -302,7 +303,7 @@ FROM tracks t
 LEFT JOIN track_loudness l ON l.track_id = t.id AND l.size = t.size AND l.mtime = t.mtime AND l.outcome = 'measured'
 LEFT JOIN album_loudness a ON a.id = l.album_pool
 WHERE t.album_id = ? AND t.missing_since IS NULL
-ORDER BY coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id
+ORDER BY t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.id
 `
 
 type ListAlbumTracksRow struct {
@@ -331,6 +332,10 @@ type ListAlbumTracksRow struct {
 	MeasuredAlbumPeak       *float64
 }
 
+// An album's tracks go by disc, then track number, then title. Those with no
+// disc number come after every disc: on an album with no disc numbers at all,
+// that is all of them, in the same order a single disc has. Every query that
+// lists an album's tracks repeats this order.
 // With Kitsune's own loudness measure of each file, and of the album it was
 // pooled into: see migrations/0013_loudness.sql.
 func (q *Queries) ListAlbumTracks(ctx context.Context, albumID int64) ([]ListAlbumTracksRow, error) {
@@ -1465,7 +1470,7 @@ const listIndexTracks = `-- name: ListIndexTracks :many
 SELECT id, album_id, ulid, title, disc_no, disc_subtitle, track_no, duration_ms
 FROM tracks
 WHERE missing_since IS NULL
-ORDER BY album_id, coalesce(disc_no, 1), track_no NULLS LAST, title, id
+ORDER BY album_id, disc_no NULLS LAST, track_no NULLS LAST, title, id
 `
 
 type ListIndexTracksRow struct {
@@ -1573,7 +1578,7 @@ SELECT t.id, t.album_id, t.ulid, t.title, t.disc_no, t.disc_subtitle, t.track_no
 FROM albums a
 CROSS JOIN tracks t
 WHERE a.ulid IN (/*SLICE:albums*/?) AND t.album_id = a.id AND t.missing_since IS NULL
-ORDER BY t.album_id, coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id
+ORDER BY t.album_id, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.id
 `
 
 type ListIndexTracksOfRow struct {

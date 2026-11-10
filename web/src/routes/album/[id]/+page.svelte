@@ -14,7 +14,7 @@
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
 	import AlbumSongs from '#lib/pages/AlbumSongs.svelte';
 	import { rowsOf } from '#lib/pages/albumSongs.ts';
-	import { clock } from '#lib/library/format.ts';
+	import { clock, discLabel, discOf } from '#lib/library/format.ts';
 	import ColumnsMenu from '#lib/pages/ColumnsMenu.svelte';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import RowMenu from '#lib/pages/RowMenu.svelte';
@@ -107,7 +107,10 @@
 				if (track === undefined || entry === undefined) {
 					return undefined;
 				}
-				const disc = (rows?.discs?.length ?? 0) > 1 ? ` · DISC ${String(track.discNo ?? 1)}` : '';
+				const disc =
+					(rows?.discs?.length ?? 0) > 1
+						? ` · ${discLabel(discOf(track.discNo)).toUpperCase()}`
+						: '';
 				return {
 					albumId: id,
 					title: track.title,

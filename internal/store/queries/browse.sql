@@ -40,6 +40,11 @@ LEFT JOIN artwork w ON w.hash = a.artwork_hash
 WHERE a.ulid = ?
   AND EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL);
 
+-- An album's tracks go by disc, then track number, then title. Those with no
+-- disc number come after every disc: on an album with no disc numbers at all,
+-- that is all of them, in the same order a single disc has. Every query that
+-- lists an album's tracks repeats this order.
+
 -- name: ListAlbumTracks :many
 -- With Kitsune's own loudness measure of each file, and of the album it was
 -- pooled into: see migrations/0013_loudness.sql.
@@ -54,7 +59,7 @@ FROM tracks t
 LEFT JOIN track_loudness l ON l.track_id = t.id AND l.size = t.size AND l.mtime = t.mtime AND l.outcome = 'measured'
 LEFT JOIN album_loudness a ON a.id = l.album_pool
 WHERE t.album_id = ? AND t.missing_since IS NULL
-ORDER BY coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id;
+ORDER BY t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.id;
 
 -- name: GetTrackFile :one
 SELECT root, rel_path, format
@@ -72,7 +77,7 @@ SELECT t.id, t.ulid, t.root, t.rel_path, t.size, t.mtime, t.album_id, a.group_ke
 FROM tracks t
 JOIN albums a ON a.id = t.album_id
 WHERE a.ulid = ? AND t.missing_since IS NULL
-ORDER BY coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id;
+ORDER BY t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.id;
 
 -- name: ListAlbumTagValues :many
 SELECT t.ulid, tt.value
@@ -121,7 +126,7 @@ WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since
 SELECT id, album_id, ulid, title, disc_no, disc_subtitle, track_no, duration_ms
 FROM tracks
 WHERE missing_since IS NULL
-ORDER BY album_id, coalesce(disc_no, 1), track_no NULLS LAST, title, id;
+ORDER BY album_id, disc_no NULLS LAST, track_no NULLS LAST, title, id;
 
 -- name: ListIndexTrackArtists :many
 SELECT ta.track_id, ar.name
@@ -184,7 +189,7 @@ SELECT t.id, t.album_id, t.ulid, t.title, t.disc_no, t.disc_subtitle, t.track_no
 FROM albums a
 CROSS JOIN tracks t
 WHERE a.ulid IN (sqlc.slice(albums)) AND t.album_id = a.id AND t.missing_since IS NULL
-ORDER BY t.album_id, coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id;
+ORDER BY t.album_id, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.id;
 
 -- name: ListIndexTrackArtistsOf :many
 SELECT ta.track_id, ar.name

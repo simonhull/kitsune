@@ -1,3 +1,4 @@
+import { discOf } from '#lib/library/format.ts';
 import type { Album, Track } from '#lib/library/source.ts';
 
 /**
@@ -377,11 +378,11 @@ export function inOrder(album: Album, index = 0): Queue {
 }
 
 /**
- * Queues one disc of an album, in the album's order. A song with no disc number is on disc 1. It
+ * Queues one disc of an album, in the album's order: `noDisc` is the songs with no disc number. It
  * is still the album's own order, a part of it, so album gain plays.
  */
 export function onDisc(album: Album, disc: number): Queue {
-	const tracks = album.tracks.filter(({ discNo }) => (discNo ?? 1) === disc);
+	const tracks = album.tracks.filter(({ discNo }) => discOf(discNo) === disc);
 	return { album, tracks, index: 0, ordered: true };
 }
 

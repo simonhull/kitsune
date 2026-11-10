@@ -539,7 +539,10 @@ type LibraryAlbum struct {
 
 // Disc is one disc of an album, in disc order: an album on one disc has one.
 type Disc struct {
-	No int `json:"no"` // From 1: a track with no disc number is on disc 1.
+	// No counts from 1. Songs with no disc number are on disc 1 when no song of
+	// the album has one; when some song does, they are a group of their own,
+	// last, and No is 0, which is omitted.
+	No int `json:"no,omitzero"`
 	// Name is the disc's subtitle, from its first song that has one.
 	Name       string `json:"name,omitzero"`
 	Songs      int    `json:"songs"`

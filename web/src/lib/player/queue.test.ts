@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { noDisc } from '#lib/library/format.ts';
 import type { Album, Track } from '#lib/library/source.ts';
 import {
 	albumOf,
@@ -76,17 +77,20 @@ describe('a queue in order', () => {
 		expect(last === null ? 'none' : next(last)).toBeNull();
 	});
 
-	it('queues one disc in order, an unnumbered song on disc 1', () => {
-		const two = album(5);
+	it('queues one disc in order, and the songs with no disc number as one more', () => {
+		const two = album(6);
 		const tracks = two.tracks.map((track, index) =>
-			index === 0 ? track : { ...track, discNo: index < 3 ? 1 : 2 }
+			index >= 4 ? track : { ...track, discNo: index < 2 ? 1 : 2 }
 		);
 		const discs = { ...two, tracks };
-		expect(ids(onDisc(discs, 1).tracks)).toEqual(['t0', 't1', 't2']);
+		expect(ids(onDisc(discs, 1).tracks)).toEqual(['t0', 't1']);
 		const second = onDisc(discs, 2);
-		expect(ids(second.tracks)).toEqual(['t3', 't4']);
+		expect(ids(second.tracks)).toEqual(['t2', 't3']);
 		expect(second.index).toBe(0);
 		expect(second.ordered).toBe(true);
+		const none = onDisc(discs, noDisc);
+		expect(ids(none.tracks)).toEqual(['t4', 't5']);
+		expect(none.ordered).toBe(true);
 		expect(onDisc(discs, 3).tracks).toEqual([]);
 	});
 

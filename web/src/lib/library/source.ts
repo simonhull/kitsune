@@ -99,13 +99,17 @@ export interface Album extends AlbumEntry {
 	etag: string;
 	/** Whether the caller has hearted it. {@link Library.marks} holds what's current. */
 	hearted: boolean;
-	/** In disc order: one for an album on one disc. */
+	/** In disc order, the songs with no disc number last: one for an album on one disc. */
 	discs: Disc[];
 }
 
-/** One disc of an album, as its songs say. A song with no disc number is on disc 1. */
+/**
+ * One disc of an album, as its songs say. Songs with no disc number are on disc 1 when no song has
+ * one; beside songs that have one, they are a group of their own, last, with no `no`.
+ */
 export interface Disc {
-	no: number;
+	/** From 1. Absent for the songs with no disc number beside songs that have one. */
+	no?: number;
 	/** Its subtitle, from its first song that has one. */
 	name?: string;
 	songs: number;

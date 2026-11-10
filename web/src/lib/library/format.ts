@@ -30,24 +30,49 @@ export function balancedLines(title: string): [string, string] {
 	return best;
 }
 
-/** Reports whether an album's tracks span more than one disc. An unset disc counts as disc 1. */
+/**
+ * What a song with no disc number is on when another song of its album has one: a group of its own,
+ * after every disc. A disc tagged 0 is no number too, as the server stores it.
+ */
+export const noDisc = 0;
+
+/** The disc a song is on, by its number: {@link noDisc} for none. */
+export function discOf(discNo: number | undefined): number {
+	return discNo !== undefined && discNo > 0 ? discNo : noDisc;
+}
+
+/** The disc a heading is for: its number, or {@link noDisc} for the songs with none. */
+export function discKey(disc: Pick<Disc, 'no'>): number {
+	return disc.no ?? noDisc;
+}
+
+/** What a disc's heading calls it: `Disc 2`, or `No disc number`. */
+export function discLabel(disc: number): string {
+	return disc === noDisc ? 'No disc number' : `Disc ${String(disc)}`;
+}
+
+/**
+ * Reports whether an album's songs need disc headings: more than one disc, or some songs with a disc
+ * number and some without. When none has one, they are all on one disc.
+ */
 export function isMultiDisc(tracks: readonly Pick<Track, 'discNo'>[]): boolean {
-	return new Set(tracks.map((track) => track.discNo ?? 1)).size > 1;
+	return new Set(tracks.map(({ discNo }) => discOf(discNo))).size > 1;
 }
 
 /**
  * An album's discs, as the server works them out: in the order the tracks first reach each, named
- * by the first track on it with a name. Only a stand-in for the server needs it.
+ * by the first track on it with a name. Songs with no disc number are on disc 1 when none has one,
+ * and otherwise their own group, with no `no`. Only a stand-in for the server needs it.
  */
 export function discsOf(
 	tracks: readonly Pick<Track, 'discNo' | 'discSubtitle' | 'durationMs'>[]
 ): Disc[] {
 	const discs: Disc[] = [];
 	for (const { discNo, discSubtitle, durationMs } of tracks) {
-		const no = Math.max(discNo ?? 1, 1);
-		let disc = discs.find((each) => each.no === no);
+		const no = discOf(discNo);
+		let disc = discs.find((each) => discKey(each) === no);
 		if (disc === undefined) {
-			disc = { no, songs: 0, durationMs: 0 };
+			disc = no === noDisc ? { songs: 0, durationMs: 0 } : { no, songs: 0, durationMs: 0 };
 			discs.push(disc);
 		}
 		disc.songs += 1;
@@ -56,12 +81,17 @@ export function discsOf(
 			disc.name = discSubtitle;
 		}
 	}
+	const [only] = discs;
+	if (discs.length === 1 && only !== undefined && only.no === undefined) {
+		only.no = 1;
+	}
 	return discs;
 }
 
 /**
- * Where an album's disc headings go: each disc by the index of its first track. Only an album on
- * more than one disc has any; one disc stays as it is, named or not.
+ * Where an album's disc headings go: each disc by the index of its first track, and the songs with
+ * no disc number, last, by theirs. Only an album on more than one disc has any; one disc stays as it
+ * is, named or not.
  */
 export function discHeads({
 	tracks,
@@ -74,10 +104,10 @@ export function discHeads({
 	if (discs.length < 2) {
 		return heads;
 	}
-	const byNo = new Map(discs.map((disc) => [disc.no, disc]));
+	const byNo = new Map(discs.map((disc) => [discKey(disc), disc]));
 	let last: number | undefined;
 	for (const [index, { discNo }] of tracks.entries()) {
-		const no = Math.max(discNo ?? 1, 1);
+		const no = discOf(discNo);
 		const disc = byNo.get(no);
 		if (no !== last && disc !== undefined) {
 			heads.set(index, disc);
@@ -99,7 +129,10 @@ export function discFacts({ songs, durationMs }: Pick<Disc, 'songs' | 'durationM
 	};
 }
 
-/** A track's number as tagged: `03`, `2-03` on a multi-disc album, or a dash with no number. */
+/**
+ * A track's number as tagged: `03`, `2-03` on a multi-disc album (a song with no disc number stays
+ * `03`), or a dash with no number.
+ */
 export function trackLabel(
 	{ discNo, trackNo }: Pick<Track, 'discNo' | 'trackNo'>,
 	multiDisc: boolean
@@ -108,7 +141,9 @@ export function trackLabel(
 		return '–';
 	}
 	const number = String(trackNo).padStart(2, '0');
-	return multiDisc ? `${String(discNo ?? 1)}-${number}` : number;
+	return multiDisc && discNo !== undefined && discOf(discNo) !== noDisc
+		? `${String(discNo)}-${number}`
+		: number;
 }
 
 /**

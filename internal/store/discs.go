@@ -9,7 +9,9 @@ import (
 
 // Disc is one disc of an album, as its live tracks say: what a heading shows.
 type Disc struct {
-	// No counts from 1. A track with no disc number is on disc 1.
+	// No counts from 1. Songs with no disc number are on disc 1 when no song of
+	// the album has one; when some song has one, they are No 0, their own group
+	// after every disc. A disc tagged 0 is stored as none, so it is no number.
 	No int
 	// Name is the disc's subtitle: that of its first track with one, in the order
 	// the album lists them. Empty when none has one.
@@ -19,13 +21,14 @@ type Disc struct {
 }
 
 // discs gathers an album's discs, one track at a time, in the order the tracks
-// come. The album queries list tracks by disc, so a disc is nearly always the
-// last one seen; the search covers a list out of that order all the same.
+// come, and [discs.settle] finishes them. The album queries list tracks by disc,
+// so a disc is nearly always the last one seen; the search covers a list out of
+// that order all the same.
 type discs []Disc
 
-// add counts a track on disc no, named name, lasting d.
+// add counts a track on disc no, named name, lasting d. 0 is no disc number.
 func (ds *discs) add(no int, name string, d time.Duration) {
-	no = max(no, 1)
+	no = max(no, 0)
 	at := len(*ds) - 1
 	for at >= 0 && (*ds)[at].No != no {
 		at--
@@ -39,6 +42,14 @@ func (ds *discs) add(no int, name string, d time.Duration) {
 	disc.Duration += d
 	if disc.Name == "" {
 		disc.Name = name
+	}
+}
+
+// settle finishes what add gathered: songs with no disc number are on disc 1
+// when no song has one, and stay a group of their own when some song does.
+func (ds *discs) settle() {
+	if len(*ds) == 1 && (*ds)[0].No == 0 {
+		(*ds)[0].No = 1
 	}
 }
 
@@ -63,6 +74,7 @@ func indexDiscs(tracks []sqlcdb.ListIndexTracksRow) map[int64][]Disc {
 	out := map[int64][]Disc{}
 	var buf discs
 	flush := func(album int64) {
+		buf.settle()
 		if buf.telling() {
 			out[album] = slices.Clone(buf)
 		}
