@@ -114,6 +114,7 @@ func TestPrefsKeepEachListsSort(t *testing.T) {
 		"/me/prefs/library.sort": `{"artists":{"by":"plays","dir":"desc"},"albums":{"by":"year","dir":"asc"}}`,
 		"/me/prefs/albums.sort":  `{"by":"rating","dir":"desc"}`,
 		"/me/prefs/artists.sort": `{"by":"albums","dir":"asc"}`,
+		"/me/prefs/artist.songs": `{"group":"album","sort":{"by":"title","dir":"asc"}}`,
 	}
 	for path, body := range sorts {
 		ts.pref(t, sess.token, path).problem(t, http.StatusNotFound)

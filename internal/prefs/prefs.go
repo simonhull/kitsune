@@ -65,6 +65,9 @@ const (
 	AlbumsSort = "albums.sort"
 	// ArtistsSort is the Artists page's order, a [Sort].
 	ArtistsSort = "artists.sort"
+	// ArtistSongs is how an artist page's full song list groups and orders its
+	// songs, an [ArtistSongsValue]: one for every artist.
+	ArtistSongs = "artist.songs"
 	// PlaybackUntaggedGain is the gain, in dB from -20 to 0, a song plays at
 	// while it has no ReplayGain, its tags' or Kitsune's measure.
 	PlaybackUntaggedGain = "playback.untagged_gain"
@@ -82,6 +85,7 @@ var keys = map[string]Key{
 	LibrarySort:    {name: LibrarySort, check: checkLibrarySort},
 	AlbumsSort:     {name: AlbumsSort, check: checkSortOf(albumsOrders)},
 	ArtistsSort:    {name: ArtistsSort, check: checkSortOf(artistsOrders)},
+	ArtistSongs:    {name: ArtistSongs, check: checkArtistSongs},
 
 	PlaybackUntaggedGain: {name: PlaybackUntaggedGain, check: checkUntaggedGain},
 }

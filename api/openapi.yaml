@@ -1987,8 +1987,8 @@ components:
       description: >-
         The preference: `library.columns`, `ui.theme`, `shuffle.ratings`,
         `shuffle.flow`, `shuffle.memory`, `library.sort`, `albums.sort`,
-        `artists.sort` or `playback.untagged_gain`. The server knows which keys
-        there are.
+        `artists.sort`, `artist.songs` or `playback.untagged_gain`. The server
+        knows which keys there are.
       schema: { type: string }
     ItemID:
       name: id
@@ -3120,6 +3120,27 @@ components:
         - $ref: "#/components/schemas/UntaggedGain"
         - $ref: "#/components/schemas/LibrarySort"
         - $ref: "#/components/schemas/ListSort"
+        - $ref: "#/components/schemas/ArtistSongs"
+    ArtistSongs:
+      type: object
+      additionalProperties: false
+      description: >-
+        `artist.songs`: how an artist page's full song list runs, one choice
+        for every artist. `group` is `flat` or `album`; `sort` is the flat
+        list's order, `by` one of `top` (the caller's plays and stars),
+        `plays`, `rating`, `title`, `year` or `added`. By album, the albums go
+        by `library.sort`'s `albums`. Flat by `top`, descending, when never
+        set.
+      required: [group, sort]
+      properties:
+        group: { type: string, enum: [flat, album] }
+        sort:
+          type: object
+          additionalProperties: false
+          required: [by, dir]
+          properties:
+            by: { type: string, enum: [top, plays, rating, title, year, added] }
+            dir: { $ref: "#/components/schemas/SortDirection" }
     LibrarySort:
       type: object
       additionalProperties: false

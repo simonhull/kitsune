@@ -29,6 +29,22 @@ type LibrarySortValue struct {
 	Albums  Sort `json:"albums"`
 }
 
+// ArtistSongsValue is the value of [ArtistSongs]: how an artist page's full song
+// list groups and orders its songs. By album, the albums go by [LibrarySort]'s.
+type ArtistSongsValue struct {
+	Group Grouping `json:"group"`
+	Sort  Sort     `json:"sort"` // The flat list's order.
+}
+
+// Grouping is whether a song list runs flat or by album.
+type Grouping string
+
+// The two groupings.
+const (
+	Flat    Grouping = "flat"
+	ByAlbum Grouping = "album"
+)
+
 // The orders a list may name in [Sort.By]. A client words them; the server only checks.
 const (
 	OrderName   = "name"
@@ -38,6 +54,8 @@ const (
 	OrderPlays  = "plays"
 	OrderRating = "rating"
 	OrderAlbums = "albums"
+	OrderTop    = "top"
+	OrderTitle  = "title"
 )
 
 // The orders each list offers.
@@ -48,6 +66,7 @@ var (
 	libraryAlbumOrders  = []string{OrderYear, OrderName, OrderAdded}
 	albumsOrders        = []string{OrderName, OrderArtist, OrderYear, OrderAdded, OrderPlays, OrderRating}
 	artistsOrders       = []string{OrderName, OrderAlbums, OrderAdded, OrderPlays}
+	artistSongOrders    = []string{OrderTop, OrderPlays, OrderRating, OrderTitle, OrderYear, OrderAdded}
 )
 
 var (
@@ -55,6 +74,8 @@ var (
 	errDirection = errors.New("dir is not asc or desc")
 	errSortParts = errors.New("by and dir are both required")
 	errSortHalf  = errors.New("artists and albums are both required")
+	errGrouping  = errors.New("group is not flat or album")
+	errSongsHalf = errors.New("group and sort are both required")
 )
 
 // sortIn is a [Sort] as it arrives, so a missing member can be told from an empty one.
@@ -112,6 +133,28 @@ func checkLibrarySort(value []byte) ([]byte, error) {
 		return nil, fmt.Errorf("albums: %w", err)
 	}
 	return encode(LibrarySortValue{Artists: artists, Albums: albums})
+}
+
+// checkArtistSongs accepts an [ArtistSongsValue].
+func checkArtistSongs(value []byte) ([]byte, error) {
+	var in struct {
+		Group *Grouping `json:"group"`
+		Sort  *sortIn   `json:"sort"`
+	}
+	if err := json.Unmarshal(value, &in, json.RejectUnknownMembers(true)); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	if in.Group == nil || in.Sort == nil {
+		return nil, errSongsHalf
+	}
+	if *in.Group != Flat && *in.Group != ByAlbum {
+		return nil, errGrouping
+	}
+	sort, err := in.Sort.check(artistSongOrders)
+	if err != nil {
+		return nil, fmt.Errorf("sort: %w", err)
+	}
+	return encode(ArtistSongsValue{Group: *in.Group, Sort: sort})
 }
 
 func encode(v any) ([]byte, error) {
