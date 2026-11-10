@@ -284,7 +284,7 @@
 		<a href={resolve('/')} data-sveltekit-reset="false">Back to Home</a>
 	</div>
 {:else}
-	<div class="album" class:editing={session !== undefined || bulk !== null}>
+	<div class="album">
 		<AlbumHero
 			albumId={id}
 			{entry}
@@ -301,14 +301,17 @@
 			bind:eyebrow
 		/>
 		{#if bulk !== null}
-			<BulkEditor session={bulk} />
-			<TagBar
-				session={bulk}
-				what="these tracks"
-				leave={leaveBulk}
-				write={() => void writeBulk()}
-				match={matchFromBulk(bulk)}
-			/>
+			<BulkEditor session={bulk}>
+				{#snippet bar()}
+					<TagBar
+						session={bulk}
+						what="these tracks"
+						leave={leaveBulk}
+						write={() => void writeBulk()}
+						match={matchFromBulk(bulk)}
+					/>
+				{/snippet}
+			</BulkEditor>
 		{:else}
 			<div class="songs" bind:this={songsElement}>
 				<AlbumSongs
@@ -339,6 +342,15 @@
 					one={session?.open != null}
 					editor={session?.tags == null ? undefined : editor}
 				/>
+				{#if session !== undefined}
+					<TagBar
+						{session}
+						open={session.open}
+						{leave}
+						write={() => void write()}
+						match={() => matchFromEditor(id)}
+					/>
+				{/if}
 			</div>
 			{#if selection.any && session === undefined}
 				{@const facts = pickedFacts(picked, songFacts)}
@@ -356,15 +368,6 @@
 					}}
 				/>
 			{/if}
-		{/if}
-		{#if session !== undefined}
-			<TagBar
-				{session}
-				open={session.open}
-				{leave}
-				write={() => void write()}
-				match={() => matchFromEditor(id)}
-			/>
 		{/if}
 		<p class="visually-hidden" role="status">{announcement}</p>
 	</div>
@@ -401,11 +404,6 @@
 	 */
 	.songs {
 		max-width: calc(max(1280px * var(--step), 200vw / 3) + 2 * max(64px, var(--gutter)));
-	}
-
-	/* The last row must clear the bar as well as the island. */
-	.album.editing {
-		padding-bottom: 220px;
 	}
 
 	.missing {

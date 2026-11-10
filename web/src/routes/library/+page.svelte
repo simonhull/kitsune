@@ -696,16 +696,19 @@
 		{/if}
 		{#if bulk !== null}
 			<div class="bulk-layer" role="region" aria-label="Editing songs">
-				<BulkEditor session={bulk} />
-				<TagBar
-					session={bulk}
-					what="these songs"
-					leave={() => {
-						leaveBulk();
-					}}
-					write={() => void writeBulk()}
-					match={matchFromBulk(bulk)}
-				/>
+				<BulkEditor session={bulk}>
+					{#snippet bar()}
+						<TagBar
+							session={bulk}
+							what="these songs"
+							leave={() => {
+								leaveBulk();
+							}}
+							write={() => void writeBulk()}
+							match={matchFromBulk(bulk)}
+						/>
+					{/snippet}
+				</BulkEditor>
 			</div>
 		{:else if selection.any}
 			<SelectionBar
@@ -733,9 +736,20 @@
 		inset: 0;
 		z-index: 2;
 		overflow-y: auto;
-		padding: 64px 0 240px;
+		padding-top: 64px;
 		background: var(--ground);
-		animation: rise var(--morph) var(--curve-morph) both;
+		/* Backwards only: a translate left on the layer would hold the phone's fixed tag bar in it. */
+		animation: rise var(--morph) var(--curve-morph) backwards;
+	}
+
+	/*
+	 * Room under the editor, as content rather than padding: a scroller's padding would push the tag
+	 * bar's sticky bottom up by as much.
+	 */
+	.bulk-layer::after {
+		content: '';
+		display: block;
+		height: var(--frame-bottom);
 	}
 
 	@keyframes rise {
