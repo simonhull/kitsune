@@ -74,6 +74,30 @@ export function albumRun(queue: Queue): { index: number; trackCount: number } {
 	return { index: queue.index - start, trackCount: end - start };
 }
 
+/** Where a queue was started: a list goes on past the album, anywhere else comes to rest after it. */
+export type StartedFrom = 'list' | 'elsewhere';
+
+/**
+ * Whether an album's play button, started from `from`, would pause the queue rather than start it
+ * again: the queue is that album alone, from its first song or any other; or, from a list, the
+ * queue goes on through the list and the song playing is the album's.
+ */
+export function playsAlbum(queue: Queue | null, albumId: string, from: StartedFrom): boolean {
+	if (queue === null) {
+		return false;
+	}
+	if (queue.album.id === albumId && queue.albums === undefined) {
+		return true;
+	}
+	const current = queue.tracks.at(queue.index);
+	return (
+		from === 'list' &&
+		queue.continues !== undefined &&
+		current !== undefined &&
+		albumOf(queue, current).id === albumId
+	);
+}
+
 /** Marks a queue started from a list at `album`, so it goes on through the list after it. */
 export function throughList(queue: Queue): Queue {
 	return { ...queue, continues: { album: queue.album.id } };

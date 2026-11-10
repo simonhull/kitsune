@@ -786,7 +786,8 @@
 	}
 
 	/* Crossing a step, what changes size moves to it; nothing else animates a resize. */
-	.stepping :global(:is(.artist, .album, .side, .square, .songs, .row, .disc, .header, h2)) {
+	.stepping
+		:global(:is(.artist, .album, .side, .cover-box, .square, .songs, .row, .disc, .header, h2)) {
 		transition:
 			top var(--morph) var(--curve-morph),
 			height var(--morph) var(--curve-morph),

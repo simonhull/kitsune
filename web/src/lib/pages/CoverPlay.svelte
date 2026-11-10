@@ -7,17 +7,19 @@
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { AlbumEntry } from '#lib/library/source.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import { playsAlbum, type StartedFrom } from '#lib/player/queue.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 
 	interface Props {
-		album: AlbumEntry;
+		/** What it plays and names: an album card's entry, or a Library album. */
+		album: Pick<AlbumEntry, 'id' | 'title'>;
+		/** Where it plays from: from a list, the album goes on into the list's next one. */
+		from?: StartedFrom;
 	}
 
-	let { album }: Props = $props();
+	let { album, from = 'elsewhere' }: Props = $props();
 
-	const sounding = $derived(
-		player.queue?.album.id === album.id && player.queue.albums === undefined && player.sounding
-	);
+	const sounding = $derived(playsAlbum(player.queue, album.id, from) && player.sounding);
 
 	/** Asks for the songs before the press: a pointer on the way, or a finger going down. */
 	function warm(): void {
@@ -34,13 +36,13 @@
 		const mine = latest;
 		const loaded = library.album(album.id);
 		if (loaded !== undefined) {
-			player.playOrToggle(loaded);
+			player.playOrToggle(loaded, from);
 			return;
 		}
 		await library.loadAlbum(album.id);
 		const fetched = library.album(album.id);
 		if (fetched !== undefined && mine === latest) {
-			player.playOrToggle(fetched);
+			player.playOrToggle(fetched, from);
 		}
 	}
 </script>

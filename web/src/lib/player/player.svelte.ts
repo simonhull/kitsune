@@ -19,6 +19,7 @@ import {
 	pendingAlbum,
 	picked,
 	playingNext,
+	playsAlbum,
 	previous,
 	retagged,
 	rewound,
@@ -32,13 +33,11 @@ import {
 	type Onward,
 	type Queue,
 	type Queued,
-	type ShuffleRef
+	type ShuffleRef,
+	type StartedFrom
 } from './queue.ts';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused';
-
-/** Where a queue was started: a list goes on past the album, anywhere else comes to rest after it. */
-export type StartedFrom = 'list' | 'elsewhere';
 
 /** How many tracks may fail in a row before the player stops trying. */
 const mostFailures = 3;
@@ -260,12 +259,15 @@ export class Player implements PlayerView {
 		this.#begin(shuffled(album, Math.floor(Math.random() * 2 ** 32)), this.#movedOn());
 	}
 
-	/** Plays an album from the top, or toggles it if it's the one in the player. */
-	playOrToggle(album: Album): void {
-		if (this.queue?.album.id === album.id && this.queue.albums === undefined) {
+	/**
+	 * Plays an album from the top, or toggles it if it's the one in the player (`playsAlbum`). From
+	 * a list, it goes on through the list.
+	 */
+	playOrToggle(album: Album, from: StartedFrom = 'elsewhere'): void {
+		if (playsAlbum(this.queue, album.id, from)) {
 			this.toggle();
 		} else {
-			this.play(album);
+			this.play(album, 0, from);
 		}
 	}
 
