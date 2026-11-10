@@ -12,6 +12,7 @@ func TestSortChecks(t *testing.T) {
 	const (
 		library = `{"artists":{"by":"name","dir":"asc"},"albums":{"by":"year","dir":"desc"}}`
 		rating  = `{"by":"rating","dir":"desc"}`
+		songs   = `{"group":"flat","sort":{"by":"top","dir":"desc"}}`
 	)
 	tests := []struct {
 		key, in, want string // An empty want is a refusal.
@@ -38,6 +39,16 @@ func TestSortChecks(t *testing.T) {
 		{prefs.ArtistsSort, `{"by":"plays","dir":"asc"}`, `{"by":"plays","dir":"asc"}`},
 		{prefs.ArtistsSort, rating, ""},
 		{prefs.ArtistsSort, `{"by":"name","dir":"asc","then":"id"}`, ""},
+		{prefs.ArtistSongs, songs, songs},
+		{
+			prefs.ArtistSongs, `{"sort":{"dir":"asc","by":"title"},"group":"album"}`,
+			`{"group":"album","sort":{"by":"title","dir":"asc"}}`,
+		},
+		{prefs.ArtistSongs, `{"group":"disc","sort":{"by":"top","dir":"desc"}}`, ""},
+		{prefs.ArtistSongs, `{"group":"flat","sort":{"by":"name","dir":"desc"}}`, ""},
+		{prefs.ArtistSongs, `{"group":"flat"}`, ""},
+		{prefs.ArtistSongs, `{"sort":{"by":"top","dir":"desc"}}`, ""},
+		{prefs.ArtistSongs, `{"group":"flat","sort":{"by":"top","dir":"desc"},"x":1}`, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.key+" "+tt.in, func(t *testing.T) {

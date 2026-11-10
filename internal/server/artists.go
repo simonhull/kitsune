@@ -38,7 +38,7 @@ func (s *Server) getArtist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := api.ArtistDetail{
-		ID: d.ID, Name: d.Name, AlbumCount: d.AlbumCount,
+		ID: d.ID, Name: d.Name, AlbumCount: d.AlbumCount, SongCount: d.SongCount,
 		Albums: s.toAPIAlbumEntries(d.Albums), AppearsOn: s.toAPIAlbumEntries(d.AppearsOn),
 	}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)

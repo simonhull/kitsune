@@ -29,13 +29,28 @@
 			"p95Ms": 32
 		},
 		"column-drop": { "interaction": "Drop a column, release to rows in their new order", "p95Ms": 38 },
-		"column-key": { "interaction": "Alt+→ on a column header, key to rows in their new order", "p95Ms": 47 }
+		"column-key": { "interaction": "Alt+→ on a column header, key to rows in their new order", "p95Ms": 47 },
+		"artist-songs-paint": {
+			"interaction": "Open an artist with 800 songs from its album, click to Top songs' rows",
+			"p95Ms": 235
+		},
+		"artist-expand": { "interaction": "All N songs, click to the full list's rows", "p95Ms": 140 },
+		"artist-regroup": { "interaction": "An artist's songs, flat to by album, click to rows", "p95Ms": 120 },
+		"play-artist": { "interaction": "Play a song from an artist's flat list", "p95Ms": 45 },
+		"artist-scroll": {
+			"interaction": "Longest frame in a 2 s fling of an artist's 800 songs",
+			"p95Ms": 32
+		}
 	},
 	"server": {
 		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 0.5 },
 		"library-index": {
 			"interaction": "GET /library/index, 50k songs, default fields, gzip",
 			"p95Ms": 250
+		},
+		"artist-index": {
+			"interaction": "GET /library/index?artist=, 825 songs of 50k, default fields, gzip",
+			"p95Ms": 24
 		}
 	}
 }

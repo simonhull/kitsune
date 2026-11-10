@@ -2,14 +2,16 @@ import { library } from '#lib/library/library.svelte.ts';
 import type { PrefKey, Prefs } from '#lib/library/source.ts';
 import {
 	defaultAlbumSort,
+	defaultArtistSongs,
 	defaultArtistSort,
 	defaultLibrarySort,
 	savedAlbumSort,
+	savedArtistSongs,
 	savedArtistSort,
 	savedLibrarySort
 } from '#lib/library/sorts.ts';
 
-type SortKey = Extract<PrefKey, 'library.sort' | 'albums.sort' | 'artists.sort'>;
+type SortKey = Extract<PrefKey, 'library.sort' | 'albums.sort' | 'artists.sort' | 'artist.songs'>;
 
 /** One list's order: the default until the server answers, then what it has. A change shows at once. */
 class SortPref<K extends SortKey> {
@@ -58,14 +60,19 @@ class SortPref<K extends SortKey> {
 	}
 }
 
-/** The orders a person chose for the Library, the Albums page and the Artists page. */
+/**
+ * The orders a person chose for the Library, the Albums page and the Artists page, and how an
+ * artist page's songs run.
+ */
 export const sorts = {
 	library: new SortPref('library.sort', defaultLibrarySort, savedLibrarySort),
 	albums: new SortPref('albums.sort', defaultAlbumSort, savedAlbumSort),
 	artists: new SortPref('artists.sort', defaultArtistSort, savedArtistSort),
+	artistSongs: new SortPref('artist.songs', defaultArtistSongs, savedArtistSongs),
 	reset(): void {
 		this.library.reset();
 		this.albums.reset();
 		this.artists.reset();
+		this.artistSongs.reset();
 	}
 };

@@ -21,6 +21,14 @@ export type ArtistAlbumOrder = 'year' | 'name' | 'added';
 export type AlbumOrder = 'name' | 'artist' | 'year' | 'added' | 'plays' | 'rating';
 /** How the Artists page orders its artists. */
 export type ArtistOrder = 'name' | 'albums' | 'added' | 'plays';
+/** How an artist page's full song list orders its songs, flat. */
+export type ArtistSongOrder = 'top' | 'plays' | 'rating' | 'title' | 'year' | 'added';
+
+/** How an artist page's full song list runs: flat in an order, or by album in `library.sort`'s. */
+export interface ArtistSongs {
+	group: 'flat' | 'album';
+	sort: Sort<ArtistSongOrder>;
+}
 
 export interface LibrarySort {
 	artists: Sort<LibraryArtistOrder>;
@@ -66,6 +74,18 @@ export const artistOrders: readonly SortOption<ArtistOrder>[] = [
 	{ by: 'plays', ...plays }
 ];
 
+export const artistSongOrders: readonly SortOption<ArtistSongOrder>[] = [
+	{ by: 'top', label: 'Top', first: 'desc' },
+	{ by: 'plays', ...plays },
+	{ by: 'rating', label: 'Rating', first: 'desc' },
+	{ by: 'title', label: 'Title', first: 'asc' },
+	{ by: 'year', label: 'Year', first: 'desc' },
+	{ by: 'added', ...added }
+];
+
+/** Flat, best first: the order Top songs shows, so its rows stay where they are on expanding. */
+export const defaultArtistSongs: ArtistSongs = { group: 'flat', sort: { by: 'top', dir: 'desc' } };
+
 export const defaultLibrarySort: LibrarySort = {
 	artists: { by: 'name', dir: 'asc' },
 	albums: { by: 'year', dir: 'desc' }
@@ -89,6 +109,8 @@ export function pick<By extends string>(
 const ways: Readonly<Record<string, readonly [string, string]>> = {
 	name: ['A→Z', 'Z→A'],
 	artist: ['A→Z', 'Z→A'],
+	title: ['A→Z', 'Z→A'],
+	top: ['BOTTOM FIRST', 'BEST FIRST'],
 	year: ['OLDEST FIRST', 'NEWEST FIRST'],
 	added: ['OLDEST FIRST', 'NEWEST FIRST'],
 	plays: ['FEWEST FIRST', 'MOST FIRST'],
@@ -136,6 +158,16 @@ export function savedAlbumSort(saved: unknown): Sort<AlbumOrder> {
 
 export function savedArtistSort(saved: unknown): Sort<ArtistOrder> {
 	return known(artistOrders, saved) ?? defaultArtistSort;
+}
+
+export function savedArtistSongs(saved: unknown): ArtistSongs {
+	const parts = (typeof saved === 'object' && saved !== null ? saved : {}) as Partial<
+		Record<'group' | 'sort', unknown>
+	>;
+	return {
+		group: parts.group === 'album' ? 'album' : 'flat',
+		sort: known(artistSongOrders, parts.sort) ?? defaultArtistSongs.sort
+	};
 }
 
 /** Compares two numbers, `dir` deciding which comes first. */

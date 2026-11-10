@@ -103,6 +103,10 @@ type IndexOptions struct {
 	// Albums, by public ID, makes a partial index of only those that have a
 	// live track, each with where it goes in the whole one. Nil means every album.
 	Albums []string
+	// Artist, by public ID, makes an index of only the songs that artist is on,
+	// as an artist or an album artist: see [Store.LibraryIndex]. Empty means
+	// every artist. It is never asked with Albums.
+	Artist string
 }
 
 func (o *IndexOptions) any() bool {
@@ -128,7 +132,17 @@ type indexRows struct {
 // owner, with those tracks and the user's marks on all three, and whatever opts
 // asks for. An album with no owner a reader shows sits under the artist it
 // displays. One read transaction covers it, so a scan or a heart can't split it.
+//
+// With [IndexOptions.Artist] it returns that artist's songs instead, under one
+// heading of that artist: the albums it owns, then those it appears on, each in
+// the order [Store.Artist] has them and each with just the songs the artist is
+// on. It returns an error wrapping [ErrNotFound] for an artist [Store.Artist]
+// doesn't know. What is kept of the whole index is neither read nor changed:
+// one artist's songs are few.
 func (s *Store) LibraryIndex(ctx context.Context, userID int64, opts *IndexOptions) (LibraryIndex, error) {
+	if opts.Artist != "" {
+		return s.artistIndex(ctx, userID, opts)
+	}
 	rows, err := s.indexRows(ctx, userID, opts)
 	if err != nil {
 		return LibraryIndex{}, fmt.Errorf("library index: %w", err)
@@ -237,9 +251,9 @@ func readPersonal(ctx context.Context, q *sqlcdb.Queries, userID int64, opts *In
 	return nil
 }
 
-// indexGroups puts each album, with its tracks, under who it files under, in no
-// particular order.
-func indexGroups(rows *indexRows) []IndexArtist {
+// indexTracks returns the tracks rows read, by album row ID, each album's in the
+// order the rows came in.
+func indexTracks(rows *indexRows) map[int64][]IndexTrack {
 	names := make(map[int64][]string, len(rows.tracks))
 	for i := range rows.artists {
 		id := rows.artists[i].TrackID
@@ -247,7 +261,6 @@ func indexGroups(rows *indexRows) []IndexArtist {
 	}
 	extras := indexExtras(rows)
 	tracks := make(map[int64][]IndexTrack, len(rows.albums))
-	albumDiscs := indexDiscs(rows.tracks)
 	for i := range rows.tracks {
 		t := &rows.tracks[i]
 		tracks[t.AlbumID] = append(tracks[t.AlbumID], IndexTrack{
@@ -257,6 +270,14 @@ func indexGroups(rows *indexRows) []IndexArtist {
 			Extra:    extras[t.ID],
 		})
 	}
+	return tracks
+}
+
+// indexGroups puts each album, with its tracks, under who it files under, in no
+// particular order.
+func indexGroups(rows *indexRows) []IndexArtist {
+	tracks := indexTracks(rows)
+	albumDiscs := indexDiscs(rows.tracks)
 	groups := make([]IndexArtist, 0, len(rows.albums))
 	byKey := make(map[string]int, len(rows.albums))
 	for i := range rows.albums {

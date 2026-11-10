@@ -475,6 +475,7 @@ type ArtistDetail struct {
 	AlbumCount int          `json:"albumCount"`
 	Albums     []AlbumEntry `json:"albums"`
 	AppearsOn  []AlbumEntry `json:"appearsOn"`
+	SongCount  int          `json:"songCount"`
 }
 
 // ArtistLink is just enough of an artist to link to it.

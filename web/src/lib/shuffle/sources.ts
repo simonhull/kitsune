@@ -34,8 +34,14 @@ export function librarySource(filter: LibraryFilter): ShuffleSource {
 	};
 }
 
-/** What a selection on the Library list shuffles: those songs, each once. */
-export function selectionSource(trackIds: readonly string[]): ShuffleSource {
+/**
+ * What a selection shuffles: those songs, each once. Their first comes from `index`, the list they
+ * were picked in: the Library's, unless a page holds its own.
+ */
+export function selectionSource(
+	trackIds: readonly string[],
+	index: () => LibraryIndex = indexNow
+): ShuffleSource {
 	const picked = new Set(trackIds);
 	return {
 		key: `tracks:${trackIds.join(',')}`,
@@ -43,9 +49,26 @@ export function selectionSource(trackIds: readonly string[]): ShuffleSource {
 		mode: 'finite',
 		label: `${trackIds.length.toLocaleString('en-US')} ${trackIds.length === 1 ? 'SONG' : 'SONGS'}`,
 		units: () => {
-			const { inScope, everyone } = candidatesOf(indexNow(), marksOf, (_a, _b, track) =>
+			const { inScope, everyone } = candidatesOf(index(), marksOf, (_a, _b, track) =>
 				picked.has(track.id)
 			);
+			return unitsOf(inScope, everyone);
+		}
+	};
+}
+
+/**
+ * What an artist page's Shuffle shuffles: every song the artist is on, as an artist or an album
+ * artist, each once. The first is picked from the page's own list of them, `index`.
+ */
+export function artistSource(id: string, name: string, index: () => LibraryIndex): ShuffleSource {
+	return {
+		key: `artist:${id}`,
+		scope: { kind: 'artist', id },
+		mode: 'finite',
+		label: name.toUpperCase(),
+		units: () => {
+			const { inScope, everyone } = candidatesOf(index(), marksOf);
 			return unitsOf(inScope, everyone);
 		}
 	};

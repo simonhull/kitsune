@@ -169,9 +169,26 @@ func TestLibraryIndexSpeed(t *testing.T) {
 	ts := newTestServer(t)
 	shape := benchShapes[len(benchShapes)-1]
 	token := ts.seedBench(t, shape.tracks, shape.albums, shape.artists)
+	holdSpeed(t, b, limit, ts.timeGets(t, token, indexPath+defaultIndexFields))
+}
+
+// TestArtistIndexSpeed times the artist page's list: one artist's songs, of a
+// library as large as the whole index's budget reads.
+func TestArtistIndexSpeed(t *testing.T) {
+	t.Parallel()
+	b, limit := speedBudget(t, "artist-index")
+	ts := newTestServer(t)
+	shape := benchShapes[len(benchShapes)-1]
+	token := ts.seedBench(t, shape.tracks-prolificSongs, shape.albums, shape.artists)
+	artist := ts.seedProlific(t, shape.albums)
+	holdSpeed(t, b, limit, ts.timeGets(t, token, indexPath+defaultIndexFields+"&artist="+artist))
+}
+
+// timeGets times 20 gzipped GETs of path, after one to warm up.
+func (ts *testServer) timeGets(t *testing.T, token, path string) []time.Duration {
+	t.Helper()
 	fetch := func() time.Duration {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
-			ts.URL+indexPath+defaultIndexFields, http.NoBody)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+path, http.NoBody)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -189,7 +206,7 @@ func TestLibraryIndexSpeed(t *testing.T) {
 		}
 		took := time.Since(start)
 		if resp.StatusCode != http.StatusOK || body.Len() == 0 {
-			t.Fatalf("index: %d", resp.StatusCode)
+			t.Fatalf("GET %s: %d", path, resp.StatusCode)
 		}
 		return took
 	}
@@ -198,5 +215,5 @@ func TestLibraryIndexSpeed(t *testing.T) {
 	for i := range took {
 		took[i] = fetch()
 	}
-	holdSpeed(t, b, limit, took)
+	return took
 }

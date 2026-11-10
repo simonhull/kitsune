@@ -1,7 +1,7 @@
 /** The contract's types, by name: see `api/openapi.yaml`. Real tags are messy, so much is optional. */
 
 import type { ThemeChoice } from '#lib/theme/theme.svelte.ts';
-import type { AlbumOrder, ArtistOrder, LibrarySort, Sort } from './sorts.ts';
+import type { AlbumOrder, ArtistOrder, ArtistSongs, LibrarySort, Sort } from './sorts.ts';
 
 export interface User {
 	id: number;
@@ -238,6 +238,8 @@ export interface ArtistDetail extends ArtistEntry {
 	albums: AlbumEntry[];
 	/** The other albums it has a track on, newest first. */
 	appearsOn: AlbumEntry[];
+	/** The songs it is on, as an artist or an album artist: those {@link LibrarySource.artistSongs} lists. */
+	songCount: number;
 }
 
 /** A track a search found. Everything about it leads to its album. */
@@ -412,6 +414,8 @@ export interface Prefs {
 	'library.sort': LibrarySort;
 	'albums.sort': Sort<AlbumOrder>;
 	'artists.sort': Sort<ArtistOrder>;
+	/** How an artist page's full song list runs, for every artist. */
+	'artist.songs': ArtistSongs;
 	/** The gain in dB, from -20 to 0, a song plays at while it has no ReplayGain. */
 	'playback.untagged_gain': number;
 }
@@ -854,6 +858,12 @@ export interface LibrarySource {
 	 * One that has no song any more isn't there.
 	 */
 	libraryIndexOf(albums: readonly string[], fields?: readonly IndexField[]): Promise<LibraryIndex>;
+	/**
+	 * The songs an artist is on, as an artist or an album artist, in the index's shape under one
+	 * heading: the albums it owns, then those it appears on, each with just its songs. Rejects with
+	 * {@link ArtistNotFoundError} for an unknown ID.
+	 */
+	artistSongs(id: string, fields?: readonly IndexField[]): Promise<LibraryIndex>;
 	/** One of the caller's preferences, or null when it was never set. */
 	pref<K extends PrefKey>(key: K): Promise<Prefs[K] | null>;
 	/** Rejects with a {@link ServerError}: 400 for a value the server won't keep. */

@@ -9,8 +9,22 @@ import (
 	"context"
 )
 
+const countArtistTracks = `-- name: CountArtistTracks :one
+SELECT count(*) FROM tracks t
+WHERE t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = ?)
+  AND t.missing_since IS NULL
+`
+
+// The live songs an artist is on, as an artist or an album artist.
+func (q *Queries) CountArtistTracks(ctx context.Context, artistID int64) (int64, error) {
+	row := q.queryRow(ctx, q.countArtistTracksStmt, countArtistTracks, artistID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getArtist = `-- name: GetArtist :one
-SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid
+SELECT ar.id, ar.ulid, ar.name, ar.sort_name, ar.match_key, ar.mbid
 FROM artists ar
 WHERE ar.ulid = ?
   AND EXISTS (
@@ -24,6 +38,7 @@ type GetArtistRow struct {
 	ID       int64
 	Ulid     string
 	Name     string
+	SortName string
 	MatchKey string
 	Mbid     *string
 }
@@ -35,6 +50,7 @@ func (q *Queries) GetArtist(ctx context.Context, ulid string) (GetArtistRow, err
 		&i.ID,
 		&i.Ulid,
 		&i.Name,
+		&i.SortName,
 		&i.MatchKey,
 		&i.Mbid,
 	)

@@ -34,7 +34,7 @@ WHERE ta.role = 'album_artist'
 GROUP BY ta.artist_id;
 
 -- name: GetArtist :one
-SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid
+SELECT ar.id, ar.ulid, ar.name, ar.sort_name, ar.match_key, ar.mbid
 FROM artists ar
 WHERE ar.ulid = ?
   AND EXISTS (
@@ -42,6 +42,12 @@ WHERE ar.ulid = ?
     JOIN tracks t ON t.id = ta.track_id
     WHERE ta.artist_id = ar.id AND t.missing_since IS NULL
 );
+
+-- name: CountArtistTracks :one
+-- The live songs an artist is on, as an artist or an album artist.
+SELECT count(*) FROM tracks t
+WHERE t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = ?)
+  AND t.missing_since IS NULL;
 
 -- name: ListArtistAlbums :many
 SELECT

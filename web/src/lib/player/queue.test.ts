@@ -9,6 +9,7 @@ import {
 	currentOf,
 	holds,
 	inOrder,
+	listed,
 	next,
 	onDisc,
 	onwardOf,
@@ -20,6 +21,7 @@ import {
 	retagged,
 	rewound,
 	shuffled,
+	takenIn,
 	throughList,
 	reordered,
 	upcoming,
@@ -332,5 +334,53 @@ describe('a queue going on through a list', () => {
 		expect(withdrawn(split)).toBe(split);
 		const turned = reordered(queue, ['t1', 'y', 'bt1', 'bt0']);
 		expect(turned.continues).toEqual({ album: 'b' });
+	});
+});
+
+describe('a list queue', () => {
+	const own = album(3);
+	const other: Album = {
+		...album(2),
+		id: 'b',
+		tracks: album(2).tracks.map((track) => ({ ...track, id: `b${track.id}` }))
+	};
+	const entries = [
+		{ trackId: 'bt1', albumId: 'b' },
+		{ trackId: 't2', albumId: 'a' },
+		{ trackId: 'bt0', albumId: 'b' }
+	];
+	const first = { album: own, track: own.tracks[0] as Track };
+
+	it('plays the first song at once, and takes in what is here already', () => {
+		const queue = listed(first, [{ trackId: 't1', albumId: 'a' }, ...entries], (id) =>
+			id === 'a' ? own : undefined
+		);
+		expect(ids(queue.tracks)).toEqual(['t0', 't1']);
+		expect(queue.later).toEqual(entries);
+		expect(queue.ordered).toBe(false);
+	});
+
+	it('takes in each song once its album comes, in order, and comes to rest after the last', () => {
+		const waiting = listed(first, entries, (id) => (id === 'a' ? own : undefined));
+		expect(ids(waiting.tracks)).toEqual(['t0']);
+		const all = takenIn(waiting, (id) => (id === 'a' ? own : other));
+		expect(ids(all.tracks)).toEqual(['t0', 'bt1', 't2', 'bt0']);
+		expect(all.later).toBeUndefined();
+		expect(albumOf(all, all.tracks[1] as Track).id).toBe('b');
+		expect(onwardOf(all)).toBe('rest');
+		expect(rewound(all).later).toBeUndefined();
+	});
+
+	it('passes over a song whose album is gone, or no longer holds it', () => {
+		const queue = listed(first, [{ trackId: 'nope', albumId: 'a' }, ...entries], (id) =>
+			id === 'a' ? own : 'gone'
+		);
+		expect(ids(queue.tracks)).toEqual(['t0', 't2']);
+		expect(queue.later).toBeUndefined();
+	});
+
+	it('changes nothing while the next album has not come', () => {
+		const queue = listed(first, entries, (id) => (id === 'a' ? own : undefined));
+		expect(takenIn(queue, () => undefined)).toBe(queue);
 	});
 });

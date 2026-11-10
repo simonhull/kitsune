@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createFixtureSource } from '#lib/library/fixtures.ts';
 import { Library } from '#lib/library/library.svelte.ts';
 import {
+	AlbumNotFoundError,
 	ServerError,
 	UnauthorizedError,
 	type Album,
@@ -9,7 +10,7 @@ import {
 	type Track
 } from '#lib/library/source.ts';
 import { SilentOutput } from './output.ts';
-import { Player } from './player.svelte.ts';
+import { listPrefetchMs, Player } from './player.svelte.ts';
 
 function track(index: number, extra: Partial<Track> = {}): Track {
 	return {
@@ -1107,5 +1108,82 @@ describe('listens', () => {
 		player.playSongs(songs, { id: 'S1' });
 		await settle();
 		expect(said()).toEqual(['t0 start 0 S1']);
+	});
+});
+
+describe('a list queue', () => {
+	/** Albums a, b and c, of which the server has a and b, and the albums it was asked for. */
+	function listSetup() {
+		const a = album(2, 'a');
+		const b = { ...album(2, 'b'), tracks: album(2).tracks.map((t) => ({ ...t, id: `b${t.id}` })) };
+		const asked: string[] = [];
+		const held = new Map([
+			['a', a],
+			['b', b]
+		]);
+		const made = setup({
+			album: (id) => {
+				asked.push(id);
+				const found = held.get(id);
+				return found === undefined
+					? Promise.reject(new AlbumNotFoundError(id))
+					: Promise.resolve(found);
+			}
+		});
+		return { ...made, a, b, asked };
+	}
+
+	it('plays at once, fetches each next album after the song before it begins, and stops at the end', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout'] });
+		try {
+			const { player, library, a, asked } = listSetup();
+			await library.loadAlbum('a');
+			asked.length = 0;
+			player.playList({ album: a, track: a.tracks[0] as Track }, [
+				{ trackId: 'bt0', albumId: 'b' },
+				{ trackId: 'ct0', albumId: 'c' },
+				{ trackId: 't1', albumId: 'a' }
+			]);
+			expect(player.current?.id).toBe('t0');
+			expect(player.sounding).toBe(true);
+			expect(asked).toEqual([]);
+			expect(player.cue?.trackCount).toBe(4);
+			await vi.advanceTimersByTimeAsync(listPrefetchMs - 1);
+			expect(asked).toEqual([]);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(asked).toEqual(['b']);
+			expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['t0', 'bt0']);
+			player.next();
+			await vi.advanceTimersByTimeAsync(listPrefetchMs);
+			// c can't be had: it's passed over, and a was here all along.
+			expect(asked).toEqual(['b', 'c']);
+			expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['t0', 'bt0', 't1']);
+			expect(player.queue?.later).toBeUndefined();
+			player.next();
+			expect(player.current?.id).toBe('t1');
+			player.next();
+			expect(player.finished).toBe(true);
+			expect(player.current?.id).toBe('t0');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('waits for the next album only when a song ends before it came', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout'] });
+		try {
+			const { player, library, a, asked } = listSetup();
+			await library.loadAlbum('a');
+			asked.length = 0;
+			player.playList({ album: a, track: a.tracks[0] as Track }, [
+				{ trackId: 'bt1', albumId: 'b' }
+			]);
+			player.next();
+			expect(asked).toEqual(['b']);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(player.current?.id).toBe('bt1');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
