@@ -99,3 +99,27 @@ export function movedTo<T>(ids: readonly T[], from: number, to: number): T[] {
 	out.splice(Math.max(0, Math.min(to, out.length)), 0, item);
 	return out;
 }
+
+/**
+ * Where each column starts once they stand in `order`, from where they stood before: the same
+ * widths from the same start, `gap` apart. A move changes no width (the title takes what the others
+ * leave, and a move leaves that the same), so this is what a layout would say, without one. Null
+ * when `order` isn't the columns that stood before, as after a Reset: then only a layout knows.
+ */
+export function relaid<Id>(
+	before: ReadonlyMap<Id, Slot>,
+	order: readonly Id[],
+	gap: number
+): Map<Id, number> | null {
+	if (order.length !== before.size || order.some((id) => !before.has(id))) {
+		return null;
+	}
+	let left = Math.min(...[...before.values()].map((slot) => slot.left));
+	return new Map(
+		order.map((id) => {
+			const at = left;
+			left += (before.get(id)?.width ?? 0) + gap;
+			return [id, at] as const;
+		})
+	);
+}

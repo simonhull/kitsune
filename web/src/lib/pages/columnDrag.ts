@@ -1,14 +1,16 @@
 /**
  * Moving a song column, by a drag of its header label or by Alt and the arrows: the DOM side of
  * columnMove.ts. While a column moves, only its rule in columnMotion.ts changes, and those of the
- * columns making room, and the lane and the hole, two elements of their own: no row and no state. The order commits in the task that ends the move, through `commit`, which
- * must update the DOM before it returns (flushSync); the settle that follows only closes the last
- * few pixels between the pointer and the column's slot.
+ * columns making room, and the lane and the hole, two elements of their own: no row and no state.
+ * The order commits in the task that ends the move, through `commit`, which must update the DOM
+ * before it returns (flushSync), and nothing in that task reads layout back: the next frame paints
+ * the rows in their new order, each column drawn where it was, and the settle that closes the last
+ * few pixels starts after it.
  */
 import { flushSync } from 'svelte';
 import type { MovableId } from '#lib/library/source.ts';
 import { keyTarget, labelOf, moveSaid, wallSaid } from './columns.ts';
-import { moveFrame, movedTo, type MoveFrame, type Slot } from './columnMove.ts';
+import { moveFrame, movedTo, relaid, type MoveFrame, type Slot } from './columnMove.ts';
 import { drawAt, moved, rest, wait } from './columnMotion.ts';
 
 /** How far a press travels before the column lifts: a mouse or pen, and a finger. */
@@ -54,6 +56,22 @@ export function say(text: string): void {
 	liveRegion.textContent = text;
 }
 
+let shield: HTMLElement | null = null;
+
+/**
+ * Shows the closed hand wherever the pointer goes while it holds a column: one sheet over the page,
+ * which the captured pointer's events pass by. A rule on every element (`:root[data-grabbing] *`)
+ * did the same, but setting and clearing it restyled the whole page, in the drop's own frame.
+ */
+function grab(on: boolean): void {
+	if (!on) {
+		shield?.remove();
+		return;
+	}
+	shield ??= Object.assign(document.createElement('div'), { className: 'column-grab' });
+	document.body.append(shield);
+}
+
 /** Each list's timer for letting go of its last move, so a new move can take over from it. */
 const releases = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
 
@@ -73,9 +91,41 @@ function release(list: HTMLElement, after: number): void {
 	);
 }
 
+/** Each list's frame and task still to come for its last move, which a new move cancels. */
+const pending = new WeakMap<HTMLElement, { frame: number; task?: ReturnType<typeof setTimeout> }>();
+
+/**
+ * Runs `then` in a task of its own once the next frame has painted what the move's task left, with
+ * no transition, so what `then` changes animates from there in the frame after. A task, not a second
+ * frame callback: what it restyles waits its turn behind whatever else is queued, instead of claiming
+ * the next frame ahead of it.
+ */
+function afterNextFrame(list: HTMLElement, then: () => void): void {
+	cancelPending(list);
+	const waiting: { frame: number; task?: ReturnType<typeof setTimeout> } = {
+		frame: requestAnimationFrame(() => {
+			waiting.task = setTimeout(() => {
+				pending.delete(list);
+				then();
+			}, 0);
+		})
+	};
+	pending.set(list, waiting);
+}
+
+function cancelPending(list: HTMLElement): void {
+	const waiting = pending.get(list);
+	if (waiting !== undefined) {
+		cancelAnimationFrame(waiting.frame);
+		clearTimeout(waiting.task);
+		pending.delete(list);
+	}
+}
+
 function clearNow(list: HTMLElement): void {
 	clearTimeout(releases.get(list));
 	releases.delete(list);
+	cancelPending(list);
 	delete list.dataset['moving'];
 	delete list.dataset['phase'];
 	delete list.dataset['held'];
@@ -85,6 +135,9 @@ function clearNow(list: HTMLElement): void {
 	}
 }
 
+/** Each label's timer for taking its stamp off. */
+const stamps = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+
 /** Stamps the label of a column that has landed: the thud, the fox ink and the scuff. */
 function land(header: HTMLElement, id: MovableId): void {
 	const cell = cellOf(header, id);
@@ -92,12 +145,27 @@ function land(header: HTMLElement, id: MovableId): void {
 		return;
 	}
 	delete cell.dataset['lifted'];
+	clearTimeout(stamps.get(cell));
+	const stamp = () => {
+		cell.dataset['landed'] = '';
+		stamps.set(
+			cell,
+			setTimeout(() => {
+				stamps.delete(cell);
+				delete cell.dataset['landed'];
+			}, landedMs)
+		);
+	};
+	if (cell.dataset['landed'] === undefined) {
+		stamp();
+		return;
+	}
+	// Landed again before the last stamp ended: off for the next frame, so it starts over after it,
+	// with no layout.
 	delete cell.dataset['landed'];
-	void cell.offsetWidth;
-	cell.dataset['landed'] = '';
-	setTimeout(() => {
-		delete cell.dataset['landed'];
-	}, landedMs);
+	requestAnimationFrame(() => {
+		setTimeout(stamp, 0);
+	});
 }
 
 /** Bumps a label against a wall. */
@@ -110,27 +178,42 @@ function bump(cell: HTMLElement, side: 'left' | 'right'): void {
 	}, bumpMs);
 }
 
-/** Where each column's header cell starts, by id: what a move measures before and after. */
-function lefts(header: HTMLElement, lineup: readonly MovableId[]): Map<MovableId, number> {
+/** Where each column's header cell stands, by id: what a move measures before it. */
+function slotsOf(header: HTMLElement, lineup: readonly MovableId[]): Map<MovableId, Slot> {
 	const from = header.getBoundingClientRect().left;
 	return new Map(
 		lineup.flatMap((id) => {
-			const cell = cellOf(header, id);
-			return cell === null ? [] : [[id, cell.getBoundingClientRect().left - from] as const];
+			const rect = cellOf(header, id)?.getBoundingClientRect();
+			return rect === undefined
+				? []
+				: [[id, { left: rect.left - from, width: rect.width }] as const];
 		})
 	);
 }
 
+/** The ids of a header's cells, in their order now. */
+function idsOf(header: HTMLElement): MovableId[] {
+	return [...header.querySelectorAll<HTMLElement>(':scope > [data-col]')].flatMap((cell) => {
+		const id = cell.dataset['col'] as MovableId | undefined;
+		return id === undefined ? [] : [id];
+	});
+}
+
 /**
  * Moves columns to where `change` puts them, each animating from where it was: Alt and an arrow,
- * Reset and its Undo. `change` must update the DOM before it returns.
+ * Reset and its Undo. `change` must update the DOM before it returns. Where a column lands is worked
+ * out from where they stood, without a layout, when the same columns are there after; Reset, which
+ * changes them, measures.
  */
 export function flip(
 	lists: readonly { list: HTMLElement; header: HTMLElement; lineup: readonly MovableId[] }[],
 	change: () => void,
 	{ phase = 'flip', stagger = 0 }: { phase?: 'flip' | 'reset'; stagger?: number } = {}
 ): void {
-	const before = lists.map(({ header, lineup }) => lefts(header, lineup));
+	const before = lists.map(({ header, lineup }) => ({
+		slots: slotsOf(header, lineup),
+		gap: Number.parseFloat(getComputedStyle(header).columnGap) || 12
+	}));
 	for (const { list } of lists) {
 		clearNow(list);
 		list.dataset['moving'] = '';
@@ -139,31 +222,31 @@ export function flip(
 	flushSync(change);
 	const still = reducedMotion();
 	lists.forEach(({ header }, index) => {
-		const ids = [...header.querySelectorAll<HTMLElement>(':scope > [data-col]')].flatMap((cell) => {
-			const id = cell.dataset['col'] as MovableId | undefined;
-			return id === undefined ? [] : [id];
-		});
-		const after = lefts(header, ids);
+		const ids = idsOf(header);
+		const was = before[index];
+		const after =
+			(was && relaid(was.slots, ids, was.gap)) ??
+			new Map([...slotsOf(header, ids)].map(([id, slot]) => [id, slot.left] as const));
 		ids.forEach((id, at) => {
-			const was = before[index]?.get(id);
+			const from = was?.slots.get(id)?.left;
 			const now = after.get(id);
-			if (!still && was !== undefined && now !== undefined && was !== now) {
-				drawAt(id, was - now);
+			if (!still && from !== undefined && now !== undefined && from !== now) {
+				drawAt(id, from - now);
 			}
 			if (stagger > 0) {
 				wait(id, at * stagger);
 			}
 		});
 	});
-	// One layout, so each column starts its way from where it was.
-	void lists[0]?.list.offsetWidth;
 	for (const { list } of lists) {
-		list.dataset['phase'] = phase;
-		for (const id of moved()) {
-			drawAt(id, 0);
-		}
 		const count = list.querySelectorAll(':scope .header > [data-col]').length;
-		release(list, phase === 'reset' ? resetMs + count * stagger + 40 : flipMs);
+		afterNextFrame(list, () => {
+			list.dataset['phase'] = phase;
+			for (const id of moved()) {
+				drawAt(id, 0);
+			}
+			release(list, phase === 'reset' ? resetMs + count * stagger + 40 : flipMs);
+		});
 	}
 }
 
@@ -174,13 +257,7 @@ export function listsOnPage(): { list: HTMLElement; header: HTMLElement; lineup:
 		if (header === null) {
 			return [];
 		}
-		const lineup = [...header.querySelectorAll<HTMLElement>(':scope > [data-col]')].flatMap(
-			(cell) => {
-				const id = cell.dataset['col'] as MovableId | undefined;
-				return id === undefined ? [] : [id];
-			}
-		);
-		return [{ list, header, lineup }];
+		return [{ list, header, lineup: idsOf(header) }];
 	});
 }
 
@@ -200,7 +277,12 @@ export function keyMove(host: MoveHost, id: MovableId, key: string, cell: HTMLEl
 		host.commit(id, to, true);
 	});
 	land(host.header, id);
-	cellOf(host.header, id)?.querySelector<HTMLElement>('.label')?.focus({ preventScroll: true });
+	// A label the reorder moved has lost its focus; one it left in place keeps it, and focusing that
+	// again would only bring style up to date in this task.
+	const label = cellOf(host.header, id)?.querySelector<HTMLElement>('.label');
+	if (label !== null && label !== undefined && document.activeElement !== label) {
+		label.focus({ preventScroll: true });
+	}
 	say(moveSaid(lineup, id));
 }
 
@@ -260,7 +342,7 @@ export class ColumnDrag {
 		list.dataset['held'] = id;
 		delete cell.dataset['pressing'];
 		cell.dataset['lifted'] = '';
-		document.documentElement.dataset['grabbing'] = '';
+		grab(true);
 		host.hold(true);
 		say(`Picked up ${labelOf(id)}, ${String(this.#held + 1)} of ${String(lineup.length)}.`);
 	}
@@ -317,7 +399,10 @@ export class ColumnDrag {
 		this.#hole.style.translate = `${String(frame.holeLeft - own)}px 0`;
 	}
 
-	/** Lets go: the new order in this task, then the settle and the stamp. */
+	/**
+	 * Lets go: the new order in this task, painted in the next frame with the column where the
+	 * pointer left it, then the settle and the stamp.
+	 */
 	drop(): void {
 		if (this.#done) {
 			return;
@@ -339,19 +424,20 @@ export class ColumnDrag {
 			drawAt(id, 0);
 		}
 		drawAt(this.#id, from);
-		this.#lane.style.translate = `${String(from)}px 0`;
-		this.#lane.style.left = `${String(Number.parseFloat(this.#lane.style.left) + holeLeft - own)}px`;
+		const lane = this.#lane;
+		lane.style.translate = `${String(from)}px 0`;
+		lane.style.left = `${String(Number.parseFloat(lane.style.left) + holeLeft - own)}px`;
 		this.#hole.remove();
-		// One layout with the column at its new slot, offset by what's left to go, then the settle.
-		void list.offsetWidth;
-		list.dataset['phase'] = 'settle';
-		drawAt(this.#id, 0);
-		this.#lane.style.translate = '0px 0';
-		this.#lane.dataset['landing'] = '';
 		land(header, this.#id);
 		this.#end();
 		say(moveSaid(movedTo(lineup, this.#held, target), this.#id));
-		release(list, settleMs);
+		afterNextFrame(list, () => {
+			list.dataset['phase'] = 'settle';
+			drawAt(this.#id, 0);
+			lane.style.translate = '0px 0';
+			lane.dataset['landing'] = '';
+			release(list, settleMs);
+		});
 	}
 
 	/** Esc, a lost pointer, or a drop in place: everything falls home, and nothing is saved. */
@@ -375,7 +461,7 @@ export class ColumnDrag {
 	}
 
 	#end(): void {
-		delete document.documentElement.dataset['grabbing'];
+		grab(false);
 		this.#host.hold(false);
 	}
 }

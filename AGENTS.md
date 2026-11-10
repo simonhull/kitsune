@@ -377,6 +377,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   moves by its own style rule (`columnMotion.ts`, written through the CSSOM: a custom property on the
   list restyled everything under it), one resized by `--col-<id>` on the list; neither changes a row
   or any state until the task that ends it. `reorderIn` keeps which columns fit the same on a drop.
+  A list's grid is a rule too (`songGrid.ts`), and the task that ends a move reads no layout back;
+  the settle starts after the frame that shows the new order, and the save is sent after it.
 - `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.
