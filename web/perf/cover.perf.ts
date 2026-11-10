@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { runs, test } from './fixture.ts';
-import { albumTracks, playing } from './pages.ts';
+import { albumTracks, atRest, nextLoudAlbum, openLibrary, playing } from './pages.ts';
 
 /**
  * Plays albums from their covers on the Albums page, by artist, where the loud albums come first. The
@@ -51,6 +51,35 @@ test('Albums: play one from its cover', async ({ page, perf }) => {
 		await card.hover();
 		await page.waitForTimeout(300);
 		await perf.time(play, 'click', playing(first), () => card.locator('button.cover-play').click());
+		await island.locator('button.pause').click();
+	}
+});
+
+/**
+ * Plays albums from their covers in the Library, a new loud album each time, so every press starts
+ * one the page hasn't fetched. The pointer comes to rest on the play first, as a person's does: that
+ * is what asks for the songs. The Library is at rest before the first press.
+ */
+test('Library: play an album from its cover', async ({ page, perf }) => {
+	await openLibrary(page);
+	await atRest(page);
+	const play = perf.samples('play-library-cover');
+	const island = page.locator('aside[aria-label="Player"]');
+	const used = new Set<string>();
+	for (let i = 0; i < runs; i++) {
+		const album = await nextLoudAlbum(page, perf.manifest, used);
+		const [first] = await albumTracks(page, album.id);
+		if (first === undefined) {
+			throw new Error(`${album.title} has no songs`);
+		}
+		const cover = page.locator('main section.album .cover-box', {
+			has: page.locator(`a.art[href="/album/${album.id}"]`)
+		});
+		await cover.scrollIntoViewIfNeeded();
+		const button = cover.locator('button.cover-play');
+		await button.hover();
+		await page.waitForTimeout(300);
+		await perf.time(play, 'click', playing(first), () => button.click());
 		await island.locator('button.pause').click();
 	}
 });
