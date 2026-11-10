@@ -725,6 +725,16 @@
 			const keepTop = pref.group === 'flat' && pref.sort.by === 'top' && pref.sort.dir === 'desc';
 			const lineY = lineElement?.getBoundingClientRect().top ?? 0;
 			if (now) {
+				// The rows the full list will show here, mounted with it in one render, not two.
+				if (listElement !== undefined && pref.group === 'flat') {
+					mounted = rowWindow(
+						songs.length,
+						flatRow,
+						-listElement.getBoundingClientRect().top,
+						windowHeight,
+						{ first: 0, last: -1 }
+					);
+				}
 				captured = {
 					shelves: ghost(shelvesBox),
 					rows: keepTop ? null : ghost(listElement),
