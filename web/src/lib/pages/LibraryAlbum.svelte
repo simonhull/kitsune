@@ -4,7 +4,14 @@
 	import { ownColor, paletteFor } from '#lib/cover/palette.ts';
 	import { theme } from '#lib/theme/theme.svelte.ts';
 	import { albumStars } from '#lib/library/albumStars.ts';
-	import { albumHoldings, discFacts } from '#lib/library/format.ts';
+	import {
+		albumHoldings,
+		discFacts,
+		discKey,
+		discLabel,
+		discOf,
+		noDisc
+	} from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { ColumnId, ColumnsPref, MovableId } from '#lib/library/source.ts';
 	import { runJoins } from '#lib/library/shuffleRules.ts';
@@ -72,10 +79,10 @@
 
 	const album = $derived(block.album);
 	/** What the index says of each disc: its name, count and length. */
-	const discs = $derived(new Map((album.discs ?? []).map((disc) => [disc.no, disc])));
+	const discs = $derived(new Map((album.discs ?? []).map((disc) => [discKey(disc), disc])));
 	const hearted = $derived(library.marks.hearted('albums', album.id));
-	/** Each disc's songs, for its heading's box. */
-	const discSongs = $derived(Map.groupBy(album.tracks, (track) => Math.max(track.discNo ?? 1, 1)));
+	/** Each disc's songs, for its heading's box: the songs with no disc number as one more. */
+	const discSongs = $derived(Map.groupBy(album.tracks, (track) => discOf(track.discNo)));
 	const sharedHas = (id: ColumnId): boolean => shared.has(id);
 	const stars = $derived(albumStars(album.tracks, library.marks));
 	/**
@@ -170,23 +177,28 @@
 				{@const disc = discs.get(row.disc)}
 				{@const facts = disc === undefined ? undefined : discFacts(disc)}
 				{@const ids = (discSongs.get(row.disc) ?? []).map(({ id }) => id)}
+				{@const none = row.disc === noDisc}
+				{@const label = discLabel(row.disc)}
 				<div
 					class="disc"
 					class:first={row.first}
+					class:none
 					style:top={at}
 					style:height={`${String(row.height)}px`}
 				>
 					<span class="disc-box pick-gutter"
 						><PickBox
 							state={selection.boxFor(ids)}
-							label={`Select every song on disc ${String(row.disc)} of ${album.title}`}
+							label={none
+								? `Select every song with no disc number on ${album.title}`
+								: `Select every song on disc ${String(row.disc)} of ${album.title}`}
 							ontoggle={() => {
 								selection.toggleAll(ids);
 							}}
 						/></span
 					>
 					<span class="disc-line">
-						<h3 class="disc-no">DISC {row.disc}</h3>
+						<h3 class="disc-no">{label.toUpperCase()}</h3>
 						{#if disc?.name !== undefined}
 							<span class="disc-name" title={disc.name}>{disc.name}</span>
 						{/if}
@@ -199,9 +211,11 @@
 					<button
 						type="button"
 						class="disc-play"
-						aria-label={disc?.name === undefined
-							? `Play disc ${String(row.disc)} of ${album.title}`
-							: `Play disc ${String(row.disc)}, ${disc.name}`}
+						aria-label={none
+							? `Play the songs with no disc number on ${album.title}`
+							: disc?.name === undefined
+								? `Play disc ${String(row.disc)} of ${album.title}`
+								: `Play disc ${String(row.disc)}, ${disc.name}`}
 						onclick={() => {
 							playDisc(row.disc);
 						}}
@@ -381,6 +395,11 @@
 		font-weight: 600;
 		letter-spacing: 0.1em;
 		color: var(--text);
+	}
+
+	/* The songs with no disc number: a quiet warning, as "no RG" is. */
+	.none .disc-no {
+		color: var(--fox-text);
 	}
 
 	.disc-name {

@@ -1,4 +1,4 @@
-import { isMultiDisc } from '#lib/library/format.ts';
+import { discOf, isMultiDisc } from '#lib/library/format.ts';
 import type {
 	LibraryAlbum,
 	LibraryArtist,
@@ -31,6 +31,7 @@ export type Row =
 			top: number;
 			height: number;
 			albumIndex: number;
+			/** Its number, or `noDisc` for the songs with none. */
 			disc: number;
 			/** Whether it heads the album's songs on show: then it has no disc above it. */
 			first: boolean;
@@ -194,7 +195,7 @@ function layOutAlbum(
 		if (kept?.has(track) === false) {
 			continue;
 		}
-		const on = track.discNo ?? 1;
+		const on = discOf(track.discNo);
 		if (multiDisc && on !== disc) {
 			const first = disc === null;
 			const height = first ? metrics.firstDisc : metrics.nextDisc;

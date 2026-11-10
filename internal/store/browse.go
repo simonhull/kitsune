@@ -115,7 +115,7 @@ type AlbumDetail struct {
 
 	Artists  []ArtistLink // Who it links to; empty leaves Artist as plain text.
 	Tracks   []Track
-	Discs    []Disc // In disc order; one, for an album on one disc.
+	Discs    []Disc // In disc order, any with no number last; one, for an album on one disc.
 	Duration time.Duration
 	Formats  []string // Distinct and sorted.
 	ETag     string   // Covers the live tracks' files; see [etag].
@@ -425,6 +425,7 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 		d.Duration += tr.Duration
 		d.Formats = append(d.Formats, tr.Format)
 	}
+	(*discs)(&d.Discs).settle()
 	slices.Sort(d.Formats)
 	d.Formats = slices.Compact(d.Formats)
 	d.ETag = etag(stamps...)

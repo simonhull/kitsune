@@ -2,7 +2,7 @@ import { changedSettings, foldersFixture, settingsFixture } from './settingsFixt
 import { fnv1a } from '#lib/cover/cover.ts';
 import { letterOf } from '#lib/pages/libraryRows.ts';
 import { normalizeCode } from '#lib/pages/passwords.ts';
-import { discsOf } from './format.ts';
+import { discOf, discsOf } from './format.ts';
 import { partOf } from './indexPatch.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
@@ -673,7 +673,9 @@ function reindexed(album: Album, tags: AlbumTags, touched: readonly string[]): A
 		];
 	});
 	const ordered = tracks.toSorted(
-		(a, b) => (a.discNo ?? 1) - (b.discNo ?? 1) || (a.trackNo ?? Infinity) - (b.trackNo ?? Infinity)
+		(a, b) =>
+			(discOf(a.discNo) || Infinity) - (discOf(b.discNo) || Infinity) ||
+			(a.trackNo ?? Infinity) - (b.trackNo ?? Infinity)
 	);
 	const [{ year } = album] = ordered;
 	const rest = { ...album };

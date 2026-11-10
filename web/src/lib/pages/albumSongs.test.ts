@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Album, ReplayGain, Track } from '#lib/library/source.ts';
-import { rowsOf } from './albumSongs.ts';
+import { discGroups, rowsOf } from './albumSongs.ts';
 
 function song(no: number, replayGain?: ReplayGain): Track {
 	return {
@@ -51,6 +51,40 @@ describe('rowsOf', () => {
 			[2, 'measured'],
 			[undefined, undefined],
 			[undefined, undefined]
+		]);
+	});
+});
+
+describe('discGroups', () => {
+	const on = (discNo: number | undefined, no: number): Track => ({
+		...song(no),
+		...(discNo === undefined ? {} : { discNo })
+	});
+
+	it('keeps an album with no disc numbers as one group with no heading', () => {
+		const tracks = [on(undefined, 1), on(undefined, 2), on(undefined, 3)];
+		expect(discGroups({ tracks, discs: [{ no: 1, songs: 3, durationMs: 180_000 }] })).toEqual([
+			{ disc: undefined, indexes: [0, 1, 2] }
+		]);
+	});
+
+	it('heads each disc of an album whose songs all have one', () => {
+		const one = { no: 1, songs: 2, durationMs: 120_000 };
+		const two = { no: 2, songs: 1, durationMs: 60_000 };
+		const tracks = [on(1, 1), on(1, 2), on(2, 1)];
+		expect(discGroups({ tracks, discs: [one, two] })).toEqual([
+			{ disc: one, indexes: [0, 1] },
+			{ disc: two, indexes: [2] }
+		]);
+	});
+
+	it('gives the songs with no disc number their own group, last, beside a disc', () => {
+		const one = { no: 1, songs: 2, durationMs: 120_000 };
+		const none = { songs: 3, durationMs: 180_000 };
+		const tracks = [on(1, 1), on(1, 2), on(undefined, 37), on(undefined, 1), on(undefined, 2)];
+		expect(discGroups({ tracks, discs: [one, none] })).toEqual([
+			{ disc: one, indexes: [0, 1] },
+			{ disc: none, indexes: [2, 3, 4] }
 		]);
 	});
 });

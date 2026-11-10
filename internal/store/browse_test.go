@@ -418,10 +418,10 @@ func albumTracksFixture() []store.TrackWrite {
 	return tws
 }
 
-func TestAlbumTrackOrder(t *testing.T) {
-	t.Parallel()
-	s, _ := openBrowse(t)
-	writeAll(t, s, albumTracksFixture()...)
+// albumOrder returns the titles and discs of album 1, as its page and as the
+// index have them, and fails unless the two agree.
+func albumOrder(t *testing.T, s *store.Store) ([]string, []store.Disc) {
+	t.Helper()
 	d, err := s.Album(t.Context(), albumID(1))
 	if err != nil {
 		t.Fatal(err)
@@ -430,9 +430,94 @@ func TestAlbumTrackOrder(t *testing.T) {
 	for i := range d.Tracks {
 		titles[i] = d.Tracks[i].Title
 	}
-	// The unset disc counts as disc 1; unset track numbers sort last within a disc.
-	if want := []string{"d1t1", titleD1T2, "a-no-number", "gone", "z-no-number", "d2t1"}; !slices.Equal(titles, want) {
+	index, err := s.LibraryIndex(t.Context(), 0, &store.IndexOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	album := index.Artists[0].Albums[0]
+	listed := make([]string, len(album.Tracks))
+	for i := range album.Tracks {
+		listed[i] = album.Tracks[i].Title
+	}
+	if !slices.Equal(listed, titles) {
+		t.Errorf("index order = %v, album order %v", listed, titles)
+	}
+	// The index sends discs only when they say something: one unnamed disc doesn't.
+	want := d.Discs
+	if len(want) == 1 && want[0].Name == "" {
+		want = nil
+	}
+	if !slices.Equal(album.Discs, want) {
+		t.Errorf("index discs = %+v, want %+v", album.Discs, want)
+	}
+	return titles, d.Discs
+}
+
+func TestAlbumTrackOrder(t *testing.T) {
+	t.Parallel()
+	s, _ := openBrowse(t)
+	writeAll(t, s, albumTracksFixture()...)
+	titles, discs := albumOrder(t, s)
+	// Unset track numbers sort last within a disc, and the songs with no disc
+	// number come after every disc, as a group of their own.
+	if want := []string{"d1t1", "d2t1", titleD1T2, "a-no-number", "gone", "z-no-number"}; !slices.Equal(titles, want) {
 		t.Errorf("track order = %v, want %v", titles, want)
+	}
+	want := []store.Disc{
+		{No: 1, Songs: 1, Duration: 5 * time.Second},
+		{No: 2, Songs: 1, Duration: 2 * time.Second},
+		{No: 0, Songs: 4, Duration: time.Hour + 8*time.Second},
+	}
+	if !slices.Equal(discs, want) {
+		t.Errorf("discs = %+v, want %+v", discs, want)
+	}
+}
+
+// An album whose songs all have a disc number, or none of them does, keeps the
+// order it had: by disc, then number, then title.
+func TestAlbumTrackOrderWithoutAGroupWithNoDisc(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		specs []trackSpec
+		want  []string
+		discs []store.Disc
+	}{
+		{
+			name: "no disc numbers",
+			specs: []trackSpec{
+				{title: "c", number: 3}, {title: "untitled"}, {title: "a", number: 1}, {title: "b", number: 2},
+			},
+			want:  []string{"a", "b", "c", "untitled"},
+			discs: []store.Disc{{No: 1, Songs: 4, Duration: 10 * time.Second}},
+		},
+		{
+			name: "every disc numbered",
+			specs: []trackSpec{
+				{title: "2-1", disc: 2, number: 1}, {title: "1-2", disc: 1, number: 2}, {title: "1-1", disc: 1, number: 1},
+			},
+			want:  []string{"1-1", "1-2", "2-1"},
+			discs: []store.Disc{{No: 1, Songs: 2, Duration: 5 * time.Second}, {No: 2, Songs: 1, Duration: time.Second}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s, _ := openBrowse(t)
+			tws := make([]store.TrackWrite, len(tc.specs))
+			for i, sp := range tc.specs {
+				tws[i] = albumTrack(1, i+1, "s")
+				tws[i].Title, tws[i].DiscNo, tws[i].TrackNo = sp.title, sp.disc, sp.number
+				tws[i].Duration = time.Duration(i+1) * time.Second
+			}
+			writeAll(t, s, tws...)
+			titles, discs := albumOrder(t, s)
+			if !slices.Equal(titles, tc.want) {
+				t.Errorf("track order = %v, want %v", titles, tc.want)
+			}
+			if !slices.Equal(discs, tc.discs) {
+				t.Errorf("discs = %+v, want %+v", discs, tc.discs)
+			}
+		})
 	}
 }
 
@@ -454,12 +539,12 @@ func TestAlbumTracks(t *testing.T) {
 		t.Errorf("Formats = %v, want %v", d.Formats, want)
 	}
 	want := store.Track{
-		ID: tws[2].ULID, Title: titleD1T2, Artists: []string{"X", "Y", "Z"}, DiscNo: 0, TrackNo: 2, ETag: d.Tracks[1].ETag,
+		ID: tws[2].ULID, Title: titleD1T2, Artists: []string{"X", "Y", "Z"}, DiscNo: 0, TrackNo: 2, ETag: d.Tracks[2].ETag,
 		Duration: 3 * time.Second, Format: flacFormat, SampleRate: 44100, BitDepth: 16,
 		ReplayGain: store.ReplayGain{TrackGain: -6.5, TrackPeak: 0.9, AlbumGain: -7, AlbumPeak: 1},
 	}
-	if !reflect.DeepEqual(d.Tracks[1], want) {
-		t.Errorf("track = %+v, want %+v", d.Tracks[1], want)
+	if !reflect.DeepEqual(d.Tracks[2], want) {
+		t.Errorf("track = %+v, want %+v", d.Tracks[2], want)
 	}
 	if first := d.Tracks[0]; first.DiscNo != 1 || first.TrackNo != 1 || len(first.Artists) != 0 {
 		t.Errorf("first = %+v, want disc 1 track 1 and no artists", first)

@@ -4,7 +4,14 @@
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { addedOn, discFacts, formatLine } from '#lib/library/format.ts';
+	import {
+		addedOn,
+		discFacts,
+		discKey,
+		discLabel,
+		formatLine,
+		noDisc
+	} from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type {
 		Album,
@@ -187,17 +194,21 @@
 					movable={(id: MovableId) => movable(id, pref)}
 				/>
 			{/if}
-			{#each groups as group, at (group.disc?.no ?? 0)}
+			{#each groups as group, at (group.disc === undefined ? -1 : discKey(group.disc))}
 				{#if group.disc !== undefined}
 					{@const disc = group.disc}
-					{@const label = `Disc ${String(disc.no)}`}
+					{@const key = discKey(disc)}
+					{@const none = key === noDisc}
+					{@const label = discLabel(key)}
 					{@const facts = discFacts(disc)}
 					{@const ids = group.indexes.flatMap((index) => rows.tracks.at(index)?.id ?? [])}
-					<div class="disc" class:first={at === 0}>
+					<div class="disc" class:first={at === 0} class:none>
 						<span class="disc-box pick-gutter"
 							><PickBox
 								state={selection.boxFor(ids)}
-								label={`Select every song on ${label}`}
+								label={none
+									? 'Select every song with no disc number'
+									: `Select every song on ${label}`}
 								ontoggle={() => {
 									selection.toggleAll(ids);
 								}}
@@ -215,13 +226,17 @@
 						<button
 							type="button"
 							class="disc-play"
-							aria-label={disc.name === undefined ? `Play ${label}` : `Play ${label}, ${disc.name}`}
+							aria-label={none
+								? 'Play the songs with no disc number'
+								: disc.name === undefined
+									? `Play ${label}`
+									: `Play ${label}, ${disc.name}`}
 							onclick={() => {
-								playDisc(disc.no);
+								playDisc(key);
 							}}
 						>
 							<Icon name="play" size={12} />
-							<span class="disc-play-words">Play disc</span>
+							<span class="disc-play-words">{none ? 'Play these' : 'Play disc'}</span>
 						</button>
 					</div>
 				{/if}
@@ -369,6 +384,15 @@
 		line-height: 1;
 	}
 
+	/* The songs with no disc number: the same heading, in a smaller word and the fox's text color. */
+	.none .disc-no {
+		padding-bottom: 2px;
+		font-size: calc(20px * var(--step));
+		font-weight: 700;
+		letter-spacing: var(--tracking-title);
+		color: var(--fox-text);
+	}
+
 	.disc-about {
 		flex: 1;
 		min-width: 0;
@@ -483,6 +507,11 @@
 			grid-area: no;
 			font-size: 22px;
 			letter-spacing: -0.03em;
+		}
+
+		.none .disc-no {
+			padding: 0;
+			font-size: 17px;
 		}
 
 		.disc-about {

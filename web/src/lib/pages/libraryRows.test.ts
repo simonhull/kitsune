@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { noDisc } from '#lib/library/format.ts';
 import type {
 	LibraryAlbum,
 	LibraryArtist,
@@ -96,6 +97,18 @@ describe('layOut', () => {
 			{ albumIndex: 2, disc: 1, first: true, height: 30 },
 			{ albumIndex: 2, disc: 2, first: false, height: 60 }
 		]);
+	});
+
+	it('heads the songs with no disc number beside a disc, last, as a group of their own', () => {
+		const mixed = layOut(
+			{
+				artists: [artist('Dee', [album('d1', [song('j', 1), song('k', 1), song('l'), song('m')])])]
+			},
+			metrics
+		);
+		expect(
+			mixed.rows.map((row) => (row.kind === 'disc' ? `disc ${String(row.disc)}` : 'song'))
+		).toEqual(['disc 1', 'song', 'song', `disc ${String(noDisc)}`, 'song', 'song']);
 	});
 
 	it('heads a disc as the first when a filter leaves none above it', () => {

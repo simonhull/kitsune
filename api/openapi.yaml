@@ -3286,13 +3286,19 @@ components:
             album's.
     Disc:
       description: >-
-        One disc of an album, in disc order: an album on one disc has one. A
-        track with no disc number is on disc 1.
+        One disc of an album, in disc order: an album on one disc has one.
+        When no song of the album has a disc number, they are all on disc 1.
+        When some do and some don't, those that don't are a group of their
+        own, after every disc, which has no `no`: its tracks come last in the
+        album's order too. A disc tagged 0 has no number.
       type: object
       additionalProperties: false
-      required: [no, songs, durationMs]
+      required: [songs, durationMs]
       properties:
-        no: { type: integer, minimum: 1 }
+        no:
+          type: integer
+          minimum: 1
+          description: Absent for the songs with no disc number, beside songs that have one.
         name:
           type: string
           description: >-

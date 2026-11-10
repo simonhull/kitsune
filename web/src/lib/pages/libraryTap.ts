@@ -1,3 +1,4 @@
+import { discOf } from '#lib/library/format.ts';
 import type { Album } from '#lib/library/source.ts';
 
 /** What a tap needs from the rest of the app. */
@@ -26,7 +27,7 @@ export function createTapper(host: TapHost): (albumId: string, from: TapFrom) =>
 	function start(albumId: string, from: TapFrom): void {
 		const album = host.album(albumId);
 		if ('disc' in from) {
-			const has = album?.tracks.some(({ discNo }) => (discNo ?? 1) === from.disc) ?? false;
+			const has = album?.tracks.some(({ discNo }) => discOf(discNo) === from.disc) ?? false;
 			if (album === undefined || !has) {
 				host.failed(albumId);
 			} else {

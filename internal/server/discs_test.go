@@ -137,3 +137,62 @@ func TestEditOfADiscNameWritesItAndSaysTheAlbumChanged(t *testing.T) {
 	}
 	fx.wantStoreFollowed(t, &before, &got)
 }
+
+// seedMixedDiscs writes a soundtrack whose first songs were tagged disc 1 and
+// whose others have no disc number, their numbers starting over.
+func (ts *testServer) seedMixedDiscs(t *testing.T) {
+	t.Helper()
+	by := []store.ArtistWrite{person(1, annName)}
+	ts.seedIndex(t, indexAlbum{n: 1, title: "Score", artist: annName, tracks: []indexTrack{
+		{title: "Main Title", disc: 1, trackNo: 1, artists: by},
+		{title: "Reprise A", trackNo: 1, artists: by},
+		{title: "Arrival", disc: 1, trackNo: 2, artists: by},
+		{title: "Reprise B", trackNo: 1, artists: by},
+		{title: "Coda", trackNo: 2, artists: by},
+	}})
+}
+
+func TestSongsWithNoDiscNumberBesideADiscAreTheirOwnGroupLast(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.seedMixedDiscs(t)
+	token := ts.tokenFor(t, store.RoleUser)
+	wantOrder := []string{"Main Title", "Arrival", "Reprise A", "Reprise B", "Coda"}
+	wantDiscs := []api.Disc{
+		{No: 1, Songs: 2, DurationMs: 120_000},
+		{Songs: 3, DurationMs: 180_000},
+	}
+
+	var album api.AlbumDetail
+	ts.getJSON(t, token, albumsPath+"/"+albumULID(1), &album)
+	titles := make([]string, len(album.Tracks))
+	for i := range album.Tracks {
+		titles[i] = album.Tracks[i].Title
+	}
+	if !slices.Equal(titles, wantOrder) {
+		t.Errorf("album order = %q, want %q", titles, wantOrder)
+	}
+	if !slices.Equal(album.Discs, wantDiscs) {
+		t.Errorf("album discs = %+v, want %+v", album.Discs, wantDiscs)
+	}
+
+	var index api.LibraryIndex
+	ts.getJSON(t, token, indexPath, &index)
+	listed := index.Artists[0].Albums[0]
+	titles = titles[:0]
+	for i := range listed.Tracks {
+		titles = append(titles, listed.Tracks[i].Title)
+	}
+	if !slices.Equal(titles, wantOrder) {
+		t.Errorf("index order = %q, want %q", titles, wantOrder)
+	}
+	if !slices.Equal(listed.Discs, wantDiscs) {
+		t.Errorf("index discs = %+v, want %+v", listed.Discs, wantDiscs)
+	}
+
+	// The group with no disc number says so by having no number at all.
+	resp := ts.send(t, call{method: http.MethodGet, path: albumsPath + "/" + albumULID(1), header: bearer(token)})
+	if !strings.Contains(string(resp.Body), `{"songs":3,"durationMs":180000}`) {
+		t.Errorf("the group with no disc number was sent as %s", resp.Body)
+	}
+}

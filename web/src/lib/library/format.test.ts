@@ -11,7 +11,9 @@ import {
 	credit,
 	discFacts,
 	discHeads,
+	discLabel,
 	discsOf,
+	noDisc,
 	formatLine,
 	formatOf,
 	gain,
@@ -81,7 +83,7 @@ describe('trackLabel', () => {
 	it('pads a plain number and marks the disc only on a multi-disc album', () => {
 		expect(trackLabel(track({ trackNo: 3 }), false)).toBe('03');
 		expect(trackLabel(track({ discNo: 2, trackNo: 3 }), true)).toBe('2-03');
-		expect(trackLabel(track({ trackNo: 3 }), true)).toBe('1-03');
+		expect(trackLabel(track({ trackNo: 3 }), true)).toBe('03');
 	});
 
 	it('invents nothing for a track with no number', () => {
@@ -90,16 +92,23 @@ describe('trackLabel', () => {
 });
 
 describe('isMultiDisc', () => {
-	it('counts an unset disc as disc 1', () => {
-		expect(isMultiDisc([track({ discNo: 1 }), track()])).toBe(false);
-		expect(isMultiDisc([track(), track({ discNo: 2 })])).toBe(true);
+	it('heads songs with no disc number beside songs with one, and not when none has one', () => {
+		expect(isMultiDisc([track(), track()])).toBe(false);
+		expect(isMultiDisc([track({ discNo: 1 }), track({ discNo: 1 })])).toBe(false);
+		expect(isMultiDisc([track({ discNo: 1 }), track()])).toBe(true);
+		expect(isMultiDisc([track({ discNo: 1 }), track({ discNo: 2 })])).toBe(true);
+	});
+
+	it('takes a disc tagged 0 for no disc number', () => {
+		expect(isMultiDisc([track({ discNo: 0 }), track()])).toBe(false);
+		expect(isMultiDisc([track({ discNo: 0 }), track({ discNo: 1 })])).toBe(true);
 	});
 });
 
 describe('discsOf', () => {
-	it('counts each disc, an unset one as disc 1, and names it from its first named song', () => {
+	it('counts each disc and names it from its first named song', () => {
 		const tracks = [
-			track({ durationMs: 60_000 }),
+			track({ discNo: 1, durationMs: 60_000 }),
 			track({ discNo: 1, durationMs: 120_000, discSubtitle: 'The Electric Set' }),
 			track({ discNo: 2, durationMs: 30_000, discSubtitle: '' }),
 			track({ discNo: 2, durationMs: 30_000, discSubtitle: 'Room' }),
@@ -109,6 +118,31 @@ describe('discsOf', () => {
 			{ no: 1, name: 'The Electric Set', songs: 2, durationMs: 180_000 },
 			{ no: 2, name: 'Room', songs: 3, durationMs: 90_000 }
 		]);
+	});
+
+	it('puts every song on disc 1 when none has a disc number', () => {
+		expect(discsOf([track({ durationMs: 60_000 }), track({ durationMs: 30_000 })])).toEqual([
+			{ no: 1, songs: 2, durationMs: 90_000 }
+		]);
+	});
+
+	it('makes the songs with no disc number a group of their own, with no number', () => {
+		const tracks = [
+			track({ discNo: 1, durationMs: 60_000 }),
+			track({ durationMs: 30_000 }),
+			track({ discNo: 0, durationMs: 30_000 })
+		];
+		expect(discsOf(tracks)).toEqual([
+			{ no: 1, songs: 1, durationMs: 60_000 },
+			{ songs: 2, durationMs: 60_000 }
+		]);
+	});
+});
+
+describe('discLabel', () => {
+	it('names a disc by its number, and the songs with none as such', () => {
+		expect(discLabel(2)).toBe('Disc 2');
+		expect(discLabel(noDisc)).toBe('No disc number');
 	});
 });
 
@@ -120,8 +154,8 @@ describe('discHeads', () => {
 		...(name === undefined ? {} : { name })
 	});
 
-	it('heads each disc at its first track, an unset disc as disc 1', () => {
-		const tracks = [track(), track({ discNo: 1 }), track({ discNo: 2 }), track({ discNo: 2 })];
+	it('heads each disc at its first track', () => {
+		const tracks = [track({ discNo: 1 }), track({ discNo: 1 }), track({ discNo: 2 })];
 		const heads = discHeads({ tracks, discs: [disc(1, 'A'), disc(2)] });
 		expect([...heads]).toEqual([
 			[0, disc(1, 'A')],
@@ -129,8 +163,19 @@ describe('discHeads', () => {
 		]);
 	});
 
-	it('heads nothing on one disc, even a named one', () => {
+	it('heads the songs with no disc number last, after the discs', () => {
+		const none = { songs: 3, durationMs: 1 };
+		const tracks = [track({ discNo: 1 }), track({ discNo: 1 }), track(), track(), track()];
+		const heads = discHeads({ tracks, discs: [disc(1), none] });
+		expect([...heads]).toEqual([
+			[0, disc(1)],
+			[2, none]
+		]);
+	});
+
+	it('heads nothing on one disc, even a named one, or when no song has a disc number', () => {
 		expect(discHeads({ tracks: [track(), track()], discs: [disc(1, 'Named')] }).size).toBe(0);
+		expect(discHeads({ tracks: [track(), track()], discs: [disc(1)] }).size).toBe(0);
 		expect(discHeads({ tracks: [], discs: [] }).size).toBe(0);
 	});
 });
