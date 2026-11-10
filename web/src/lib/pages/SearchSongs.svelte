@@ -25,6 +25,7 @@
 	} from './columns.ts';
 	import ColumnsMenu from './ColumnsMenu.svelte';
 	import { columnsView } from './columnsView.svelte.ts';
+	import { songGrid } from './songGrid.ts';
 	import PickBox from './PickBox.svelte';
 	import RowMenu from './RowMenu.svelte';
 	import SelectionBar from './SelectionBar.svelte';
@@ -202,7 +203,7 @@
 	class="songs song-list"
 	bind:this={root}
 	bind:clientWidth={width}
-	style:--song-grid={grid}
+	use:songGrid={grid}
 	style={columnVars(fitted.shown, columnsView.pref.widths, step)}
 	data-selecting={selection.any ? '' : undefined}
 >

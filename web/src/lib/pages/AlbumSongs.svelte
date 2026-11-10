@@ -17,6 +17,7 @@
 	import Icon from '#lib/shell/Icon.svelte';
 	import { discGroups } from './albumSongs.ts';
 	import { columnsView } from './columnsView.svelte.ts';
+	import { songGrid } from './songGrid.ts';
 	import {
 		artistWhenDifferentIn,
 		columnVars,
@@ -149,7 +150,7 @@
 	class:one
 	data-morph-part="panel"
 	data-selecting={selection.any ? '' : undefined}
-	style:--song-grid={grid}
+	use:songGrid={grid}
 	style={columnVars(fitted.shown, pref.widths, step)}
 >
 	{#if album !== undefined && editor !== undefined}
