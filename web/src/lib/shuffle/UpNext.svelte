@@ -9,6 +9,7 @@
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { AlbumEntry, LibraryTrack, ShuffleMode } from '#lib/library/source.ts';
 	import { columnsFrom, largeFrom, template, type RowParts } from '#lib/pages/columns.ts';
+	import { songGrid } from '#lib/pages/songGrid.ts';
 	import RowMenu from '#lib/pages/RowMenu.svelte';
 	import SelectionBar from '#lib/pages/SelectionBar.svelte';
 	import { onScreen, Selection } from '#lib/pages/selection.svelte.ts';
@@ -232,7 +233,7 @@
 	class="up-next song-list"
 	aria-label="Up next"
 	bind:this={root}
-	style:--song-grid={grid}
+	use:songGrid={grid}
 	data-selecting={selection.any ? '' : undefined}
 >
 	<div class="head">

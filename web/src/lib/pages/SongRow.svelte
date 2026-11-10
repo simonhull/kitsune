@@ -33,7 +33,7 @@
 		parts: RowParts;
 		/**
 		 * What the row places, in order: the number, the title and the columns shown. Their grid is
-		 * the list's `--song-grid`, which the header shares.
+		 * the list's (songGrid.ts), which the header shares.
 		 */
 		shown: readonly MovableId[];
 		/** The person's columns, which a phone's second line is made from. */
@@ -291,7 +291,7 @@
 		min-width: 0;
 		height: var(--song-row, 44px);
 		display: grid;
-		grid-template-columns: var(--song-grid);
+		/* Its columns are the list's grid, a rule of songGrid.ts's. */
 		align-items: center;
 		column-gap: var(--col-gap, 12px);
 		padding: 0 var(--row-pad, 14px);
