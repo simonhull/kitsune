@@ -457,8 +457,10 @@ export function template(
 /**
  * Where a list stands, for the columns: the Library shows every one chosen; an album page never
  * Album, which it is; search results come from everywhere, so they always say whose and from what.
+ * An artist page's flat list (`artist`) always says from what, as its songs cross albums; by album
+ * (`artistAlbums`) a cover heads them, so never Album.
  */
-export type ColumnsContext = 'library' | 'album' | 'search';
+export type ColumnsContext = 'library' | 'album' | 'search' | 'artist' | 'artistAlbums';
 
 /** The person's columns as a list shows them, in their order. */
 export function columnsIn(order: readonly MovableId[], context: ColumnsContext): MovableId[] {
@@ -479,6 +481,17 @@ export function columnsIn(order: readonly MovableId[], context: ColumnsContext):
 			}
 			return out;
 		}
+		case 'artist': {
+			// Album always, right after Artist, or the title without it, when the person hasn't placed it.
+			const out = framed(order);
+			if (!out.includes('album')) {
+				const after = out.includes('artist') ? 'artist' : 'title';
+				out.splice(out.indexOf(after) + 1, 0, 'album');
+			}
+			return out;
+		}
+		case 'artistAlbums':
+			return order.filter((id) => id !== 'album');
 	}
 }
 
@@ -488,6 +501,8 @@ export function artistWhenDifferentIn(pref: ColumnsPref, context: ColumnsContext
 		case 'library':
 			return pref.artistWhenDifferent;
 		case 'album':
+		case 'artist':
+		case 'artistAlbums':
 			return true;
 		case 'search':
 			return false;
@@ -527,6 +542,13 @@ export interface CellContext {
 	artistWhenDifferent: boolean;
 	/** Unix ms: when "Yesterday" is. */
 	now: number;
+	/**
+	 * The artist a page is about: Artist, under the switch, leaves out a song that's only theirs, not
+	 * one that's only the album's artist's.
+	 */
+	pageArtist?: string | undefined;
+	/** A list across albums with no heading for each says a song's album on a phone's line. */
+	albumOnLine?: boolean | undefined;
 }
 
 export type Cell =
@@ -583,10 +605,18 @@ export function formatCell({ format, bitDepth, sampleRate, bitrate }: LibraryTra
 	return bitrate === undefined ? format : `${format} ${String(bitrate)}`;
 }
 
-/** The track's artists as Artist shows them: nothing, under the switch, where they're the album's. */
-export function artistCell(track: LibraryTrack, album: RowAlbum, whenDifferent: boolean): string {
+/**
+ * The track's artists as Artist shows them: nothing, under the switch, where they're the album's,
+ * or the page's artist's where a page is about one.
+ */
+export function artistCell(
+	track: LibraryTrack,
+	album: RowAlbum,
+	whenDifferent: boolean,
+	pageArtist?: string
+): string {
 	const named = track.artists.filter((artist) => artist !== '').join(', ');
-	return whenDifferent && named === album.artist ? '' : named;
+	return whenDifferent && named === (pageArtist ?? album.artist) ? '' : named;
 }
 
 export function cellOf(id: ColumnId, context: CellContext): Cell {
@@ -595,7 +625,7 @@ export function cellOf(id: ColumnId, context: CellContext): Cell {
 	const name = (text: string): Cell => ({ look: 'name', text });
 	switch (id) {
 		case 'artist':
-			return name(artistCell(track, album, context.artistWhenDifferent));
+			return name(artistCell(track, album, context.artistWhenDifferent, context.pageArtist));
 		case 'albumArtist':
 			return name(track.albumArtists?.join(', ') ?? '');
 		case 'album':
@@ -685,7 +715,7 @@ function phoneParts(
 	const { track, album } = context;
 	const parts: { id: ColumnId; text: string }[] = [];
 	for (const id of columnsOf(order)) {
-		if (id === 'album' || (!perSong.has(id) && sameOnAlbum(id))) {
+		if (offLine(id, context, sameOnAlbum)) {
 			continue;
 		}
 		const part = phonePart(id, context, track, album);
@@ -694,6 +724,21 @@ function phoneParts(
 		}
 	}
 	return parts;
+}
+
+/**
+ * Whether a phone's line leaves a column to its album's heading: Album always, unless the list has
+ * no heading for each album, and anything else that says the same for every song of it.
+ */
+function offLine(
+	id: ColumnId,
+	context: CellContext,
+	sameOnAlbum: (id: ColumnId) => boolean
+): boolean {
+	if (id === 'album') {
+		return context.albumOnLine !== true;
+	}
+	return !perSong.has(id) && sameOnAlbum(id);
 }
 
 /** Why a column isn't on a phone's line: its album's heading says it, or the line ran out. */
@@ -711,7 +756,7 @@ export function lineNotes(
 ): Map<ColumnId, LineNote> {
 	const notes = new Map<ColumnId, LineNote>();
 	for (const id of columnsOf(order)) {
-		if (id === 'album' || (!perSong.has(id) && sameOnAlbum(id))) {
+		if (offLine(id, context, sameOnAlbum)) {
 			notes.set(id, 'heading');
 		}
 	}
@@ -739,8 +784,9 @@ function phonePart(
 			if (!context.artistWhenDifferent) {
 				return cell.look === 'name' ? cell.text : '';
 			}
-			const guests = track.artists.filter((artist) => artist !== '' && artist !== album.artist);
-			const named = artistCell(track, album, true);
+			const own = context.pageArtist ?? album.artist;
+			const guests = track.artists.filter((artist) => artist !== '' && artist !== own);
+			const named = artistCell(track, album, true, context.pageArtist);
 			if (named === '') {
 				return '';
 			}

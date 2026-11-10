@@ -45,6 +45,12 @@
 		sameOnAlbum?: (id: ColumnId) => boolean;
 		/** Who else is on it, after the title, as Up next says it. */
 		credit?: string | undefined;
+		/** The artist a page is about, whom Artist leaves out (`CellContext.pageArtist`). */
+		pageArtist?: string | undefined;
+		/** Its album goes on a phone's line, in a list with no heading for each album. */
+		albumOnLine?: boolean | undefined;
+		/** Its place in a ranked list, from 1, which the number shows in place of the track's. */
+		rank?: number | undefined;
 		/** A line under the title, in place of a phone's columns: Up next's why. */
 		second?: Snippet | undefined;
 		/** Where it stands in a list that places its rows, and how tall it is. */
@@ -76,6 +82,9 @@
 		lineChars,
 		sameOnAlbum,
 		credit,
+		pageArtist,
+		albumOnLine,
+		rank,
 		second,
 		top,
 		height,
@@ -90,7 +99,16 @@
 		onmove
 	}: Props = $props();
 
-	const context = $derived({ track, album, stars, hearted, artistWhenDifferent, now });
+	const context = $derived({
+		track,
+		album,
+		stars,
+		hearted,
+		artistWhenDifferent,
+		now,
+		pageArtist,
+		albumOnLine
+	});
 	const mark = $derived(track.shuffle);
 	const lineup = $derived(lineupOf(shown, parts));
 	/** The title's own column, which a second line sits in. */
@@ -120,9 +138,16 @@
 {/snippet}
 
 {#snippet number()}
-	<span class="mono number" data-col="number">
+	<span
+		class="mono number"
+		class:rank={rank !== undefined}
+		class:first={rank === 1}
+		data-col="number"
+	>
 		{#if cued && sounding}
 			<Icon name="play" size={12} />
+		{:else if rank !== undefined}
+			{rank}
 		{:else}
 			{trackLabel(track, false)}
 		{/if}
@@ -469,6 +494,24 @@
 	.number {
 		display: flex;
 		align-items: center;
+	}
+
+	/* A ranked list's place: the title's weight, quiet, and the first in the fox. */
+	.number.rank {
+		justify-content: flex-end;
+		font-family: var(--font-sans);
+		font-size: calc(var(--type-body) + 1px);
+		font-weight: 800;
+		letter-spacing: -0.03em;
+		color: var(--text-label);
+	}
+
+	.number.rank.first {
+		color: var(--fox-text);
+	}
+
+	.cued .number.rank {
+		color: var(--fox-ink);
 	}
 
 	.rate {

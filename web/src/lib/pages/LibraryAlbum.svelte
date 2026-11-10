@@ -48,6 +48,11 @@
 		selection: Selection;
 		/** Plays one disc of the album. */
 		playDisc: (disc: number) => void;
+		/**
+		 * The artist a page about one lists the album under: Artist leaves out its songs that are only
+		 * theirs, whoever the album is by.
+		 */
+		pageArtist?: string | undefined;
 	}
 
 	let {
@@ -66,7 +71,8 @@
 		sounding,
 		trouble,
 		selection,
-		playDisc
+		playDisc,
+		pageArtist
 	}: Props = $props();
 
 	const album = $derived(block.album);
@@ -214,7 +220,8 @@
 						parts={numbered}
 						{shown}
 						order={pref.order}
-						artistWhenDifferent={pref.artistWhenDifferent}
+						artistWhenDifferent={pageArtist !== undefined || pref.artistWhenDifferent}
+						{pageArtist}
 						{lineChars}
 						sameOnAlbum={sharedHas}
 						top={row.top - block.top - head}

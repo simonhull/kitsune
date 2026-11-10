@@ -20,6 +20,7 @@ import {
 	keyTarget,
 	lineNotes,
 	moveSaid,
+	movable,
 	reorderIn,
 	wallSaid,
 	columnName,
@@ -333,11 +334,65 @@ describe('columnsIn', () => {
 		]);
 	});
 
+	it("forces Album into an artist's flat list, and drops it by album", () => {
+		expect(columnsIn(['genre', 'artist', 'rating'], 'artist')).toEqual([
+			'number',
+			'title',
+			'genre',
+			'artist',
+			'album',
+			'rating'
+		]);
+		expect(columnsIn(['genre', 'rating'], 'artist')).toEqual([
+			'number',
+			'title',
+			'album',
+			'genre',
+			'rating'
+		]);
+		expect(columnsIn([...order], 'artistAlbums')).toEqual(['genre', 'artist', 'rating']);
+		const pref = {
+			order: ['number', 'title', 'genre', 'rating'] as const,
+			artistWhenDifferent: false
+		};
+		// The forced Album is frame: it can't be dragged, and a drop maps past it by neighbor.
+		expect(movable('album', { ...pref, order: [...pref.order] })).toBe(false);
+		const shown = columnsIn([...pref.order], 'artist');
+		expect(
+			reorderIn({ ...pref, order: [...pref.order] }, 'artist', shown, 'rating', 2).order
+		).toEqual(['number', 'title', 'rating', 'genre']);
+	});
+
 	it('reads one shared preference: an album page leaves out the album artist always', () => {
 		const pref = { order: [...order], artistWhenDifferent: false };
 		expect(artistWhenDifferentIn(pref, 'library')).toBe(false);
 		expect(artistWhenDifferentIn(pref, 'album')).toBe(true);
 		expect(artistWhenDifferentIn({ ...pref, artistWhenDifferent: true }, 'search')).toBe(false);
+		expect(artistWhenDifferentIn(pref, 'artist')).toBe(true);
+		expect(artistWhenDifferentIn(pref, 'artistAlbums')).toBe(true);
+	});
+});
+
+describe("an artist page's Artist cell", () => {
+	it("leaves out a song that is only the page's artist's, whoever the album is by", () => {
+		const theirs = { ...album, artist: 'Various Artists' };
+		expect(cellOf('artist', context({ album: theirs, pageArtist: 'Low Tide Choir' }))).toEqual({
+			look: 'name',
+			text: ''
+		});
+		const guest = track({ artists: ['Mara Vey', 'Low Tide Choir'] });
+		expect(
+			cellOf('artist', context({ album: theirs, track: guest, pageArtist: 'Low Tide Choir' }))
+		).toEqual({ look: 'name', text: 'Mara Vey, Low Tide Choir' });
+	});
+
+	it("says the album on a phone's line in a list with no album headings", () => {
+		const order = ['number', 'title', 'album', 'genre'] as const;
+		const withGenre = track({ displayGenres: ['Pop'] });
+		expect(phoneLine([...order], context({ track: withGenre }), () => false)).toEqual(['Pop']);
+		expect(
+			phoneLine([...order], context({ track: withGenre, albumOnLine: true }), () => false)
+		).toEqual(['Glasshouse', 'Pop']);
 	});
 });
 
