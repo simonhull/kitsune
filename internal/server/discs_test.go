@@ -179,9 +179,9 @@ func TestSongsWithNoDiscNumberBesideADiscAreTheirOwnGroupLast(t *testing.T) {
 	var index api.LibraryIndex
 	ts.getJSON(t, token, indexPath, &index)
 	listed := index.Artists[0].Albums[0]
-	titles = titles[:0]
+	titles = make([]string, len(listed.Tracks))
 	for i := range listed.Tracks {
-		titles = append(titles, listed.Tracks[i].Title)
+		titles[i] = listed.Tracks[i].Title
 	}
 	if !slices.Equal(titles, wantOrder) {
 		t.Errorf("index order = %q, want %q", titles, wantOrder)

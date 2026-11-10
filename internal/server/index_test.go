@@ -203,7 +203,8 @@ func TestLibraryIndexOrder(t *testing.T) {
 			{title: "Disc two", disc: 2, trackNo: 1, artists: own},
 			{title: "No number", disc: 1, artists: own},
 			{title: "Second", disc: 1, trackNo: 2, artists: own},
-			{title: "First", trackNo: 1, artists: own}, // No disc counts as disc 1.
+			// Beside songs with a disc number, one with none comes after every disc.
+			{title: "First", trackNo: 1, artists: own},
 		}},
 	)
 	index := ts.index(t)
@@ -215,7 +216,7 @@ func TestLibraryIndexOrder(t *testing.T) {
 	for i := range tracks {
 		titles[i] = tracks[i].Title
 	}
-	if want := []string{"First", "Second", "No number", "Disc two"}; !slices.Equal(titles, want) {
+	if want := []string{"Second", "No number", "Disc two", "First"}; !slices.Equal(titles, want) {
 		t.Errorf("tracks = %v, want %v", titles, want)
 	}
 	// The same order an album's page has.
