@@ -14,7 +14,7 @@ import {
 import { SilentOutput } from '#lib/player/output.ts';
 import { Player } from '#lib/player/player.svelte.ts';
 import type { Unit } from './pick.ts';
-import { Shuffles, type ShuffleSource } from './session.svelte.ts';
+import { distinctKeys, Shuffles, type ShuffleSource, type UpNextItem } from './session.svelte.ts';
 
 function track(album: string, index: number): Track {
 	return {
@@ -315,5 +315,20 @@ describe('Up next', () => {
 		expect(shuffle?.upNext.at(3)?.queued).toBe(false);
 		await shuffle?.move('b-1', -1);
 		expect(keys(shuffles)).toEqual(['a-1', 'a-0', 'b-0', 'b-1', 'a-2']);
+	});
+});
+
+describe('distinctKeys', () => {
+	const item = (key: string): UpNextItem =>
+		({ key, titles: [key], trackIds: [key] }) as unknown as UpNextItem;
+
+	it('keeps keys that come up once', () => {
+		expect(distinctKeys([item('a'), item('b')]).map(({ key }) => key)).toEqual(['a', 'b']);
+	});
+
+	it('gives a song that comes up again a key of its own, keeping its songs', () => {
+		const out = distinctKeys([item('a'), item('b'), item('a'), item('a')]);
+		expect(out.map(({ key }) => key)).toEqual(['a', 'b', 'a#2', 'a#3']);
+		expect(out.map(({ trackIds }) => trackIds[0])).toEqual(['a', 'b', 'a', 'a']);
 	});
 });
