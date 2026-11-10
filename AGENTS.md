@@ -68,6 +68,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   artists, details and tags), most of its cost, is kept between library writes (`libraryrows.go`);
   marks, plays and shuffle rules are read every time. A write that changes what the index shows goes
   through `inLibraryTx`, an edit's renames, merges, years and covers included.
+- `GET /library/index?artist=` is the artist page's list: the songs the `artist` shuffle scope draws
+  from, in the index's shape under one heading, the artist's own albums first. Its queries are the
+  `…ByArtist` twins, and it never reads or fills what `libraryrows.go` keeps. `ArtistDetail.songCount`
+  counts the same songs.
 - Tag edits are one route, `POST /albums/{id}/edits`, and `GET /albums/{id}/tags` reads what an editor
   shows, from the files. The validator is the album's `etag` field in the body, a hash of
   `ulid:size:mtime_ms` per track, and not a response header. Clients send it back verbatim as
@@ -377,6 +381,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   moves by its own style rule (`columnMotion.ts`, written through the CSSOM: a custom property on the
   list restyled everything under it), one resized by `--col-<id>` on the list; neither changes a row
   or any state until the task that ends it. `reorderIn` keeps which columns fit the same on a drop.
+- An artist page's queue is its list as shown, and stops at its end: `player.playList` holds the songs
+  ahead as track and album IDs (`Queue.later`) and fetches each next album after the song before it
+  has begun, so nothing waits on the play path.
 - `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.
