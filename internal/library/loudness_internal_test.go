@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"errors"
 	"math"
 	"path/filepath"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"github.com/simonhull/audiometa"
 
 	"github.com/simonhull/kitsune/internal/loudness"
+	"github.com/simonhull/kitsune/internal/pcm"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -164,5 +166,16 @@ func TestLoudnessPassGivesWayToAnEdit(t *testing.T) {
 	want := []string{"gave way", "edit", "measured 1.flac", "measured 2.mp3", "measured 3.m4a"}
 	if got := log.all(); !slices.Equal(got, want) {
 		t.Errorf("order = %q, want %q", got, want)
+	}
+}
+
+func TestGuardedCountsAPanicAsACorruptFile(t *testing.T) {
+	t.Parallel()
+	err := guarded(func() error { panic("index out of range") })
+	if !errors.Is(err, pcm.ErrCorrupt) {
+		t.Errorf("err = %v, want one wrapping pcm.ErrCorrupt", err)
+	}
+	if err = guarded(func() error { return nil }); err != nil {
+		t.Errorf("a quiet measure gave %v", err)
 	}
 }

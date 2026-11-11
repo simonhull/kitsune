@@ -1,4 +1,5 @@
 import { starsText } from '#lib/library/stars.ts';
+import type { LibraryFilter } from '#lib/pages/libraryRows.ts';
 
 /** A person's shuffle settings, as the `shuffle.*` preferences hold them. */
 export interface ShuffleSettings {
@@ -42,11 +43,44 @@ export function flowWord(flow: number): string {
 	return flow < 0.8 ? 'SOME' : 'A LOT';
 }
 
-/** The settings in one quiet line, under a Shuffle button. */
+/** The settings in one quiet line, on the Library Shuffle's card. */
 export function settingsLine({ ratings, flow, memory }: ShuffleSettings): string {
 	const rated = ratings <= 0 ? 'RATINGS OFF' : `RATINGS ${ratingsWord(ratings)}`;
 	const flowing = flow <= 0 ? 'NO FLOW' : `${flowWord(flow)} FLOW`;
 	return [rated, flowing, memory ? 'LEARNS FROM SKIPS' : 'IGNORES SKIPS'].join(' · ');
+}
+
+/** What each Library filter shuffles, in the island's capitals: a shuffle source's label. */
+export const libraryLabels: Readonly<Record<LibraryFilter, string>> = {
+	everything: 'THE LIBRARY',
+	hearted: 'WHAT YOU HEARTED',
+	rated: '4★ AND UP'
+};
+
+/** The Library's Shuffle button, in words: its accessible name, its card's heading and its tag. */
+export interface FabWords {
+	/** "Shuffle the library", or "Shuffle these: …" under a filter. */
+	name: string;
+	/** What the card says it shuffles: "The library", "What you hearted". */
+	what: string;
+	/** The filter chip's mark, stamped on the disc; empty for the whole library. */
+	tag: string;
+}
+
+/** What the Library's Shuffle says under `filter`. */
+export function fabWords(filter: LibraryFilter): FabWords {
+	const words = libraryLabels[filter].toLowerCase();
+	const tags = { everything: '', hearted: '♥', rated: '4★' };
+	return {
+		name: filter === 'everything' ? `Shuffle ${words}` : `Shuffle these: ${words}`,
+		what: `${words.charAt(0).toUpperCase()}${words.slice(1)}`,
+		tag: tags[filter]
+	};
+}
+
+/** How many songs an endless shuffle draws from, on one line. */
+export function songsLine(count: number): string {
+	return `${count.toLocaleString('en-US')} ${count === 1 ? 'SONG' : 'SONGS'} · ENDLESS`;
 }
 
 /** Says a share as words a person reads at a glance: "half", "a third". */

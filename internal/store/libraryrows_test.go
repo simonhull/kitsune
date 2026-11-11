@@ -156,8 +156,9 @@ func TestIndexFollowsEveryEditWrite(t *testing.T) {
 	w := newWrite(0)
 	w.Year = 1999
 	writeAll(t, s, w)
-	if head := indexHead(t, s); head.Name != "Artist 0" || head.Albums[0].Year != 0 {
-		t.Fatalf("index = %s, %d; want Artist 0, 0", head.Name, head.Albums[0].Year)
+	// The write settled the album, so its year is already its first track's.
+	if head := indexHead(t, s); head.Name != "Artist 0" || head.Albums[0].Year != 1999 {
+		t.Fatalf("index = %s, %d; want Artist 0, 1999", head.Name, head.Albums[0].Year)
 	}
 	albums, err := s.TrackAlbumRows(t.Context(), []int64{idOf(t, s, &w)})
 	if err != nil {

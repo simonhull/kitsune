@@ -396,6 +396,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.
+- An open tab learns of a new build by SvelteKit's version poll (`version.pollInterval` in
+  `web/vite.config.ts`). The next navigation loads it whole, but only when nothing plays and no queue
+  has started (`lib/shell/freshness.ts`), since the queue lives in the tab. The server serves
+  `_app/version.json` uncached for this.
 
 ## Speed
 - Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
@@ -426,6 +430,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Real dependencies over mocks: temp SQLite files, `t.TempDir()` libraries,
   `httptest` servers.
 - Benchmarks use `for b.Loop()`. No performance claim without a measurement.
+- The web client's behavior is tested in a browser by `web/e2e` (`mise run web:e2e`), on the client's
+  fixtures (`?source=fixtures`), with no server. Any page error fails the test. A bug a rendered page
+  shows gets its regression test there; a pure function's goes in vitest.
 
 ## Commits and docs
 - Gitmoji prefix, single line, no body, no attribution trailers.

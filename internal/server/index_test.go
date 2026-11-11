@@ -68,6 +68,7 @@ func (ts *testServer) seedIndex(tb testing.TB, albums ...indexAlbum) {
 				Format:  flacFormat, Codec: flacFormat,
 				Duration: time.Minute,
 				Title:    t.title, DiscNo: t.disc, TrackNo: t.trackNo, DiscSubtitle: t.discName,
+				Year: a.year, Compilation: a.compilation, // As the scanner does: the album's are its first track's.
 				Artists: t.artists, AlbumArtists: a.owners,
 				Album: store.AlbumWrite{
 					GroupKey: fmt.Sprintf("g%d", a.n), ULID: albumULID(a.n), Name: a.title, SortName: a.title,

@@ -78,7 +78,7 @@
 
 	/* The goo (plan 054): the pill is its own element, moved by transforms from a frame loop. */
 
-	/** Each letter's link, by index; a letter a filter took away leaves null where it was. */
+	/** Each letter's link: null at a place whose letter a filter took away. */
 	const anchors: (HTMLAnchorElement | null)[] = [];
 	let pill: HTMLElement | undefined = $state();
 	let capTop: HTMLElement | undefined;

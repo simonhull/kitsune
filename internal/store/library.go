@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -343,10 +344,8 @@ func (s *Store) WriteBatch(ctx context.Context, b *Batch) error {
 			return err
 		}
 		defer func() { err = errors.Join(err, fts.close()) }()
-		for i := range b.Tracks {
-			if err = writeTrack(ctx, q, fts, &b.Tracks[i], now, &touched); err != nil {
-				return fmt.Errorf("track %d: %w", i, err)
-			}
+		if trackErr := writeTracks(ctx, q, fts, b.Tracks, now, &touched); trackErr != nil {
+			return trackErr
 		}
 		for i := range b.Issues {
 			if err = writeIssue(ctx, q, &b.Issues[i], now); err != nil {
@@ -359,6 +358,25 @@ func (s *Store) WriteBatch(ctx context.Context, b *Batch) error {
 		return fmt.Errorf("write batch: %w", err)
 	}
 	s.changed.add(touched)
+	return nil
+}
+
+// writeTracks writes a batch's tracks, then settles each album they wrote to:
+// each track's write gave its album that track's year and flag, and they are
+// the first track's, whichever was written last.
+func writeTracks(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tracks []TrackWrite, now time.Time, touched *[]string) error {
+	var settle []int64
+	for i := range tracks {
+		if err := writeTrack(ctx, q, fts, &tracks[i], now, touched, &settle); err != nil {
+			return fmt.Errorf("track %d: %w", i, err)
+		}
+	}
+	slices.Sort(settle)
+	for _, album := range slices.Compact(settle) {
+		if err := q.SettleAlbum(ctx, album); err != nil {
+			return fmt.Errorf("settle album %d: %w", album, err)
+		}
+	}
 	return nil
 }
 
@@ -409,13 +427,19 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, now tim
 }
 
 // writeTrack stores one track and everything that hangs off it, adding the
-// albums it touched to touched: its own, and the one it leaves.
-func writeTrack(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tw *TrackWrite, now time.Time, touched *[]string) error {
+// albums it touched to touched: its own, and the one it leaves. It adds their
+// row IDs to settle, which the batch settles once its tracks are written.
+func writeTrack(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tw *TrackWrite, now time.Time, touched *[]string, settle *[]int64) error {
 	if tw.ID != 0 {
 		before, err := q.TrackAlbumULID(ctx, tw.ID)
 		switch {
 		case err == nil:
 			*touched = append(*touched, before)
+			old, idErr := q.AlbumRowID(ctx, before)
+			if idErr != nil {
+				return fmt.Errorf("track's album row: %w", idErr)
+			}
+			*settle = append(*settle, old)
 		case !errors.Is(err, sql.ErrNoRows): // No row is the update's to report.
 			return fmt.Errorf("track's album: %w", err)
 		}
@@ -425,6 +449,7 @@ func writeTrack(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tw *Track
 		return err
 	}
 	*touched = append(*touched, refs.albumULID)
+	*settle = append(*settle, refs.albumID)
 	id, err := saveTrack(ctx, q, tw, refs.albumID, now)
 	if err != nil {
 		return err

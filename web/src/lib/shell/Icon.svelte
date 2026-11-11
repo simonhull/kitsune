@@ -30,9 +30,11 @@
 	interface Props {
 		name: keyof typeof glyphs | keyof typeof outlines;
 		size?: number;
+		/** An outline's length as its strokes are drawn, for a dash that redraws it. */
+		pathLength?: number;
 	}
 
-	let { name, size = 18 }: Props = $props();
+	let { name, size = 18, pathLength }: Props = $props();
 </script>
 
 {#if name in glyphs}
@@ -54,6 +56,6 @@
 		aria-hidden="true"
 	>
 		{#if outline.circle}<circle cx="11" cy="11" r="7"></circle>{/if}
-		<path d={outline.path}></path>
+		<path d={outline.path} {pathLength}></path>
 	</svg>
 {/if}

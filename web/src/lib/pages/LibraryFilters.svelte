@@ -13,7 +13,7 @@
 	let { filter, choose, heartStars = 0 }: Props = $props();
 	const withHearts = $derived(heartStars >= goodStars);
 
-	/** `short` is what a phone shows, to leave room for Shuffle and Sort beside them. */
+	/** `short` is what a phone shows, to leave room for Sort beside them. */
 	const chips: readonly { filter: LibraryFilter; label: string; short?: string }[] = [
 		{ filter: 'everything', label: 'Everything', short: 'All' },
 		{ filter: 'hearted', label: 'Hearted' },

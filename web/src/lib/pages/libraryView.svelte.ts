@@ -88,8 +88,8 @@ export function frameFor(step: Step, stacked: boolean, cover: number): Frame {
 			albumHead: 0,
 			albumMin: cover + (large ? coverNames.large : coverNames.columns),
 			artistHead: 0,
-			// Where the name pins, under Shuffle and the filters, then its three lines and its facts.
-			artistMin: large ? 468 + shuffleRow.large : 390 + shuffleRow.columns,
+			// Where the name pins, under the filters, then its three lines and its facts.
+			artistMin: large ? 468 : 390,
 			albumGap: large ? 56 : 40,
 			artistGap: large ? 96 : 72
 		},
@@ -99,13 +99,10 @@ export function frameFor(step: Step, stacked: boolean, cover: number): Frame {
 }
 
 /**
- * How tall Shuffle and its settings line stand above the filters, at each step: the page's
- * `--shuffle-row`, which the name pins under.
+ * Where the NEXT panel's foot stands, up from the bottom of the screen (the page's `.next`): a name
+ * that has come up past it would stand under the panel, so the panel goes.
  */
-export const shuffleRow = { columns: 128, large: 160 } as const;
-
-/** How far up from the bottom of the screen the NEXT panel reaches, at its two lines. */
-const nextReach = 340;
+const nextFoot = 200;
 
 const noLibrary: LibraryIndex = { artists: [] };
 
@@ -294,7 +291,7 @@ class LibraryView {
 		const line = y + frame.line;
 		this.here = artistAt(layout, line);
 		const following = layout.artists.at(this.here + 1);
-		this.nextAhead = following !== undefined && following.top - y > height - nextReach;
+		this.nextAhead = following !== undefined && following.top - y > height - nextFoot;
 		if (keep) {
 			const row = rowAt(layout, line);
 			const offset = line - (layout.rows.at(row)?.top ?? 0);

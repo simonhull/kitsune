@@ -251,14 +251,13 @@ func TestAlbumSummaryFields(t *testing.T) {
 	t.Parallel()
 	s, _ := openBrowse(t)
 	w := albumTrack(1, 1, "sort")
-	w.Album.Year = 1999
-	w.Album.Compilation = true
+	w.Album.Year, w.Year = 1999, 1999
+	w.Album.Compilation, w.Compilation = true, true
 	w.Album.Artwork = &store.ArtworkWrite{
 		Hash: sha256.Sum256([]byte("cover")), Width: 640, Height: 480,
 		Accent: "#aabbcc", Ground: "#112233", Source: store.ArtworkEmbedded,
 	}
 	w2 := albumTrack(1, 2, "sort")
-	w2.Album.Year, w2.Album.Compilation = w.Album.Year, w.Album.Compilation // The last write wins.
 	bare := albumTrack(2, 1, "tort")
 	bare.Album.Name = "Unknown Album"
 	writeAll(t, s, w, w2, bare)

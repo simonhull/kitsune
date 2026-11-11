@@ -138,6 +138,12 @@ func TestEditOfADiscNameWritesItAndSaysTheAlbumChanged(t *testing.T) {
 	fx.wantStoreFollowed(t, &before, &got)
 }
 
+// mixedDiscOrder is how every form of the index lists seedMixedDiscs's album:
+// the disc first, then the songs with no disc number.
+func mixedDiscOrder() []string {
+	return []string{"Main Title", "Arrival", "Reprise A", "Reprise B", "Coda"}
+}
+
 // seedMixedDiscs writes a soundtrack whose first songs were tagged disc 1 and
 // whose others have no disc number, their numbers starting over.
 func (ts *testServer) seedMixedDiscs(t *testing.T) {
@@ -157,7 +163,7 @@ func TestSongsWithNoDiscNumberBesideADiscAreTheirOwnGroupLast(t *testing.T) {
 	ts := newTestServer(t)
 	ts.seedMixedDiscs(t)
 	token := ts.tokenFor(t, store.RoleUser)
-	wantOrder := []string{"Main Title", "Arrival", "Reprise A", "Reprise B", "Coda"}
+	wantOrder := mixedDiscOrder()
 	wantDiscs := []api.Disc{
 		{No: 1, Songs: 2, DurationMs: 120_000},
 		{Songs: 3, DurationMs: 180_000},
@@ -194,5 +200,34 @@ func TestSongsWithNoDiscNumberBesideADiscAreTheirOwnGroupLast(t *testing.T) {
 	resp := ts.send(t, call{method: http.MethodGet, path: albumsPath + "/" + albumULID(1), header: bearer(token)})
 	if !strings.Contains(string(resp.Body), `{"songs":3,"durationMs":180000}`) {
 		t.Errorf("the group with no disc number was sent as %s", resp.Body)
+	}
+}
+
+// Every form of the index lists an album's songs in one order: the whole
+// library, some albums, and one artist's.
+func TestEveryFormOfTheIndexKeepsOneDiscOrder(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	ts.seedMixedDiscs(t)
+	token := ts.tokenFor(t, store.RoleUser)
+	want := mixedDiscOrder()
+	for _, path := range []string{
+		indexPath,
+		indexPath + "?albums=" + albumULID(1),
+		indexPath + "?artist=" + person(1, annName).ULID,
+	} {
+		var index api.LibraryIndex
+		ts.getJSON(t, token, path, &index)
+		if len(index.Artists) == 0 || len(index.Artists[0].Albums) == 0 {
+			t.Fatalf("%s: no album in %+v", path, index)
+		}
+		listed := index.Artists[0].Albums[0]
+		titles := make([]string, len(listed.Tracks))
+		for i := range listed.Tracks {
+			titles[i] = listed.Tracks[i].Title
+		}
+		if !slices.Equal(titles, want) {
+			t.Errorf("%s: order = %q, want %q", path, titles, want)
+		}
 	}
 }
