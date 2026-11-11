@@ -423,6 +423,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Real dependencies over mocks: temp SQLite files, `t.TempDir()` libraries,
   `httptest` servers.
 - Benchmarks use `for b.Loop()`. No performance claim without a measurement.
+- The web client's behavior is tested in a browser by `web/e2e` (`mise run web:e2e`), on the client's
+  fixtures (`?source=fixtures`), with no server. Any page error fails the test. A bug a rendered page
+  shows gets its regression test there; a pure function's goes in vitest.
 
 ## Commits and docs
 - Gitmoji prefix, single line, no body, no attribution trailers.
