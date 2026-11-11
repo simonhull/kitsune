@@ -389,6 +389,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.
+- An open tab learns of a new build by SvelteKit's version poll (`version.pollInterval` in
+  `web/vite.config.ts`). The next navigation loads it whole, but only when nothing plays and no queue
+  has started (`lib/shell/freshness.ts`), since the queue lives in the tab. The server serves
+  `_app/version.json` uncached for this.
 
 ## Speed
 - Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
