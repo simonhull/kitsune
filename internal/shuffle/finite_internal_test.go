@@ -210,18 +210,18 @@ func TestFiniteWeightsShapeTheOrder(t *testing.T) {
 	t.Parallel()
 	tracks := grid(40, 5, 1)
 	for i := range tracks {
-		tracks[i].Stars = Stars(i%5 + 1)
+		tracks[i].Stars = Stars(2 * (i%5 + 1))
 	}
 	p := pool(t, tracks, nil)
 	c := Config{Settings: Settings{Ratings: 1}, Now: now}
-	var sum [MaxStars + 1]float64
+	var sum [MaxStars/2 + 1]float64
 	const seeds = 200
 	for seed := range uint64(seeds) {
 		for at, pk := range Finite(p, c, seed, 0) {
 			sum[int(pk.Reason.Stars)] += float64(at)
 		}
 	}
-	for stars := 2; stars <= int(MaxStars); stars++ {
+	for stars := 2; stars <= int(MaxStars/2); stars++ {
 		if sum[stars] >= sum[stars-1] {
 			t.Errorf("%d★ come later on average than %d★: %v", stars, stars-1, sum)
 		}

@@ -16,14 +16,17 @@ type ArtistID int64
 // AlbumID is an album's id in the store.
 type AlbumID int64
 
-// Stars is a person's rating of a song, from 1 to [MaxStars], or [Unrated].
+// Stars is a person's rating of a song in half stars, from 1 (½★) to
+// [MaxStars] (5★), or [Unrated].
 type Stars uint8
 
 const (
 	// Unrated is the rating of a song the person hasn't rated.
 	Unrated Stars = 0
-	// MaxStars is the highest rating.
-	MaxStars Stars = 5
+	// MaxStars is the highest rating, 5★, in half stars.
+	MaxStars Stars = 10
+	// halvesPerStar is how many of [Stars] make a star.
+	halvesPerStar = 2
 )
 
 var (
@@ -46,7 +49,7 @@ type Track struct {
 	Artists []ArtistID
 	// Album is the song's album.
 	Album AlbumID
-	// Stars is the person's rating.
+	// Stars is the person's rating, in half stars.
 	Stars Stars
 	// Hearted is whether the person hearted the song.
 	Hearted bool
@@ -105,7 +108,7 @@ type Unit struct {
 
 // facts are a unit's signals, combined over its songs.
 type facts struct {
-	starSum    int     // the sum of the rated members' stars
+	halfSum    int     // the sum of the rated members' ratings, in half stars
 	rated      int     // how many members are rated
 	hearted    bool    // any member is hearted
 	lastPlayed int64   // the latest member play, Unix ms; 0 for never
@@ -347,7 +350,7 @@ func (b *builder) unit(members []*Track) Unit {
 // add counts t's signals into f.
 func (f *facts) add(t *Track) {
 	if t.Stars != Unrated {
-		f.starSum += int(t.Stars)
+		f.halfSum += int(t.Stars)
 		f.rated++
 	}
 	f.hearted = f.hearted || t.Hearted

@@ -142,8 +142,8 @@ type order struct {
 	units, artistNear, albumNear, longest int
 	spread                                float64
 	intact, broken, banned                int
-	place                                 [shuffle.MaxStars + 1]float64
-	placed                                [shuffle.MaxStars + 1]int
+	place                                 [wholeStars + 1]float64
+	placed                                [wholeStars + 1]int
 }
 
 // add tallies one order.
@@ -305,8 +305,8 @@ func cycles(t *testing.T, b *strings.Builder, lib *library) {
 	tb := newTable(b, "Cycle share: fidelity against coverage ("+lib.name+")",
 		"cycle share", "5★ : 1★ plays", "distance", "played in the first pool-size", "longest wait", "never in 3 passes")
 	picks := passes * len(lib.tracks)
-	var weight [shuffle.MaxStars + 1]float64
-	var count [shuffle.MaxStars + 1]int
+	var weight [wholeStars + 1]float64
+	var count [wholeStars + 1]int
 	settings := shuffle.DefaultSettings()
 	units := pool(t, lib).Units()
 	for j := range units {
@@ -343,8 +343,8 @@ func weights(t *testing.T, b *strings.Builder, lib *library) {
 	picks := 2 * len(lib.tracks)
 	for _, s := range []float64{0, 0.5, 1} {
 		settings := shuffle.Settings{Ratings: s, Memory: true}
-		var weight [shuffle.MaxStars + 1]float64
-		var count [shuffle.MaxStars + 1]int
+		var weight [wholeStars + 1]float64
+		var count [wholeStars + 1]int
 		units := pool(t, lib).Units()
 		for j := range units {
 			r := shuffle.Explain(&units[j], settings, now)
@@ -364,4 +364,21 @@ func weights(t *testing.T, b *strings.Builder, lib *library) {
 		" being rating × heart. The no-repeat window and recency hold plays closer to even than the" +
 		" weights alone would, by design, and spacing caps an artist at one unit in four, which holds" +
 		" back this library's biggest artist and the ratings it tends to get, even with ratings off.")
+}
+
+// TestHalvesKeepTheHardRules runs the finite and endless shuffles over
+// libraries about a third of whose ratings are halves: no hard rule may break.
+// Their figures stay out of the report, which holds whole ratings only, so that
+// a change for halves shows there as no change at all.
+func TestHalvesKeepTheHardRules(t *testing.T) {
+	t.Parallel()
+	skewed, runs := generate(shapes()[0]), generate(shapes()[3])
+	skewed.halve(0.35, 6)
+	runs.halve(0.35, 7)
+	libs := []library{skewed, runs}
+	var b strings.Builder
+	finite(t, &b, libs)
+	endless(t, &b, libs)
+	weights(t, &b, &libs[0])
+	t.Log("\n" + b.String())
 }

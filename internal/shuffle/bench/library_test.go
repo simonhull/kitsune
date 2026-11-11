@@ -94,7 +94,7 @@ func (l *library) add(r *rand.Rand, artists []shuffle.ArtistID, album shuffle.Al
 		Hearted: r.Float64() < 0.06,
 	}
 	if r.Float64() < 0.6 {
-		t.Stars = shuffle.Stars(min(5, max(1, math.Round(l.taste[artists[0]]+0.8*r.NormFloat64()))))
+		t.Stars = 2 * shuffle.Stars(min(wholeStars, max(1, math.Round(l.taste[artists[0]]+0.8*r.NormFloat64()))))
 	}
 	if r.Float64() < 0.6 {
 		t.History.LastPlayed = now.Add(-time.Duration(r.Float64() * 400 * float64(day)))
@@ -102,15 +102,31 @@ func (l *library) add(r *rand.Rand, artists []shuffle.ArtistID, album shuffle.Al
 	l.tracks = append(l.tracks, t)
 }
 
-// stars draws a rating, as people rate artists: mostly 3 and 4.
-func stars(r *rand.Rand) shuffle.Stars {
+// wholeStars is the highest rating in whole stars, 5. The bench reports by
+// whole stars, a half rounded up.
+const wholeStars = 5 // shuffle.MaxStars / 2
+
+// stars draws a rating in whole stars, as people rate artists: mostly 3 and 4.
+func stars(r *rand.Rand) int {
 	x := r.Float64()
 	for i, edge := range [...]float64{0.05, 0.2, 0.55, 0.85} {
 		if x < edge {
-			return shuffle.Stars(i + 1)
+			return i + 1
 		}
 	}
-	return shuffle.MaxStars
+	return wholeStars
+}
+
+// halve takes a half star off roughly share of l's rated songs, drawn
+// repeatably from seed, making a library that uses halves.
+func (l *library) halve(share float64, seed uint64) {
+	r := rng(seed, 1)
+	l.name += " in halves"
+	for i := range l.tracks {
+		if t := &l.tracks[i]; t.Stars != shuffle.Unrated && r.Float64() < share {
+			t.Stars--
+		}
+	}
 }
 
 // link makes runs of 2 to 5 neighboring songs on an album, about share of

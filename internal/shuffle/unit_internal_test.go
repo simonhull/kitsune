@@ -35,7 +35,7 @@ func TestNewPoolRejects(t *testing.T) {
 		runs   []Run
 		want   error
 	}{
-		{"six stars", []Track{{ID: 1, Stars: 6}}, nil, ErrBadTrack},
+		{"eleven halves", []Track{{ID: 1, Stars: MaxStars + 1}}, nil, ErrBadTrack},
 		{"more skips than starts", []Track{{ID: 1, History: History{ShuffleStarts: 1, ShuffleSkips: 2}}}, nil, ErrBadTrack},
 		{"more heard than listened", []Track{{ID: 1, History: History{Listens: 1, Heard: 1.5}}}, nil, ErrBadTrack},
 		{"negative count", []Track{{ID: 1, History: History{EarlySkips: -1}}}, nil, ErrBadTrack},
