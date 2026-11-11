@@ -28,7 +28,7 @@ func (s *Store) RekeyAlbums(ctx context.Context, rekeys []AlbumRekey) ([]AlbumRe
 		return nil, nil
 	}
 	var undo []AlbumRekey
-	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+	err := s.inPreparedTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
 		undo = undo[:0]
 		for _, r := range rekeys {
 			taken, err := q.GroupKeyTaken(ctx, r.To)

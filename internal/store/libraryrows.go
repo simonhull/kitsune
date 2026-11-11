@@ -40,14 +40,14 @@ type keptRows[T any] struct {
 	rows []T
 }
 
-// inLibraryTx is inTx for a write that changes what the index shows.
+// inLibraryTx is inPreparedTx for a write that changes what the index shows.
 func (s *Store) inLibraryTx(ctx context.Context, fn func(q *sqlcdb.Queries, tx *sql.Tx) error) error {
 	s.library.writing.Add(1)
 	defer func() {
 		s.library.gen.Add(1)
 		s.library.writing.Add(-1)
 	}()
-	return s.inTx(ctx, fn)
+	return s.inPreparedTx(ctx, fn)
 }
 
 // writesMark is where library writes stood at one moment.
