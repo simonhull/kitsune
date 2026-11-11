@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
 
@@ -21,8 +22,8 @@ type ShuffleSong struct {
 	ID        int64
 	AlbumID   int64
 	AlbumULID string
-	Artists   []int64 // Its own artists, the primary first.
-	Stars     int     // The person's rating, or 0.
+	Artists   []int64       // Its own artists, the primary first.
+	Rating    rating.Rating // The person's rating, or none.
 	Hearted   bool
 	Excluded  bool // The person left it out of shuffle.
 }
@@ -78,7 +79,7 @@ func shuffleSongs(tracks []sqlcdb.ListShuffleTracksRow, links []sqlcdb.ListShuff
 		}
 		out[i] = ShuffleSong{
 			ID: t.ID, AlbumID: t.AlbumID, AlbumULID: t.AlbumUlid, Artists: artists[from:at:at],
-			Stars: int(t.Stars), Hearted: t.Hearted != 0, Excluded: t.Excluded != 0,
+			Rating: ratingOf(t.Halves), Hearted: t.Hearted != 0, Excluded: t.Excluded != 0,
 		}
 	}
 	return out

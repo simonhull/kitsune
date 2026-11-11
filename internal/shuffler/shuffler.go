@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/internal/prefs"
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/shuffle"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -384,7 +385,7 @@ func (s *Service) build(ctx context.Context, userID int64, sc *Scope, now time.T
 		}
 		tracks[i] = shuffle.Track{
 			ID: shuffle.TrackID(song.ID), Artists: artists, Album: shuffle.AlbumID(song.AlbumID),
-			Stars: starsOf(song.Stars), Hearted: song.Hearted, Skipped: song.Excluded,
+			Stars: starsOf(song.Rating), Hearted: song.Hearted, Skipped: song.Excluded,
 			History: hist.of(song.ID),
 		}
 	}
@@ -403,12 +404,12 @@ func (s *Service) build(ctx context.Context, userID int64, sc *Scope, now time.T
 	return b, nil
 }
 
-// starsOf is a rating as shuffle takes it.
-func starsOf(stars int) shuffle.Stars {
-	if stars < 1 || stars > int(shuffle.MaxStars) {
+// starsOf is a rating as shuffle takes it: both count half stars.
+func starsOf(r rating.Rating) shuffle.Stars {
+	if !r.Valid() {
 		return shuffle.Unrated
 	}
-	return shuffle.Stars(stars)
+	return shuffle.Stars(r)
 }
 
 // inScope returns the catalog's songs that in keeps, and every live song of a

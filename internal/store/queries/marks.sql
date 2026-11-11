@@ -30,8 +30,8 @@ ON CONFLICT (user_id, artist_id) DO NOTHING;
 DELETE FROM artist_hearts WHERE user_id = ? AND artist_id = ?;
 
 -- name: UpsertTrackRating :exec
-INSERT INTO track_ratings (user_id, track_id, stars, rated_at) VALUES (?, ?, ?, ?)
-ON CONFLICT (user_id, track_id) DO UPDATE SET stars = excluded.stars, rated_at = excluded.rated_at;
+INSERT INTO track_ratings (user_id, track_id, halves, rated_at) VALUES (?, ?, ?, ?)
+ON CONFLICT (user_id, track_id) DO UPDATE SET halves = excluded.halves, rated_at = excluded.rated_at;
 
 -- name: DeleteTrackRating :exec
 DELETE FROM track_ratings WHERE user_id = ? AND track_id = ?;
@@ -48,7 +48,7 @@ SELECT a.ulid FROM album_hearts h JOIN albums a ON a.id = h.album_id WHERE h.use
 SELECT a.ulid FROM artist_hearts h JOIN artists a ON a.id = h.artist_id WHERE h.user_id = ?;
 
 -- name: ListTrackRatings :many
-SELECT t.ulid, r.stars FROM track_ratings r JOIN tracks t ON t.id = r.track_id WHERE r.user_id = ?;
+SELECT t.ulid, r.halves FROM track_ratings r JOIN tracks t ON t.id = r.track_id WHERE r.user_id = ?;
 
 -- One album's marks, for its page.
 
@@ -66,7 +66,7 @@ JOIN albums a ON a.id = t.album_id
 WHERE h.user_id = sqlc.arg(user_id) AND a.ulid = sqlc.arg(album);
 
 -- name: ListAlbumTrackRatings :many
-SELECT t.ulid, r.stars
+SELECT t.ulid, r.halves
 FROM track_ratings r
 JOIN tracks t ON t.id = r.track_id
 JOIN albums a ON a.id = t.album_id
