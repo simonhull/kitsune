@@ -21,7 +21,7 @@ func openFLAC(r io.Reader) (*Stream, error) {
 		return nil, fmt.Errorf("%w: flac: %w", ErrCorrupt, err)
 	}
 	info := s.Info
-	if info.BitsPerSample < 4 || info.BitsPerSample > 32 || info.NChannels == 0 {
+	if info.BitsPerSample < 4 || info.BitsPerSample > 32 || info.NChannels == 0 || info.NChannels > MaxChannels {
 		return nil, fmt.Errorf("%w: flac of %d bits, %d channels", ErrUnsupported, info.BitsPerSample, info.NChannels)
 	}
 	return &Stream{
