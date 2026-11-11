@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -336,16 +337,26 @@ func (s *Store) WriteBatch(ctx context.Context, b *Batch) error {
 	}
 	now := s.now()
 	var touched []string
+	var settle []int64 // Row IDs of the albums whose year and flag may have changed.
 	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) (err error) {
 		touched = touched[:0] // The writer may retry a transaction.
+		settle = settle[:0]
 		fts, err := prepareFTS(ctx, tx)
 		if err != nil {
 			return err
 		}
 		defer func() { err = errors.Join(err, fts.close()) }()
 		for i := range b.Tracks {
-			if err = writeTrack(ctx, q, fts, &b.Tracks[i], now, &touched); err != nil {
+			if err = writeTrack(ctx, q, fts, &b.Tracks[i], now, &touched, &settle); err != nil {
 				return fmt.Errorf("track %d: %w", i, err)
+			}
+		}
+		// Each track's write gave its album that track's year and flag; they are
+		// the first track's, whichever was written last.
+		slices.Sort(settle)
+		for _, album := range slices.Compact(settle) {
+			if err = q.SettleAlbum(ctx, album); err != nil {
+				return fmt.Errorf("settle album %d: %w", album, err)
 			}
 		}
 		for i := range b.Issues {
@@ -409,13 +420,19 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, now tim
 }
 
 // writeTrack stores one track and everything that hangs off it, adding the
-// albums it touched to touched: its own, and the one it leaves.
-func writeTrack(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tw *TrackWrite, now time.Time, touched *[]string) error {
+// albums it touched to touched: its own, and the one it leaves. It adds their
+// row IDs to settle, which the batch settles once its tracks are written.
+func writeTrack(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tw *TrackWrite, now time.Time, touched *[]string, settle *[]int64) error {
 	if tw.ID != 0 {
 		before, err := q.TrackAlbumULID(ctx, tw.ID)
 		switch {
 		case err == nil:
 			*touched = append(*touched, before)
+			old, idErr := q.AlbumRowID(ctx, before)
+			if idErr != nil {
+				return fmt.Errorf("track's album row: %w", idErr)
+			}
+			*settle = append(*settle, old)
 		case !errors.Is(err, sql.ErrNoRows): // No row is the update's to report.
 			return fmt.Errorf("track's album: %w", err)
 		}
@@ -425,6 +442,7 @@ func writeTrack(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tw *Track
 		return err
 	}
 	*touched = append(*touched, refs.albumULID)
+	*settle = append(*settle, refs.albumID)
 	id, err := saveTrack(ctx, q, tw, refs.albumID, now)
 	if err != nil {
 		return err
