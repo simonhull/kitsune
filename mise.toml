@@ -77,6 +77,7 @@ run = [
 
 [tasks."web:e2e"]
 description = "Web client in a browser, on its fixtures: fails on any page error"
+depends = ["web:check"]
 dir = "web"
 run = "bun run e2e"
 
