@@ -1,4 +1,5 @@
 import { clock, gain } from '#lib/library/format.ts';
+import { starsLine } from '#lib/library/stars.ts';
 import type {
 	ColumnId,
 	ColumnsPref,
@@ -797,7 +798,7 @@ function phonePart(
 			return guests.length < track.artists.length ? `with ${guests.join(', ')}` : named;
 		}
 		case 'rating':
-			return cell.look === 'stars' ? '★'.repeat(cell.stars) : '';
+			return cell.look === 'stars' && cell.stars > 0 ? starsLine(cell.stars) : '';
 		case 'heart':
 			return cell.look === 'heart' && cell.hearted ? '♥' : '';
 		case 'plays': {

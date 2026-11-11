@@ -167,9 +167,7 @@ func seedLibrary(t *testing.T, db *sql.DB) {
 		if hasTable(t, db, "track_hearts") && n%2 == 1 {
 			exec("INSERT INTO track_hearts (user_id, track_id, hearted_at) VALUES (1, ?, ?)", n, n)
 		}
-		if hasTable(t, db, "track_ratings") && n <= MaxStars {
-			exec("INSERT INTO track_ratings (user_id, track_id, stars, rated_at) VALUES (1, ?, ?, ?)", n, n, n)
-		}
+		seedRating(t, db, n)
 	}
 	if hasTable(t, db, "album_hearts") {
 		exec("INSERT INTO album_hearts (user_id, album_id, hearted_at) VALUES (1, 1, 1)")
@@ -178,6 +176,24 @@ func seedLibrary(t *testing.T, db *sql.DB) {
 		exec("INSERT INTO artist_hearts (user_id, artist_id, hearted_at) VALUES (1, 1, 1)")
 	}
 	seedLastfm(t, db)
+}
+
+// seedRating rates seedLibrary's track n for its user, in the column the
+// database's version has: whole stars 1 to 5 from 0003, halves from 0015.
+func seedRating(t *testing.T, db *sql.DB, n int) {
+	t.Helper()
+	var query string
+	switch {
+	case hasColumn(t, db, "track_ratings", "halves"): // ½★ to 3★.
+		query = "INSERT INTO track_ratings (user_id, track_id, halves, rated_at) VALUES (1, ?, ?, ?)"
+	case hasTable(t, db, "track_ratings") && n <= 5: // 1★ to 5★.
+		query = "INSERT INTO track_ratings (user_id, track_id, stars, rated_at) VALUES (1, ?, ?, ?)"
+	default:
+		return
+	}
+	if _, err := db.ExecContext(t.Context(), query, n, n, n); err != nil {
+		t.Fatalf("%s: %v", query, err)
+	}
 }
 
 // seedLastfm writes a Last.fm account for seedLibrary's user, with a scrobble and
@@ -211,7 +227,24 @@ var markFacts = []struct{ table, query string }{ //nolint:gochecknoglobals // Re
 	{"track_hearts", "SELECT 'heart', t.ulid, u.name, h.hearted_at FROM track_hearts h JOIN tracks t ON t.id = h.track_id JOIN users u ON u.id = h.user_id ORDER BY 2"},
 	{"album_hearts", "SELECT 'heart', a.ulid, u.name, h.hearted_at FROM album_hearts h JOIN albums a ON a.id = h.album_id JOIN users u ON u.id = h.user_id ORDER BY 2"},
 	{"artist_hearts", "SELECT 'heart', a.ulid, u.name, h.hearted_at FROM artist_hearts h JOIN artists a ON a.id = h.artist_id JOIN users u ON u.id = h.user_id ORDER BY 2"},
-	{"track_ratings", "SELECT 'stars', t.ulid, u.name, r.stars, r.rated_at FROM track_ratings r JOIN tracks t ON t.id = r.track_id JOIN users u ON u.id = r.user_id ORDER BY 2"},
+	{"track_ratings", "SELECT 'halves', t.ulid, u.name, r.halves, r.rated_at FROM track_ratings r JOIN tracks t ON t.id = r.track_id JOIN users u ON u.id = r.user_id ORDER BY 2"},
+}
+
+// hasColumn reports whether the database's table has column.
+func hasColumn(t *testing.T, db *sql.DB, table, column string) bool {
+	t.Helper()
+	return slices.Contains(tableColumns(t, db, table), column)
+}
+
+// factQuery is a fact query as db can run it. Before 0015 a rating is in whole
+// stars, so it is read doubled: a rating says the same in halves on both sides
+// of the migration that doubled it.
+func factQuery(t *testing.T, db *sql.DB, query string) string {
+	t.Helper()
+	if hasColumn(t, db, "track_ratings", "stars") {
+		return strings.Replace(query, "r.halves", "r.stars * 2", 1)
+	}
+	return query
 }
 
 // lastfmFacts lists, in public IDs, every Last.fm account and outbox item, as
@@ -285,7 +318,7 @@ func libraryFacts(t *testing.T, db *sql.DB) []string {
 	}
 	for _, m := range slices.Concat(markFacts, lastfmFacts) {
 		if hasTable(t, db, m.table) {
-			facts = append(facts, rawRows(t, db, m.query)...)
+			facts = append(facts, rawRows(t, db, factQuery(t, db, m.query))...)
 		}
 	}
 	for _, word := range seedWords {
@@ -877,4 +910,46 @@ func TestDiscSubtitleBackfillsFromRawTags(t *testing.T) {
 		t.Errorf("disc subtitles = %q, want %q", got, want)
 	}
 	expectFacts(t, d.w, facts)
+}
+
+// TestHalfStarsDoublesRatings runs 0015 over a v14 library: every rating, 1★ to
+// 5★, comes out as 2 to 10 halves with its time, nothing else moves, the index
+// is back, and a half can then be stored while 0 and 11 can't.
+func TestHalfStarsDoublesRatings(t *testing.T) {
+	t.Parallel()
+	steps := shippedSteps(t)
+	at := slices.IndexFunc(steps, func(m migration) bool { return m.name == "0015_half_stars.sql" })
+	if at < 0 {
+		t.Fatal("0015_half_stars.sql is not shipped")
+	}
+	d := newScratchDB(t)
+	d.mustSettle(t, steps[:at])
+	seedLibrary(t, d.w)
+	const before = "SELECT track_id, stars, rated_at FROM track_ratings ORDER BY track_id"
+	if got, want := rawRows(t, d.w, before), []string{"1 1 1", "2 2 2", "3 3 3", "4 4 4", "5 5 5"}; !slices.Equal(got, want) {
+		t.Fatalf("v14 ratings = %q, want %q", got, want)
+	}
+	facts := libraryFacts(t, d.w)
+
+	d.mustSettle(t, steps[:at+1])
+
+	const after = "SELECT track_id, halves, rated_at FROM track_ratings ORDER BY track_id"
+	if got, want := rawRows(t, d.w, after), []string{"1 2 1", "2 4 2", "3 6 3", "4 8 4", "5 10 5"}; !slices.Equal(got, want) {
+		t.Errorf("v15 ratings = %q, want %q", got, want)
+	}
+	expectFacts(t, d.w, facts)
+	if got := rawRows(t, d.w, "PRAGMA foreign_key_check"); len(got) != 0 {
+		t.Errorf("foreign_key_check = %q, want none", got)
+	}
+	if got := rawRows(t, d.w, "SELECT name FROM pragma_index_list('track_ratings') WHERE origin = 'c'"); !slices.Equal(got, []string{"track_ratings_track"}) {
+		t.Errorf("track_ratings indexes = %q, want track_ratings_track", got)
+	}
+	if _, err := d.w.ExecContext(t.Context(), "UPDATE track_ratings SET halves = 1 WHERE track_id = 1"); err != nil {
+		t.Errorf("storing ½★: %v", err)
+	}
+	for _, bad := range []int{0, 11} {
+		if _, err := d.w.ExecContext(t.Context(), "UPDATE track_ratings SET halves = ? WHERE track_id = 2", bad); err == nil {
+			t.Errorf("stored %d halves", bad)
+		}
+	}
 }

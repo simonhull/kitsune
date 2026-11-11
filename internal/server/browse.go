@@ -114,7 +114,7 @@ func (s *Server) albumDetail(ctx context.Context, userID int64, id string) (api.
 	out.Hearted = marks.Hearted
 	for i := range out.Tracks {
 		m := marks.Tracks[out.Tracks[i].ID]
-		out.Tracks[i].Hearted, out.Tracks[i].Stars = m.Hearted, m.Stars
+		out.Tracks[i].Hearted, out.Tracks[i].Stars = m.Hearted, m.Rating.Stars()
 	}
 	return out, nil
 }
@@ -280,7 +280,7 @@ func toAPILibraryAlbum(a *store.IndexAlbum, fields *fieldWriter) api.LibraryAlbu
 		out.Tracks[i] = api.LibraryTrack{
 			ID: t.ID, Title: t.Title, DurationMs: t.Duration.Milliseconds(),
 			Artists: append([]string{}, t.Artists...), DiscNo: t.DiscNo, TrackNo: t.TrackNo,
-			Hearted: t.Marks.Hearted, Stars: t.Marks.Stars,
+			Hearted: t.Marks.Hearted, Stars: t.Marks.Rating.Stars(),
 		}
 		fields.add(&out.Tracks[i], t)
 	}

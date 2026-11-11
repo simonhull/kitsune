@@ -162,15 +162,15 @@ func TestEndlessFollowsWeights(t *testing.T) {
 	t.Parallel()
 	tracks := grid(50, 4, 2)
 	for i := range tracks {
-		tracks[i].Stars = Stars(i%5 + 1)
+		tracks[i].Stars = Stars(2 * (i%5 + 1))
 	}
 	p := pool(t, tracks, nil)
 	c := Config{Settings: Settings{Ratings: 1}, Now: now}
-	var plays [MaxStars + 1]int
+	var plays [MaxStars/2 + 1]int
 	for _, pk := range pages(NewEndless(3, 0), p, c, PageSize, 5000) {
 		plays[int(pk.Reason.Stars)]++
 	}
-	for stars := 2; stars <= int(MaxStars); stars++ {
+	for stars := 2; stars <= int(MaxStars/2); stars++ {
 		if plays[stars] <= plays[stars-1] {
 			t.Errorf("%d★ played no more than %d★: %v", stars, stars-1, plays)
 		}

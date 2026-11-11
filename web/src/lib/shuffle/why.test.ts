@@ -52,6 +52,13 @@ describe('whyLine', () => {
 		);
 		expect(whyLine({ ...plain, stars: 2, skipRate: 0.6, memory: false })).toBe('2★');
 	});
+
+	it('writes a half as ½', () => {
+		expect(whyLine({ ...plain, stars: 4.5, rating: 1.4 })).toBe('4½★');
+		expect(whyLine({ ...plain, stars: 0.5, rating: 0.3 })).toBe('½★');
+		// A run's mean, to the nearest half.
+		expect(whyLine({ ...plain, stars: 4.33, rating: 1.4 })).toBe('4½★');
+	});
 });
 
 describe('agoWords', () => {

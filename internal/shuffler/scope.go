@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -33,8 +34,9 @@ const (
 	Tracks Kind = "tracks"
 )
 
-// goodStars is the least a song under the [Rated] filter has.
-const goodStars = 4
+// goodRating is the least a song under the [Rated] filter has: 4★, so 3½★ is
+// out and 4½★ is in.
+const goodRating rating.Rating = 8
 
 // MostTracks is the most songs a [Tracks] scope may name.
 const MostTracks = 10_000
@@ -94,7 +96,7 @@ func keeper(ctx context.Context, st *store.Store, userID int64, sc *Scope) (keep
 	case Library:
 		return func(*store.ShuffleSong) bool { return true }, nil
 	case Rated:
-		return func(s *store.ShuffleSong) bool { return s.Stars >= goodStars }, nil
+		return func(s *store.ShuffleSong) bool { return s.Rating >= goodRating }, nil
 	case Hearted:
 		albums, err := st.HeartedAlbumRows(ctx, userID)
 		whole := setOf(albums)

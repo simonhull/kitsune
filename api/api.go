@@ -143,9 +143,10 @@ type PlayReport struct {
 	ClientID string `json:"clientId"`
 }
 
-// Rating is the body of PUT /me/ratings/tracks/{id}: the caller's stars, 1 to 5.
+// Rating is the body of PUT /me/ratings/tracks/{id}: the caller's stars, ½ to 5
+// in halves.
 type Rating struct {
-	Stars int `json:"stars"`
+	Stars float64 `json:"stars"`
 }
 
 // The states of a Last.fm connection in [LastfmStatus].
@@ -213,12 +214,12 @@ type EventLibrary struct {
 }
 
 // EventMarks is a marks event: a heart or a rating changed. Hearted comes with
-// a heart and Stars, 0 for none, with a rating.
+// a heart and Stars, ½ to 5 in halves or 0 for none, with a rating.
 type EventMarks struct {
-	Kind    string `json:"kind"` // tracks, albums or artists, as the routes name them.
-	ID      string `json:"id"`
-	Hearted *bool  `json:"hearted,omitempty"`
-	Stars   *int   `json:"stars,omitempty"`
+	Kind    string   `json:"kind"` // tracks, albums or artists, as the routes name them.
+	ID      string   `json:"id"`
+	Hearted *bool    `json:"hearted,omitempty"`
+	Stars   *float64 `json:"stars,omitempty"`
 }
 
 // EventPrefs is a prefs event: the key of the preference that changed.
@@ -329,8 +330,8 @@ type Track struct {
 	// Etag changes when the file does. It is not the stream's ETag.
 	Etag string `json:"etag"`
 	// Hearted and Stars are the caller's own. Stars is absent when unrated.
-	Hearted bool `json:"hearted"`
-	Stars   int  `json:"stars,omitzero"`
+	Hearted bool    `json:"hearted"`
+	Stars   float64 `json:"stars,omitzero"` // ½ to 5 in halves.
 }
 
 // TrackDetail is the response to GET /tracks/{id}: a [Track], and its
@@ -559,7 +560,7 @@ type LibraryTrack struct {
 	TrackNo    int      `json:"trackNo,omitzero"`
 	Hearted    bool     `json:"hearted"`
 	// Stars is absent when the caller hasn't rated it.
-	Stars int `json:"stars,omitzero"`
+	Stars float64 `json:"stars,omitzero"` // ½ to 5 in halves.
 
 	// What `fields` asks for, nil when it asks for nothing: a pointer, so an index
 	// without it costs what it did.

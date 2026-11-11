@@ -203,7 +203,7 @@ func (q *Queries) ListAlbumHeartedTracks(ctx context.Context, arg ListAlbumHeart
 }
 
 const listAlbumTrackRatings = `-- name: ListAlbumTrackRatings :many
-SELECT t.ulid, r.stars
+SELECT t.ulid, r.halves
 FROM track_ratings r
 JOIN tracks t ON t.id = r.track_id
 JOIN albums a ON a.id = t.album_id
@@ -216,8 +216,8 @@ type ListAlbumTrackRatingsParams struct {
 }
 
 type ListAlbumTrackRatingsRow struct {
-	Ulid  string
-	Stars int64
+	Ulid   string
+	Halves int64
 }
 
 func (q *Queries) ListAlbumTrackRatings(ctx context.Context, arg ListAlbumTrackRatingsParams) ([]ListAlbumTrackRatingsRow, error) {
@@ -229,7 +229,7 @@ func (q *Queries) ListAlbumTrackRatings(ctx context.Context, arg ListAlbumTrackR
 	var items []ListAlbumTrackRatingsRow
 	for rows.Next() {
 		var i ListAlbumTrackRatingsRow
-		if err := rows.Scan(&i.Ulid, &i.Stars); err != nil {
+		if err := rows.Scan(&i.Ulid, &i.Halves); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -327,12 +327,12 @@ func (q *Queries) ListHeartedTracks(ctx context.Context, userID int64) ([]string
 }
 
 const listTrackRatings = `-- name: ListTrackRatings :many
-SELECT t.ulid, r.stars FROM track_ratings r JOIN tracks t ON t.id = r.track_id WHERE r.user_id = ?
+SELECT t.ulid, r.halves FROM track_ratings r JOIN tracks t ON t.id = r.track_id WHERE r.user_id = ?
 `
 
 type ListTrackRatingsRow struct {
-	Ulid  string
-	Stars int64
+	Ulid   string
+	Halves int64
 }
 
 func (q *Queries) ListTrackRatings(ctx context.Context, userID int64) ([]ListTrackRatingsRow, error) {
@@ -344,7 +344,7 @@ func (q *Queries) ListTrackRatings(ctx context.Context, userID int64) ([]ListTra
 	var items []ListTrackRatingsRow
 	for rows.Next() {
 		var i ListTrackRatingsRow
-		if err := rows.Scan(&i.Ulid, &i.Stars); err != nil {
+		if err := rows.Scan(&i.Ulid, &i.Halves); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -359,14 +359,14 @@ func (q *Queries) ListTrackRatings(ctx context.Context, userID int64) ([]ListTra
 }
 
 const upsertTrackRating = `-- name: UpsertTrackRating :exec
-INSERT INTO track_ratings (user_id, track_id, stars, rated_at) VALUES (?, ?, ?, ?)
-ON CONFLICT (user_id, track_id) DO UPDATE SET stars = excluded.stars, rated_at = excluded.rated_at
+INSERT INTO track_ratings (user_id, track_id, halves, rated_at) VALUES (?, ?, ?, ?)
+ON CONFLICT (user_id, track_id) DO UPDATE SET halves = excluded.halves, rated_at = excluded.rated_at
 `
 
 type UpsertTrackRatingParams struct {
 	UserID  int64
 	TrackID int64
-	Stars   int64
+	Halves  int64
 	RatedAt int64
 }
 
@@ -374,7 +374,7 @@ func (q *Queries) UpsertTrackRating(ctx context.Context, arg UpsertTrackRatingPa
 	_, err := q.exec(ctx, q.upsertTrackRatingStmt, upsertTrackRating,
 		arg.UserID,
 		arg.TrackID,
-		arg.Stars,
+		arg.Halves,
 		arg.RatedAt,
 	)
 	return err

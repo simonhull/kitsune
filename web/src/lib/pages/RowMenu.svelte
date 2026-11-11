@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { heartPath } from '#lib/shell/Icon.svelte';
+	import StarsInput from '#lib/shell/StarsInput.svelte';
 	import FileInfo from './FileInfo.svelte';
 	import Floating from './Floating.svelte';
 	import { rowMenuItems, type MenuTarget, type SongActions } from './songActions.ts';
@@ -37,7 +38,7 @@
 	/** The stars a song has; for several, the stars they all share, if they do. */
 	const stars = $derived.by(() => {
 		const all = new Set(ids.map((id) => library.marks.stars(id)));
-		return all.size === 1 ? ([...all][0] ?? 0) : 0;
+		return all.size === 1 ? ([...all][0] ?? null) : null;
 	});
 
 	function then(action: () => void): () => void {
@@ -45,10 +46,6 @@
 			action();
 			onclose(true);
 		};
-	}
-
-	function rate(star: number): void {
-		actions.rate(stars === star ? null : star);
 	}
 </script>
 
@@ -102,21 +99,19 @@
 				><path d={heartPath}></path></svg
 			>{hearted ? 'Hearted' : 'Heart'}</button
 		>
-		<div class="rating" role="group" aria-label="Rating">
-			<span class="rating-name">Rating</span>
-			{#each [1, 2, 3, 4, 5] as star (star)}
-				<button
-					type="button"
-					class="star"
-					class:on={star <= stars}
-					aria-label={`${String(star)} of 5`}
-					aria-pressed={star <= stars}
-					data-menu-item
-					onclick={() => {
-						rate(star);
-					}}>★</button
-				>
-			{/each}
+		<div class="rating">
+			<span class="rating-name" aria-hidden="true">Rating</span>
+			<!-- ↑ and ↓ stay the menu's, to go between its items; ← and → move the rating. -->
+			<StarsInput
+				size="menu"
+				value={stars}
+				label={target.kind === 'song' ? `Rating of ${target.title}` : 'Rating of all of them'}
+				vertical={false}
+				data-menu-item
+				onchange={(next) => {
+					actions.rate(next);
+				}}
+			/>
 		</div>
 		{#if items.has('editTags') && actions.editTags !== undefined}
 			<button
@@ -232,7 +227,7 @@
 	}
 
 	.rating {
-		height: 40px;
+		min-height: 40px;
 		padding: 0 6px 0 12px;
 		display: flex;
 		align-items: center;
@@ -242,25 +237,5 @@
 
 	.rating-name {
 		flex: 1;
-	}
-
-	.star {
-		width: 24px;
-		height: 36px;
-		padding: 0;
-		border: 0;
-		border-radius: 8px;
-		background: transparent;
-		font-size: 16px;
-		color: var(--star-off);
-	}
-
-	.star.on {
-		color: var(--star);
-	}
-
-	.star:hover,
-	.star:has(~ .star:hover) {
-		color: color-mix(in srgb, var(--star) 75%, transparent);
 	}
 </style>

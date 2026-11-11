@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -64,18 +65,23 @@ func (s *Server) getListening(w http.ResponseWriter, r *http.Request) {
 	writeBody(w, http.StatusOK, api.JSONMediaType, &api.Listening{Plays: n.Plays, Hearts: n.Hearts, Rated: n.Rated})
 }
 
-// putRating gives a track the caller's stars.
+// putRating gives a track the caller's stars, ½ to 5 in halves.
 func (s *Server) putRating(w http.ResponseWriter, r *http.Request) {
 	var req api.Rating
-	if err := readJSON(w, r, &req); err != nil || req.Stars < store.MinStars || req.Stars > store.MaxStars {
-		writeProblem(w, r, http.StatusBadRequest, "request body must be a JSON rating: stars, from 1 to 5")
+	if err := readJSON(w, r, &req); err != nil {
+		writeProblem(w, r, http.StatusBadRequest, badRating)
+		return
+	}
+	rated, err := rating.FromStars(req.Stars)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadRequest, badRating)
 		return
 	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
 	id := r.PathValue("id")
-	err := s.library.Rate(r.Context(), user.ID, id, req.Stars)
+	err = s.library.Rate(r.Context(), user.ID, id, rated)
 	if err == nil {
-		s.publishMarks(user.ID, &api.EventMarks{Kind: trackKind, ID: id, Stars: &req.Stars})
+		s.publishMarks(user.ID, &api.EventMarks{Kind: trackKind, ID: id, Stars: new(rated.Stars())})
 	}
 	s.answerMark(w, r, err, "no such track", "rate")
 }
@@ -86,10 +92,13 @@ func (s *Server) deleteRating(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	err := s.library.Unrate(r.Context(), user.ID, id)
 	if err == nil {
-		s.publishMarks(user.ID, &api.EventMarks{Kind: trackKind, ID: id, Stars: new(0)})
+		s.publishMarks(user.ID, &api.EventMarks{Kind: trackKind, ID: id, Stars: new(rating.None.Stars())})
 	}
 	s.answerMark(w, r, err, "no such track", "unrate")
 }
+
+// badRating is putRating's 400 detail.
+const badRating = "request body must be a JSON rating: stars, from ½ to 5 in halves"
 
 // trackKind is the contract's name for tracks, in a marks event.
 const trackKind = "tracks"

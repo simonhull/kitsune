@@ -227,6 +227,13 @@ describe('phoneLine', () => {
 		expect(phoneLine(order, guest, () => true)).toEqual(['with Mara Vey', '★★★']);
 	});
 
+	it('writes a half as ½, in the same ink', () => {
+		const half = context({ track: track({ plays: 31 }), stars: 4.5 });
+		expect(phoneLine(order, half, () => true)).toEqual(['★★★★½', '31 plays']);
+		const least = context({ track: track({ plays: 31 }), stars: 0.5 });
+		expect(phoneLine(order, least, () => true)).toEqual(['½', '31 plays']);
+	});
+
 	it('leaves out what every song of the album shares', () => {
 		const tagged = context({ track: track({ displayGenres: ['Dream pop'], plays: 2 }) });
 		expect(phoneLine(order, tagged, nothingShared)).toEqual(['Dream pop', '2 plays']);

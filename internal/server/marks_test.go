@@ -47,7 +47,14 @@ func rateCall(token, id, body string) call {
 	return call{method: http.MethodPut, path: ratingsPath + id, body: body, header: jsonHeader(token)}
 }
 
-func stars(n int) string { return fmt.Sprintf(`{"stars":%d}`, n) }
+// stars is a rating body of n stars.
+func stars(n float64) string { return fmt.Sprintf(`{"stars":%v}`, n) }
+
+// seenMarks are a track's marks as a client reads them.
+type seenMarks struct {
+	Hearted bool
+	Stars   float64
+}
 
 // albumAs reads album 1 as the holder of token.
 func (ts *testServer) albumAs(t *testing.T, token string) api.AlbumDetail {
@@ -67,19 +74,19 @@ func (ts *testServer) indexAs(t *testing.T, token string) api.LibraryIndex {
 
 // trackMarks returns each track's marks on album 1, by ULID, as the album page
 // and the index both say them. It fails if the two disagree.
-func (ts *testServer) trackMarks(t *testing.T, token string) map[string]store.Marks {
+func (ts *testServer) trackMarks(t *testing.T, token string) map[string]seenMarks {
 	t.Helper()
-	page := map[string]store.Marks{}
+	page := map[string]seenMarks{}
 	album := ts.albumAs(t, token)
 	for i := range album.Tracks {
 		tr := &album.Tracks[i]
-		page[tr.ID] = store.Marks{Hearted: tr.Hearted, Stars: tr.Stars}
+		page[tr.ID] = seenMarks{Hearted: tr.Hearted, Stars: tr.Stars}
 	}
-	index := map[string]store.Marks{}
+	index := map[string]seenMarks{}
 	for _, a := range ts.indexAs(t, token).Artists {
 		for i := range a.Albums {
 			for _, tr := range a.Albums[i].Tracks {
-				index[tr.ID] = store.Marks{Hearted: tr.Hearted, Stars: tr.Stars}
+				index[tr.ID] = seenMarks{Hearted: tr.Hearted, Stars: tr.Stars}
 			}
 		}
 	}
@@ -126,10 +133,10 @@ func TestRatingsReplaceAndClear(t *testing.T) {
 	t.Parallel()
 	ts, sess := markFixture(t)
 	wantNoContent(t, ts.send(t, rateCall(sess.token, firstTrack, stars(2))))
-	wantNoContent(t, ts.send(t, rateCall(sess.token, firstTrack, stars(4))))
+	wantNoContent(t, ts.send(t, rateCall(sess.token, firstTrack, stars(4.5))))
 	wantNoContent(t, ts.send(t, rateCall(sess.token, secondTrack, stars(5))))
-	if got := ts.trackMarks(t, sess.token); got[firstTrack].Stars != 4 || got[secondTrack].Stars != 5 {
-		t.Errorf("marks = %v, want 4 and 5 stars", got)
+	if got := ts.trackMarks(t, sess.token); got[firstTrack].Stars != 4.5 || got[secondTrack].Stars != 5 {
+		t.Errorf("marks = %v, want 4½ and 5 stars", got)
 	}
 	for range 2 {
 		wantNoContent(t, ts.send(t, call{method: http.MethodDelete, path: ratingsPath + firstTrack, header: bearer(sess.token)}))
@@ -162,13 +169,14 @@ func TestMarksRefuseBadRequests(t *testing.T) {
 		ts.send(t, c).problem(t, http.StatusBadRequest)
 	}
 	for name, body := range map[string]string{
-		"zero":     stars(0),
-		"six":      stars(6),
-		"none":     `{}`,
-		"text":     `{"stars":"4"}`,
-		"fraction": `{"stars":3.5}`,
-		"extra":    `{"stars":3,"album":true}`,
-		"garbage":  "{",
+		"zero":      stars(0),
+		"over five": stars(5.5),
+		"quarter":   stars(4.25),
+		"negative":  stars(-0.5),
+		"none":      `{}`,
+		"text":      `{"stars":"4"}`,
+		"extra":     `{"stars":3,"album":true}`,
+		"garbage":   "{",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -177,7 +185,7 @@ func TestMarksRefuseBadRequests(t *testing.T) {
 			ts.send(t, c).problem(t, http.StatusBadRequest)
 		})
 	}
-	if got := ts.trackMarks(t, sess.token); got[firstTrack] != (store.Marks{}) {
+	if got := ts.trackMarks(t, sess.token); got[firstTrack] != (seenMarks{}) {
 		t.Errorf("marks = %v, want none", got)
 	}
 }
@@ -190,15 +198,15 @@ func TestMarksAreTheCallersOwn(t *testing.T) {
 		wantNoContent(t, ts.send(t, heartCall(http.MethodPut, admin.token, target.kind, target.id)))
 	}
 	wantNoContent(t, ts.send(t, rateCall(admin.token, firstTrack, stars(5))))
-	wantNoContent(t, ts.send(t, rateCall(other, secondTrack, stars(1))))
+	wantNoContent(t, ts.send(t, rateCall(other, secondTrack, stars(0.5))))
 
-	if got := ts.trackMarks(t, other); got[firstTrack] != (store.Marks{}) || got[secondTrack] != (store.Marks{Stars: 1}) {
+	if got := ts.trackMarks(t, other); got[firstTrack] != (seenMarks{}) || got[secondTrack] != (seenMarks{Stars: 0.5}) {
 		t.Errorf("the user's marks = %v, want only their own rating", got)
 	}
 	if got := ts.heartsSeen(t, other); got != (heartsSeen{}) {
 		t.Errorf("the user sees the admin's hearts: %+v", got)
 	}
-	if got := ts.trackMarks(t, admin.token); got[firstTrack] != (store.Marks{Hearted: true, Stars: 5}) || got[secondTrack] != (store.Marks{}) {
+	if got := ts.trackMarks(t, admin.token); got[firstTrack] != (seenMarks{Hearted: true, Stars: 5}) || got[secondTrack] != (seenMarks{}) {
 		t.Errorf("the admin's marks = %v", got)
 	}
 }
@@ -207,11 +215,11 @@ func TestTrackDetailCarriesMarks(t *testing.T) {
 	t.Parallel()
 	ts, sess := markFixture(t)
 	wantNoContent(t, ts.send(t, heartCall(http.MethodPut, sess.token, kindTracks, secondTrack)))
-	wantNoContent(t, ts.send(t, rateCall(sess.token, secondTrack, stars(3))))
+	wantNoContent(t, ts.send(t, rateCall(sess.token, secondTrack, stars(3.5))))
 	var out api.TrackDetail
 	ts.getJSON(t, sess.token, "/tracks/"+secondTrack, &out)
-	if !out.Hearted || out.Stars != 3 {
-		t.Errorf("track = hearted %t, %d stars, want hearted at 3", out.Hearted, out.Stars)
+	if !out.Hearted || out.Stars != 3.5 {
+		t.Errorf("track = hearted %t, %v stars, want hearted at 3½", out.Hearted, out.Stars)
 	}
 }
 
@@ -245,7 +253,7 @@ func TestDeletedTrackTakesItsMarks(t *testing.T) {
 	if err = ts.Store.WriteBatch(t.Context(), &store.Batch{Tracks: back}); err != nil {
 		t.Fatal(err)
 	}
-	if got := ts.trackMarks(t, sess.token); got[firstTrack] != (store.Marks{}) || got[secondTrack] != (store.Marks{Stars: 2}) {
+	if got := ts.trackMarks(t, sess.token); got[firstTrack] != (seenMarks{}) || got[secondTrack] != (seenMarks{Stars: 2}) {
 		t.Errorf("marks = %v, want the deleted track's gone and the other's kept", got)
 	}
 }

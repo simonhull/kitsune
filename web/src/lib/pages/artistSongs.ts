@@ -52,20 +52,15 @@ export function songsOf(index: LibraryIndex, owned: ReadonlySet<string>): Artist
 	return songs;
 }
 
+/**
+ * How much stars count toward Top, by half stars from ½: 5 doubles a song, 3 and unrated leave it,
+ * and 1 quarters it. Each half is the geometric mean of the whole stars beside it, to two places.
+ */
+const topWeights = [0.125, 0.25, 0.35, 0.5, 0.71, 1, 1.22, 1.5, 1.73, 2];
+
 /** How much a song's stars count toward Top: 5 doubles it, unrated counts as 3, and 1 quarters it. */
 export function starWeight(stars: number | null): number {
-	switch (stars) {
-		case 5:
-			return 2;
-		case 4:
-			return 1.5;
-		case 2:
-			return 0.5;
-		case 1:
-			return 0.25;
-		default:
-			return 1;
-	}
+	return stars === null ? 1 : (topWeights[Math.round(stars * 2) - 1] ?? 1);
 }
 
 /** How much a heart counts toward Top. */

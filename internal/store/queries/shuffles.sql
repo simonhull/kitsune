@@ -4,7 +4,7 @@
 
 -- name: ListShuffleTracks :many
 SELECT t.id, t.album_id, a.ulid AS album_ulid,
-    CAST(coalesce(r.stars, 0) AS INTEGER) AS stars,
+    CAST(coalesce(r.halves, 0) AS INTEGER) AS halves,
     CAST(h.track_id IS NOT NULL AS INTEGER) AS hearted,
     CAST(e.track_id IS NOT NULL AS INTEGER) AS excluded
 FROM tracks t

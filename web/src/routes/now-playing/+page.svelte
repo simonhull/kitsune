@@ -7,7 +7,7 @@
 	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
-	import StarButtons from '#lib/shell/StarButtons.svelte';
+	import StarsInput from '#lib/shell/StarsInput.svelte';
 	import { appliedGain } from '#lib/player/gain.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import { reserveIslandSlot } from '#lib/shell/slot.svelte.ts';
@@ -119,7 +119,14 @@
 						{#if others !== undefined}{others}{/if}
 					</span>
 					<span class="rate" data-morph-part="details"
-						><StarButtons trackId={playing.track.id} title={playing.track.title} /></span
+						><StarsInput
+							size="stage"
+							value={library.marks.stars(playing.track.id)}
+							label={`Rating of ${playing.track.title}`}
+							onchange={(stars) => {
+								library.marks.rate(playing.track.id, stars);
+							}}
+						/></span
 					>
 					{#if note !== null}<p class="note" role="status">{note}</p>{/if}
 				</div>
@@ -352,6 +359,10 @@
 
 	/* The song's own stars, on the art: they wear the accent, and keep 44 to press. */
 	.rate {
+		--stars-on: var(--accent);
+		--stars-off: var(--star-empty);
+		--stars-preview: color-mix(in srgb, var(--accent) 70%, transparent);
+
 		display: flex;
 		margin: -8px 0 -12px;
 	}

@@ -61,6 +61,7 @@ const ids = (songs: readonly ArtistSong[]): string[] => songs.map(({ track }) =>
 describe('Top', () => {
 	it('weighs stars and the heart on the plays', () => {
 		expect([5, 4, 3, null, 2, 1].map(starWeight)).toEqual([2, 1.5, 1, 1, 0.5, 0.25]);
+		expect([4.5, 3.5, 2.5, 1.5, 0.5].map(starWeight)).toEqual([1.73, 1.22, 0.71, 0.35, 0.125]);
 		const marks = marksOf({ n1: 5 }, ['n1']);
 		expect(topScore(song('n1', 'x', { plays: 3 }), marks)).toBe(4 * 2 * 1.25);
 		expect(topScore(song('n2', 'x'), marks)).toBe(1);

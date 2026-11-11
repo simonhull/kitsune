@@ -236,10 +236,10 @@ func TestEventsOfRatings(t *testing.T) {
 	ts, sess := markFixture(t)
 	s := ts.openStream(t, sess.token, "")
 	s.want(events.Ready)
-	ts.send(t, rateCall(sess.token, firstTrack, stars(4)))
-	s.wantMark(&api.EventMarks{Kind: kindTracks, ID: firstTrack, Stars: new(4)})
+	ts.send(t, rateCall(sess.token, firstTrack, stars(4.5)))
+	s.wantMark(&api.EventMarks{Kind: kindTracks, ID: firstTrack, Stars: new(4.5)})
 	ts.send(t, call{method: http.MethodDelete, path: ratingsPath + firstTrack, header: bearer(sess.token)})
-	s.wantMark(&api.EventMarks{Kind: kindTracks, ID: firstTrack, Stars: new(0)})
+	s.wantMark(&api.EventMarks{Kind: kindTracks, ID: firstTrack, Stars: new(0.0)})
 }
 
 func TestEventsOfPrefsListeningAndLastfm(t *testing.T) {
