@@ -779,7 +779,7 @@
 		--head-top: 96px;
 		--songs-left: calc(var(--page-edge) + var(--name-column) + var(--name-gap));
 		/* Shuffle and its line, above the filters: libraryView's shuffleRow. */
-		--shuffle-row: 112px;
+		--shuffle-row: 128px;
 
 		position: relative;
 		padding: var(--head-top) 0 140px;
@@ -792,7 +792,7 @@
 		--cover-gap: 48px;
 		--songs-right: 120px;
 		--head-top: 128px;
-		--shuffle-row: 140px;
+		--shuffle-row: 160px;
 		--type-display: 132px;
 		--type-title: 22px;
 		--type-body: 18px;
@@ -947,7 +947,7 @@
 	 * is as tall as the words were with their margin, so the name pins where it always did.
 	 */
 	.frame {
-		margin-top: 2px;
+		margin-top: 10px;
 		height: 28px;
 		display: flex;
 		align-items: center;
@@ -1085,7 +1085,7 @@
 	/* The name stays while its albums scroll; the next one pushes it out. */
 	.head {
 		position: sticky;
-		top: calc(var(--head-top) + var(--shuffle-row) + 90px);
+		top: calc(var(--head-top) + var(--shuffle-row) + 98px);
 		pointer-events: auto;
 	}
 
