@@ -126,6 +126,8 @@ function setup() {
 		);
 	const marks = {
 		hearted: (kind: string, id: string) => kind === 'albums' && list.hearted.has(id),
+		stars: () => null,
+		heartStars: 0,
 		counted: () => null
 	};
 	const reports = vi.spyOn(library, 'reportListen').mockImplementation(() => undefined);

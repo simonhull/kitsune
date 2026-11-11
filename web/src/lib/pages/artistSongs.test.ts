@@ -56,6 +56,8 @@ function marksOf(
 	heartStars = 0
 ): MarksView {
 	return {
+		stars: (id) => stars[id] ?? null,
+		heartStars,
 		counted: (id) => counted(stars[id] ?? null, hearts.includes(id), heartStars),
 		hearted: (kind, id) => kind === 'tracks' && hearts.includes(id)
 	};

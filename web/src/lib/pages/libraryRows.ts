@@ -92,6 +92,10 @@ export type Keep = (
 /** As much of the marks as a filter reads. */
 export interface MarksView {
 	hearted(kind: MarkKind, id: string): boolean;
+	/** A song's own stars, or null. */
+	stars(trackId: string): number | null;
+	/** What an unrated heart counts as: 0 for nothing. */
+	readonly heartStars: number;
 	/** The stars a song counts as: its own, else its heart's (`ratings.heart_stars`), else null. */
 	counted(trackId: string): Counted | null;
 }
@@ -114,14 +118,18 @@ export function keepFor(filter: LibraryFilter, marks: MarksView): Keep | undefin
 				(artist.id !== undefined && marks.hearted('artists', artist.id)) ||
 				marks.hearted('albums', album.id) ||
 				marks.hearted('tracks', track.id);
-		case 'rated':
+		case 'rated': {
+			// The counted rule, unrolled: it runs once a song over the whole library, so it reads the
+			// heart only for an unrated song while hearts count enough, and makes nothing.
+			const hearts = marks.heartStars >= goodStars;
 			return (_artist, _album, track) => {
-				const rating = marks.counted(track.id);
-				if (rating === null || rating.stars < goodStars) {
-					return false;
+				const own = marks.stars(track.id);
+				if (own !== null) {
+					return own >= goodStars;
 				}
-				return rating.byHeart ? 'byHeart' : true;
+				return hearts && marks.hearted('tracks', track.id) ? 'byHeart' : false;
 			};
+		}
 	}
 }
 

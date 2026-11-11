@@ -296,6 +296,8 @@ describe('railHere', () => {
 function marks(hearts: string[], stars: Record<string, number> = {}, heartStars = 0) {
 	return {
 		hearted: (kind: string, id: string) => hearts.includes(`${kind}/${id}`),
+		stars: (id: string) => stars[id] ?? null,
+		heartStars,
 		counted: (id: string) => counted(stars[id] ?? null, hearts.includes(`tracks/${id}`), heartStars)
 	};
 }
