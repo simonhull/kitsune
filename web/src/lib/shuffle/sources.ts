@@ -3,6 +3,7 @@ import type { Album, LibraryIndex } from '#lib/library/source.ts';
 import { keepFor, type LibraryFilter } from '#lib/pages/libraryRows.ts';
 import { candidatesOf, unitsOf, type Candidate, type Unit } from './pick.ts';
 import type { ShuffleSource } from './session.svelte.ts';
+import { libraryLabels } from './words.ts';
 
 /** A song's marks as they stand now: what a press of a heart or a star has said since the index came. */
 function marksOf(trackId: string): { stars?: number; hearted: boolean } {
@@ -20,12 +21,11 @@ function indexNow(): LibraryIndex {
 
 /** What a Library filter shuffles: the whole library, or what the filter shows, endlessly. */
 export function librarySource(filter: LibraryFilter): ShuffleSource {
-	const labels = { everything: 'THE LIBRARY', hearted: 'WHAT YOU HEARTED', rated: '4★ AND UP' };
 	return {
 		key: `library:${filter}`,
 		scope: filter === 'everything' ? { kind: 'library' } : { kind: filter },
 		mode: 'endless',
-		label: labels[filter],
+		label: libraryLabels[filter],
 		units: () => {
 			const keep = keepFor(filter, library.marks);
 			const { inScope, everyone } = candidatesOf(indexNow(), marksOf, keep);

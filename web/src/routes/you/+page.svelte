@@ -219,7 +219,7 @@
 			</div>
 		</section>
 
-		<section aria-labelledby="shuffle-head" class="shuffles" data-morph-part="panel">
+		<section id="shuffle" aria-labelledby="shuffle-head" class="shuffles" data-morph-part="panel">
 			<h2 id="shuffle-head" class="mono">HOW SHUFFLE CHOOSES</h2>
 			<ShuffleCard />
 		</section>
@@ -701,6 +701,11 @@
 	.shuffles,
 	.where {
 		grid-column: 2;
+	}
+
+	/* The Library Shuffle card's link lands here, clear of the nav. */
+	#shuffle {
+		scroll-margin-top: 120px;
 	}
 
 	/* A 4K screen lays the cards side by side beside the name, rather than stretching one. */
