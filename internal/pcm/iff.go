@@ -18,11 +18,17 @@ type sampleFormat struct {
 	order    binary.ByteOrder
 }
 
+// MaxChannels is the most channels a stream may have: loudness.NewMeter's
+// limit, checked before a decoder sizes its buffers by the count.
+const MaxChannels = 8
+
 // check refuses what [pcmDecoder] can't read.
 func (f *sampleFormat) check() error {
 	switch {
 	case f.channels < 1:
 		return fmt.Errorf("%w: %d channels", ErrCorrupt, f.channels)
+	case f.channels > MaxChannels:
+		return fmt.Errorf("%w: %d channels", ErrUnsupported, f.channels)
 	case f.float && f.width != float32Bytes && f.width != float64Bytes:
 		return fmt.Errorf("%w: %d-byte floats", ErrUnsupported, f.width)
 	case !f.float && (f.width < 1 || f.width > int32Bytes):

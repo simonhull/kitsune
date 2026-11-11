@@ -48,13 +48,41 @@ func pcmKind(format, codec string) (pcm.Kind, bool) {
 	return 0, false
 }
 
-// measureFile decodes and measures the file of row, read under its root.
+// measureFile decodes and measures the file of row, read under its root. A
+// decoder's panic on a corrupt file breaks that file ([pcm.ErrCorrupt]) and
+// never the server.
 func measureFile(ctx context.Context, row *store.LoudnessWaiting, yield func() bool) (loudness.Result, error) {
+	var res loudness.Result
+	err := guarded(func() error {
+		var err error
+		res, err = decodeFile(ctx, row, yield)
+		return err
+	})
+	if err != nil {
+		return loudness.Result{}, err
+	}
+	return res, nil
+}
+
+// guarded runs measure and turns its panic into an error wrapping
+// [pcm.ErrCorrupt]: a stored "unreadable until the file changes".
+func guarded(measure func() error) (err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("%w: decoder panicked: %v", pcm.ErrCorrupt, p)
+		}
+	}()
+	return measure()
+}
+
+func decodeFile(ctx context.Context, row *store.LoudnessWaiting, yield func() bool) (loudness.Result, error) {
 	kind, ok := pcmKind(row.Format, row.Codec)
 	if !ok {
 		return loudness.Result{}, fmt.Errorf("%w: %s %s", pcm.ErrUnsupported, row.Format, row.Codec)
 	}
-	f, err := os.OpenInRoot(row.Root, row.RelPath)
+	// Not os.Root: the scanner keeps a file that a symlink leads to out of the
+	// library, as the stream plays it, so the pass must reach it too.
+	f, err := os.Open(filepath.Join(row.Root, row.RelPath))
 	if err != nil {
 		return loudness.Result{}, fmt.Errorf("open: %w", err)
 	}
