@@ -17,6 +17,9 @@ env:
   GO_VERSION: '1.27'
   BUN_VERSION: '1.4.4'
   GOVULNCHECK_VERSION: v1.9.0
+  # A static ffmpeg for the perf libraries, pinned by build and checksum.
+  FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-11-12-39/ffmpeg-N-128790-g9bee1e603c-linux64-gpl.tar.xz
+  FFMPEG_SHA256: f5752bf3597cbc9fc7a60fe5cea3522797a5ea2493d91cffb6f13e5b4c861233
 
 jobs:
   test:
@@ -126,8 +129,16 @@ jobs:
     - name: Tools
       run: |
         echo "KITSUNE_PERF_DIR=$RUNNER_TEMP/kitsune-perf" >> "$GITHUB_ENV"
-        command -v ffmpeg || { sudo apt-get update && sudo apt-get install -y ffmpeg; }
-        cd web && bun install --frozen-lockfile && bunx playwright install --with-deps chromium
+        # ffmpeg and Chromium come from GitHub and Playwright, never apt: a runner that can't reach
+        # Ubuntu's archive must not hang the job.
+        if ! command -v ffmpeg; then
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/ffmpeg.tar.xz" "$FFMPEG_URL"
+          echo "$FFMPEG_SHA256  $RUNNER_TEMP/ffmpeg.tar.xz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/ffmpeg"
+          tar -xJf "$RUNNER_TEMP/ffmpeg.tar.xz" -C "$RUNNER_TEMP/ffmpeg" --strip-components=1
+          echo "$RUNNER_TEMP/ffmpeg/bin" >> "$GITHUB_PATH"
+        fi
+        cd web && bun install --frozen-lockfile && bunx playwright install chromium
     - name: Server
       run: |
         printf '### Server, ms\n\n| Interaction | median | p95 | Budget (p95) |\n|---|--:|--:|--:|\n' >> "$GITHUB_STEP_SUMMARY"
