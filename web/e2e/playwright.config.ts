@@ -1,4 +1,6 @@
 import { defineConfig } from '@playwright/test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 /**
  * The behavior suite: the built client on its fixtures, in a browser. Every page error fails the
@@ -7,6 +9,8 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
 	testDir: '.',
 	testMatch: '*.e2e.ts',
+	// Outside the tree, so a failed run leaves nothing for lint or git to find.
+	outputDir: join(tmpdir(), 'kitsune-e2e'),
 	fullyParallel: true,
 	retries: 0,
 	reporter: [['list']],
