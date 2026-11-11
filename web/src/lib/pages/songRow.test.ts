@@ -182,10 +182,7 @@ describe('clickIntent', () => {
 	it('leaves the box, ⋯ and the stars their own clicks', () => {
 		expect(clickIntent(at({ '.box input': true, [own]: true }))).toEqual({ kind: 'box' });
 		expect(clickIntent(at({ '.more': true, [own]: true }))).toEqual({ kind: 'more' });
-		expect(clickIntent(at({ '[data-star]': '4', [own]: true }))).toEqual({
-			kind: 'rate',
-			stars: 4
-		});
+		expect(clickIntent(at({ '.stars-input': true, [own]: true }))).toEqual({ kind: 'rate' });
 	});
 
 	it('leaves a name that links, the heart, the handle and the gutter to themselves', () => {

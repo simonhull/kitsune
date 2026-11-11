@@ -41,6 +41,16 @@ describe('weightOf', () => {
 			Math.exp((Math.log(1.6) + Math.log(2.4)) / 2)
 		);
 	});
+
+	it('takes halves, and goes on down under 1★ as the server does', () => {
+		expect(weightOf({ songs: [song('a', { stars: 4.5 })] }, 1)).toBeCloseTo(Math.sqrt(1.6 * 2.4));
+		expect(weightOf({ songs: [song('a', { stars: 0.5 })] }, 1)).toBeCloseTo(
+			0.2 * Math.sqrt(0.2 / 0.6)
+		);
+		expect(weightOf({ songs: [song('a', { stars: 0.5 })] }, 1)).toBeLessThan(
+			weightOf({ songs: [song('a', { stars: 1 })] }, 1)
+		);
+	});
 });
 
 describe('pickUnit', () => {

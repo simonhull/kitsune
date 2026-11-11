@@ -81,7 +81,7 @@ export interface Track {
 	etag: string;
 	/** Whether the caller has hearted it. {@link Library.marks} holds what's current. */
 	hearted: boolean;
-	/** The caller's rating, 1 to 5. Absent when unrated. */
+	/** The caller's rating, ½ to 5 in halves. Absent when unrated. */
 	stars?: number;
 }
 
@@ -274,7 +274,7 @@ export interface LibraryTrack {
 	trackNo?: number;
 	/** Whether the caller has hearted it. {@link Library.marks} holds what's current. */
 	hearted: boolean;
-	/** The caller's rating, 1 to 5. Absent when unrated. */
+	/** The caller's rating, ½ to 5 in halves. Absent when unrated. */
 	stars?: number;
 	/** Everything below comes only when {@link IndexField}s ask for it, and is absent with nothing to say. */
 	albumArtists?: string[];
@@ -597,7 +597,7 @@ export interface LibraryEvent {
 	all: boolean;
 }
 
-/** `marks` on `GET /events`: a heart, with `hearted`, or a rating, with `stars` (0 for none). */
+/** `marks` on `GET /events`: a heart, with `hearted`, or a rating, with `stars` (½ to 5 in halves, 0 for none). */
 export interface MarksEvent {
 	kind: MarkKind;
 	id: string;

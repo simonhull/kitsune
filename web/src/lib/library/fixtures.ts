@@ -398,15 +398,17 @@ const boardHearts: readonly string[] = [
 	'tracks/night-ferry-94-3',
 	'albums/long-way-round-63'
 ];
+/** Ratings in halves, as people give them: a few songs sit between two stars. */
 const boardStars: readonly (readonly [string, number])[] = [
 	['glasshouse-66-1', 5],
-	['glasshouse-66-2', 3],
+	['glasshouse-66-2', 3.5],
+	['glasshouse-66-3', 4.5],
 	['glasshouse-66-5', 4],
 	['glasshouse-66-6', 2],
 	['glasshouse-66-7', 5],
 	['glasshouse-66-9', 4],
 	['tidewrack-41-1', 4],
-	['tidewrack-41-4', 2],
+	['tidewrack-41-4', 2.5],
 	['orbitals-14-2', 5],
 	['sea-sampler-31-2', 4]
 ];

@@ -345,6 +345,11 @@ describe('the 4 and up filter', () => {
 		expect(shown(index, keep)).toEqual([{ Abba: [['a'], ['d']] }]);
 	});
 
+	it('keeps 4 and 4½ and leaves 3½ out: 4 and up is at least 4', () => {
+		const keep = keepFor('rated', marks([], { a: 4.5, b: 3.5, c: 4, d: 0.5 }));
+		expect(shown(index, keep)).toEqual([{ Abba: [['a', 'c']] }]);
+	});
+
 	it("never shows an unrated song because its neighbors were good: album means don't count", () => {
 		const keep = keepFor('rated', marks(['albums/c1', 'artists/Cher'], { g: 5, h: 5 }));
 		expect(shown(index, keep)).toEqual([{ Cher: [['g', 'h']] }]);

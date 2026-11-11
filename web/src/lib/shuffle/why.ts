@@ -5,6 +5,7 @@
  * the two lines in Now playing that pass it to Up next.
  */
 import type { ShuffleWhy } from '#lib/library/source.ts';
+import { shownHalves, starsText } from '#lib/library/stars.ts';
 
 /** The one switch. */
 export const whyShown = true;
@@ -53,10 +54,9 @@ const hearsAll = 0.9;
 /** A flow factor past this says it leaned toward the song. */
 const leans = 1.02;
 
-/** Stars as a short mark: "4★", or "3.5★" for a run between ratings. */
+/** Stars as a short mark: "4★", or "4½★" for a half or a run between ratings. */
 function starsMark(stars: number): string {
-	const rounded = Math.round(stars * 2) / 2;
-	return `${String(rounded)}★`;
+	return `${starsText(shownHalves(stars))}★`;
 }
 
 /**

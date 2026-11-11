@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { albumStars, filledStars, starsLabel } from './albumStars';
+import { albumStars, starsLabel } from './albumStars';
 
 function rated(stars: Record<string, number>) {
 	return { stars: (id: string): number | null => stars[id] ?? null };
@@ -35,12 +35,16 @@ describe('albumStars', () => {
 	});
 });
 
-describe('filledStars', () => {
-	it('fills the nearest whole star', () => {
-		expect(filledStars(3.8)).toBe(4);
-		expect(filledStars(3.4)).toBe(3);
-		expect(filledStars(4.5)).toBe(5);
-		expect(filledStars(1)).toBe(1);
+describe('albumStars with halves', () => {
+	it('takes halves into the mean, to one place', () => {
+		// 4½, 4 and 3½ are 12 over 3: 4.
+		expect(albumStars(tracks, rated({ a: 4.5, b: 4, c: 3.5 }))?.mean).toBe(4);
+		// 4½ and 5 are 4.75, which reads as 4.8.
+		expect(albumStars(tracks, rated({ a: 4.5, b: 5 }))?.mean).toBe(4.8);
+		// ½ alone is ½.
+		expect(albumStars(tracks, rated({ a: 0.5 }))).toEqual({ mean: 0.5, rated: 1, of: 10 });
+		// 4½, 4½ and 4 are 4.33, which reads as 4.3.
+		expect(albumStars(tracks, rated({ a: 4.5, b: 4.5, c: 4 }))?.mean).toBe(4.3);
 	});
 });
 

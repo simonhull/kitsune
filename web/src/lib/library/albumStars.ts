@@ -1,3 +1,5 @@
+import { maxStars } from './stars.ts';
+
 /** An album's stars, worked out from its songs: never set, never stored, so never stale. */
 export interface AlbumStars {
 	/** The mean of the rated songs, to one place. */
@@ -7,9 +9,6 @@ export interface AlbumStars {
 	/** How many songs there are. */
 	of: number;
 }
-
-/** The highest rating. */
-export const maxStars = 5;
 
 /**
  * Works out an album's stars from its songs' own, or null when none is rated. An unrated song
@@ -32,11 +31,6 @@ export function albumStars(
 	return rated === 0
 		? null
 		: { mean: Math.round((sum * 10) / rated) / 10, rated, of: tracks.length };
-}
-
-/** How many of the five a mean fills. */
-export function filledStars(mean: number): number {
-	return Math.round(mean);
 }
 
 /** What the stars say, for someone who can't see them. */

@@ -68,12 +68,13 @@ export function unitsOf(
  * history. The mean of its rated songs, unrated counting as 3, on the server's curve, at `ratings`.
  */
 export function weightOf({ songs }: Unit, ratings: number): number {
-	const rated = songs.filter(({ stars }) => stars !== undefined && stars >= 1 && stars <= 5);
+	const rated = songs.filter(({ stars }) => stars !== undefined && stars >= 0.5 && stars <= 5);
 	const mean =
 		rated.length === 0
 			? unratedStars
 			: rated.reduce((sum, { stars }) => sum + (stars ?? 0), 0) / rated.length;
-	const low = Math.min(Math.floor(mean), starCurve.length);
+	// Under 1★, only ½★ songs: the first step, 1★ to 2★, goes on down, as on the server.
+	const low = Math.min(Math.max(1, Math.floor(mean)), starCurve.length);
 	const at = (stars: number): number => Math.log(starCurve[stars - 1] ?? 1);
 	const curve =
 		low >= starCurve.length ? at(low) : at(low) + (mean - low) * (at(low + 1) - at(low));

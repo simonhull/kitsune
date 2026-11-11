@@ -171,16 +171,19 @@ describe('marks', () => {
 		expect(marks.hearted('tracks', 't1')).toBe(false);
 	});
 
-	it('pressing the star a song has clears it', async () => {
+	it('rates in halves, and clears', async () => {
 		const { server, asked, answer } = slowServer();
 		const marks = new Marks(server);
 		marks.seedIndex(index(false, 4));
-		marks.press('t1', 4);
+		marks.rate('t1', 3.5);
+		expect(marks.stars('t1')).toBe(3.5);
+		await answer();
+		marks.rate('t1', null);
 		expect(marks.stars('t1')).toBeNull();
 		await answer();
-		marks.press('t1', 2);
-		expect(marks.stars('t1')).toBe(2);
-		expect(asked).toEqual(['stars t1 null', 'stars t1 2']);
+		marks.heard({ kind: 'tracks', id: 't1', stars: 4.5 });
+		expect(marks.stars('t1')).toBe(4.5);
+		expect(asked).toEqual(['stars t1 3.5', 'stars t1 null']);
 	});
 
 	it('puts a mark back quietly when the session has gone', async () => {

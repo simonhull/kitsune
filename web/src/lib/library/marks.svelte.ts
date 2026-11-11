@@ -157,7 +157,7 @@ export class Marks {
 		return this.#hearts[kind].get(id);
 	}
 
-	/** A track's stars, 1 to 5, or null when it's unrated. */
+	/** A track's stars, ½ to 5 in halves, or null when it's unrated. */
 	stars(trackId: string): number | null {
 		return this.#stars.get(trackId);
 	}
@@ -176,11 +176,6 @@ export class Marks {
 	rate(trackId: string, stars: number | null): void {
 		this.failure = null;
 		this.#stars.want(trackId, stars);
-	}
-
-	/** What pressing a star does: it rates, unless the song already has it, which clears it. */
-	press(trackId: string, star: number): void {
-		this.rate(trackId, this.stars(trackId) === star ? null : star);
 	}
 
 	/**

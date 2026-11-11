@@ -335,7 +335,7 @@
 			list.key(event, trackId);
 		},
 		rate: (trackId, stars) => {
-			library.marks.press(trackId, stars);
+			library.marks.rate(trackId, stars);
 		},
 		picked: (trackId) => selection.has(trackId)
 	});
