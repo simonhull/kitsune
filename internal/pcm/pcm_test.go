@@ -265,11 +265,11 @@ func TestWAVAndAIFF(t *testing.T) {
 }
 
 // wavWithChannels is a valid WAV whose fmt chunk claims n channels of two bytes.
-func wavWithChannels(t *testing.T, n int) []byte {
+func wavWithChannels(t *testing.T, n uint16) []byte {
 	t.Helper()
 	b := wav(sineSamples(10), 1, 2, false)
-	binary.LittleEndian.PutUint16(b[22:], uint16(n))
-	binary.LittleEndian.PutUint16(b[32:], uint16(2*n))
+	binary.LittleEndian.PutUint16(b[22:], n)
+	binary.LittleEndian.PutUint16(b[32:], 2*n)
 	return b
 }
 
