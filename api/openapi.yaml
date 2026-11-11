@@ -1988,8 +1988,8 @@ components:
       description: >-
         The preference: `library.columns`, `ui.theme`, `shuffle.ratings`,
         `shuffle.flow`, `shuffle.memory`, `library.sort`, `albums.sort`,
-        `artists.sort`, `artist.songs` or `playback.untagged_gain`. The server
-        knows which keys there are.
+        `artists.sort`, `artist.songs`, `playback.untagged_gain` or
+        `ratings.heart_stars`. The server knows which keys there are.
       schema: { type: string }
     ItemID:
       name: id
@@ -3126,6 +3126,7 @@ components:
         - $ref: "#/components/schemas/ShuffleAmount"
         - $ref: "#/components/schemas/ShuffleMemory"
         - $ref: "#/components/schemas/UntaggedGain"
+        - $ref: "#/components/schemas/HeartStars"
         - $ref: "#/components/schemas/LibrarySort"
         - $ref: "#/components/schemas/ListSort"
         - $ref: "#/components/schemas/ArtistSongs"
@@ -3210,6 +3211,17 @@ components:
       description: >-
         `playback.untagged_gain`: the gain in dB a song plays at while it has no
         ReplayGain, neither tagged nor measured yet; -8 when never set.
+    HeartStars:
+      type: number
+      minimum: 0
+      maximum: 5
+      multipleOf: 0.5
+      description: >-
+        `ratings.heart_stars`: what a hearted song with no stars of its own
+        counts as wherever stars matter (the 4★-and-up filter and shuffle
+        scope, shuffle's weights, Top songs, rating sorts and album averages),
+        from 1 to 5 in halves; 0 for nothing. 0.5 is refused. Nothing is
+        written: a song's `stars` stay the person's own. 0 when never set.
     ShuffleMemory:
       type: boolean
       description: >-

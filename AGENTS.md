@@ -84,6 +84,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   there are and what each holds, and checks a value on the way in and again on the way out; the
   store keeps the text. A new key is an entry there and its schema in the contract. Server settings
   never go there.
+- `ratings.heart_stars` is what a hearted song with no stars of its own counts as wherever stars are
+  read (0 for nothing, else 1★ to 5★ in halves). It is worked out where it's read
+  (`prefs.HeartStars.Of`, `marks.counted`), and never written or sent as a song's `stars`.
 - Every song a client starts is a listen (`POST /me/listens`), whether or not it counts as a play:
   its start and its end share a client ID and are one `listens` row, and once ended it never
   changes. Only `skipped`, moving on while it sounds, counts against a song; pausing, a restart,
