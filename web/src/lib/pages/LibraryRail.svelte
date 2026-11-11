@@ -78,7 +78,8 @@
 
 	/* The goo (plan 054): the pill is its own element, moved by transforms from a frame loop. */
 
-	const anchors: HTMLAnchorElement[] = [];
+	/** Each letter's link: null at a place whose letter a filter took away. */
+	const anchors: (HTMLAnchorElement | null)[] = [];
 	let pill: HTMLElement | undefined = $state();
 	let capTop: HTMLElement | undefined;
 	let body: HTMLElement | undefined;
@@ -193,7 +194,7 @@
 		}
 		ghost?.style.setProperty('height', `${String(measures.pill)}px`);
 		for (const anchor of anchors) {
-			anchor.removeAttribute('data-ink');
+			anchor?.removeAttribute('data-ink');
 		}
 		ink = { from: 0, to: -1 };
 		write();
