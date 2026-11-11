@@ -56,7 +56,7 @@ func writeArtistAlbums(t *testing.T, s *store.Store, albums ...artistAlbum) {
 				GroupKey: fmt.Sprintf("g%d", a.n), ULID: albumID(a.n), Name: fmt.Sprintf("Album %d", a.n), SortName: fmt.Sprintf("Album %d", a.n),
 				Artist: "display", Year: a.year, Compilation: a.compilation,
 			}
-			w.TrackNo = i + 1
+			w.TrackNo, w.Year, w.Compilation = i+1, a.year, a.compilation // As the scanner does: the album's are its first track's.
 			w.Artists, w.AlbumArtists = artistWrites(artists...), artistWrites(a.albumArtists...)
 			b.Tracks = append(b.Tracks, w)
 		}
@@ -318,7 +318,7 @@ func TestAlbumLinkSurvivesAMissingTrack(t *testing.T) {
 func sortAlbum(n int, compilation bool, artists, albumArtists []store.ArtistWrite) store.TrackWrite {
 	w := albumTrack(n, 1, fmt.Sprintf("album %d", n))
 	w.Album.Artist = fmt.Sprintf("Shown %d", n)
-	w.Album.Compilation = compilation
+	w.Album.Compilation, w.Compilation = compilation, compilation
 	w.Artists, w.AlbumArtists = artists, albumArtists
 	return w
 }

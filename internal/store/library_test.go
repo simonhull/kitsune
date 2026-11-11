@@ -59,6 +59,48 @@ func writeAll(t *testing.T, s *store.Store, tws ...store.TrackWrite) {
 	}
 }
 
+// A scan writes an album's tracks in any order; its year is still its first
+// track's, as an edit leaves it.
+func TestWriteBatchGivesAnAlbumItsFirstTracksYear(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	first, last := newWrite(1), newWrite(2)
+	last.Album = first.Album // the same album, as each track's tags describe it
+	first.TrackNo, first.Year, first.Album.Year = 1, 1999, 1999
+	last.TrackNo, last.Year, last.Album.Year = 2, 2011, 2011
+	writeAll(t, s, last, first) // the first track written last
+	last.ID = 1                 // a fresh database numbers tracks in insert order
+	writeAll(t, s, last)        // and a later batch that rereads only track 2
+	album, err := s.Album(t.Context(), first.Album.ULID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if album.Year != 1999 {
+		t.Errorf("year = %d, want 1999, the first track's", album.Year)
+	}
+}
+
+// An album is a compilation when its first track says so, whichever track a
+// scan wrote last.
+func TestWriteBatchGivesAnAlbumItsFirstTracksCompilation(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	first, last := newWrite(1), newWrite(2)
+	last.Album = first.Album // the same album, as each track's tags describe it
+	first.TrackNo, first.Compilation, first.Album.Compilation = 1, false, false
+	last.TrackNo, last.Compilation, last.Album.Compilation = 2, true, true
+	writeAll(t, s, last, first)
+	last.ID = 1 // a fresh database numbers tracks in insert order
+	writeAll(t, s, last)
+	album, err := s.Album(t.Context(), first.Album.ULID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if album.Compilation {
+		t.Error("compilation = true, want false, the first track's")
+	}
+}
+
 func fileStates(t *testing.T, s *store.Store) map[string]store.FileState {
 	t.Helper()
 	got, err := s.FileStates(t.Context(), testRoot)
