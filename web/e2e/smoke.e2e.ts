@@ -27,9 +27,7 @@ test('now playing opens while a shuffle plays', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: 'Up next' })).toBeVisible();
 });
 
-// Plan 003 fixes the crash; until it lands the guard is expected to catch it.
 test('now playing survives a song queued twice', async ({ page }) => {
-	test.fail();
 	await page.goto(fixtures('/'));
 	await page.getByRole('link', { name: 'Library', exact: true }).click();
 
@@ -49,5 +47,5 @@ test('now playing survives a song queued twice', async ({ page }) => {
 	await page.getByRole('menuitem', { name: 'Play next' }).click();
 
 	await page.locator('a[href="/now-playing"]').first().click();
-	await expect(page.getByRole('heading', { name: 'Up next' })).toBeVisible();
+	await expect(page.getByRole('region', { name: 'Up next' })).toBeVisible();
 });

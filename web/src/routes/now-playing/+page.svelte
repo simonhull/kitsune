@@ -153,7 +153,7 @@
 			{:else if playing.upNext.length > 0}
 				<section aria-label="Up next" class="next" data-morph-part="panel">
 					<span class="next-label">UP NEXT</span>
-					{#each playing.upNext as upcoming, index (upcoming.id)}
+					{#each playing.upNext as upcoming, index (`${String(index)}:${upcoming.id}`)}
 						{@const from = playing.upNextAlbums.at(index) ?? playing.album}
 						<span class="pill" style:opacity={1 - index * 0.2}>
 							<span class="dot"><Cover albumId={from.id} entry={from} place="small" /></span>
