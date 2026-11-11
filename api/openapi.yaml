@@ -2630,10 +2630,17 @@ components:
         Why a pick came up: its weight's factors, each a multiplier, and what
         they come from. The client words them. With `memory` off, skips and
         listen time count for nothing and their factors are 1.
-      required: [stars, rating, hearted, heart, played, sinceDays, recency, memory, earlySkips, skipMemory, starts, skips, skipRate, listens, heard, listen, flow]
+      required: [stars, rating, heartStars, hearted, heart, played, sinceDays, recency, memory, earlySkips, skipMemory, starts, skips, skipRate, listens, heard, listen, flow]
       properties:
         stars: { type: number, minimum: 0, maximum: 5, description: "The mean of its rated songs; 0 unrated." }
         rating: { type: number }
+        heartStars:
+          type: integer
+          minimum: 0
+          description: >-
+            How many of the ratings behind `stars` come from a heart: songs the
+            person hearted and never rated, counted as `ratings.heart_stars`.
+            0 for none.
         hearted: { type: boolean }
         heart: { type: number }
         played: { type: boolean, description: "Whether it has come up before, played or skipped." }

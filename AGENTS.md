@@ -314,6 +314,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   genre overlap and co-listening from listens outside shuffle only, so flow never learns from itself;
   with nothing known it is off.
 - A pick's `why` is structured factors, never prose: the client words them.
+- The `rated` scope and the weights take counted stars: a song's own, else `ratings.heart_stars` for
+  an unrated heart (`prefs.HeartStars.Of`, in `keeper` and `build` both). The shuffler reads the pref
+  itself; the engine only sees stars, with `ByHeart` so `why.heartStars` can say so. The heart's own
+  factor still applies on top.
 - The web client starts every shuffle without waiting: it picks the first song from what it holds
   and plays it, and asks `POST /me/shuffles` with it as `first` at the same time.
 

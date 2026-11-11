@@ -303,27 +303,41 @@ func randomSeed() uint64 {
 	return binary.LittleEndian.Uint64(b[:]) & seedBits
 }
 
+// choices are what a person chose that a shuffle follows: the engine's
+// settings, and what an unrated heart counts as. The engine weighs stars and
+// never decides what a heart means, so that stays out of [shuffle.Settings].
+type choices struct {
+	shuffle.Settings
+
+	heartStars prefs.HeartStars
+}
+
 // settingsOf reads the user's shuffle settings. A setting they never made, or
-// one that no longer passes its rule, takes its default.
-func (s *Service) settingsOf(ctx context.Context, userID int64) (shuffle.Settings, error) {
-	out := shuffle.DefaultSettings()
+// one that no longer passes its rule, takes its default: heart stars Off.
+func (s *Service) settingsOf(ctx context.Context, userID int64) (choices, error) {
+	out := choices{Settings: shuffle.DefaultSettings()}
 	for _, k := range [...]struct {
 		key  string
-		into any
-	}{{prefs.ShuffleRatings, &out.Ratings}, {prefs.ShuffleFlow, &out.Flow}, {prefs.ShuffleMemory, &out.Memory}} {
+		into func(value []byte)
+	}{
+		{prefs.ShuffleRatings, func(v []byte) { _ = json.Unmarshal(v, &out.Ratings) }}, // Check proved it decodes.
+		{prefs.ShuffleFlow, func(v []byte) { _ = json.Unmarshal(v, &out.Flow) }},
+		{prefs.ShuffleMemory, func(v []byte) { _ = json.Unmarshal(v, &out.Memory) }},
+		{prefs.RatingsHeartStars, func(v []byte) { out.heartStars, _ = prefs.ParseHeartStars(v) }},
+	} {
 		stored, err := s.st.Pref(ctx, userID, k.key)
 		if errors.Is(err, store.ErrNotFound) {
 			continue
 		}
 		if err != nil {
-			return shuffle.Settings{}, fmt.Errorf("shuffle settings: %w", err)
+			return choices{}, fmt.Errorf("shuffle settings: %w", err)
 		}
 		key, err := prefs.Lookup(k.key)
 		if err != nil {
-			return shuffle.Settings{}, fmt.Errorf("shuffle settings: %w", err)
+			return choices{}, fmt.Errorf("shuffle settings: %w", err)
 		}
 		if value, checkErr := key.Check(stored); checkErr == nil {
-			_ = json.Unmarshal(value, k.into) // Check proved it decodes.
+			k.into(value)
 		}
 	}
 	return out, nil
@@ -368,7 +382,7 @@ func (s *Service) build(ctx context.Context, userID int64, sc *Scope, now time.T
 	if err != nil {
 		return nil, err //nolint:wrapcheck // The store names it.
 	}
-	in, err := keeper(ctx, s.st, userID, sc)
+	in, err := keeper(ctx, s.st, userID, sc, settings.heartStars)
 	if err != nil {
 		return nil, err
 	}
@@ -383,9 +397,10 @@ func (s *Service) build(ctx context.Context, userID int64, sc *Scope, now time.T
 		for j, a := range song.Artists {
 			artists[j] = shuffle.ArtistID(a)
 		}
+		counted, byHeart := settings.heartStars.Of(song.Rating, song.Hearted)
 		tracks[i] = shuffle.Track{
 			ID: shuffle.TrackID(song.ID), Artists: artists, Album: shuffle.AlbumID(song.AlbumID),
-			Stars: starsOf(song.Rating), Hearted: song.Hearted, Skipped: song.Excluded,
+			Stars: starsOf(counted), ByHeart: byHeart, Hearted: song.Hearted, Skipped: song.Excluded,
 			History: hist.of(song.ID),
 		}
 	}
@@ -393,7 +408,7 @@ func (s *Service) build(ctx context.Context, userID int64, sc *Scope, now time.T
 	if err != nil {
 		return nil, fmt.Errorf("shuffle pool: %w", err)
 	}
-	b := &built{pool: pool, memory: settings.Memory, config: shuffle.Config{Settings: settings, Now: now}}
+	b := &built{pool: pool, memory: settings.Memory, config: shuffle.Config{Settings: settings.Settings, Now: now}}
 	if sim := s.similarityOf(songs, &hist.co); sim != nil {
 		b.config.Similarity = sim
 	}

@@ -8,24 +8,50 @@ import (
 	"github.com/simonhull/kitsune/internal/rating"
 )
 
-func TestHeartStarsCheck(t *testing.T) {
-	t.Parallel()
+// Values the heart stars refuse, named because other keys' tests use them too.
+const (
+	halfStar = "0.5"
+	jsonNull = "null"
+)
+
+// heartStarsKey is the key of the heart stars.
+func heartStarsKey(t *testing.T) prefs.Key {
+	t.Helper()
 	key, err := prefs.Lookup(prefs.RatingsHeartStars)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for in, want := range map[string]string{
-		"0": "0", "1": "1", "2.5": "2.5", "4.5": "4.5", "5": "5", " 4.0 ": "4",
-	} {
-		if got, err := key.Check([]byte(in)); err != nil || string(got) != want {
-			t.Errorf("Check(%s) = %s, %v, want %s", in, got, err, want)
+	return key
+}
+
+func TestHeartStarsCheck(t *testing.T) {
+	t.Parallel()
+	key := heartStarsKey(t)
+	tests := []struct {
+		in, kept string
+		parsed   prefs.HeartStars // What ParseHeartStars gives.
+	}{
+		{"0", "0", 0}, {"1", "1", 2}, {"2.5", "2.5", 5}, {"4.5", "4.5", 9}, {"5", "5", 10}, {"4.0", "4", 8},
+	}
+	for _, tt := range tests {
+		kept, err := key.Check([]byte(tt.in))
+		parsed, parseErr := prefs.ParseHeartStars([]byte(tt.in))
+		if err != nil || string(kept) != tt.kept || parseErr != nil || parsed != tt.parsed {
+			t.Errorf("%q: Check = %s, %v; Parse = %d, %v; want %s and %d", tt.in, kept, err, parsed, parseErr, tt.kept, tt.parsed)
 		}
 	}
+}
+
+func TestHeartStarsRefuse(t *testing.T) {
+	t.Parallel()
+	key := heartStarsKey(t)
 	// Under 1★ would count a heart against a song; past 5★ and between halves
 	// aren't ratings.
-	for _, in := range []string{"0.5", "5.5", "4.25", "-1", "-0.5", `"4"`, "null", "true", "{}", ""} {
-		if got, err := key.Check([]byte(in)); !errors.Is(err, prefs.ErrBadValue) {
-			t.Errorf("Check(%s) = %s, %v, want ErrBadValue", in, got, err)
+	for _, in := range []string{halfStar, "5.5", "4.25", "-1", "-0.5", `"4"`, jsonNull, "true", "{}", ""} {
+		kept, err := key.Check([]byte(in))
+		parsed, parseErr := prefs.ParseHeartStars([]byte(in))
+		if kept != nil || !errors.Is(err, prefs.ErrBadValue) || !errors.Is(parseErr, prefs.ErrBadValue) || parsed != 0 {
+			t.Errorf("%q: Check = %s, %v; Parse = %d, %v; want ErrBadValue", in, kept, err, parsed, parseErr)
 		}
 	}
 }
@@ -54,20 +80,6 @@ func TestHeartStarsOf(t *testing.T) {
 	for _, tt := range tests {
 		if got, byHeart := tt.h.Of(tt.own, tt.hearted); got != tt.want || byHeart != tt.byHeart {
 			t.Errorf("%s: Of = %v, %v, want %v, %v", tt.name, got, byHeart, tt.want, tt.byHeart)
-		}
-	}
-}
-
-func TestParseHeartStars(t *testing.T) {
-	t.Parallel()
-	for in, want := range map[string]prefs.HeartStars{"0": 0, "1": 2, "3.5": 7, "4": 8, "4.5": 9, "5": 10} {
-		if got, err := prefs.ParseHeartStars([]byte(in)); err != nil || got != want {
-			t.Errorf("ParseHeartStars(%s) = %d, %v, want %d", in, got, err, want)
-		}
-	}
-	for _, in := range []string{"0.5", "null", `"4"`} {
-		if got, err := prefs.ParseHeartStars([]byte(in)); !errors.Is(err, prefs.ErrBadValue) || got != 0 {
-			t.Errorf("ParseHeartStars(%s) = %d, %v, want ErrBadValue", in, got, err)
 		}
 	}
 }

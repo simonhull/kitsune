@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/simonhull/kitsune/internal/prefs"
 	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -24,7 +25,8 @@ const (
 	// Hearted is what the Library list's Hearted filter shows: hearted songs,
 	// and every song of a hearted album or of an album whose artist is hearted.
 	Hearted Kind = "hearted"
-	// Rated is what the Library list's 4★-and-up filter shows.
+	// Rated is what the Library list's 4★-and-up filter shows: songs whose
+	// counted stars, their own or their heart's, are 4★ or more.
 	Rated Kind = "rated"
 	// Album is one album's songs.
 	Album Kind = "album"
@@ -89,14 +91,18 @@ func (m Mode) valid() bool { return m == Finite || m == Endless }
 // keep says whether a song is in scope.
 type keep func(song *store.ShuffleSong) bool
 
-// keeper works out which songs sc holds, from the store. It returns an error
-// wrapping [store.ErrNotFound] for an album or artist that isn't there.
-func keeper(ctx context.Context, st *store.Store, userID int64, sc *Scope) (keep, error) {
+// keeper works out which songs sc holds, from the store, with an unrated heart
+// counting as hearts. It returns an error wrapping [store.ErrNotFound] for an
+// album or artist that isn't there.
+func keeper(ctx context.Context, st *store.Store, userID int64, sc *Scope, hearts prefs.HeartStars) (keep, error) {
 	switch sc.Kind {
 	case Library:
 		return func(*store.ShuffleSong) bool { return true }, nil
 	case Rated:
-		return func(s *store.ShuffleSong) bool { return s.Rating >= goodRating }, nil
+		return func(s *store.ShuffleSong) bool {
+			counted, _ := hearts.Of(s.Rating, s.Hearted)
+			return counted >= goodRating
+		}, nil
 	case Hearted:
 		albums, err := st.HeartedAlbumRows(ctx, userID)
 		whole := setOf(albums)
