@@ -337,27 +337,15 @@ func (s *Store) WriteBatch(ctx context.Context, b *Batch) error {
 	}
 	now := s.now()
 	var touched []string
-	var settle []int64 // Row IDs of the albums whose year and flag may have changed.
 	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) (err error) {
 		touched = touched[:0] // The writer may retry a transaction.
-		settle = settle[:0]
 		fts, err := prepareFTS(ctx, tx)
 		if err != nil {
 			return err
 		}
 		defer func() { err = errors.Join(err, fts.close()) }()
-		for i := range b.Tracks {
-			if err = writeTrack(ctx, q, fts, &b.Tracks[i], now, &touched, &settle); err != nil {
-				return fmt.Errorf("track %d: %w", i, err)
-			}
-		}
-		// Each track's write gave its album that track's year and flag; they are
-		// the first track's, whichever was written last.
-		slices.Sort(settle)
-		for _, album := range slices.Compact(settle) {
-			if err = q.SettleAlbum(ctx, album); err != nil {
-				return fmt.Errorf("settle album %d: %w", album, err)
-			}
+		if trackErr := writeTracks(ctx, q, fts, b.Tracks, now, &touched); trackErr != nil {
+			return trackErr
 		}
 		for i := range b.Issues {
 			if err = writeIssue(ctx, q, &b.Issues[i], now); err != nil {
@@ -370,6 +358,25 @@ func (s *Store) WriteBatch(ctx context.Context, b *Batch) error {
 		return fmt.Errorf("write batch: %w", err)
 	}
 	s.changed.add(touched)
+	return nil
+}
+
+// writeTracks writes a batch's tracks, then settles each album they wrote to:
+// each track's write gave its album that track's year and flag, and they are
+// the first track's, whichever was written last.
+func writeTracks(ctx context.Context, q *sqlcdb.Queries, fts *ftsStmts, tracks []TrackWrite, now time.Time, touched *[]string) error {
+	var settle []int64
+	for i := range tracks {
+		if err := writeTrack(ctx, q, fts, &tracks[i], now, touched, &settle); err != nil {
+			return fmt.Errorf("track %d: %w", i, err)
+		}
+	}
+	slices.Sort(settle)
+	for _, album := range slices.Compact(settle) {
+		if err := q.SettleAlbum(ctx, album); err != nil {
+			return fmt.Errorf("settle album %d: %w", album, err)
+		}
+	}
 	return nil
 }
 
