@@ -199,6 +199,9 @@ func TestShuffleScopes(t *testing.T) {
 	ts, sess := shufflesFixture(t)
 	ts.send(t, rateCall(sess.token, songAt(1, 1), stars(5)))
 	ts.send(t, rateCall(sess.token, songAt(2, 2), stars(3)))
+	ts.send(t, rateCall(sess.token, songAt(1, 2), stars(3.5)))
+	ts.send(t, rateCall(sess.token, songAt(1, 3), stars(4)))
+	ts.send(t, rateCall(sess.token, songAt(2, 1), stars(4.5)))
 	ts.send(t, heartCall(http.MethodPut, sess.token, kindTracks, songAt(3, 3)))
 	ts.send(t, heartCall(http.MethodPut, sess.token, kindAlbums, albumULID(2)))
 	for name, tt := range map[string]struct {
@@ -206,7 +209,7 @@ func TestShuffleScopes(t *testing.T) {
 		songs int
 	}{
 		"everything":   {api.ShuffleScope{Kind: scopeLibrary}, 60},
-		"4 and up":     {api.ShuffleScope{Kind: "rated"}, 1},
+		"4 and up":     {api.ShuffleScope{Kind: "rated"}, 3}, // 5, 4½ and 4, not 3½ or 3.
 		"a heart":      {api.ShuffleScope{Kind: "hearted"}, 21},
 		"by an artist": {api.ShuffleScope{Kind: "artist", ID: annID}, 60},
 		"selection":    {api.ShuffleScope{Kind: kindTracks, Tracks: []string{songAt(1, 1), songAt(3, 4), missingID}}, 2},

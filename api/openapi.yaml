@@ -348,8 +348,9 @@ paths:
       operationId: putRating
       summary: Rate a track for the caller.
       description: >-
-        Gives the track the caller's stars, in place of any it had. An album's
-        rating isn't stored: a client works it out from its tracks.
+        Gives the track the caller's stars, ½ to 5 in halves, in place of any it
+        had. An album's rating isn't stored: a client works it out from its
+        tracks.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - $ref: "#/components/parameters/ItemID"
@@ -2127,7 +2128,12 @@ components:
       additionalProperties: false
       required: [stars]
       properties:
-        stars: { type: integer, minimum: 1, maximum: 5 }
+        stars:
+          type: number
+          minimum: 0.5
+          maximum: 5
+          multipleOf: 0.5
+          description: The rating in stars, ½ to 5 in halves. Whole stars are whole numbers.
     Listening:
       type: object
       additionalProperties: false
@@ -2222,7 +2228,7 @@ components:
         kind: { type: string, enum: [tracks, albums, artists] }
         id: { type: string }
         hearted: { type: boolean }
-        stars: { type: integer, minimum: 0, maximum: 5 }
+        stars: { type: number, minimum: 0, maximum: 5, multipleOf: 0.5, description: "The rating in stars, ½ to 5 in halves; 0 for none." }
     EventPrefs:
       type: object
       additionalProperties: false
@@ -2448,10 +2454,11 @@ components:
           type: boolean
           description: Whether the caller has hearted it.
         stars:
-          type: integer
-          minimum: 1
+          type: number
+          minimum: 0.5
           maximum: 5
-          description: The caller's rating. Absent when the caller hasn't rated it.
+          multipleOf: 0.5
+          description: The caller's rating, ½ to 5 stars in halves. Absent when the caller hasn't rated it.
     TrackDetail:
       description: A track's properties, repeated (allOf does not mix with additionalProperties false), plus its album.
       type: object
@@ -2486,10 +2493,11 @@ components:
           type: boolean
           description: Whether the caller has hearted it.
         stars:
-          type: integer
-          minimum: 1
+          type: number
+          minimum: 0.5
           maximum: 5
-          description: The caller's rating. Absent when the caller hasn't rated it.
+          multipleOf: 0.5
+          description: The caller's rating, ½ to 5 stars in halves. Absent when the caller hasn't rated it.
         albumId: { type: string }
         albumEtag:
           type: string
@@ -3363,10 +3371,11 @@ components:
           type: boolean
           description: Whether the caller has hearted it.
         stars:
-          type: integer
-          minimum: 1
+          type: number
+          minimum: 0.5
           maximum: 5
-          description: The caller's rating. Absent when the caller hasn't rated it.
+          multipleOf: 0.5
+          description: The caller's rating, ½ to 5 stars in halves. Absent when the caller hasn't rated it.
         albumArtists:
           type: array
           description: With `fields=albumArtist`. Absent when the track names none.
