@@ -72,6 +72,7 @@ func (a *browseAlbum) writes() []store.TrackWrite {
 			Duration: time.Minute,
 			Title:    fmt.Sprintf("Track %d", t),
 			TrackNo:  t,
+			Year:     2001,
 			Tags:     genreTags(a.genres),
 			Artists:  []store.ArtistWrite{{ULID: annID, MatchKey: "ann", Name: annName, SortName: annName}},
 			Album: store.AlbumWrite{
