@@ -679,6 +679,12 @@
 		color: color-mix(in srgb, var(--fox-ink) 30%, transparent);
 	}
 
+	/* The stars a hover would set, in the ink: the star's own amber vanishes on the row's. */
+	.cued .rate button:hover,
+	.cued .rate:hover button:has(~ button:hover) {
+		color: color-mix(in srgb, var(--fox-ink) 75%, transparent);
+	}
+
 	/*
 	 * A line under the title, laid over the play target in the title's column, so a press anywhere
 	 * else on the row still plays: the title rises above the middle, the line sits below it.
