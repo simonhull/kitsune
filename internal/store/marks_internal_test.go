@@ -253,3 +253,26 @@ func TestDeletingAUserDeletesTheirMarks(t *testing.T) {
 		}
 	}
 }
+
+// BenchmarkHeart times the smallest write: one heart that changes nothing after the first.
+func BenchmarkHeart(b *testing.B) {
+	ctx := b.Context()
+	s := openBench(b)
+	b.Cleanup(func() { _ = s.Close() })
+	if err := s.WriteBatch(ctx, benchBatch()); err != nil {
+		b.Fatal(err)
+	}
+	const user = 1
+	if _, err := s.w.ExecContext(ctx, "INSERT INTO users (id, name, password_hash, role, created_at) VALUES (?, 'simon', 'h', 'admin', 1)", user); err != nil {
+		b.Fatal(err)
+	}
+	var ulid string
+	if err := s.r.QueryRowContext(ctx, "SELECT ulid FROM tracks ORDER BY id LIMIT 1").Scan(&ulid); err != nil {
+		b.Fatal(err)
+	}
+	for b.Loop() {
+		if err := s.Heart(ctx, user, KindTrack, ulid); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
