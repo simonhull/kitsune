@@ -380,3 +380,16 @@ func checkHeartStars(value []byte) ([]byte, error) {
 	}
 	return b, nil
 }
+
+// Of returns the rating a song counts as, and whether it came from its heart:
+// its own rating when it has one, else h when it is hearted and h is set, else
+// none.
+func (h HeartStars) Of(own rating.Rating, hearted bool) (counted rating.Rating, byHeart bool) {
+	switch {
+	case own.Valid():
+		return own, false
+	case hearted && h != 0:
+		return rating.Rating(h), true
+	}
+	return rating.None, false
+}
