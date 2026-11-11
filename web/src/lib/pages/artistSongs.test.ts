@@ -17,6 +17,7 @@ import {
 	type ArtistSong
 } from './artistSongs.ts';
 import type { MarksView } from './libraryRows.ts';
+import { counted } from '#lib/library/heartStars.ts';
 
 function song(id: string, title: string, extra: Partial<LibraryTrack> = {}): LibraryTrack {
 	return { id, title, durationMs: 60_000, artists: ['Ann'], hearted: false, ...extra };
@@ -49,9 +50,13 @@ const index: LibraryIndex = {
 };
 const owned = new Set(['new', 'old']);
 
-function marksOf(stars: Record<string, number> = {}, hearts: readonly string[] = []): MarksView {
+function marksOf(
+	stars: Record<string, number> = {},
+	hearts: readonly string[] = [],
+	heartStars = 0
+): MarksView {
 	return {
-		stars: (id) => stars[id] ?? null,
+		counted: (id) => counted(stars[id] ?? null, hearts.includes(id), heartStars),
 		hearted: (kind, id) => kind === 'tracks' && hearts.includes(id)
 	};
 }
@@ -65,6 +70,34 @@ describe('Top', () => {
 		const marks = marksOf({ n1: 5 }, ['n1']);
 		expect(topScore(song('n1', 'x', { plays: 3 }), marks)).toBe(4 * 2 * 1.25);
 		expect(topScore(song('n2', 'x'), marks)).toBe(1);
+	});
+
+	it('stacks a heart’s stars and the heart: hearted and unrated at N scores as rated N', () => {
+		for (const n of [1, 3.5, 4, 4.5, 5]) {
+			const byHeart = topScore(song('n1', 'x', { plays: 3 }), marksOf({}, ['n1'], n));
+			const rated = topScore(song('n1', 'x', { plays: 3 }), marksOf({ n1: n }, ['n1'], n));
+			expect(byHeart).toBe(rated);
+			expect(byHeart).toBe(4 * starWeight(n) * 1.25);
+		}
+		// Off, a heart is only its own lift; own stars always win over a heart's.
+		expect(topScore(song('n1', 'x', { plays: 3 }), marksOf({}, ['n1']))).toBe(4 * 1.25);
+		expect(topScore(song('n1', 'x', { plays: 3 }), marksOf({ n1: 2 }, ['n1'], 5))).toBe(
+			4 * 0.5 * 1.25
+		);
+	});
+
+	it('ranks a hearted song up by what hearts count as', () => {
+		const songs = songsOf(index, owned);
+		// o2, never played but hearted: 1.25 Off, above n2 and below n1.
+		expect(ids(rankTop(songs, marksOf({}, ['o2'])))).toEqual(['o1', 'n1', 'g1', 'o2', 'n2']);
+		// At 4½, g1 (3 plays) is 4 × 1.73 × 1.25 = 8.65: past n1, still under o1's 10.
+		expect(ids(rankTop(songs, marksOf({}, ['o2', 'g1'], 4.5)))).toEqual([
+			'o1',
+			'g1',
+			'n1',
+			'o2',
+			'n2'
+		]);
 	});
 
 	it('ranks best first, a tie in the server order', () => {
@@ -134,6 +167,17 @@ describe('the flat list', () => {
 			'g1',
 			'n1',
 			'n2'
+		]);
+	});
+
+	it('rates a hearted, unrated song by its heart’s stars', () => {
+		const hearts = marksOf({ n2: 5, o2: 4, g1: 3 }, ['o1'], 4.5);
+		expect(ids(flatOrder(songs, { by: 'rating', dir: 'desc' }, hearts))).toEqual([
+			'n2',
+			'o1',
+			'o2',
+			'g1',
+			'n1'
 		]);
 	});
 

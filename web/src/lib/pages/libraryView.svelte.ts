@@ -168,13 +168,17 @@ class LibraryView {
 	#looked = $state(0);
 	/**
 	 * The marks are read untracked, so a heart taken off under Hearted leaves its row where the press
-	 * was, to put back. Choosing a filter again, or coming back to the page, reads them afresh.
+	 * was, to put back. Choosing a filter again, or coming back to the page, reads them afresh, and so
+	 * does a change to what hearts count as, under 4 and up, which is the filter it changes.
 	 */
 	readonly layout: Layout = $derived.by(() => {
 		const index = this.#index;
 		const { metrics } = this.frame;
 		const filter = this.filter;
 		void this.#looked;
+		if (filter === 'rated') {
+			void library.marks.heartStars;
+		}
 		return untrack(() => layOut(index, metrics, keepFor(filter, library.marks)));
 	});
 	readonly mounted: MountedArtist[] = $derived(this.#mount());

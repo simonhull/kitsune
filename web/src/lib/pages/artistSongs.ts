@@ -68,12 +68,15 @@ export const heartWeight = 1.25;
 
 /**
  * A song's place in Top: `(plays + 1) × w(stars) × 1.25 if hearted`, from the person's own plays
- * and marks only. A song nobody has played, rated or hearted scores 1.
+ * and marks only. A song nobody has played, rated or hearted scores 1. The stars are the counted
+ * ones, and the heart's 1.25 stays on top of them: a hearted song with no stars ranks as the same
+ * song rated what hearts count as.
  */
 export function topScore(track: LibraryTrack, marks: MarksView): number {
 	const plays = track.plays ?? 0;
 	const hearted = marks.hearted('tracks', track.id);
-	return (plays + 1) * starWeight(marks.stars(track.id)) * (hearted ? heartWeight : 1);
+	const stars = marks.counted(track.id)?.stars ?? null;
+	return (plays + 1) * starWeight(stars) * (hearted ? heartWeight : 1);
 }
 
 /** Whether nothing has been played, rated or hearted, so a ranking would only be noise. */
@@ -123,7 +126,7 @@ function keyOf(
 		case 'plays':
 			return song.track.plays ?? 0;
 		case 'rating':
-			return marks.stars(song.track.id) ?? 0;
+			return marks.counted(song.track.id)?.stars ?? 0;
 		case 'title':
 			return sortKey(song.track.title);
 		case 'year':
@@ -271,6 +274,7 @@ export function albumsLayout(
 		height: appears.albums.length === 0 ? own.height : offset + appears.height,
 		songs: own.songs + appears.songs,
 		totalSongs: own.totalSongs + appears.totalSongs,
+		byHeart: 0,
 		divider
 	};
 }

@@ -99,12 +99,15 @@ export function pickUnit(
 	return units.at(-1);
 }
 
-/** Says whether a song of the index is in scope: what a Library filter keeps, or anything. */
+/**
+ * Says whether a song of the index is in scope: what a Library filter keeps, or anything. A filter's
+ * `'byHeart'` keeps it too.
+ */
 export type InScope = (
 	artist: LibraryIndex['artists'][number],
 	album: LibraryIndex['artists'][number]['albums'][number],
 	track: LibraryIndex['artists'][number]['albums'][number]['tracks'][number]
-) => boolean;
+) => boolean | 'byHeart';
 
 /** What the index holds, as candidates: those `keep` keeps, and everyone, for the runs. */
 export function candidatesOf(

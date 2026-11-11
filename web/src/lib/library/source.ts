@@ -348,6 +348,8 @@ export interface ShuffleWhy {
 	/** The mean of its rated songs; 0 unrated. */
 	stars: number;
 	rating: number;
+	/** How many of the ratings behind `stars` come from a heart: songs hearted and never rated. */
+	heartStars: number;
 	hearted: boolean;
 	heart: number;
 	/** Whether it has come up before. */
@@ -422,6 +424,8 @@ export interface Prefs {
 	'artist.songs': ArtistSongs;
 	/** The gain in dB, from -20 to 0, a song plays at while it has no ReplayGain. */
 	'playback.untagged_gain': number;
+	/** What a hearted song with no stars of its own counts as: 0 for Off, or 1 to 5 in halves. */
+	'ratings.heart_stars': number;
 }
 
 export type PrefKey = keyof Prefs;

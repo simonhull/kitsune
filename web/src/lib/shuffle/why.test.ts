@@ -5,6 +5,7 @@ import { agoWords, whyFactors, whyLine } from './why.ts';
 const plain: ShuffleWhy = {
 	stars: 0,
 	rating: 1,
+	heartStars: 0,
 	hearted: false,
 	heart: 1,
 	played: true,
@@ -21,6 +22,24 @@ const plain: ShuffleWhy = {
 	listen: 1,
 	flow: 1
 };
+
+describe('stars a heart gives', () => {
+	const byHeart = { ...plain, stars: 4.5, heartStars: 1, hearted: true, heart: 1.25 };
+
+	it('name their source on the line, in place of "hearted"', () => {
+		expect(whyLine({ ...byHeart, sinceDays: 92 })).toBe('4½★ by heart · not heard in 3 months');
+		expect(whyLine({ ...byHeart, stars: 4 })).toBe('4★ by heart');
+	});
+
+	it('say so in the popover, and keep the heart as its own factor', () => {
+		const names = whyFactors({ ...byHeart, rating: 1.4 }).map(({ name }) => name);
+		expect(names.slice(0, 2)).toEqual(['Rated 4½★ · from your heart', 'Hearted']);
+	});
+
+	it('leave a rating of the person’s own as it was', () => {
+		expect(whyLine({ ...plain, stars: 4.5, hearted: true, heart: 1.25 })).toBe('4½★ · hearted');
+	});
+});
 
 describe('whyLine', () => {
 	it('says the board’s lines', () => {
