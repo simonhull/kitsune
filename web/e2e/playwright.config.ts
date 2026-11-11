@@ -11,7 +11,7 @@ export default defineConfig({
 	retries: 0,
 	reporter: [['list']],
 	webServer: {
-		command: 'bun run build && bun run preview -- --port 4180 --strictPort',
+		command: 'bun run build && bun run preview -- --host 127.0.0.1 --port 4180 --strictPort',
 		port: 4180,
 		reuseExistingServer: !process.env['CI'],
 		timeout: 180_000
