@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { noDisc } from '#lib/library/format.ts';
+import { counted } from '#lib/library/heartStars.ts';
 import type {
 	LibraryAlbum,
 	LibraryArtist,
@@ -291,10 +292,13 @@ describe('railHere', () => {
 });
 
 /** Marks for the filter tests: hearts by kind and ID, and stars by track. */
-function marks(hearts: string[], stars: Record<string, number> = {}) {
+/** Marks with these hearts (`kind/id`) and own stars, and hearts counting as `heartStars`. */
+function marks(hearts: string[], stars: Record<string, number> = {}, heartStars = 0) {
 	return {
 		hearted: (kind: string, id: string) => hearts.includes(`${kind}/${id}`),
-		stars: (id: string): number | null => stars[id] ?? null
+		stars: (id: string) => stars[id] ?? null,
+		heartStars,
+		counted: (id: string) => counted(stars[id] ?? null, hearts.includes(`tracks/${id}`), heartStars)
 	};
 }
 
@@ -355,8 +359,44 @@ describe('the 4 and up filter', () => {
 		expect(shown(index, keep)).toEqual([{ Cher: [['g', 'h']] }]);
 	});
 
-	it('knows nothing of hearts', () => {
+	it('knows nothing of hearts while they count for nothing', () => {
 		expect(shown(index, keepFor('rated', marks(['tracks/a', 'artists/Abba'])))).toEqual([]);
+	});
+});
+
+describe('4 and up, with hearts counting as stars', () => {
+	// a is hearted and unrated, b hearted and rated 3, c rated 5; d's album and Cher are hearted.
+	const hearts = ['tracks/a', 'tracks/b', 'albums/a2', 'artists/Cher'];
+	const own = { b: 3, c: 5 };
+	const at = (n: number) => layOut(index, metrics, keepFor('rated', marks(hearts, own, n)));
+
+	it('takes an unrated heart when hearts count as 4 or more, and counts it', () => {
+		for (const n of [4, 4.5, 5]) {
+			expect(shown(index, keepFor('rated', marks(hearts, own, n)))).toEqual([
+				{ Abba: [['a', 'c']] }
+			]);
+			expect(at(n)).toMatchObject({ songs: 2, byHeart: 1 });
+		}
+	});
+
+	it('leaves it out under 4, as at 3½: 4 and up is at least 4', () => {
+		for (const n of [0, 1, 3, 3.5]) {
+			expect(shown(index, keepFor('rated', marks(hearts, own, n)))).toEqual([{ Abba: [['c']] }]);
+			expect(at(n)).toMatchObject({ songs: 1, byHeart: 0 });
+		}
+	});
+
+	it("never lets a heart outrank the song's own stars", () => {
+		expect(shown(index, keepFor('rated', marks(['tracks/b'], { b: 3 }, 5)))).toEqual([]);
+	});
+
+	it('gives nothing to the songs of a hearted album or artist', () => {
+		expect(shown(index, keepFor('rated', marks(['albums/a2', 'artists/Cher'], {}, 5)))).toEqual([]);
+	});
+
+	it('counts nothing by heart under another filter', () => {
+		expect(layOut(index, metrics, keepFor('hearted', marks(hearts, own, 5))).byHeart).toBe(0);
+		expect(layOut(index, metrics).byHeart).toBe(0);
 	});
 });
 

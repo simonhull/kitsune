@@ -93,6 +93,22 @@ describe('following the server', () => {
 		});
 	});
 
+	it('takes what hearts count as from another device', async () => {
+		let saved = 4;
+		const { library, stream } = await heard(one, {
+			pref: ((key: string) =>
+				Promise.resolve(key === 'ratings.heart_stars' ? saved : null)) as LibrarySource['pref']
+		});
+		await vi.waitFor(() => {
+			expect(library.marks.heartStars).toBe(4);
+		});
+		saved = 4.5;
+		stream.send('prefs', { key: 'ratings.heart_stars' });
+		await vi.waitFor(() => {
+			expect(library.marks.heartStars).toBe(4.5);
+		});
+	});
+
 	it('follows a scan without asking, and stops polling while it hears', async () => {
 		const facts = vi.fn(createFixtureSource().facts);
 		const { library, stream } = await heard(one, { facts });

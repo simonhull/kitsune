@@ -41,6 +41,14 @@ describe('shuffle words', () => {
 		);
 	});
 
+	it('says what an unrated heart counts as, when it counts', () => {
+		expect(ratingsSentence(0.5, 4.5)).toBe(
+			'A 5★ song comes up about 1.5 times as often as an unrated one, and a 1★ about half as often. Hearts give a small lift. An unrated heart counts as 4½★.'
+		);
+		expect(ratingsSentence(0.5, 0)).toBe(ratingsSentence(0.5));
+		expect(ratingsSentence(0, 5)).toBe(ratingsSentence(0));
+	});
+
 	it('names the Library’s Shuffle for what it shuffles', () => {
 		expect(fabWords('everything')).toEqual({
 			name: 'Shuffle the library',

@@ -110,6 +110,8 @@ type Reason struct {
 	// Stars is the rating the unit weighs as: the mean of its rated songs, or
 	// 0 for none.
 	Stars float64
+	// ByHeart is how many of the ratings behind Stars come from a heart.
+	ByHeart int
 	// Hearted is whether any song in the unit is hearted.
 	Hearted bool
 	// Played is whether the unit has ever played.
@@ -198,7 +200,7 @@ func Explain(u *Unit, s Settings, now time.Time) Reason {
 		r.Heard = f.heard / float64(f.listens)
 	}
 	if f.rated > 0 {
-		r.Stars = f.meanStars()
+		r.Stars, r.ByHeart = f.meanStars(), f.byHeart
 	}
 	if f.hearted {
 		r.Heart = math.Pow(heartAtFull, s.Ratings)

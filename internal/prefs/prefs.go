@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/simonhull/kitsune/internal/rating"
 )
 
 // MaxValue is the most bytes a value may take, as JSON.
@@ -71,6 +73,10 @@ const (
 	// PlaybackUntaggedGain is the gain, in dB from -20 to 0, a song plays at
 	// while it has no ReplayGain, its tags' or Kitsune's measure.
 	PlaybackUntaggedGain = "playback.untagged_gain"
+	// RatingsHeartStars is what a hearted song with no stars of its own counts
+	// as wherever stars are read, a [HeartStars]: 0 for nothing, or 1★ to 5★
+	// in halves. Nothing is written: a song's stars stay the person's own.
+	RatingsHeartStars = "ratings.heart_stars"
 )
 
 // keys are every preference there is, by name.
@@ -88,6 +94,7 @@ var keys = map[string]Key{
 	ArtistSongs:    {name: ArtistSongs, check: checkArtistSongs},
 
 	PlaybackUntaggedGain: {name: PlaybackUntaggedGain, check: checkUntaggedGain},
+	RatingsHeartStars:    {name: RatingsHeartStars, check: checkHeartStars},
 }
 
 // Lookup returns the key named name, or an error wrapping [ErrUnknownKey].
@@ -314,4 +321,75 @@ func checkUntaggedGain(value []byte) ([]byte, error) {
 		return nil, fmt.Errorf("encode: %w", err)
 	}
 	return b, nil
+}
+
+// HeartStars is the value of [RatingsHeartStars]: what a hearted song with no
+// stars of its own counts as. The zero value is nothing, and is what a person
+// who never chose has; otherwise it is 1★ to 5★ in halves. It never goes under
+// 1★, so a heart never weighs less than the least whole rating.
+type HeartStars rating.Rating
+
+// leastHeartStars is the least a heart may count as, 1★.
+const leastHeartStars = HeartStars(2 * rating.Min)
+
+var errHeartStars = errors.New("not 0, or 1 to 5 stars in halves")
+
+// ParseHeartStars returns the [HeartStars] value holds, a JSON number: 0, or 1
+// to 5 in steps of a half.
+//
+// # Errors
+//
+// An error wrapping [ErrBadValue] for anything else: ½, 5½, 4.25, a negative
+// number, a string or null.
+func ParseHeartStars(value []byte) (HeartStars, error) {
+	h, err := heartStarsOf(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w: %w", RatingsHeartStars, ErrBadValue, err)
+	}
+	return h, nil
+}
+
+// heartStarsOf is [ParseHeartStars], its error not yet naming the key.
+func heartStarsOf(value []byte) (HeartStars, error) {
+	var stars *float64
+	if err := json.Unmarshal(value, &stars); err != nil {
+		return 0, fmt.Errorf("decode: %w", err)
+	}
+	if stars == nil {
+		return 0, errHeartStars
+	}
+	if *stars == 0 {
+		return 0, nil
+	}
+	r, err := rating.FromStars(*stars)
+	if err != nil || HeartStars(r) < leastHeartStars {
+		return 0, errHeartStars
+	}
+	return HeartStars(r), nil
+}
+
+// checkHeartStars accepts a [HeartStars] as a JSON number.
+func checkHeartStars(value []byte) ([]byte, error) {
+	h, err := heartStarsOf(value)
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(rating.Rating(h).Stars())
+	if err != nil {
+		return nil, fmt.Errorf("encode: %w", err)
+	}
+	return b, nil
+}
+
+// Of returns the rating a song counts as, and whether it came from its heart:
+// its own rating when it has one, else h when it is hearted and h is set, else
+// none.
+func (h HeartStars) Of(own rating.Rating, hearted bool) (rating.Rating, bool) {
+	switch {
+	case own.Valid():
+		return own, false
+	case hearted && h != 0:
+		return rating.Rating(h), true
+	}
+	return rating.None, false
 }

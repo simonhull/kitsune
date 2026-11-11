@@ -661,6 +661,7 @@ type ShufflePick struct {
 type ShuffleWhy struct {
 	Stars      float64     `json:"stars"`
 	Rating     float64     `json:"rating"`
+	HeartStars int         `json:"heartStars"`
 	Hearted    bool        `json:"hearted"`
 	Heart      float64     `json:"heart"`
 	Played     bool        `json:"played"`

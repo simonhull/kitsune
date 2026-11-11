@@ -62,6 +62,7 @@ function pick(id: string): ShufflePick {
 		why: {
 			stars: 0,
 			rating: 1,
+			heartStars: 0,
 			hearted: false,
 			heart: 1,
 			played: false,

@@ -1,4 +1,5 @@
 import { SvelteMap } from 'svelte/reactivity';
+import { counted, heartStarsOff, type Counted } from './heartStars.ts';
 import {
 	UnauthorizedError,
 	type Album,
@@ -126,6 +127,11 @@ class Lane<T> {
 export class Marks {
 	/** The last change the server didn't take. Cleared by the next press. */
 	failure = $state.raw<MarkFailure | null>(null);
+	/**
+	 * What a hearted song with no stars counts as, the person's `ratings.heart_stars`: Off (0), or 1
+	 * to 5 in halves. Read from the server at sign-in; until then, and after sign-out, Off.
+	 */
+	heartStars = $state(heartStarsOff);
 
 	readonly #hearts: Record<MarkKind, Lane<boolean>>;
 	readonly #stars: Lane<number | null>;
@@ -157,9 +163,17 @@ export class Marks {
 		return this.#hearts[kind].get(id);
 	}
 
-	/** A track's stars, ½ to 5 in halves, or null when it's unrated. */
+	/** A track's own stars, ½ to 5 in halves, or null when it's unrated: what a press compares with. */
 	stars(trackId: string): number | null {
 		return this.#stars.get(trackId);
+	}
+
+	/**
+	 * The stars a track counts as wherever ratings matter: its own, else its heart's, else null. A
+	 * heart on its album or artist gives it none.
+	 */
+	counted(trackId: string): Counted | null {
+		return counted(this.#stars.get(trackId), this.#hearts.tracks.get(trackId), this.heartStars);
 	}
 
 	toggle(kind: MarkKind, id: string): void {
@@ -214,6 +228,7 @@ export class Marks {
 
 	reset(): void {
 		this.failure = null;
+		this.heartStars = heartStarsOff;
 		for (const lane of Object.values(this.#hearts)) {
 			lane.reset();
 		}

@@ -1,3 +1,4 @@
+import { starsText } from '#lib/library/stars.ts';
 import type { LibraryFilter } from '#lib/pages/libraryRows.ts';
 
 /** A person's shuffle settings, as the `shuffle.*` preferences hold them. */
@@ -99,13 +100,17 @@ function share(part: number): string {
 	return words;
 }
 
-/** What "how much ratings matter" does, at its value, in a sentence. */
-export function ratingsSentence(ratings: number): string {
+/**
+ * What "how much ratings matter" does, at its value, in a sentence; with `heartStars` above 0, what
+ * an unrated heart counts as too.
+ */
+export function ratingsSentence(ratings: number, heartStars = 0): string {
 	if (ratings <= 0) {
 		return 'Ratings and hearts change nothing: every song comes up as often as any other.';
 	}
 	const five = fiveStar ** ratings;
 	const one = oneStar ** ratings;
 	const times = five.toFixed(1).replace(/\.0$/, '');
-	return `A 5★ song comes up about ${times} times as often as an unrated one, and a 1★ about ${share(one)}. Hearts give a small lift.`;
+	const hearts = heartStars > 0 ? ` An unrated heart counts as ${starsText(heartStars)}★.` : '';
+	return `A 5★ song comes up about ${times} times as often as an unrated one, and a 1★ about ${share(one)}. Hearts give a small lift.${hearts}`;
 }

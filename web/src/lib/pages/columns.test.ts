@@ -63,7 +63,7 @@ function context(extra: Partial<CellContext> = {}): CellContext {
 	return {
 		track: track(),
 		album,
-		stars: null,
+		rating: null,
 		hearted: false,
 		artistWhenDifferent: true,
 		now,
@@ -221,16 +221,19 @@ describe('phoneLine', () => {
 	const nothingShared = (): boolean => false;
 
 	it('reads as the phone board does', () => {
-		const rated = context({ track: track({ plays: 31 }), stars: 4 });
+		const rated = context({ track: track({ plays: 31 }), rating: { stars: 4, byHeart: false } });
 		expect(phoneLine(order, rated, () => true)).toEqual(['★★★★', '31 plays']);
-		const guest = context({ track: track({ artists: ['Low Tide Choir', 'Mara Vey'] }), stars: 3 });
+		const guest = context({
+			track: track({ artists: ['Low Tide Choir', 'Mara Vey'] }),
+			rating: { stars: 3, byHeart: false }
+		});
 		expect(phoneLine(order, guest, () => true)).toEqual(['with Mara Vey', '★★★']);
 	});
 
 	it('writes a half as ½, in the same ink', () => {
-		const half = context({ track: track({ plays: 31 }), stars: 4.5 });
+		const half = context({ track: track({ plays: 31 }), rating: { stars: 4.5, byHeart: false } });
 		expect(phoneLine(order, half, () => true)).toEqual(['★★★★½', '31 plays']);
-		const least = context({ track: track({ plays: 31 }), stars: 0.5 });
+		const least = context({ track: track({ plays: 31 }), rating: { stars: 0.5, byHeart: false } });
 		expect(phoneLine(order, least, () => true)).toEqual(['½', '31 plays']);
 	});
 
@@ -705,6 +708,20 @@ describe('the keys', () => {
 });
 
 describe('lineNotes', () => {
+	it('leads stars a heart gives with the heart, in place of the first star', () => {
+		const order = defaultColumns.order;
+		const byHeart = context({
+			track: track({ plays: 31 }),
+			rating: { stars: 4.5, byHeart: true },
+			hearted: true
+		});
+		expect(phoneLine(order, byHeart, () => true)).toEqual(['♥\u2009★★★½', '31 plays']);
+		const least = context({ rating: { stars: 1, byHeart: true }, hearted: true });
+		expect(phoneLine(order, least, () => true)).toEqual(['♥']);
+		expect(cellOf('rating', byHeart)).toEqual({ look: 'stars', stars: 4.5, byHeart: true });
+		expect(cellOf('rating', context())).toEqual({ look: 'stars', stars: 0, byHeart: false });
+	});
+
 	it('notes what the heading says and what the line has no room for', () => {
 		const rated = context({
 			track: track({
@@ -712,7 +729,7 @@ describe('lineNotes', () => {
 				displayGenres: ['Dream pop'],
 				lastPlayedAt: '2026-11-06T10:00:00'
 			}),
-			stars: 4
+			rating: { stars: 4, byHeart: false }
 		});
 		const order = defaultColumns.order;
 		const notes = lineNotes(order, rated, (id) => id === 'genre', 24);

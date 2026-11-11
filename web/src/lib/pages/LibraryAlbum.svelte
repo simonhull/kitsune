@@ -246,7 +246,7 @@
 						top={row.top - block.top - head}
 						height={row.height}
 						{now}
-						stars={library.marks.stars(track.id)}
+						rating={library.marks.counted(track.id)}
 						hearted={library.marks.hearted('tracks', track.id)}
 						cued={track.id === cuedId}
 						{sounding}

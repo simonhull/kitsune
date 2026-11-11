@@ -1,13 +1,17 @@
 <script lang="ts">
+	import { starsText } from '#lib/library/stars.ts';
 	import { heartPath } from '#lib/shell/Icon.svelte';
-	import type { LibraryFilter } from './libraryRows.ts';
+	import { goodStars, type LibraryFilter } from './libraryRows.ts';
 
 	interface Props {
 		filter: LibraryFilter;
 		choose: (filter: LibraryFilter) => void;
+		/** What an unrated heart counts as: at 4 or more, 4 and up takes hearted songs too. */
+		heartStars?: number;
 	}
 
-	let { filter, choose }: Props = $props();
+	let { filter, choose, heartStars = 0 }: Props = $props();
+	const withHearts = $derived(heartStars >= goodStars);
 
 	/** `short` is what a phone shows, to leave room for Sort beside them. */
 	const chips: readonly { filter: LibraryFilter; label: string; short?: string }[] = [
@@ -24,6 +28,9 @@
 			type="button"
 			class:on={chip.filter === filter}
 			aria-pressed={chip.filter === filter}
+			aria-label={chip.filter === 'rated' && withHearts
+				? '4 stars and up, hearts included'
+				: undefined}
 			onclick={() => {
 				choose(chip.filter);
 			}}
@@ -37,6 +44,13 @@
 				{chip.label}
 			{:else}
 				<span class="long">{chip.label}</span><span class="short">{chip.short}</span>
+			{/if}
+			{#if chip.filter === 'rated' && withHearts}
+				<span class="plus" title={`Hearted songs with no stars count as ${starsText(heartStars)}★`}
+					>+<svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"
+						><path d={heartPath}></path></svg
+					></span
+				>
 			{/if}
 		</button>
 	{/each}
@@ -87,6 +101,21 @@
 
 	.short {
 		display: none;
+	}
+
+	/* 4 and up takes unrated hearts too: a small heart says so. */
+	.plus {
+		display: inline-flex;
+		align-items: center;
+		gap: 1px;
+		margin-left: -2px;
+		font-size: 11px;
+		opacity: 0.9;
+	}
+
+	.plus path {
+		fill: currentcolor;
+		stroke: none;
 	}
 
 	/* A phone keeps the three, and Shuffle and Sort beside them, on one line. */

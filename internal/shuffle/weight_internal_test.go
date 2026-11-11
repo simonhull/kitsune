@@ -144,6 +144,25 @@ func TestHeart(t *testing.T) {
 	}
 }
 
+func TestStarsByHeartWeighAsStars(t *testing.T) {
+	t.Parallel()
+	s := Settings{Ratings: 1}
+	for _, halves := range []Stars{2, 7, 8, 9, 10} {
+		own := Explain(unitOf(t, Track{ID: 1, Stars: halves, Hearted: true}), s, now)
+		by := Explain(unitOf(t, Track{ID: 1, Stars: halves, Hearted: true, ByHeart: true}), s, now)
+		if by.Rating != own.Rating || by.Stars != own.Stars || by.Heart != own.Heart || by.Weight() != own.Weight() {
+			t.Errorf("%d halves: by heart %+v, rated %+v: want the same weight, the heart's factor stacking", halves, by, own)
+		}
+		if by.ByHeart != 1 || own.ByHeart != 0 {
+			t.Errorf("%d halves: ByHeart = %d by heart and %d rated, want 1 and 0", halves, by.ByHeart, own.ByHeart)
+		}
+	}
+	run := Explain(unitOf(t, Track{ID: 1, Stars: 9, Hearted: true, ByHeart: true}, Track{ID: 2, Stars: 10}, Track{ID: 3}), s, now)
+	if run.Stars != 4.75 || run.ByHeart != 1 {
+		t.Errorf("a run of 4½ by heart, 5 and unrated: %v★, %d by heart, want 4.75★, 1", run.Stars, run.ByHeart)
+	}
+}
+
 func TestRecency(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -1,4 +1,5 @@
 import { discOf, isMultiDisc } from '#lib/library/format.ts';
+import type { Counted } from '#lib/library/heartStars.ts';
 import type {
 	LibraryAlbum,
 	LibraryArtist,
@@ -71,18 +72,32 @@ export interface Layout {
 	/** The songs it shows, and the songs there are. */
 	songs: number;
 	totalSongs: number;
+	/** How many songs it shows by their heart's stars alone: under 4 and up, the unrated hearts. */
+	byHeart: number;
 }
 
 /** What the Library list shows: everything, or what a filter keeps of it. */
 export type LibraryFilter = 'everything' | 'hearted' | 'rated';
 
-/** Whether a filter shows a song, given its album and artist. */
-export type Keep = (artist: LibraryArtist, album: LibraryAlbum, track: LibraryTrack) => boolean;
+/**
+ * Whether a filter shows a song, given its album and artist: `'byHeart'` shows it too, there only by
+ * the stars its heart counts as, so the list can say how many are.
+ */
+export type Keep = (
+	artist: LibraryArtist,
+	album: LibraryAlbum,
+	track: LibraryTrack
+) => boolean | 'byHeart';
 
 /** As much of the marks as a filter reads. */
 export interface MarksView {
 	hearted(kind: MarkKind, id: string): boolean;
+	/** A song's own stars, or null. */
 	stars(trackId: string): number | null;
+	/** What an unrated heart counts as: 0 for nothing. */
+	readonly heartStars: number;
+	/** The stars a song counts as: its own, else its heart's (`ratings.heart_stars`), else null. */
+	counted(trackId: string): Counted | null;
 }
 
 /** The least a song is rated to show under 4 and up. */
@@ -91,7 +106,8 @@ export const goodStars = 4;
 /**
  * Says what a filter keeps, or undefined to keep everything. A hearted artist keeps all its albums
  * and a hearted album all its songs; otherwise only a hearted song shows. 4 and up looks at the song
- * alone: an album's mean never shows a song nobody rated.
+ * alone, at its counted stars: an album's mean never shows a song nobody rated, but a hearted song
+ * does when hearts count as 4 or more.
  */
 export function keepFor(filter: LibraryFilter, marks: MarksView): Keep | undefined {
 	switch (filter) {
@@ -102,8 +118,18 @@ export function keepFor(filter: LibraryFilter, marks: MarksView): Keep | undefin
 				(artist.id !== undefined && marks.hearted('artists', artist.id)) ||
 				marks.hearted('albums', album.id) ||
 				marks.hearted('tracks', track.id);
-		case 'rated':
-			return (_artist, _album, track) => (marks.stars(track.id) ?? 0) >= goodStars;
+		case 'rated': {
+			// The counted rule, unrolled: it runs once a song over the whole library, so it reads the
+			// heart only for an unrated song while hearts count enough, and makes nothing.
+			const hearts = marks.heartStars >= goodStars;
+			return (_artist, _album, track) => {
+				const own = marks.stars(track.id);
+				if (own !== null) {
+					return own >= goodStars;
+				}
+				return hearts && marks.hearted('tracks', track.id) ? 'byHeart' : false;
+			};
+		}
 	}
 }
 
@@ -125,7 +151,8 @@ export function layOut(index: LibraryIndex, metrics: RowMetrics, keep?: Keep): L
 		letters: new Map(),
 		height: 0,
 		songs: 0,
-		totalSongs: 0
+		totalSongs: 0,
+		byHeart: 0
 	};
 	let y = 0;
 	for (const [source, artist] of index.artists.entries()) {
@@ -139,7 +166,13 @@ export function layOut(index: LibraryIndex, metrics: RowMetrics, keep?: Keep): L
 			const shown =
 				keep === undefined
 					? album.tracks
-					: album.tracks.filter((track) => keep(artist, album, track));
+					: album.tracks.filter((track) => {
+							const kept = keep(artist, album, track);
+							if (kept === 'byHeart') {
+								layout.byHeart += 1;
+							}
+							return kept !== false;
+						});
 			if (shown.length > 0) {
 				end = layOutAlbum(
 					layout,

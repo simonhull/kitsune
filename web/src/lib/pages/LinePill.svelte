@@ -58,7 +58,7 @@
 					{
 						track,
 						album,
-						stars: library.marks.stars(track.id),
+						rating: library.marks.counted(track.id),
 						hearted: library.marks.hearted('tracks', track.id),
 						artistWhenDifferent,
 						now
@@ -82,7 +82,7 @@
 			{lineChars}
 			sameOnAlbum={sharedHas}
 			{now}
-			stars={library.marks.stars(track.id)}
+			rating={library.marks.counted(track.id)}
 			hearted={library.marks.hearted('tracks', track.id)}
 			cued={false}
 			sounding={false}

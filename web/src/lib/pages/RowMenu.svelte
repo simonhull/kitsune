@@ -35,10 +35,18 @@
 
 	const ids = $derived(target.kind === 'song' ? [target.trackId] : target.trackIds);
 	const hearted = $derived(ids.every((id) => library.marks.hearted('tracks', id)));
-	/** The stars a song has; for several, the stars they all share, if they do. */
-	const stars = $derived.by(() => {
+	/**
+	 * The stars a song counts as, its own or its heart's; for several, the stars of their own they all
+	 * share, if they do. A heart's stars a selection shares aren't shown: setting all of them is a
+	 * real rating, and the bar shouldn't seem to hold one already.
+	 */
+	const rating = $derived.by(() => {
+		if (ids.length === 1) {
+			return library.marks.counted(ids[0] ?? '');
+		}
 		const all = new Set(ids.map((id) => library.marks.stars(id)));
-		return all.size === 1 ? ([...all][0] ?? null) : null;
+		const shared = all.size === 1 ? ([...all][0] ?? null) : null;
+		return shared === null ? null : { stars: shared, byHeart: false };
 	});
 
 	function then(action: () => void): () => void {
@@ -100,11 +108,14 @@
 			>{hearted ? 'Hearted' : 'Heart'}</button
 		>
 		<div class="rating">
-			<span class="rating-name" aria-hidden="true">Rating</span>
+			<span class="rating-name" aria-hidden="true"
+				>Rating{#if rating?.byHeart === true}<small>FROM YOUR HEART</small>{/if}</span
+			>
 			<!-- ↑ and ↓ stay the menu's, to go between its items; ← and → move the rating. -->
 			<StarsInput
 				size="menu"
-				value={stars}
+				value={rating?.stars ?? null}
+				byHeart={rating?.byHeart ?? false}
 				label={target.kind === 'song' ? `Rating of ${target.title}` : 'Rating of all of them'}
 				vertical={false}
 				data-menu-item
@@ -237,5 +248,14 @@
 
 	.rating-name {
 		flex: 1;
+	}
+
+	.rating-name small {
+		display: block;
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 500;
+		letter-spacing: 0.06em;
+		color: var(--text-label);
 	}
 </style>

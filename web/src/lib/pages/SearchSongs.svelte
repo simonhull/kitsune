@@ -242,7 +242,7 @@
 				{artistWhenDifferent}
 				lineChars={Math.floor((width - 120) / monoAdvance)}
 				{now}
-				stars={library.marks.stars(track.id)}
+				rating={library.marks.counted(track.id)}
 				hearted={library.marks.hearted('tracks', track.id)}
 				cued={track.id === library.playing?.track.id}
 				sounding={player.sounding}

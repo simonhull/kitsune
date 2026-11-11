@@ -91,7 +91,7 @@ func toAPIShufflePage(p *shuffler.Page) api.ShufflePage {
 
 func toAPIWhy(w *shuffler.Why, after *store.ArtistLink) api.ShuffleWhy {
 	out := api.ShuffleWhy{
-		Stars: w.Stars, Rating: w.Rating, Hearted: w.Hearted, Heart: w.Heart,
+		Stars: w.Stars, Rating: w.Rating, HeartStars: w.HeartStars, Hearted: w.Hearted, Heart: w.Heart,
 		Played: w.Played, SinceDays: w.SinceDays, Recency: w.Recency, Memory: w.Memory,
 		EarlySkips: w.EarlySkips, SkipMemory: w.SkipMemory, Starts: w.Starts, Skips: w.Skips, SkipRate: w.SkipRate,
 		Listens: w.Listens, Heard: w.Heard, Listen: w.Listen, Flow: w.Flow,

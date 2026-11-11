@@ -259,7 +259,7 @@
 			credit={playing.artist}
 			second={nowPlaying}
 			{now}
-			stars={null}
+			rating={null}
 			hearted={false}
 			cued
 			sounding={player.sounding}
@@ -288,7 +288,7 @@
 					credit={item.artist}
 					second={why === undefined ? undefined : reason}
 					{now}
-					stars={null}
+					rating={null}
 					hearted={false}
 					cued={false}
 					sounding={false}
