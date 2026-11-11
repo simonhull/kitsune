@@ -160,6 +160,7 @@
 		type="button"
 		class="play"
 		data-col="title"
+		style:grid-column={second !== undefined && !phone ? String(titleColumn) : undefined}
 		aria-label={`Play ${track.title}`}
 		aria-current={cued ? 'true' : undefined}
 	>

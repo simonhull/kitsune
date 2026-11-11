@@ -24,6 +24,19 @@ const mostRetryMs = 30_000;
 /** How many songs Up next names. */
 export const upNextShown = 30;
 
+/**
+ * Gives a song that comes up twice (an endless shuffle of a small library repeats them, and a pick
+ * can name a song already queued) a key of its own each time, so a list keyed by them never meets
+ * one twice.
+ */
+export function distinctKeys(items: UpNextItem[]): UpNextItem[] {
+	// Up next names 30 at the most, so counting the ones before is cheap.
+	return items.map((item, at) => {
+		const times = items.slice(0, at).filter(({ key }) => key === item.key).length;
+		return times === 0 ? item : { ...item, key: `${item.key}#${String(times + 1)}` };
+	});
+}
+
 /** What a Shuffle button shuffles, and what it picks the first song from. */
 export interface ShuffleSource {
 	/** Names the source: a pick made ahead for one key is used for the same key. */
@@ -300,7 +313,7 @@ export class Shuffle {
 				why: pick.why
 			});
 		}
-		return items.slice(0, upNextShown);
+		return distinctKeys(items.slice(0, upNextShown));
 	}
 
 	/** Takes songs out of what comes up, queued or still to queue, and keeps the queue topped up. */
@@ -333,7 +346,7 @@ export class Shuffle {
 			return;
 		}
 		if (!upper.queued && !lower.queued) {
-			const from = this.picks.findIndex((pick) => pick.songs.at(0)?.id === upper.key);
+			const from = this.picks.findIndex((pick) => pick.songs.at(0)?.id === upper.trackIds.at(0));
 			const picks = [...this.picks];
 			const [a, b] = [picks[from], picks[from + 1]];
 			if (from < 0 || a === undefined || b === undefined) {
