@@ -4,8 +4,8 @@
 	import '#lib/styles/tokens.css';
 	import '#lib/styles/base.css';
 	import { onMount, setContext } from 'svelte';
-	import { page } from '$app/state';
-	import { goto, onNavigate, preloadCode } from '$app/navigation';
+	import { page, updated } from '$app/state';
+	import { beforeNavigate, goto, onNavigate, preloadCode } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { paletteFor } from '#lib/cover/palette.ts';
 	import { theme } from '#lib/theme/theme.svelte.ts';
@@ -30,6 +30,7 @@
 	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
 	import { playbackSettings } from '#lib/player/playback.svelte.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import { reloadsInto } from '#lib/shell/freshness.ts';
 	import { shuffles } from '#lib/shuffle/session.svelte.ts';
 	import { shuffleSettings } from '#lib/shuffle/settings.svelte.ts';
 	import Backdrop from '#lib/shell/Backdrop.svelte';
@@ -83,6 +84,22 @@
 	const morphs = startMorphs();
 	setContext(morphsKey, morphs);
 	onNavigate(morphs.navigate);
+	// A newer build waits: the next navigation loads it whole, unless a song would be cut off.
+	beforeNavigate((navigation) => {
+		const to = navigation.to?.url;
+		if (
+			to !== undefined &&
+			reloadsInto({
+				updated: updated.current,
+				sounding: player.sounding,
+				started: player.started,
+				type: navigation.type
+			})
+		) {
+			navigation.cancel();
+			location.href = to.href;
+		}
+	});
 
 	const carrier = createCarrier({
 		hidden: () => document.hidden,

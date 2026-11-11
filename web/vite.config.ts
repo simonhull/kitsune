@@ -19,7 +19,9 @@ export default defineConfig(({ mode }) => {
 						filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 				},
 				// A single-page client: the Go server hands every unknown path to index.html.
-				adapter: adapter({ fallback: 'index.html' })
+				adapter: adapter({ fallback: 'index.html' }),
+				// An open tab learns of a new deploy, and takes it on its next navigation (lib/shell/freshness.ts).
+				version: { pollInterval: 5 * 60_000 }
 			})
 		],
 		test: {
