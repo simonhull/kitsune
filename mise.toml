@@ -75,6 +75,11 @@ run = [
   "bun run build",
 ]
 
+[tasks."web:e2e"]
+description = "Web client in a browser, on its fixtures: fails on any page error"
+dir = "web"
+run = "bun run e2e"
+
 [tasks.check]
 description = "Everything CI checks, locally"
-depends = ["build", "test", "lint", "nocgo", "vuln", "web:check"]
+depends = ["build", "test", "lint", "nocgo", "vuln", "web:check", "web:e2e"]
