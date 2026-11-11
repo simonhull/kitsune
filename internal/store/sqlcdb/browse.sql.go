@@ -1522,7 +1522,7 @@ SELECT t.id, t.album_id, t.ulid, t.title, t.disc_no, t.disc_subtitle, t.track_no
 FROM tracks t
 WHERE t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = ?1)
   AND t.missing_since IS NULL
-ORDER BY t.album_id, coalesce(t.disc_no, 1), t.track_no NULLS LAST, t.title, t.id
+ORDER BY t.album_id, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.id
 `
 
 type ListIndexTracksByArtistRow struct {
