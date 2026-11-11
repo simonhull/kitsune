@@ -9,6 +9,7 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { trackLabel } from '#lib/library/format.ts';
+	import type { Counted } from '#lib/library/heartStars.ts';
 	import type { ColumnId, LibraryTrack, MovableId } from '#lib/library/source.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
@@ -59,7 +60,8 @@
 		height?: number | undefined;
 		/** When "Yesterday" is, for Last played. */
 		now: number;
-		stars: number | null;
+		/** The stars it counts as: its own, or its heart's (`marks.counted`), or null. */
+		rating: Counted | null;
 		hearted: boolean;
 		/** It's the song cued, and whether it's sounding now. */
 		cued: boolean;
@@ -90,7 +92,7 @@
 		top,
 		height,
 		now,
-		stars,
+		rating,
 		hearted,
 		cued,
 		sounding,
@@ -103,7 +105,7 @@
 	const context = $derived({
 		track,
 		album,
-		stars,
+		rating,
 		hearted,
 		artistWhenDifferent,
 		now,
@@ -192,6 +194,7 @@
 			class="rate"
 			data-col={id}
 			value={cell.stars === 0 ? null : cell.stars}
+			byHeart={cell.byHeart}
 			label={`Rating of ${track.title}`}
 		/>
 	{:else if cell.look === 'heart'}
@@ -636,6 +639,8 @@
 		--stars-off: color-mix(in srgb, var(--fox-ink) 30%, transparent);
 		/* The stars a hover would set, in the ink: the star's own amber vanishes on the row's. */
 		--stars-preview: color-mix(in srgb, var(--fox-ink) 75%, transparent);
+		/* And the stars a heart gives, at their half strength. */
+		--stars-by: color-mix(in srgb, var(--fox-ink) 58%, transparent);
 
 		border-radius: var(--radius-12);
 		background: var(--fox);

@@ -111,6 +111,24 @@
 		}
 	});
 
+	// A change to what hearts count as, here or heard from elsewhere, blends the stars a heart gives
+	// in place (StarsInput's rule): the root says so for a moment, so no row holds an effect of its own.
+	/** Long enough for the blend (160 ms) to run out before the root lets it go. */
+	const starsBlendMs = 200;
+	let heartStarsSeen: number | null = null;
+	let blendTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		const heartStars = library.marks.heartStars;
+		if (heartStarsSeen !== null && heartStars !== heartStarsSeen) {
+			clearTimeout(blendTimer);
+			document.documentElement.dataset['starsBlend'] = '';
+			blendTimer = setTimeout(() => {
+				delete document.documentElement.dataset['starsBlend'];
+			}, starsBlendMs);
+		}
+		heartStarsSeen = heartStars;
+	});
+
 	onMount(() => {
 		library.onExpired = async () => {
 			if (location.pathname !== resolve('/login')) {

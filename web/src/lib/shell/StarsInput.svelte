@@ -6,9 +6,14 @@
 	With `onchange` it handles its own events. Without it, as in a song row, it is markup only, and
 	the list's one set of handlers (songRow.ts's rowEvents) does the same through the same helpers,
 	so the Library's rows mount no handler each.
+
+	Stars `byHeart` are a hearted song's with none of its own (heartStars.ts): a heart takes the first
+	star's place and the rest are the star at half strength. A press compares with the song's own
+	stars, none, so pressing the stars a heart shows sets them for real.
 -->
 <script lang="ts">
 	import type { HTMLAttributes } from 'svelte/elements';
+	import { byHeartWords } from '#lib/library/heartStars.ts';
 	import {
 		fillOf,
 		keyed,
@@ -18,15 +23,18 @@
 		tapped,
 		type StarsBy
 	} from '#lib/library/stars.ts';
+	import { heartPath } from './Icon.svelte';
 	import { dropPreview, fractionAcross, halfUnder, showPreview } from './starsPreview.ts';
 
 	interface Props extends Omit<HTMLAttributes<HTMLSpanElement>, 'onchange'> {
 		/** ½ to 5 in halves, or null for none. */
 		value: number | null;
+		/** Whether `value` is a heart's, the song having no stars of its own. */
+		byHeart?: boolean;
 		/** What it rates, for a screen reader: "Rating of Breakwater". */
 		label: string;
-		/** Where it stands: a song row's, a menu's, Now playing's or the selection bar's. */
-		size?: 'row' | 'menu' | 'stage' | 'bar';
+		/** Where it stands: a song row's, a menu's, Now playing's, the selection bar's or a setting's. */
+		size?: 'row' | 'menu' | 'stage' | 'bar' | 'setting';
 		/** Whether ↑ and ↓ move it too. A menu keeps them for going between its items. */
 		vertical?: boolean;
 		onchange?: ((stars: number | null, by: StarsBy) => void) | undefined;
@@ -34,6 +42,7 @@
 
 	let {
 		value,
+		byHeart = false,
 		label,
 		size = 'row',
 		vertical = true,
@@ -50,6 +59,9 @@
 
 	/** How far a finger goes before a tap becomes a scrub, in px. */
 	const scrubAfter = 6;
+
+	/** The song's own stars, which a press compares with: none, while a heart's are shown. */
+	const own = $derived(byHeart ? null : value);
 
 	function set(stars: number | null, by: StarsBy): void {
 		onchange?.(stars, by);
@@ -90,7 +102,7 @@
 		set(
 			scrubbing
 				? halfUnder(el, event.clientX)
-				: tapped(value, starAt(fractionAcross(el, event.clientX))),
+				: tapped(own, starAt(fractionAcross(el, event.clientX))),
 			'pointer'
 		);
 	}
@@ -105,7 +117,7 @@
 			tapDone = false;
 			return;
 		}
-		set(pressed(value, halfUnder(event.currentTarget, event.clientX)), 'pointer');
+		set(pressed(own, halfUnder(event.currentTarget, event.clientX)), 'pointer');
 	}
 
 	function onkeydown(event: KeyboardEvent): void {
@@ -146,11 +158,20 @@
 	aria-valuemin={0}
 	aria-valuemax={5}
 	aria-valuenow={value ?? 0}
-	aria-valuetext={starsWords(value)}
+	aria-valuetext={byHeart && value !== null ? byHeartWords(value) : starsWords(value)}
+	title={byHeart && value !== null ? byHeartWords(value) : undefined}
+	data-by-heart={byHeart ? '' : undefined}
 	{...handlers}
 >
 	{#each places as place (place)}
-		<span class={['st', fillOf(value, place)]} aria-hidden="true">★</span>
+		{#if byHeart && place === 1}
+			<span class={['st', 'lead', fillOf(value, place)]} aria-hidden="true"
+				><svg class="h" viewBox="0 0 24 24"><path d={heartPath}></path></svg><span class="s">★</span
+				></span
+			>
+		{:else}
+			<span class={['st', fillOf(value, place), { by: byHeart }]} aria-hidden="true">★</span>
+		{/if}
 	{/each}
 </span>
 
@@ -163,6 +184,8 @@
 		--on: var(--stars-on, var(--star));
 		--off: var(--stars-off, var(--star-off));
 		--pv: var(--stars-preview, color-mix(in srgb, var(--star) 70%, transparent));
+		/* Stars a heart gives, at half strength: --stars-by on the playing row, in its ink. */
+		--by: var(--stars-by, color-mix(in srgb, var(--star) 52%, transparent));
 		--glyph: var(--star-type, 13px);
 		--cell: calc(var(--glyph) + 2px);
 		--cell-height: 28px;
@@ -200,6 +223,12 @@
 		--cell-height: 44px;
 	}
 
+	.setting {
+		--glyph: 20px;
+		--cell: 30px;
+		--cell-height: 36px;
+	}
+
 	/* A finger gets a whole target a star, and a drag across them scrubs instead of scrolling. */
 	@media (pointer: coarse) {
 		.live {
@@ -208,7 +237,8 @@
 
 		.menu,
 		.stage,
-		.bar {
+		.bar,
+		.setting {
 			--cell: var(--target);
 			--cell-height: var(--target);
 		}
@@ -237,6 +267,41 @@
 		color: var(--c);
 	}
 
+	.by {
+		--c: var(--by);
+	}
+
+	/* By heart, the first star's place holds the heart, at full strength. */
+	.h {
+		width: 0.86em;
+		height: 0.86em;
+		fill: currentColor;
+	}
+
+	.lead .s {
+		display: none;
+	}
+
+	/*
+	 * Changing what hearts count as blends the stars a heart gives in place (the shell marks the
+	 * moment on the root); nothing moves.
+	 */
+	:global(:root[data-stars-blend]) .stars-input[data-by-heart] {
+		animation: blend 160ms ease-out;
+	}
+
+	@keyframes blend {
+		from {
+			opacity: 0.25;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		:global(:root[data-stars-blend]) .stars-input[data-by-heart] {
+			animation: blend 120ms linear;
+		}
+	}
+
 	/* A half: the glyph's left half in the fill, its right half empty. */
 	.half {
 		background: linear-gradient(90deg, var(--c) 50%, var(--off) 50%);
@@ -254,6 +319,15 @@
 
 		background: none;
 		color: var(--off);
+	}
+
+	/* The heart steps aside, so the preview shows only the stars a click would set. */
+	.stars-input:global([data-preview]) .lead .h {
+		display: none;
+	}
+
+	.stars-input:global([data-preview]) .lead .s {
+		display: inline;
 	}
 
 	.stars-input:global([data-preview='2']) .st:nth-child(-n + 1),

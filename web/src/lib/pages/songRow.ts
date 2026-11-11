@@ -4,7 +4,7 @@
  * a finger can make at a time, which lives here once for every row.
  */
 import { keyed, pressed } from '#lib/library/stars.ts';
-import { dropPreview, halfUnder, showPreview, valueOf } from '#lib/shell/starsPreview.ts';
+import { dropPreview, halfUnder, ownOf, showPreview, valueOf } from '#lib/shell/starsPreview.ts';
 import type { Selection } from './selection.svelte.ts';
 
 /** How long a finger holds a row to start picking songs. */
@@ -301,7 +301,7 @@ export function rowEvents(handlers: RowHandlers): {
 				case 'rate': {
 					const slider = at.target.closest(ratingSlider);
 					if (slider !== null) {
-						handlers.rate(at.trackId, pressed(valueOf(slider), halfUnder(slider, event.clientX)));
+						handlers.rate(at.trackId, pressed(ownOf(slider), halfUnder(slider, event.clientX)));
 					}
 					return;
 				}

@@ -1126,7 +1126,7 @@
 				top={at * flatRow}
 				height={flatRow}
 				{now}
-				stars={library.marks.stars(song.track.id)}
+				rating={library.marks.counted(song.track.id)}
 				hearted={library.marks.hearted('tracks', song.track.id)}
 				cued={song.track.id === cuedId}
 				sounding={player.sounding}

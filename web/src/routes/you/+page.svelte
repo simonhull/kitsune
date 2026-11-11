@@ -152,6 +152,7 @@
 			trouble = "Signing out didn't work. Try again.";
 		}
 	}
+	import HeartsCard from '#lib/pages/HeartsCard.svelte';
 	import ShuffleCard from '#lib/shuffle/ShuffleCard.svelte';
 	import PlaybackCard from '#lib/player/PlaybackCard.svelte';
 </script>
@@ -217,6 +218,11 @@
 						: 'dark'}.
 				</p>
 			</div>
+		</section>
+
+		<section aria-labelledby="hearts-head" class="shuffles" data-morph-part="panel">
+			<h2 id="hearts-head" class="mono">HOW HEARTS COUNT</h2>
+			<HeartsCard />
 		</section>
 
 		<section aria-labelledby="shuffle-head" class="shuffles" data-morph-part="panel">
@@ -693,7 +699,7 @@
 	 * Passwords board puts how you sign in under who you are, where the left column had room.
 	 */
 	.left {
-		grid-row: span 4;
+		grid-row: span 5;
 		min-width: 0;
 	}
 

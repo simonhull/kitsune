@@ -4,6 +4,7 @@
 	import { emWidth } from '#lib/library/fit.ts';
 	import { balancedLines, credit, gain, gainMeasured } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import { starsText } from '#lib/library/stars.ts';
 	import { goUpToAlbum, hasInAppHistory } from '#lib/morph/journey.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Icon from '#lib/shell/Icon.svelte';
@@ -27,6 +28,8 @@
 	const rg = $derived(
 		playing === null ? null : appliedGain(playing.track, player.queue?.ordered ?? true)
 	);
+	/** The stars the song counts as: its own, or its heart's. */
+	const rating = $derived(playing === null ? null : library.marks.counted(playing.track.id));
 	const note = $derived(
 		player.failure
 			? "Dead air. That wouldn't play, so we stopped."
@@ -121,12 +124,19 @@
 					<span class="rate" data-morph-part="details"
 						><StarsInput
 							size="stage"
-							value={library.marks.stars(playing.track.id)}
+							value={rating?.stars ?? null}
+							byHeart={rating?.byHeart ?? false}
 							label={`Rating of ${playing.track.title}`}
 							onchange={(stars) => {
 								library.marks.rate(playing.track.id, stars);
 							}}
-						/></span
+						/>{#if rating?.byHeart === true && note === null}<span
+								class="by-heart"
+								aria-hidden="true"
+								>{starsText(rating.stars)}★ FROM YOUR HEART · <span class="click">CLICK</span><span
+									class="tap">TAP</span
+								> TO RATE</span
+							>{/if}</span
 					>
 					{#if note !== null}<p class="note" role="status">{note}</p>{/if}
 				</div>
@@ -362,9 +372,38 @@
 		--stars-on: var(--accent);
 		--stars-off: var(--star-empty);
 		--stars-preview: color-mix(in srgb, var(--accent) 70%, transparent);
+		--stars-by: color-mix(in srgb, var(--accent) 52%, transparent);
 
+		position: relative;
 		display: flex;
 		margin: -8px 0 -12px;
+	}
+
+	/* While a heart gives the stars, one quiet line under them says so, and that a press rates. */
+	.by-heart {
+		position: absolute;
+		top: calc(100% - 8px);
+		left: 50%;
+		translate: -50%;
+		font-family: var(--font-mono);
+		font-size: var(--type-mono);
+		letter-spacing: 0.06em;
+		color: var(--wash);
+		white-space: nowrap;
+	}
+
+	.tap {
+		display: none;
+	}
+
+	@media (pointer: coarse) {
+		.click {
+			display: none;
+		}
+
+		.tap {
+			display: inline;
+		}
 	}
 
 	/* In the gap under the names: a line this quiet must not push the cover anywhere. */

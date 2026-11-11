@@ -41,7 +41,7 @@
 		type SongActions,
 		type SongFacts
 	} from '#lib/pages/songActions.ts';
-	import { letterOf, railLetters } from '#lib/pages/libraryRows.ts';
+	import { goodStars, letterOf, railLetters } from '#lib/pages/libraryRows.ts';
 	import { hasLetters, railFor, railLit, sortFields } from '#lib/library/libraryOrder.ts';
 	import { artistAlbumOrders, libraryArtistOrders, wayOf } from '#lib/library/sorts.ts';
 	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
@@ -517,6 +517,7 @@
 			<div class="filters" data-morph-part="intro" data-morph-key="filters">
 				<LibraryFilters
 					filter={view.filter}
+					heartStars={library.marks.heartStars}
 					choose={(filter) => {
 						view.choose(filter);
 					}}
@@ -548,12 +549,18 @@
 							layout.artists.length,
 							layout.songs,
 							layout.totalSongs
-						)}
+						)}{#if layout.byHeart > 0}<span class="by-heart"
+								>{` · ${layout.byHeart.toLocaleString('en-US')} BY HEART`}</span
+							>{/if}
 					</p>
 				</div>
 			{:else if filtered}
 				<p class="frame none" role="status">
-					{view.filter === 'hearted' ? 'Nothing hearted yet.' : 'No song rated 4 or 5 yet.'}
+					{view.filter === 'hearted'
+						? 'Nothing hearted yet.'
+						: library.marks.heartStars >= goodStars
+							? 'No song rated 4 or 5, or hearted, yet.'
+							: 'No song rated 4 or 5 yet.'}
 				</p>
 			{/if}
 		</div>
@@ -969,6 +976,11 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/* How many songs 4 and up shows by their heart alone. */
+	.by-heart {
+		color: var(--fox-text);
 	}
 
 	.sort-round {
