@@ -5,6 +5,7 @@
  * the two lines in Now playing that pass it to Up next.
  */
 import type { ShuffleWhy } from '#lib/library/source.ts';
+import { shownHalves, starsText } from '#lib/library/stars.ts';
 
 /** The one switch. */
 export const whyShown = true;
@@ -53,10 +54,9 @@ const hearsAll = 0.9;
 /** A flow factor past this says it leaned toward the song. */
 const leans = 1.02;
 
-/** Stars as a short mark: "4★", or "3.5★" for a run between ratings. */
+/** Stars as a short mark: "4★", or "4½★" for a half or a run between ratings. */
 function starsMark(stars: number): string {
-	const rounded = Math.round(stars * 2) / 2;
-	return `${String(rounded)}★`;
+	return `${starsText(shownHalves(stars))}★`;
 }
 
 /**
@@ -71,10 +71,12 @@ export function whyLine(why: ShuffleWhy, songs = 1): string {
 	if (why.after !== undefined && why.flow > leans) {
 		facts.push(`close to ${why.after.name}`);
 	}
+	// Stars a heart gave name their source, so they never claim a rating the person didn't give.
+	const byHeart = why.stars > 0 && why.heartStars > 0;
 	if (why.stars > 0) {
-		facts.push(starsMark(why.stars));
+		facts.push(byHeart ? `${starsMark(why.stars)} by heart` : starsMark(why.stars));
 	}
-	if (why.hearted) {
+	if (why.hearted && !byHeart) {
 		facts.push('hearted');
 	}
 	if (!why.played) {
@@ -121,7 +123,11 @@ function heardWhen({ played, sinceDays }: ShuffleWhy): string {
 
 /** Every factor behind the song's weight, in words, for the popover. */
 export function whyFactors(why: ShuffleWhy): WhyFactor[] {
-	const out = [factor(why.stars > 0 ? `Rated ${starsMark(why.stars)}` : 'Unrated', why.rating)];
+	const rated =
+		why.heartStars > 0
+			? `Rated ${starsMark(why.stars)} · from your heart`
+			: `Rated ${starsMark(why.stars)}`;
+	const out = [factor(why.stars > 0 ? rated : 'Unrated', why.rating)];
 	if (why.hearted) {
 		out.push(factor('Hearted', why.heart));
 	}

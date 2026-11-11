@@ -41,7 +41,7 @@
 		type SongActions,
 		type SongFacts
 	} from '#lib/pages/songActions.ts';
-	import { letterOf, railLetters } from '#lib/pages/libraryRows.ts';
+	import { goodStars, letterOf, railLetters } from '#lib/pages/libraryRows.ts';
 	import { hasLetters, railFor, railLit, sortFields } from '#lib/library/libraryOrder.ts';
 	import { artistAlbumOrders, libraryArtistOrders, wayOf } from '#lib/library/sorts.ts';
 	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
@@ -51,11 +51,9 @@
 	import { player } from '#lib/player/player.svelte.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import ScanCard from '#lib/pages/ScanCard.svelte';
-	import Icon from '#lib/shell/Icon.svelte';
+	import ShuffleFab from '#lib/shuffle/ShuffleFab.svelte';
 	import { shuffles } from '#lib/shuffle/session.svelte.ts';
-	import { shuffleSettings } from '#lib/shuffle/settings.svelte.ts';
 	import { librarySource } from '#lib/shuffle/sources.ts';
-	import { settingsLine } from '#lib/shuffle/words.ts';
 	import { cubicOut } from 'svelte/easing';
 	import type { TransitionConfig } from 'svelte/transition';
 
@@ -133,8 +131,8 @@
 	/** What Shuffle shuffles here: the library, or what the filter shows. */
 	const shuffleSource = $derived(librarySource(view.filter));
 	/**
-	 * Picks the first song ahead, so a press plays at once: when the list is ready, again for each
-	 * filter, and again after every press.
+	 * Picks the first song ahead, so a press plays at once: when the list is ready, and again for
+	 * each filter. The FAB primes again on hover, focus and after every press.
 	 */
 	$effect(() => {
 		const source = shuffleSource;
@@ -142,10 +140,6 @@
 			untrack(() => void shuffles.prime(source));
 		}
 	});
-	function shuffleList(): void {
-		shuffles.start(shuffleSource);
-		void shuffles.prime(shuffleSource);
-	}
 
 	/** How wide a song row is, measured, so the columns that fit are known before a row mounts. */
 	let songsWidth = $state(0);
@@ -335,7 +329,7 @@
 			list.key(event, trackId);
 		},
 		rate: (trackId, stars) => {
-			library.marks.press(trackId, stars);
+			library.marks.rate(trackId, stars);
 		},
 		picked: (trackId) => selection.has(trackId)
 	});
@@ -496,27 +490,10 @@
 	{:else if load.kind === 'ready'}
 		<div class="veil" aria-hidden="true"></div>
 		<div class="top">
-			<div class="shuffle" data-morph-part="intro" data-morph-key="shuffle">
-				<button
-					type="button"
-					class="shuffle-button"
-					onpointerenter={() => void shuffles.prime(shuffleSource)}
-					onclick={shuffleList}
-					aria-label={filtered ? 'Shuffle these' : 'Shuffle the library'}
-					><Icon name="shuffle" size={18} /><span class="shuffle-words"
-						>{filtered ? 'Shuffle these' : 'Shuffle the library'}</span
-					></button
-				>
-				<span class="shuffle-line"
-					>{#each settingsLine(shuffleSettings.current).split(' · ') as part, index (part)}{index >
-						0
-							? ' · '
-							: ''}<span class="part">{part}</span>{/each}</span
-				>
-			</div>
 			<div class="filters" data-morph-part="intro" data-morph-key="filters">
 				<LibraryFilters
 					filter={view.filter}
+					heartStars={library.marks.heartStars}
 					choose={(filter) => {
 						view.choose(filter);
 					}}
@@ -548,12 +525,18 @@
 							layout.artists.length,
 							layout.songs,
 							layout.totalSongs
-						)}
+						)}{#if layout.byHeart > 0}<span class="by-heart"
+								>{` · ${layout.byHeart.toLocaleString('en-US')} BY HEART`}</span
+							>{/if}
 					</p>
 				</div>
 			{:else if filtered}
 				<p class="frame none" role="status">
-					{view.filter === 'hearted' ? 'Nothing hearted yet.' : 'No song rated 4 or 5 yet.'}
+					{view.filter === 'hearted'
+						? 'Nothing hearted yet.'
+						: library.marks.heartStars >= goodStars
+							? 'No song rated 4 or 5, or hearted, yet.'
+							: 'No song rated 4 or 5 yet.'}
 				</p>
 			{/if}
 		</div>
@@ -679,6 +662,12 @@
 			{/each}
 		</div>
 
+		<ShuffleFab
+			source={shuffleSource}
+			filter={view.filter}
+			count={layout.songs}
+			away={onScreen.current?.any === true || bulkEdits.current !== null}
+		/>
 		{#if lettered}
 			<LibraryRail {letters} {quiet} here={railAt} onjump={jump} />
 		{/if}
@@ -778,8 +767,6 @@
 		--songs-right: 64px;
 		--head-top: 96px;
 		--songs-left: calc(var(--page-edge) + var(--name-column) + var(--name-gap));
-		/* Shuffle and its line, above the filters: libraryView's shuffleRow. */
-		--shuffle-row: 128px;
 
 		position: relative;
 		padding: var(--head-top) 0 140px;
@@ -792,7 +779,6 @@
 		--cover-gap: 48px;
 		--songs-right: 120px;
 		--head-top: 128px;
-		--shuffle-row: 160px;
 		--type-display: 132px;
 		--type-title: 22px;
 		--type-body: 18px;
@@ -868,51 +854,6 @@
 		padding-top: 16px;
 	}
 
-	/* The Shuffle board's: the fox's own button, and the settings it shuffles by under it. */
-	.shuffle {
-		height: calc(var(--shuffle-row) - 20px);
-		margin-bottom: 20px;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 10px;
-	}
-
-	.large .shuffle-button {
-		height: 64px;
-		padding: 0 28px;
-		gap: 12px;
-		font-size: 18px;
-	}
-
-	.shuffle-button {
-		height: 52px;
-		padding: 0 22px;
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		border: 0;
-		border-radius: var(--radius-pill);
-		background: var(--fox);
-		color: var(--fox-ink);
-		font-size: 15px;
-		font-weight: 700;
-		white-space: nowrap;
-	}
-
-	.shuffle-line {
-		font-family: var(--font-mono);
-		font-size: var(--type-mono);
-		letter-spacing: 0.06em;
-		line-height: 1.5;
-		color: var(--text-meta);
-	}
-
-	/* The line breaks between settings, never inside one. */
-	.part {
-		white-space: nowrap;
-	}
-
 	/* In the name column, under the artist and above what's next, so neither is covered. */
 	.dock {
 		position: fixed;
@@ -923,9 +864,12 @@
 		padding-top: 0;
 	}
 
-	/* No name column on a phone: just above the player island, the card's note left out. */
+	/*
+	 * No name column on a phone: just above the player island, the card's note left out, and clear of
+	 * Shuffle's disc at its left end.
+	 */
 	.dock.stacked {
-		left: 16px;
+		left: 84px;
 		right: 16px;
 		border-radius: var(--radius-20);
 		box-shadow: var(--glass-shadow);
@@ -969,6 +913,11 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/* How many songs 4 and up shows by their heart alone. */
+	.by-heart {
+		color: var(--fox-text);
 	}
 
 	.sort-round {
@@ -1085,7 +1034,7 @@
 	/* The name stays while its albums scroll; the next one pushes it out. */
 	.head {
 		position: sticky;
-		top: calc(var(--head-top) + var(--shuffle-row) + 98px);
+		top: calc(var(--head-top) + 98px);
 		pointer-events: auto;
 	}
 
@@ -1174,22 +1123,6 @@
 			background: none;
 		}
 
-		/* Stacked, Shuffle stands beside the filters, without its line. */
-		.shuffle {
-			order: 2;
-			height: auto;
-			margin: 0;
-		}
-
-		.shuffle-button {
-			height: 46px;
-			padding: 0 18px;
-		}
-
-		.shuffle-line {
-			display: none;
-		}
-
 		.frame,
 		.next {
 			display: none;
@@ -1256,20 +1189,6 @@
 
 		.note {
 			margin-left: 16px;
-		}
-	}
-
-	/* A phone: Shuffle is the fox's round button, its words for the screen reader. */
-	@media (max-width: 600px) {
-		.shuffle-button {
-			width: 44px;
-			height: 44px;
-			padding: 0;
-			justify-content: center;
-		}
-
-		.shuffle-words {
-			display: none;
 		}
 	}
 </style>

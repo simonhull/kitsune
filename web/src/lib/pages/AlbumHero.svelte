@@ -189,7 +189,9 @@
 						<span class="glyphs"><StarsShown {stars} empty="dim" /></span>
 						<span class="from" aria-hidden="true"
 							>{stars.mean} · FROM {stars.rated} OF {stars.of}
-							{stars.of === 1 ? 'SONG' : 'SONGS'}</span
+							{stars.of === 1 ? 'SONG' : 'SONGS'}{stars.byHeart > 0
+								? ` · ${String(stars.byHeart)} BY HEART`
+								: ''}</span
 						>
 					</span>
 				{/if}

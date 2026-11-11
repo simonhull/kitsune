@@ -1,6 +1,7 @@
 <!-- The You page's Shuffle card, as the Settings board has it: how ratings count, flow, and skips. -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { library } from '#lib/library/library.svelte.ts';
 	import Switch from '#lib/pages/Switch.svelte';
 	import { shuffleSettings } from './settings.svelte.ts';
 	import { flowWord, ratingsSentence, ratingsWord } from './words.ts';
@@ -41,7 +42,7 @@
 		/>
 		<div class="ends" aria-hidden="true"><span>NOT AT ALL</span><span>STRONGLY</span></div>
 		<p class="note" id={`${ratingsId}-ratings-note`} aria-live="polite">
-			{ratingsSentence(settings.ratings)}
+			{ratingsSentence(settings.ratings, library.marks.heartStars)}
 		</p>
 	</div>
 

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { flowWord, ratingsSentence, ratingsWord, settingsLine } from './words.ts';
+import {
+	fabWords,
+	flowWord,
+	ratingsSentence,
+	ratingsWord,
+	settingsLine,
+	songsLine
+} from './words.ts';
 
 describe('shuffle words', () => {
 	it('says the board’s line at the defaults', () => {
@@ -32,5 +39,37 @@ describe('shuffle words', () => {
 		expect(ratingsSentence(0)).toBe(
 			'Ratings and hearts change nothing: every song comes up as often as any other.'
 		);
+	});
+
+	it('says what an unrated heart counts as, when it counts', () => {
+		expect(ratingsSentence(0.5, 4.5)).toBe(
+			'A 5★ song comes up about 1.5 times as often as an unrated one, and a 1★ about half as often. Hearts give a small lift. An unrated heart counts as 4½★.'
+		);
+		expect(ratingsSentence(0.5, 0)).toBe(ratingsSentence(0.5));
+		expect(ratingsSentence(0, 5)).toBe(ratingsSentence(0));
+	});
+
+	it('names the Library’s Shuffle for what it shuffles', () => {
+		expect(fabWords('everything')).toEqual({
+			name: 'Shuffle the library',
+			what: 'The library',
+			tag: ''
+		});
+		expect(fabWords('hearted')).toEqual({
+			name: 'Shuffle these: what you hearted',
+			what: 'What you hearted',
+			tag: '♥'
+		});
+		expect(fabWords('rated')).toEqual({
+			name: 'Shuffle these: 4★ and up',
+			what: '4★ and up',
+			tag: '4★'
+		});
+	});
+
+	it('counts the songs an endless shuffle draws from', () => {
+		expect(songsLine(9812)).toBe('9,812 SONGS · ENDLESS');
+		expect(songsLine(1)).toBe('1 SONG · ENDLESS');
+		expect(songsLine(0)).toBe('0 SONGS · ENDLESS');
 	});
 });

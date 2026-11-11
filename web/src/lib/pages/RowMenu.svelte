@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { heartPath } from '#lib/shell/Icon.svelte';
+	import StarsInput from '#lib/shell/StarsInput.svelte';
 	import FileInfo from './FileInfo.svelte';
 	import Floating from './Floating.svelte';
 	import { rowMenuItems, type MenuTarget, type SongActions } from './songActions.ts';
@@ -34,10 +35,18 @@
 
 	const ids = $derived(target.kind === 'song' ? [target.trackId] : target.trackIds);
 	const hearted = $derived(ids.every((id) => library.marks.hearted('tracks', id)));
-	/** The stars a song has; for several, the stars they all share, if they do. */
-	const stars = $derived.by(() => {
+	/**
+	 * The stars a song counts as, its own or its heart's; for several, the stars of their own they all
+	 * share, if they do. A heart's stars a selection shares aren't shown: setting all of them is a
+	 * real rating, and the bar shouldn't seem to hold one already.
+	 */
+	const rating = $derived.by(() => {
+		if (ids.length === 1) {
+			return library.marks.counted(ids[0] ?? '');
+		}
 		const all = new Set(ids.map((id) => library.marks.stars(id)));
-		return all.size === 1 ? ([...all][0] ?? 0) : 0;
+		const shared = all.size === 1 ? ([...all][0] ?? null) : null;
+		return shared === null ? null : { stars: shared, byHeart: false };
 	});
 
 	function then(action: () => void): () => void {
@@ -45,10 +54,6 @@
 			action();
 			onclose(true);
 		};
-	}
-
-	function rate(star: number): void {
-		actions.rate(stars === star ? null : star);
 	}
 </script>
 
@@ -102,21 +107,22 @@
 				><path d={heartPath}></path></svg
 			>{hearted ? 'Hearted' : 'Heart'}</button
 		>
-		<div class="rating" role="group" aria-label="Rating">
-			<span class="rating-name">Rating</span>
-			{#each [1, 2, 3, 4, 5] as star (star)}
-				<button
-					type="button"
-					class="star"
-					class:on={star <= stars}
-					aria-label={`${String(star)} of 5`}
-					aria-pressed={star <= stars}
-					data-menu-item
-					onclick={() => {
-						rate(star);
-					}}>★</button
-				>
-			{/each}
+		<div class="rating">
+			<span class="rating-name" aria-hidden="true"
+				>Rating{#if rating?.byHeart === true}<small>FROM YOUR HEART</small>{/if}</span
+			>
+			<!-- ↑ and ↓ stay the menu's, to go between its items; ← and → move the rating. -->
+			<StarsInput
+				size="menu"
+				value={rating?.stars ?? null}
+				byHeart={rating?.byHeart ?? false}
+				label={target.kind === 'song' ? `Rating of ${target.title}` : 'Rating of all of them'}
+				vertical={false}
+				data-menu-item
+				onchange={(next) => {
+					actions.rate(next);
+				}}
+			/>
 		</div>
 		{#if items.has('editTags') && actions.editTags !== undefined}
 			<button
@@ -232,7 +238,7 @@
 	}
 
 	.rating {
-		height: 40px;
+		min-height: 40px;
 		padding: 0 6px 0 12px;
 		display: flex;
 		align-items: center;
@@ -244,23 +250,12 @@
 		flex: 1;
 	}
 
-	.star {
-		width: 24px;
-		height: 36px;
-		padding: 0;
-		border: 0;
-		border-radius: 8px;
-		background: transparent;
-		font-size: 16px;
-		color: var(--star-off);
-	}
-
-	.star.on {
-		color: var(--star);
-	}
-
-	.star:hover,
-	.star:has(~ .star:hover) {
-		color: color-mix(in srgb, var(--star) 75%, transparent);
+	.rating-name small {
+		display: block;
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 500;
+		letter-spacing: 0.06em;
+		color: var(--text-label);
 	}
 </style>

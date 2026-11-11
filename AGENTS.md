@@ -84,6 +84,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   there are and what each holds, and checks a value on the way in and again on the way out; the
   store keeps the text. A new key is an entry there and its schema in the contract. Server settings
   never go there.
+- `ratings.heart_stars` is what a hearted song with no stars of its own counts as wherever stars are
+  read (0 for nothing, else 1★ to 5★ in halves). It is worked out where it's read
+  (`prefs.HeartStars.Of`, `marks.counted`), and never written or sent as a song's `stars`.
 - Every song a client starts is a listen (`POST /me/listens`), whether or not it counts as a play:
   its start and its end share a client ID and are one `listens` row, and once ended it never
   changes. Only `skipped`, moving on while it sounds, counts against a song; pausing, a restart,
@@ -311,6 +314,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   genre overlap and co-listening from listens outside shuffle only, so flow never learns from itself;
   with nothing known it is off.
 - A pick's `why` is structured factors, never prose: the client words them.
+- The `rated` scope and the weights take counted stars: a song's own, else `ratings.heart_stars` for
+  an unrated heart (`prefs.HeartStars.Of`, in `keeper` and `build` both). The shuffler reads the pref
+  itself; the engine only sees stars, with `ByHeart` so `why.heartStars` can say so. The heart's own
+  factor still applies on top.
 - The web client starts every shuffle without waiting: it picks the first song from what it holds
   and plays it, and asks `POST /me/shuffles` with it as `first` at the same time.
 
@@ -389,6 +396,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.
+- An open tab learns of a new build by SvelteKit's version poll (`version.pollInterval` in
+  `web/vite.config.ts`). The next navigation loads it whole, but only when nothing plays and no queue
+  has started (`lib/shell/freshness.ts`), since the queue lives in the tab. The server serves
+  `_app/version.json` uncached for this.
 
 ## Speed
 - Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
@@ -419,6 +430,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Real dependencies over mocks: temp SQLite files, `t.TempDir()` libraries,
   `httptest` servers.
 - Benchmarks use `for b.Loop()`. No performance claim without a measurement.
+- The web client's behavior is tested in a browser by `web/e2e` (`mise run web:e2e`), on the client's
+  fixtures (`?source=fixtures`), with no server. Any page error fails the test. A bug a rendered page
+  shows gets its regression test there; a pure function's goes in vitest.
 
 ## Commits and docs
 - Gitmoji prefix, single line, no body, no attribution trailers.

@@ -9,9 +9,11 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { trackLabel } from '#lib/library/format.ts';
+	import type { Counted } from '#lib/library/heartStars.ts';
 	import type { ColumnId, LibraryTrack, MovableId } from '#lib/library/source.ts';
 	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
+	import StarsInput from '#lib/shell/StarsInput.svelte';
 	import {
 		cellOf,
 		fitLine,
@@ -58,7 +60,8 @@
 		height?: number | undefined;
 		/** When "Yesterday" is, for Last played. */
 		now: number;
-		stars: number | null;
+		/** The stars it counts as: its own, or its heart's (`marks.counted`), or null. */
+		rating: Counted | null;
 		hearted: boolean;
 		/** It's the song cued, and whether it's sounding now. */
 		cued: boolean;
@@ -89,7 +92,7 @@
 		top,
 		height,
 		now,
-		stars,
+		rating,
 		hearted,
 		cued,
 		sounding,
@@ -102,7 +105,7 @@
 	const context = $derived({
 		track,
 		album,
-		stars,
+		rating,
 		hearted,
 		artistWhenDifferent,
 		now,
@@ -186,17 +189,14 @@
 {#snippet column(id: ColumnId)}
 	{@const cell = cellOf(id, context)}
 	{#if cell.look === 'stars'}
-		<span class="rate" data-col={id} role="group" aria-label={`Rate ${track.title}`}>
-			{#each [1, 2, 3, 4, 5] as star (star)}
-				<button
-					type="button"
-					class:on={star <= cell.stars}
-					data-star={star}
-					aria-label={`Rate ${track.title} ${String(star)} of 5`}
-					aria-pressed={star <= cell.stars}>★</button
-				>
-			{/each}
-		</span>
+		<!-- Markup only: the list's handlers rate it (songRow.ts), so a row mounts none. -->
+		<StarsInput
+			class="rate"
+			data-col={id}
+			value={cell.stars === 0 ? null : cell.stars}
+			byHeart={cell.byHeart}
+			label={`Rating of ${track.title}`}
+		/>
 	{:else if cell.look === 'heart'}
 		<span class="heart-cell" data-col={id}
 			><HeartButton kind="tracks" id={track.id} name={track.title} size={16} /></span
@@ -515,32 +515,6 @@
 		color: var(--fox-ink);
 	}
 
-	.rate {
-		display: flex;
-		font-size: var(--star-type, 13px);
-		letter-spacing: 1px;
-	}
-
-	.rate button {
-		width: calc(var(--star-type, 13px) + 2px);
-		height: 28px;
-		padding: 0;
-		border: 0;
-		background: transparent;
-		color: var(--star-off);
-		font: inherit;
-		line-height: 1;
-	}
-
-	.rate button.on {
-		color: var(--star);
-	}
-
-	.rate button:hover,
-	.rate:hover button:has(~ button:hover) {
-		color: color-mix(in srgb, var(--star) 70%, transparent);
-	}
-
 	.heart-cell {
 		display: flex;
 		justify-content: center;
@@ -661,6 +635,12 @@
 	.row.cued:hover {
 		--heart-on: var(--fox-ink);
 		--heart-off: color-mix(in srgb, var(--fox-ink) 40%, transparent);
+		--stars-on: var(--fox-ink);
+		--stars-off: color-mix(in srgb, var(--fox-ink) 30%, transparent);
+		/* The stars a hover would set, in the ink: the star's own amber vanishes on the row's. */
+		--stars-preview: color-mix(in srgb, var(--fox-ink) 75%, transparent);
+		/* And the stars a heart gives, at their half strength. */
+		--stars-by: color-mix(in srgb, var(--fox-ink) 58%, transparent);
 
 		border-radius: var(--radius-12);
 		background: var(--fox);
@@ -670,19 +650,8 @@
 	.cued .mono,
 	.cued .cell,
 	.cued .cell.name,
-	.cued .credit,
-	.cued .rate button.on {
+	.cued .credit {
 		color: var(--fox-ink);
-	}
-
-	.cued .rate button {
-		color: color-mix(in srgb, var(--fox-ink) 30%, transparent);
-	}
-
-	/* The stars a hover would set, in the ink: the star's own amber vanishes on the row's. */
-	.cued .rate button:hover,
-	.cued .rate:hover button:has(~ button:hover) {
-		color: color-mix(in srgb, var(--fox-ink) 75%, transparent);
 	}
 
 	/*

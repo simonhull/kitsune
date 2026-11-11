@@ -1,4 +1,6 @@
 import { clock, gain } from '#lib/library/format.ts';
+import type { Counted } from '#lib/library/heartStars.ts';
+import { starsLine } from '#lib/library/stars.ts';
 import type {
 	ColumnId,
 	ColumnsPref,
@@ -541,7 +543,8 @@ export type RowAlbum = Pick<LibraryAlbum, 'id' | 'title' | 'artist' | 'year' | '
 export interface CellContext {
 	track: LibraryTrack;
 	album: RowAlbum;
-	stars: number | null;
+	/** The stars the song counts as (`marks.counted`): its own, or its heart's, or null. */
+	rating: Counted | null;
 	hearted: boolean;
 	artistWhenDifferent: boolean;
 	/** Unix ms: when "Yesterday" is. */
@@ -563,7 +566,7 @@ export type Cell =
 			/** A gain Kitsune measured, as no tag says it: the cell marks it quietly. */
 			measured?: true;
 	  }
-	| { look: 'stars'; stars: number }
+	| { look: 'stars'; stars: number; byHeart: boolean }
 	| { look: 'heart'; hearted: boolean };
 
 const dayMs = 86_400_000;
@@ -643,7 +646,11 @@ export function cellOf(id: ColumnId, context: CellContext): Cell {
 			return fact(year === undefined ? '' : String(year));
 		}
 		case 'rating':
-			return { look: 'stars', stars: context.stars ?? 0 };
+			return {
+				look: 'stars',
+				stars: context.rating?.stars ?? 0,
+				byHeart: context.rating?.byHeart ?? false
+			};
 		case 'heart':
 			return { look: 'heart', hearted: context.hearted };
 		case 'plays':
@@ -681,7 +688,7 @@ export function sameOnAlbum(
 			const cell = cellOf(id, {
 				track,
 				album,
-				stars: null,
+				rating: null,
 				hearted: false,
 				artistWhenDifferent,
 				now
@@ -797,7 +804,14 @@ function phonePart(
 			return guests.length < track.artists.length ? `with ${guests.join(', ')}` : named;
 		}
 		case 'rating':
-			return cell.look === 'stars' ? '★'.repeat(cell.stars) : '';
+			if (cell.look !== 'stars' || cell.stars <= 0) {
+				return '';
+			}
+			// By heart, the heart takes the first star's place: ♥★★★ is 4, from the heart. A thin
+			// space keeps the stars, which run wide in the mono, off the heart.
+			return cell.byHeart
+				? `♥${cell.stars > 1 ? '\u2009' : ''}${starsLine(cell.stars).slice(1)}`
+				: starsLine(cell.stars);
 		case 'heart':
 			return cell.look === 'heart' && cell.hearted ? '♥' : '';
 		case 'plays': {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
 
@@ -33,23 +34,14 @@ func (k Kind) String() string {
 	return fmt.Sprintf("Kind(%d)", uint8(k))
 }
 
-// The stars a rating may have.
-const (
-	MinStars = 1
-	MaxStars = 5
-)
+// errBadKind means a [Kind] is none of the constants: a programming error.
+var errBadKind = errors.New("unknown kind")
 
-var (
-	// ErrBadStars means a rating is outside [MinStars] to [MaxStars].
-	ErrBadStars = errors.New("stars must be from 1 to 5")
-	// errBadKind means a [Kind] is none of the constants: a programming error.
-	errBadKind = errors.New("unknown kind")
-)
-
-// Marks are one person's marks on a track. Stars is 0 when it is unrated.
+// Marks are one person's marks on a track. Rating is [rating.None] when it is
+// unrated.
 type Marks struct {
 	Hearted bool
-	Stars   int
+	Rating  rating.Rating
 }
 
 // AlbumMarks are one person's marks on an album and its tracks. Tracks holds
@@ -123,12 +115,13 @@ func loveChanged(ctx context.Context, q *sqlcdb.Queries, userID, trackRow int64,
 	return enqueueLastfm(ctx, q, userID, trackRow, kind, now, now)
 }
 
-// Rate gives the track with the ULID id the user's stars, in place of any it
-// had. It returns an error wrapping [ErrBadStars] for stars outside [MinStars]
-// to [MaxStars], and [ErrNotFound] for a track that isn't in the library.
-func (s *Store) Rate(ctx context.Context, userID int64, id string, stars int) error {
-	if stars < MinStars || stars > MaxStars {
-		return fmt.Errorf("rate track %s: %w", id, ErrBadStars)
+// Rate gives the track with the ULID id the user's rating, in place of any it
+// had. It returns an error wrapping [rating.ErrBad] for [rating.None] or
+// anything else that isn't a rating, and [ErrNotFound] for a track that isn't
+// in the library.
+func (s *Store) Rate(ctx context.Context, userID int64, id string, r rating.Rating) error {
+	if !r.Valid() {
+		return fmt.Errorf("rate track %s: %w", id, rating.ErrBad)
 	}
 	at := ms(s.now())
 	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
@@ -136,7 +129,7 @@ func (s *Store) Rate(ctx context.Context, userID int64, id string, stars int) er
 		if err != nil {
 			return err
 		}
-		return q.UpsertTrackRating(ctx, sqlcdb.UpsertTrackRatingParams{UserID: userID, TrackID: rowID, Stars: int64(stars), RatedAt: at})
+		return q.UpsertTrackRating(ctx, sqlcdb.UpsertTrackRatingParams{UserID: userID, TrackID: rowID, Halves: r.Halves(), RatedAt: at})
 	})
 	if err != nil {
 		return fmt.Errorf("rate track %s: %w", id, err)
@@ -211,7 +204,7 @@ func (s *Store) AlbumMarks(ctx context.Context, userID int64, id string) (AlbumM
 	}
 	for _, r := range ratings {
 		m := marks.Tracks[r.Ulid]
-		m.Stars = int(r.Stars)
+		m.Rating = ratingOf(r.Halves)
 		marks.Tracks[r.Ulid] = m
 	}
 	return marks, nil
@@ -220,7 +213,7 @@ func (s *Store) AlbumMarks(ctx context.Context, userID int64, id string) (AlbumM
 // libraryMarks is everything one person has marked, by ULID.
 type libraryMarks struct {
 	tracks, albums, artists map[string]bool
-	stars                   map[string]int
+	ratings                 map[string]rating.Rating
 }
 
 // readLibraryMarks reads every mark of the user through q.
@@ -240,11 +233,21 @@ func readLibraryMarks(ctx context.Context, q *sqlcdb.Queries, userID int64) (lib
 	if err != nil {
 		return libraryMarks{}, fmt.Errorf("ratings: %w", err)
 	}
-	m.stars = make(map[string]int, len(ratings))
+	m.ratings = make(map[string]rating.Rating, len(ratings))
 	for _, r := range ratings {
-		m.stars[r.Ulid] = int(r.Stars)
+		m.ratings[r.Ulid] = ratingOf(r.Halves)
 	}
 	return m, nil
+}
+
+// ratingOf is a stored rating in halves. The table's CHECK keeps it from 1 to
+// 10; anything else, 0 from an outer join included, is no rating.
+func ratingOf(halves int64) rating.Rating {
+	r, err := rating.FromHalves(halves)
+	if err != nil {
+		return rating.None
+	}
+	return r
 }
 
 func heartSet(ids []string, err error) (map[string]bool, error) {

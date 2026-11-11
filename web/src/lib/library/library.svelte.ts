@@ -18,6 +18,7 @@ import {
 import { healthFixture } from './healthFixtures.ts';
 import { patchIndex } from './indexPatch.ts';
 import { eventsUrl, Live, type EventStream } from './live.ts';
+import { heartStarsOff, isHeartStars } from './heartStars.ts';
 import { Marks } from './marks.svelte.ts';
 import { ListenOutbox, Outbox } from './outbox.ts';
 import { createPrefs, type PrefsStore } from './prefs.ts';
@@ -81,6 +82,8 @@ const restartGraceMs = 1500;
 const scanPollMs = 1000;
 /** How often anyone else asks how a running scan is doing. */
 const progressPollMs = 1000;
+/** The preference of what an unrated heart counts as. */
+const heartStarsKey = 'ratings.heart_stars';
 /** How often anyone asks how the fingerprint pass is doing: it runs for many minutes. */
 const passPollMs = 5000;
 /** When to read again what a settings change changes, which the server applies a moment later. */
@@ -326,6 +329,9 @@ export class Library {
 		this.#listens = new ListenOutbox(options.outbox ?? (() => localStorage), this.#source);
 		this.marks = new Marks(this.#source);
 		this.prefs = createPrefs(this.#source);
+		this.watchPref(heartStarsKey, (value) => {
+			this.#takeHeartStars(value);
+		});
 		const events = options.events === undefined ? browserEvents() : options.events;
 		this.#live =
 			events === null
@@ -591,6 +597,34 @@ export class Library {
 		}
 	}
 
+	/**
+	 * Reads what the person's unrated hearts count as. It never holds anything up: rows paint with
+	 * hearts Off, and their implied stars blend in when this answers.
+	 */
+	async #adoptHeartStars(epoch: number): Promise<void> {
+		const chosen = await this.prefs.get(heartStarsKey);
+		if (chosen !== null && epoch === this.#epoch && !this.prefs.pending(heartStarsKey)) {
+			this.#takeHeartStars(chosen);
+		}
+	}
+
+	#takeHeartStars(value: number): void {
+		this.marks.heartStars = isHeartStars(value) ? value : heartStarsOff;
+	}
+
+	/**
+	 * Changes what an unrated heart counts as: at once here, and saved now, since a shuffle the
+	 * server builds next reads it there.
+	 */
+	setHeartStars(stars: number): void {
+		if (!isHeartStars(stars)) {
+			return;
+		}
+		this.marks.heartStars = stars;
+		this.prefs.put(heartStarsKey, stars);
+		void this.prefs.flush();
+	}
+
 	/** Loads everything the shell shows. Failures surface through {@link Library.down}. */
 	loadShell(): Promise<void> {
 		this.#shell ??= this.#loadShell().finally(() => {
@@ -608,6 +642,7 @@ export class Library {
 			this.flushPlays();
 			void this.refreshLastfm();
 			void this.#adoptTheme(epoch);
+			void this.#adoptHeartStars(epoch);
 			const [facts, recent, first, ready] = await Promise.all([
 				this.#source.facts(),
 				this.#source.albumsPage('added', undefined, recentCount),

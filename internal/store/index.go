@@ -266,7 +266,7 @@ func indexTracks(rows *indexRows) map[int64][]IndexTrack {
 		tracks[t.AlbumID] = append(tracks[t.AlbumID], IndexTrack{
 			ID: t.Ulid, Title: t.Title, Artists: names[t.ID], DiscNo: intOr0(t.DiscNo), TrackNo: intOr0(t.TrackNo),
 			Duration: time.Duration(t.DurationMs) * time.Millisecond,
-			Marks:    Marks{Hearted: rows.marks.tracks[t.Ulid], Stars: rows.marks.stars[t.Ulid]},
+			Marks:    Marks{Hearted: rows.marks.tracks[t.Ulid], Rating: rows.marks.ratings[t.Ulid]},
 			Extra:    extras[t.ID],
 		})
 	}

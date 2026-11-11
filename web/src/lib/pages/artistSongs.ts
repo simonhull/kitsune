@@ -52,20 +52,15 @@ export function songsOf(index: LibraryIndex, owned: ReadonlySet<string>): Artist
 	return songs;
 }
 
+/**
+ * How much stars count toward Top, by half stars from ½: 5 doubles a song, 3 and unrated leave it,
+ * and 1 quarters it. Each half is the geometric mean of the whole stars beside it, to two places.
+ */
+const topWeights = [0.125, 0.25, 0.35, 0.5, 0.71, 1, 1.22, 1.5, 1.73, 2];
+
 /** How much a song's stars count toward Top: 5 doubles it, unrated counts as 3, and 1 quarters it. */
 export function starWeight(stars: number | null): number {
-	switch (stars) {
-		case 5:
-			return 2;
-		case 4:
-			return 1.5;
-		case 2:
-			return 0.5;
-		case 1:
-			return 0.25;
-		default:
-			return 1;
-	}
+	return stars === null ? 1 : (topWeights[Math.round(stars * 2) - 1] ?? 1);
 }
 
 /** How much a heart counts toward Top. */
@@ -73,12 +68,15 @@ export const heartWeight = 1.25;
 
 /**
  * A song's place in Top: `(plays + 1) × w(stars) × 1.25 if hearted`, from the person's own plays
- * and marks only. A song nobody has played, rated or hearted scores 1.
+ * and marks only. A song nobody has played, rated or hearted scores 1. The stars are the counted
+ * ones, and the heart's 1.25 stays on top of them: a hearted song with no stars ranks as the same
+ * song rated what hearts count as.
  */
 export function topScore(track: LibraryTrack, marks: MarksView): number {
 	const plays = track.plays ?? 0;
 	const hearted = marks.hearted('tracks', track.id);
-	return (plays + 1) * starWeight(marks.stars(track.id)) * (hearted ? heartWeight : 1);
+	const stars = marks.counted(track.id)?.stars ?? null;
+	return (plays + 1) * starWeight(stars) * (hearted ? heartWeight : 1);
 }
 
 /** Whether nothing has been played, rated or hearted, so a ranking would only be noise. */
@@ -128,7 +126,7 @@ function keyOf(
 		case 'plays':
 			return song.track.plays ?? 0;
 		case 'rating':
-			return marks.stars(song.track.id) ?? 0;
+			return marks.counted(song.track.id)?.stars ?? 0;
 		case 'title':
 			return sortKey(song.track.title);
 		case 'year':
@@ -276,6 +274,7 @@ export function albumsLayout(
 		height: appears.albums.length === 0 ? own.height : offset + appears.height,
 		songs: own.songs + appears.songs,
 		totalSongs: own.totalSongs + appears.totalSongs,
+		byHeart: 0,
 		divider
 	};
 }

@@ -405,7 +405,7 @@ func (q *Queries) ListShuffleTrackArtists(ctx context.Context) ([]ListShuffleTra
 const listShuffleTracks = `-- name: ListShuffleTracks :many
 
 SELECT t.id, t.album_id, a.ulid AS album_ulid,
-    CAST(coalesce(r.stars, 0) AS INTEGER) AS stars,
+    CAST(coalesce(r.halves, 0) AS INTEGER) AS halves,
     CAST(h.track_id IS NOT NULL AS INTEGER) AS hearted,
     CAST(e.track_id IS NOT NULL AS INTEGER) AS excluded
 FROM tracks t
@@ -421,7 +421,7 @@ type ListShuffleTracksRow struct {
 	ID        int64
 	AlbumID   int64
 	AlbumUlid string
-	Stars     int64
+	Halves    int64
 	Hearted   int64
 	Excluded  int64
 }
@@ -442,7 +442,7 @@ func (q *Queries) ListShuffleTracks(ctx context.Context, userID int64) ([]ListSh
 			&i.ID,
 			&i.AlbumID,
 			&i.AlbumUlid,
-			&i.Stars,
+			&i.Halves,
 			&i.Hearted,
 			&i.Excluded,
 		); err != nil {

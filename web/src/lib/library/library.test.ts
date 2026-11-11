@@ -400,6 +400,25 @@ describe('Library', () => {
 		expect(theme.choice).toBeNull();
 	});
 
+	it('reads what hearts count as at sign-in, saves a change, and forgets it with the session', async () => {
+		const fixture = createFixtureSource({ prefs: { 'ratings.heart_stars': 4.5 } });
+		const library = new Library(fixture);
+		expect(library.marks.heartStars).toBe(0);
+		await library.loadShell();
+		await vi.waitFor(() => {
+			expect(library.marks.heartStars).toBe(4.5);
+		});
+		library.setHeartStars(3);
+		expect(library.marks.heartStars).toBe(3);
+		await vi.waitFor(async () => {
+			expect(await fixture.pref('ratings.heart_stars')).toBe(3);
+		});
+		library.setHeartStars(0.5); // Under 1★ isn't a value: nothing changes.
+		expect(library.marks.heartStars).toBe(3);
+		library.reset();
+		expect(library.marks.heartStars).toBe(0);
+	});
+
 	it('keeps the theme as it is when the person never chose one', async () => {
 		const library = new Library(source());
 		await library.loadShell();

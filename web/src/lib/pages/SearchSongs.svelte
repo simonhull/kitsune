@@ -177,7 +177,7 @@
 			list.key(event, trackId);
 		},
 		rate: (trackId, stars) => {
-			library.marks.press(trackId, stars);
+			library.marks.rate(trackId, stars);
 		},
 		picked: (trackId) => selection.has(trackId)
 	});
@@ -242,7 +242,7 @@
 				{artistWhenDifferent}
 				lineChars={Math.floor((width - 120) / monoAdvance)}
 				{now}
-				stars={library.marks.stars(track.id)}
+				rating={library.marks.counted(track.id)}
 				hearted={library.marks.hearted('tracks', track.id)}
 				cued={track.id === library.playing?.track.id}
 				sounding={player.sounding}

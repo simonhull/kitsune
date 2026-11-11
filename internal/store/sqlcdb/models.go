@@ -235,7 +235,7 @@ type TrackLoudness struct {
 type TrackRating struct {
 	UserID  int64
 	TrackID int64
-	Stars   int64
+	Halves  int64
 	RatedAt int64
 }
 

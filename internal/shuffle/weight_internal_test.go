@@ -2,6 +2,7 @@ package shuffle
 
 import (
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,7 +38,7 @@ func TestRatingCurve(t *testing.T) {
 	tests := []struct {
 		name    string
 		ratings float64
-		want    [MaxStars + 1]float64 // by stars, unrated first
+		want    [MaxStars/2 + 1]float64 // by whole stars, unrated first
 	}{
 		{"ratings matter fully", 1, [...]float64{1, 0.2, 0.6, 1, 1.6, 2.4}},
 		{"ratings don't matter", 0, [...]float64{1, 1, 1, 1, 1, 1}},
@@ -50,7 +51,7 @@ func TestRatingCurve(t *testing.T) {
 			t.Parallel()
 			s := Settings{Ratings: tt.ratings}
 			for stars, want := range tt.want {
-				u := unitOf(t, Track{ID: 1, Stars: Stars(stars)})
+				u := unitOf(t, Track{ID: 1, Stars: Stars(2 * stars)})
 				if got := Explain(u, s, now).Rating; !near(got, want) {
 					t.Errorf("%d★: got %v, want %v", stars, got, want)
 				}
@@ -61,7 +62,7 @@ func TestRatingCurve(t *testing.T) {
 
 func TestRunRatingIsTheMeanOfItsRatedSongs(t *testing.T) {
 	t.Parallel()
-	u := unitOf(t, Track{ID: 1}, Track{ID: 2, Stars: 4}, Track{ID: 3, Stars: 5})
+	u := unitOf(t, Track{ID: 1}, Track{ID: 2, Stars: 8}, Track{ID: 3, Stars: 10})
 	r := Explain(u, Settings{Ratings: 1}, now)
 	if r.Stars != 4.5 {
 		t.Errorf("Stars: got %v, want 4.5", r.Stars)
@@ -69,6 +70,64 @@ func TestRunRatingIsTheMeanOfItsRatedSongs(t *testing.T) {
 	// Halfway between 1.6 and 2.4 in log space.
 	if want := math.Sqrt(1.6 * 2.4); !near(r.Rating, want) {
 		t.Errorf("Rating: got %v, want %v", r.Rating, want)
+	}
+}
+
+// wholeFactor is the rating factor as it was before halves, on a mean of whole
+// stars: a whole rating must weigh the same float it always did.
+func wholeFactor(starSum, rated int, ratings float64) float64 {
+	stars := float64(starSum) / float64(rated)
+	lo := int(stars)
+	w := math.Log(starCurve[lo-1])
+	if lo < len(starCurve) {
+		w += (stars - float64(lo)) * (math.Log(starCurve[lo]) - w)
+	}
+	return math.Exp(ratings * w)
+}
+
+func TestWholeRatingsWeighAsBefore(t *testing.T) {
+	t.Parallel()
+	for _, ratings := range []float64{0, 0.25, 0.5, 1, 2} {
+		for _, whole := range [][]Stars{{1}, {2}, {3}, {4}, {5}, {4, 5}, {1, 2, 2}, {3, 5, 5, 4}, {1, 1, 1, 1, 1, 1, 2}} {
+			tracks := make([]Track, len(whole))
+			sum := 0
+			for i, s := range whole {
+				tracks[i] = Track{ID: TrackID(i + 1), Stars: 2 * s}
+				sum += int(s)
+			}
+			r := Explain(unitOf(t, tracks...), Settings{Ratings: ratings}, now)
+			if want := wholeFactor(sum, len(whole), min(ratings, 1)); r.Rating != want {
+				t.Errorf("%v at Ratings %v: got %v, want exactly %v", whole, ratings, r.Rating, want)
+			}
+			if want := float64(sum) / float64(len(whole)); r.Stars != want {
+				t.Errorf("%v: mean %v, want exactly %v", whole, r.Stars, want)
+			}
+		}
+	}
+}
+
+func TestHalfRatings(t *testing.T) {
+	t.Parallel()
+	s := Settings{Ratings: 1}
+	factor := func(halves Stars) float64 {
+		t.Helper()
+		return Explain(unitOf(t, Track{ID: 1, Stars: halves}), s, now).Rating
+	}
+	if got, want := factor(9), math.Sqrt(1.6*2.4); !near(got, want) || got <= factor(8) || got >= factor(10) {
+		t.Errorf("4½★ = %v, want %v, between 4★ and 5★", got, want)
+	}
+	if got, want := factor(7), math.Sqrt(1.0*1.6); !near(got, want) {
+		t.Errorf("3½★ = %v, want %v", got, want)
+	}
+	if got, want := factor(1), 0.2*math.Sqrt(0.2/0.6); !near(got, want) || got >= factor(2) {
+		t.Errorf("½★ = %v, want %v, below 1★", got, want)
+	}
+	half := Explain(unitOf(t, Track{ID: 1, Stars: 1}), s, now)
+	if half.Stars != 0.5 {
+		t.Errorf("½★ reads as %v stars", half.Stars)
+	}
+	if got := half.String(); !strings.HasPrefix(got, "0.5★ ×0.12,") {
+		t.Errorf("½★ String = %q", got)
 	}
 }
 
@@ -82,6 +141,25 @@ func TestHeart(t *testing.T) {
 		if got := Explain(u, Settings{Ratings: tt.ratings}, now).Heart; !near(got, tt.want) {
 			t.Errorf("Ratings %v: got %v, want %v", tt.ratings, got, tt.want)
 		}
+	}
+}
+
+func TestStarsByHeartWeighAsStars(t *testing.T) {
+	t.Parallel()
+	s := Settings{Ratings: 1}
+	for _, halves := range []Stars{2, 7, 8, 9, 10} {
+		own := Explain(unitOf(t, Track{ID: 1, Stars: halves, Hearted: true}), s, now)
+		by := Explain(unitOf(t, Track{ID: 1, Stars: halves, Hearted: true, ByHeart: true}), s, now)
+		if by.Rating != own.Rating || by.Stars != own.Stars || by.Heart != own.Heart || by.Weight() != own.Weight() {
+			t.Errorf("%d halves: by heart %+v, rated %+v: want the same weight, the heart's factor stacking", halves, by, own)
+		}
+		if by.ByHeart != 1 || own.ByHeart != 0 {
+			t.Errorf("%d halves: ByHeart = %d by heart and %d rated, want 1 and 0", halves, by.ByHeart, own.ByHeart)
+		}
+	}
+	run := Explain(unitOf(t, Track{ID: 1, Stars: 9, Hearted: true, ByHeart: true}, Track{ID: 2, Stars: 10}, Track{ID: 3}), s, now)
+	if run.Stars != 4.75 || run.ByHeart != 1 {
+		t.Errorf("a run of 4½ by heart, 5 and unrated: %v★, %d by heart, want 4.75★, 1", run.Stars, run.ByHeart)
 	}
 }
 
@@ -170,7 +248,7 @@ func TestMemory(t *testing.T) {
 func TestWeightIsTheProduct(t *testing.T) {
 	t.Parallel()
 	u := unitOf(t, Track{
-		ID: 1, Stars: 5, Hearted: true,
+		ID: 1, Stars: MaxStars, Hearted: true,
 		History: History{LastPlayed: now.Add(-7 * day), EarlySkips: 1, ShuffleStarts: 2, ShuffleSkips: 1, Listens: 2, Heard: 1.5},
 	})
 	s := Settings{Ratings: 1, Memory: true}
@@ -186,7 +264,7 @@ func TestWeightIsTheProduct(t *testing.T) {
 
 func TestSettingsAreClamped(t *testing.T) {
 	t.Parallel()
-	u := unitOf(t, Track{ID: 1, Stars: 5})
+	u := unitOf(t, Track{ID: 1, Stars: MaxStars})
 	tests := []struct {
 		ratings, want float64
 	}{{-1, 1}, {2, 2.4}, {math.NaN(), math.Sqrt(2.4)}}

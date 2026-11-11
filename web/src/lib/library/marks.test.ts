@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Marks, type MarkServer } from './marks.svelte';
+import { pressed } from './stars';
 import { ServerError, UnauthorizedError, type Album, type LibraryIndex } from './source';
 
 /** A call the server has yet to answer, which the test settles by hand. */
@@ -171,16 +172,43 @@ describe('marks', () => {
 		expect(marks.hearted('tracks', 't1')).toBe(false);
 	});
 
-	it('pressing the star a song has clears it', async () => {
+	it('rates in halves, and clears', async () => {
 		const { server, asked, answer } = slowServer();
 		const marks = new Marks(server);
 		marks.seedIndex(index(false, 4));
-		marks.press('t1', 4);
+		marks.rate('t1', 3.5);
+		expect(marks.stars('t1')).toBe(3.5);
+		await answer();
+		marks.rate('t1', null);
 		expect(marks.stars('t1')).toBeNull();
 		await answer();
-		marks.press('t1', 2);
-		expect(marks.stars('t1')).toBe(2);
-		expect(asked).toEqual(['stars t1 null', 'stars t1 2']);
+		marks.heard({ kind: 'tracks', id: 't1', stars: 4.5 });
+		expect(marks.stars('t1')).toBe(4.5);
+		expect(asked).toEqual(['stars t1 3.5', 'stars t1 null']);
+	});
+
+	it('counts an unrated heart as the heart stars, and a press on them rates for real', async () => {
+		const { server, asked, answer } = slowServer();
+		const marks = new Marks(server);
+		marks.seedIndex(index(true));
+		expect(marks.counted('t1')).toBeNull();
+		marks.heartStars = 4;
+		expect(marks.counted('t1')).toEqual({ stars: 4, byHeart: true });
+		// A press compares with the song's own stars, none, so pressing the heart's 4 sets 4.
+		marks.rate('t1', pressed(marks.stars('t1'), 4));
+		expect(marks.counted('t1')).toEqual({ stars: 4, byHeart: false });
+		await answer();
+		// Pressing 4 again clears the song's own, and the heart's show again.
+		marks.rate('t1', pressed(marks.stars('t1'), 4));
+		expect(marks.counted('t1')).toEqual({ stars: 4, byHeart: true });
+		await answer();
+		expect(asked).toEqual(['stars t1 4', 'stars t1 null']);
+		// Unhearted, it's unrated; a hearted album or artist gives it nothing.
+		marks.setHeart('tracks', 't1', false);
+		expect(marks.counted('t1')).toBeNull();
+		expect(marks.hearted('albums', 'al')).toBe(true);
+		marks.reset();
+		expect(marks.heartStars).toBe(0);
 	});
 
 	it('puts a mark back quietly when the session has gone', async () => {

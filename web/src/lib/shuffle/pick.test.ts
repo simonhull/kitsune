@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { counted } from '#lib/library/heartStars.ts';
 import type { LibraryIndex } from '#lib/library/source.ts';
 import { candidatesOf, pickUnit, unitsOf, weightOf, type Candidate } from './pick.ts';
 
@@ -40,6 +41,36 @@ describe('weightOf', () => {
 		expect(weightOf({ songs: [song('a', { stars: 4 }), song('b', { stars: 5 })] }, 1)).toBeCloseTo(
 			Math.exp((Math.log(1.6) + Math.log(2.4)) / 2)
 		);
+	});
+
+	it('takes halves, and goes on down under 1★ as the server does', () => {
+		expect(weightOf({ songs: [song('a', { stars: 4.5 })] }, 1)).toBeCloseTo(Math.sqrt(1.6 * 2.4));
+		expect(weightOf({ songs: [song('a', { stars: 0.5 })] }, 1)).toBeCloseTo(
+			0.2 * Math.sqrt(0.2 / 0.6)
+		);
+		expect(weightOf({ songs: [song('a', { stars: 0.5 })] }, 1)).toBeLessThan(
+			weightOf({ songs: [song('a', { stars: 1 })] }, 1)
+		);
+	});
+});
+
+describe('weightOf with hearts counting as stars', () => {
+	/** A song's candidate as the Library makes it: its counted stars, and its heart. */
+	const candidate = (own: number | null, hearted: boolean, heartStars: number): Candidate => {
+		const rating = counted(own, hearted, heartStars);
+		return song('a', { hearted, ...(rating === null ? {} : { stars: rating.stars }) });
+	};
+
+	it('weighs a hearted, unrated song as the server does: the heart stars, and the heart on top', () => {
+		// The server's 4½★ (between 1.6 and 2.4 in log space) and its full heart, 1.5625, at Ratings 1.
+		expect(weightOf({ songs: [candidate(null, true, 4.5)] }, 1)).toBeCloseTo(
+			Math.sqrt(1.6 * 2.4) * 1.5625
+		);
+		expect(weightOf({ songs: [candidate(null, true, 4.5)] }, 1)).toBe(
+			weightOf({ songs: [candidate(4.5, true, 0)] }, 1)
+		);
+		// Off, the heart alone.
+		expect(weightOf({ songs: [candidate(null, true, 0)] }, 1)).toBeCloseTo(1.5625);
 	});
 });
 

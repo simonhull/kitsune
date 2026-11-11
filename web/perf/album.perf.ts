@@ -74,16 +74,22 @@ test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
 				throw new Error(`no request hearted ${id}`);
 			}, third)
 		);
+		// The rating is one slider: the right half of its fourth star sets 4.
+		const rating = row.locator('.rate[role="slider"]');
+		const box = await rating.boundingBox();
+		if (box === null) {
+			throw new Error(`no rating on ${third}`);
+		}
 		await perf.time(
 			star,
 			'click',
 			{
 				kind: 'attribute',
-				selector: `${thirdRow} .rate button:nth-child(4)`,
-				name: 'aria-pressed',
-				value: 'true'
+				selector: `${thirdRow} .rate[role="slider"]`,
+				name: 'aria-valuenow',
+				value: '4'
 			},
-			() => row.locator('.rate button').nth(3).click()
+			() => rating.click({ position: { x: box.width * 0.75, y: box.height / 2 } })
 		);
 		await page.goBack();
 		await page.locator('main .row[data-track]').first().waitFor();

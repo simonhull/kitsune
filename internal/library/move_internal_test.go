@@ -129,7 +129,7 @@ func (m *marker) mark(id string) {
 		err = m.l.st.Heart(ctx, m.userID, store.KindTrack, id)
 	}
 	if err == nil {
-		err = m.l.st.Rate(ctx, m.userID, id, 4)
+		err = m.l.st.Rate(ctx, m.userID, id, 8)
 	}
 	if err != nil {
 		m.l.t.Fatal(err)
@@ -151,7 +151,7 @@ func (m *marker) wantMarked(album, id string) {
 	if err != nil {
 		m.l.t.Fatal(err)
 	}
-	if got := marks.Tracks[id]; !got.Hearted || got.Stars != 4 {
+	if got := marks.Tracks[id]; !got.Hearted || got.Rating != 8 {
 		m.l.t.Errorf("marks of %s on %s = %+v, want hearted with 4 stars", id, album, got)
 	}
 }

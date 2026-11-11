@@ -264,6 +264,15 @@ func TestWAVAndAIFF(t *testing.T) {
 	}
 }
 
+// wavWithChannels is a valid WAV whose fmt chunk claims n channels of two bytes.
+func wavWithChannels(t *testing.T, n uint16) []byte {
+	t.Helper()
+	b := wav(sineSamples(10), 1, 2, false)
+	binary.LittleEndian.PutUint16(b[22:], n)
+	binary.LittleEndian.PutUint16(b[32:], 2*n)
+	return b
+}
+
 func TestRefusals(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -276,6 +285,7 @@ func TestRefusals(t *testing.T) {
 		{"compressed aifc", aiff(sineSamples(10), "ima4", 2), pcm.AIFF, pcm.ErrUnsupported},
 		{"not a wav", []byte("RIFF\x04\x00\x00\x00AVI "), pcm.WAV, pcm.ErrUnsupported},
 		{"truncated wav", wav(sineSamples(10), 1, 2, false)[:30], pcm.WAV, pcm.ErrCorrupt},
+		{"wav with 12 channels", wavWithChannels(t, 12), pcm.WAV, pcm.ErrUnsupported},
 		{"aac", nil, pcm.Kind(99), pcm.ErrUnsupported},
 		{"5.1 mp3", nil, pcm.MP3, pcm.ErrUnsupported},
 	}

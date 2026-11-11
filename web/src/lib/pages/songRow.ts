@@ -3,6 +3,8 @@
  * no state of its own. What lasts is the list's (its selection, its order), and the one long press
  * a finger can make at a time, which lives here once for every row.
  */
+import { keyed, pressed } from '#lib/library/stars.ts';
+import { dropPreview, halfUnder, ownOf, showPreview, valueOf } from '#lib/shell/starsPreview.ts';
 import type { Selection } from './selection.svelte.ts';
 
 /** How long a finger holds a row to start picking songs. */
@@ -185,12 +187,16 @@ export class SongList {
 	}
 }
 
+/** A song's rating slider in a row: StarsInput's. */
+const ratingSlider = '.stars-input';
+
 /** What a click inside a row is for. */
 export type ClickIntent =
 	| { kind: 'play' }
 	| { kind: 'box' }
 	| { kind: 'more' }
-	| { kind: 'rate'; stars: number }
+	/** The stars: the rating slider, which the pointer's x reads. */
+	| { kind: 'rate' }
 	/** Something with its own click: a link, the heart, the handle, a column divider. */
 	| { kind: 'own' };
 
@@ -211,9 +217,8 @@ export function clickIntent(target: Clicked): ClickIntent {
 	if (target.closest('.more') !== null) {
 		return { kind: 'more' };
 	}
-	const star = target.closest('[data-star]');
-	if (star !== null) {
-		return { kind: 'rate', stars: Number(star.getAttribute('data-star')) };
+	if (target.closest(ratingSlider) !== null) {
+		return { kind: 'rate' };
 	}
 	if (target.closest('[data-own-click], a, input, label, button:not(.play)') !== null) {
 		return { kind: 'own' };
@@ -230,7 +235,8 @@ export interface RowHandlers {
 	menu(trackId: string, x: number, y: number): void;
 	/** Space, the arrows and Shift with them, on a row. */
 	key(event: KeyboardEvent, trackId: string): void;
-	rate(trackId: string, stars: number): void;
+	/** Sets a song's rating, null clearing it: the row has already worked out what a press does. */
+	rate(trackId: string, stars: number | null): void;
 	picked(trackId: string): boolean;
 }
 
@@ -257,10 +263,14 @@ export function rowEvents(handlers: RowHandlers): {
 	onclick: (event: MouseEvent) => void;
 	oncontextmenu: (event: MouseEvent) => void;
 	onpointerdown: (event: PointerEvent) => void;
+	onpointermove: (event: PointerEvent) => void;
+	onpointerleave: () => void;
 	onpointerup: () => void;
 	onpointercancel: () => void;
 	onkeydown: (event: KeyboardEvent) => void;
 } {
+	/** The rating showing a preview: one at a time, written to the DOM only (starsPreview.ts). */
+	let previewed: HTMLElement | null = null;
 	return {
 		onclick(event) {
 			const at = rowEvent(event);
@@ -288,9 +298,13 @@ export function rowEvents(handlers: RowHandlers): {
 					handlers.menu(at.trackId, right - 300, bottom + 4);
 					return;
 				}
-				case 'rate':
-					handlers.rate(at.trackId, intent.stars);
+				case 'rate': {
+					const slider = at.target.closest(ratingSlider);
+					if (slider !== null) {
+						handlers.rate(at.trackId, pressed(ownOf(slider), halfUnder(slider, event.clientX)));
+					}
 					return;
+				}
 				case 'own':
 					return;
 				case 'play': {
@@ -326,6 +340,24 @@ export function rowEvents(handlers: RowHandlers): {
 				handlers.pick(at.trackId, 'toggle');
 			});
 		},
+		// A hover over a row's stars shows what a click would set, to the half.
+		onpointermove(event) {
+			if (event.pointerType === 'touch' || !(event.target instanceof Element)) {
+				return;
+			}
+			const slider = event.target.closest<HTMLElement>(ratingSlider);
+			if (slider !== previewed) {
+				dropPreview(previewed);
+				previewed = slider;
+			}
+			if (slider !== null) {
+				showPreview(slider, halfUnder(slider, event.clientX));
+			}
+		},
+		onpointerleave() {
+			dropPreview(previewed);
+			previewed = null;
+		},
 		onpointerup() {
 			longPress.end();
 		},
@@ -334,6 +366,15 @@ export function rowEvents(handlers: RowHandlers): {
 		},
 		onkeydown(event) {
 			const at = rowEvent(event);
+			const slider = at?.target.closest(ratingSlider);
+			if (at !== undefined && slider != null) {
+				const next = keyed(valueOf(slider), event.key);
+				if (next !== undefined && !event.altKey && !event.ctrlKey && !event.metaKey) {
+					event.preventDefault();
+					handlers.rate(at.trackId, next);
+				}
+				return;
+			}
 			if (at?.target.closest('.play') != null) {
 				handlers.key(event, at.trackId);
 			}

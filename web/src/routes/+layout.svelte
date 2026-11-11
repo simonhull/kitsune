@@ -4,8 +4,8 @@
 	import '#lib/styles/tokens.css';
 	import '#lib/styles/base.css';
 	import { onMount, setContext } from 'svelte';
-	import { page } from '$app/state';
-	import { goto, onNavigate, preloadCode } from '$app/navigation';
+	import { page, updated } from '$app/state';
+	import { beforeNavigate, goto, onNavigate, preloadCode } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { paletteFor } from '#lib/cover/palette.ts';
 	import { theme } from '#lib/theme/theme.svelte.ts';
@@ -30,6 +30,7 @@
 	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
 	import { playbackSettings } from '#lib/player/playback.svelte.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import { reloadsInto } from '#lib/shell/freshness.ts';
 	import { shuffles } from '#lib/shuffle/session.svelte.ts';
 	import { shuffleSettings } from '#lib/shuffle/settings.svelte.ts';
 	import Backdrop from '#lib/shell/Backdrop.svelte';
@@ -83,6 +84,22 @@
 	const morphs = startMorphs();
 	setContext(morphsKey, morphs);
 	onNavigate(morphs.navigate);
+	// A newer build waits: the next navigation loads it whole, unless a song would be cut off.
+	beforeNavigate((navigation) => {
+		const to = navigation.to?.url;
+		if (
+			to !== undefined &&
+			reloadsInto({
+				updated: updated.current,
+				sounding: player.sounding,
+				started: player.started,
+				type: navigation.type
+			})
+		) {
+			navigation.cancel();
+			location.href = to.href;
+		}
+	});
 
 	const carrier = createCarrier({
 		hidden: () => document.hidden,
@@ -109,6 +126,24 @@
 		if (library.user !== null) {
 			void playbackSettings.load();
 		}
+	});
+
+	// A change to what hearts count as, here or heard from elsewhere, blends the stars a heart gives
+	// in place (StarsInput's rule): the root says so for a moment, so no row holds an effect of its own.
+	/** Long enough for the blend (160 ms) to run out before the root lets it go. */
+	const starsBlendMs = 200;
+	let heartStarsSeen: number | null = null;
+	let blendTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		const heartStars = library.marks.heartStars;
+		if (heartStarsSeen !== null && heartStars !== heartStarsSeen) {
+			clearTimeout(blendTimer);
+			document.documentElement.dataset['starsBlend'] = '';
+			blendTimer = setTimeout(() => {
+				delete document.documentElement.dataset['starsBlend'];
+			}, starsBlendMs);
+		}
+		heartStarsSeen = heartStars;
 	});
 
 	onMount(() => {

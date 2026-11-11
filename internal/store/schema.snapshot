@@ -512,13 +512,13 @@ CREATE INDEX track_loudness_pool ON track_loudness (album_pool);
 CREATE TABLE track_ratings (
 	user_id  INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
 	track_id INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
-	stars    INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+	halves   INTEGER NOT NULL CHECK (halves BETWEEN 1 AND 10),
 	rated_at INTEGER NOT NULL, -- the latest rating
 	PRIMARY KEY (user_id, track_id)
 ) STRICT, WITHOUT ROWID;
 --   column cid=0 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=1 hidden=0
 --   column cid=1 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=2 hidden=0
---   column cid=2 name=stars type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=halves type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=3 name=rated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 --   foreign key id=1 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE

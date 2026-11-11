@@ -6,6 +6,8 @@ import (
 	"maps"
 	"testing"
 	"time"
+
+	"github.com/simonhull/kitsune/internal/rating"
 )
 
 // Public IDs seedLibrary writes, beside firstTrack.
@@ -35,9 +37,9 @@ func mustHeart(t *testing.T, s *Store, userID int64, kind Kind, id string) {
 	}
 }
 
-func mustRate(t *testing.T, s *Store, userID int64, id string, stars int) {
+func mustRate(t *testing.T, s *Store, userID int64, id string, r rating.Rating) {
 	t.Helper()
-	if err := s.Rate(t.Context(), userID, id, stars); err != nil {
+	if err := s.Rate(t.Context(), userID, id, r); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -88,14 +90,14 @@ func TestUnheartTakesOnlyThatHeart(t *testing.T) {
 	}
 }
 
-func TestRateReplacesTheStars(t *testing.T) {
+func TestRateReplacesTheRating(t *testing.T) {
 	t.Parallel()
 	s, now := markedStore(t)
-	mustRate(t, s, 1, firstTrack, 2)
+	mustRate(t, s, 1, firstTrack, rating.Min)
 	*now = time.UnixMilli(5000)
-	mustRate(t, s, 1, firstTrack, 5)
-	if got := rawRows(t, s.w, "SELECT stars, rated_at FROM track_ratings"); len(got) != 1 || got[0] != "5 5000" {
-		t.Errorf("ratings = %v, want one of 5 at 5000", got)
+	mustRate(t, s, 1, firstTrack, rating.Max)
+	if got := rawRows(t, s.w, "SELECT halves, rated_at FROM track_ratings"); len(got) != 1 || got[0] != "10 5000" {
+		t.Errorf("ratings = %v, want one of 10 halves at 5000", got)
 	}
 	if err := s.Unrate(t.Context(), 1, firstTrack); err != nil {
 		t.Fatal(err)
@@ -108,12 +110,12 @@ func TestRateReplacesTheStars(t *testing.T) {
 	}
 }
 
-func TestRateRefusesStarsOutOfRange(t *testing.T) {
+func TestRateRefusesWhatIsNotARating(t *testing.T) {
 	t.Parallel()
 	s, _ := markedStore(t)
-	for _, stars := range []int{-1, 0, MaxStars + 1} {
-		if err := s.Rate(t.Context(), 1, firstTrack, stars); !errors.Is(err, ErrBadStars) {
-			t.Errorf("Rate(%d) = %v, want ErrBadStars", stars, err)
+	for _, r := range []rating.Rating{rating.None, rating.Max + 1, 255} {
+		if err := s.Rate(t.Context(), 1, firstTrack, r); !errors.Is(err, rating.ErrBad) {
+			t.Errorf("Rate(%d) = %v, want rating.ErrBad", r, err)
 		}
 	}
 }
@@ -147,7 +149,7 @@ func TestMarksKeepUsersApart(t *testing.T) {
 	mustHeart(t, s, other, KindTrack, firstTrack)
 	mustHeart(t, s, other, KindAlbum, seedAlbum)
 	mustHeart(t, s, other, KindArtist, seedArtist)
-	mustRate(t, s, other, firstTrack, 4)
+	mustRate(t, s, other, firstTrack, 8)
 
 	if got := marksOf(t, s, 1); got.Hearted || len(got.Tracks) != 0 {
 		t.Errorf("the first user's marks = %+v, want none", got)
@@ -159,7 +161,7 @@ func TestMarksKeepUsersApart(t *testing.T) {
 	if a := index.Artists[0]; a.Hearted || a.Albums[0].Hearted || a.Albums[0].Tracks[0].Marks != (Marks{}) {
 		t.Errorf("the first user's index = %+v, want no marks", a)
 	}
-	if got := marksOf(t, s, other); !got.Hearted || got.Tracks[firstTrack] != (Marks{Hearted: true, Stars: 4}) {
+	if got := marksOf(t, s, other); !got.Hearted || got.Tracks[firstTrack] != (Marks{Hearted: true, Rating: 8}) {
 		t.Errorf("the second user's marks = %+v", got)
 	}
 }
@@ -171,7 +173,7 @@ func TestIndexCarriesTheUsersMarks(t *testing.T) {
 	mustHeart(t, s, 1, KindAlbum, seedAlbum)
 	mustHeart(t, s, 1, KindTrack, firstTrack)
 	second := fmt.Sprintf("T%025d", 2)
-	mustRate(t, s, 1, second, 3)
+	mustRate(t, s, 1, second, 7)
 
 	index, err := s.LibraryIndex(t.Context(), 1, &IndexOptions{})
 	if err != nil {
@@ -191,7 +193,7 @@ func TestIndexCarriesTheUsersMarks(t *testing.T) {
 			got[tr.ID] = tr.Marks
 		}
 	}
-	if want := map[string]Marks{firstTrack: {Hearted: true}, second: {Stars: 3}}; !maps.Equal(got, want) {
+	if want := map[string]Marks{firstTrack: {Hearted: true}, second: {Rating: 7}}; !maps.Equal(got, want) {
 		t.Errorf("track marks = %v, want %v", got, want)
 	}
 }
@@ -200,7 +202,7 @@ func TestDeletingATrackDeletesItsMarks(t *testing.T) {
 	t.Parallel()
 	s, _ := markedStore(t)
 	mustHeart(t, s, 1, KindTrack, firstTrack)
-	mustRate(t, s, 1, firstTrack, 5)
+	mustRate(t, s, 1, firstTrack, rating.Max)
 	if _, err := s.w.ExecContext(t.Context(), "UPDATE tracks SET missing_since = 1 WHERE ulid = ?", firstTrack); err != nil {
 		t.Fatal(err)
 	}

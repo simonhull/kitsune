@@ -152,6 +152,7 @@
 			trouble = "Signing out didn't work. Try again.";
 		}
 	}
+	import HeartsCard from '#lib/pages/HeartsCard.svelte';
 	import ShuffleCard from '#lib/shuffle/ShuffleCard.svelte';
 	import PlaybackCard from '#lib/player/PlaybackCard.svelte';
 </script>
@@ -219,7 +220,12 @@
 			</div>
 		</section>
 
-		<section aria-labelledby="shuffle-head" class="shuffles" data-morph-part="panel">
+		<section aria-labelledby="hearts-head" class="shuffles" data-morph-part="panel">
+			<h2 id="hearts-head" class="mono">HOW HEARTS COUNT</h2>
+			<HeartsCard />
+		</section>
+
+		<section id="shuffle" aria-labelledby="shuffle-head" class="shuffles" data-morph-part="panel">
 			<h2 id="shuffle-head" class="mono">HOW SHUFFLE CHOOSES</h2>
 			<ShuffleCard />
 		</section>
@@ -693,7 +699,7 @@
 	 * Passwords board puts how you sign in under who you are, where the left column had room.
 	 */
 	.left {
-		grid-row: span 4;
+		grid-row: span 5;
 		min-width: 0;
 	}
 
@@ -701,6 +707,11 @@
 	.shuffles,
 	.where {
 		grid-column: 2;
+	}
+
+	/* The Library Shuffle card's link lands here, clear of the nav. */
+	#shuffle {
+		scroll-margin-top: 120px;
 	}
 
 	/* A 4K screen lays the cards side by side beside the name, rather than stretching one. */

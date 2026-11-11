@@ -3,6 +3,7 @@ import { fnv1a } from '#lib/cover/cover.ts';
 import { letterOf } from '#lib/pages/libraryRows.ts';
 import { normalizeCode } from '#lib/pages/passwords.ts';
 import { discOf, discsOf } from './format.ts';
+import { counted, type Counted } from './heartStars.ts';
 import { partOf } from './indexPatch.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
@@ -398,15 +399,17 @@ const boardHearts: readonly string[] = [
 	'tracks/night-ferry-94-3',
 	'albums/long-way-round-63'
 ];
+/** Ratings in halves, as people give them: a few songs sit between two stars. */
 const boardStars: readonly (readonly [string, number])[] = [
 	['glasshouse-66-1', 5],
-	['glasshouse-66-2', 3],
+	['glasshouse-66-2', 3.5],
+	['glasshouse-66-3', 4.5],
 	['glasshouse-66-5', 4],
 	['glasshouse-66-6', 2],
 	['glasshouse-66-7', 5],
 	['glasshouse-66-9', 4],
 	['tidewrack-41-1', 4],
-	['tidewrack-41-4', 2],
+	['tidewrack-41-4', 2.5],
 	['orbitals-14-2', 5],
 	['sea-sampler-31-2', 4]
 ];
@@ -846,10 +849,11 @@ export interface FixtureOptions {
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
 /** Why a fixture song came up: its marks, and nothing learned. */
-function neutralWhy(rating: number, hearted: boolean): ShuffleWhy {
+function neutralWhy(rating: Counted | null, hearted: boolean): ShuffleWhy {
 	return {
-		stars: rating,
+		stars: rating?.stars ?? 0,
 		rating: 1,
+		heartStars: rating?.byHeart === true ? 1 : 0,
 		hearted,
 		heart: 1,
 		played: false,
@@ -901,7 +905,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			case 'hearted':
 				return all.filter(({ track }) => hearts.has(`tracks/${track.id}`));
 			case 'rated':
-				return all.filter(({ track }) => (stars.get(track.id) ?? 0) >= 4);
+				return all.filter(({ track }) => (countedOf(track.id)?.stars ?? 0) >= 4);
 			case 'library':
 				return all;
 		}
@@ -923,6 +927,15 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	const prefs = new Map<PrefKey, unknown>(
 		Object.entries(options.prefs ?? {}) as [PrefKey, unknown][]
 	);
+	/** The stars a song counts as, by the same rule as the server: its own, else its heart's. */
+	function countedOf(trackId: string): Counted | null {
+		const heartStars = prefs.get('ratings.heart_stars');
+		return counted(
+			stars.get(trackId) ?? null,
+			hearts.has(`tracks/${trackId}`),
+			typeof heartStars === 'number' ? heartStars : 0
+		);
+	}
 	let hasAccounts = options.setup === undefined || options.setup === 'done';
 	let signedOut = options.setup !== undefined;
 	let wrongCodes = 0;
@@ -1323,7 +1336,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 							artwork: album.artwork
 						}
 					],
-					why: neutralWhy(stars.get(track.id) ?? 0, hearts.has(`tracks/${track.id}`))
+					why: neutralWhy(countedOf(track.id), hearts.has(`tracks/${track.id}`))
 				}));
 				const id = `shuffle-${String(shuffles.size + 1)}`;
 				shuffles.set(id, { mode: start.mode, picks });

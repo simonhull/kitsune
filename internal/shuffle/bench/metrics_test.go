@@ -13,7 +13,7 @@ type item struct {
 	tracks  []shuffle.TrackID
 	artists []shuffle.ArtistID
 	albums  []shuffle.AlbumID
-	stars   int // rounded; 0 for unrated
+	stars   int // in whole stars, a half rounded up; 0 for unrated
 }
 
 // primary is the item's primary artist.
@@ -44,7 +44,7 @@ func fromTracks(lib *library, ids []shuffle.TrackID) []item {
 		t := &lib.tracks[id-1]
 		out[i] = item{
 			tracks: []shuffle.TrackID{id}, artists: t.Artists,
-			albums: []shuffle.AlbumID{t.Album}, stars: int(t.Stars),
+			albums: []shuffle.AlbumID{t.Album}, stars: (int(t.Stars) + 1) / 2,
 		}
 	}
 	return out
@@ -141,7 +141,7 @@ func cv(xs []float64) float64 {
 
 // positions adds, by stars, the place (0 to 1) of each item in a finite
 // order to sum, and counts them in n.
-func positions(seq []item, sum *[shuffle.MaxStars + 1]float64, n *[shuffle.MaxStars + 1]int) {
+func positions(seq []item, sum *[wholeStars + 1]float64, n *[wholeStars + 1]int) {
 	for k := range seq {
 		sum[seq[k].stars] += float64(k) / float64(max(1, len(seq)-1))
 		n[seq[k].stars]++
@@ -276,9 +276,9 @@ type fit struct {
 // fidelity compares plays by stars with the share of weight each rating
 // holds: the total variation distance between the two, and the play rate
 // of a 5★ unit over a 1★ unit's next to the same ratio of their weights.
-func fidelity(seq []item, weight *[shuffle.MaxStars + 1]float64, units *[shuffle.MaxStars + 1]int) fit {
+func fidelity(seq []item, weight *[wholeStars + 1]float64, units *[wholeStars + 1]int) fit {
 	tv := 0.0
-	var played [shuffle.MaxStars + 1]float64
+	var played [wholeStars + 1]float64
 	for k := range seq {
 		played[seq[k].stars]++
 	}
@@ -289,6 +289,6 @@ func fidelity(seq []item, weight *[shuffle.MaxStars + 1]float64, units *[shuffle
 	for c := range played {
 		tv += math.Abs(played[c]/float64(len(seq))-weight[c]/total) / 2
 	}
-	rate := func(v *[shuffle.MaxStars + 1]float64, c int) float64 { return v[c] / float64(max(1, units[c])) }
+	rate := func(v *[wholeStars + 1]float64, c int) float64 { return v[c] / float64(max(1, units[c])) }
 	return fit{tv: tv, plays: rate(&played, 5) / rate(&played, 1), weights: rate(weight, 5) / rate(weight, 1)}
 }

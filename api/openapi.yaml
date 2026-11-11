@@ -348,8 +348,9 @@ paths:
       operationId: putRating
       summary: Rate a track for the caller.
       description: >-
-        Gives the track the caller's stars, in place of any it had. An album's
-        rating isn't stored: a client works it out from its tracks.
+        Gives the track the caller's stars, ½ to 5 in halves, in place of any it
+        had. An album's rating isn't stored: a client works it out from its
+        tracks.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - $ref: "#/components/parameters/ItemID"
@@ -1987,8 +1988,8 @@ components:
       description: >-
         The preference: `library.columns`, `ui.theme`, `shuffle.ratings`,
         `shuffle.flow`, `shuffle.memory`, `library.sort`, `albums.sort`,
-        `artists.sort`, `artist.songs` or `playback.untagged_gain`. The server
-        knows which keys there are.
+        `artists.sort`, `artist.songs`, `playback.untagged_gain` or
+        `ratings.heart_stars`. The server knows which keys there are.
       schema: { type: string }
     ItemID:
       name: id
@@ -2127,7 +2128,12 @@ components:
       additionalProperties: false
       required: [stars]
       properties:
-        stars: { type: integer, minimum: 1, maximum: 5 }
+        stars:
+          type: number
+          minimum: 0.5
+          maximum: 5
+          multipleOf: 0.5
+          description: The rating in stars, ½ to 5 in halves. Whole stars are whole numbers.
     Listening:
       type: object
       additionalProperties: false
@@ -2222,7 +2228,7 @@ components:
         kind: { type: string, enum: [tracks, albums, artists] }
         id: { type: string }
         hearted: { type: boolean }
-        stars: { type: integer, minimum: 0, maximum: 5 }
+        stars: { type: number, minimum: 0, maximum: 5, multipleOf: 0.5, description: "The rating in stars, ½ to 5 in halves; 0 for none." }
     EventPrefs:
       type: object
       additionalProperties: false
@@ -2448,10 +2454,11 @@ components:
           type: boolean
           description: Whether the caller has hearted it.
         stars:
-          type: integer
-          minimum: 1
+          type: number
+          minimum: 0.5
           maximum: 5
-          description: The caller's rating. Absent when the caller hasn't rated it.
+          multipleOf: 0.5
+          description: The caller's rating, ½ to 5 stars in halves. Absent when the caller hasn't rated it.
     TrackDetail:
       description: A track's properties, repeated (allOf does not mix with additionalProperties false), plus its album.
       type: object
@@ -2486,10 +2493,11 @@ components:
           type: boolean
           description: Whether the caller has hearted it.
         stars:
-          type: integer
-          minimum: 1
+          type: number
+          minimum: 0.5
           maximum: 5
-          description: The caller's rating. Absent when the caller hasn't rated it.
+          multipleOf: 0.5
+          description: The caller's rating, ½ to 5 stars in halves. Absent when the caller hasn't rated it.
         albumId: { type: string }
         albumEtag:
           type: string
@@ -2622,10 +2630,17 @@ components:
         Why a pick came up: its weight's factors, each a multiplier, and what
         they come from. The client words them. With `memory` off, skips and
         listen time count for nothing and their factors are 1.
-      required: [stars, rating, hearted, heart, played, sinceDays, recency, memory, earlySkips, skipMemory, starts, skips, skipRate, listens, heard, listen, flow]
+      required: [stars, rating, heartStars, hearted, heart, played, sinceDays, recency, memory, earlySkips, skipMemory, starts, skips, skipRate, listens, heard, listen, flow]
       properties:
         stars: { type: number, minimum: 0, maximum: 5, description: "The mean of its rated songs; 0 unrated." }
         rating: { type: number }
+        heartStars:
+          type: integer
+          minimum: 0
+          description: >-
+            How many of the ratings behind `stars` come from a heart: songs the
+            person hearted and never rated, counted as `ratings.heart_stars`.
+            0 for none.
         hearted: { type: boolean }
         heart: { type: number }
         played: { type: boolean, description: "Whether it has come up before, played or skipped." }
@@ -3118,6 +3133,7 @@ components:
         - $ref: "#/components/schemas/ShuffleAmount"
         - $ref: "#/components/schemas/ShuffleMemory"
         - $ref: "#/components/schemas/UntaggedGain"
+        - $ref: "#/components/schemas/HeartStars"
         - $ref: "#/components/schemas/LibrarySort"
         - $ref: "#/components/schemas/ListSort"
         - $ref: "#/components/schemas/ArtistSongs"
@@ -3202,6 +3218,17 @@ components:
       description: >-
         `playback.untagged_gain`: the gain in dB a song plays at while it has no
         ReplayGain, neither tagged nor measured yet; -8 when never set.
+    HeartStars:
+      type: number
+      minimum: 0
+      maximum: 5
+      multipleOf: 0.5
+      description: >-
+        `ratings.heart_stars`: what a hearted song with no stars of its own
+        counts as wherever stars matter (the 4★-and-up filter and shuffle
+        scope, shuffle's weights, Top songs, rating sorts and album averages),
+        from 1 to 5 in halves; 0 for nothing. 0.5 is refused. Nothing is
+        written: a song's `stars` stay the person's own. 0 when never set.
     ShuffleMemory:
       type: boolean
       description: >-
@@ -3363,10 +3390,11 @@ components:
           type: boolean
           description: Whether the caller has hearted it.
         stars:
-          type: integer
-          minimum: 1
+          type: number
+          minimum: 0.5
           maximum: 5
-          description: The caller's rating. Absent when the caller hasn't rated it.
+          multipleOf: 0.5
+          description: The caller's rating, ½ to 5 stars in halves. Absent when the caller hasn't rated it.
         albumArtists:
           type: array
           description: With `fields=albumArtist`. Absent when the track names none.

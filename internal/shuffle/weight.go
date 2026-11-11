@@ -102,7 +102,7 @@ const (
 // straight line in log space.
 //
 //nolint:gochecknoglobals // A fixed table; Go has no const arrays.
-var starCurve = [MaxStars]float64{0.2, 0.6, 1.0, 1.6, 2.4}
+var starCurve = [MaxStars / halvesPerStar]float64{0.2, 0.6, 1.0, 1.6, 2.4}
 
 // Reason is why a unit weighs what it does, and, for a pick, how flow leaned
 // toward it. Every factor is a multiplier; the weight is their product.
@@ -110,6 +110,8 @@ type Reason struct {
 	// Stars is the rating the unit weighs as: the mean of its rated songs, or
 	// 0 for none.
 	Stars float64
+	// ByHeart is how many of the ratings behind Stars come from a heart.
+	ByHeart int
 	// Hearted is whether any song in the unit is hearted.
 	Hearted bool
 	// Played is whether the unit has ever played.
@@ -198,7 +200,7 @@ func Explain(u *Unit, s Settings, now time.Time) Reason {
 		r.Heard = f.heard / float64(f.listens)
 	}
 	if f.rated > 0 {
-		r.Stars = float64(f.starSum) / float64(f.rated)
+		r.Stars, r.ByHeart = f.meanStars(), f.byHeart
 	}
 	if f.hearted {
 		r.Heart = math.Pow(heartAtFull, s.Ratings)
@@ -218,15 +220,27 @@ func Explain(u *Unit, s Settings, now time.Time) Reason {
 	return r
 }
 
+// meanStars is the mean of f's rated members in stars, 0.5 to 5. Halving last
+// is exact, so a mean of whole ratings is the same float it always was.
+func (f *facts) meanStars() float64 {
+	return float64(f.halfSum) / float64(f.rated) / halvesPerStar
+}
+
 // ratingFactor is the rating curve at ratings, for f's mean stars.
 func ratingFactor(f *facts, ratings float64) float64 {
 	stars := float64(unratedStars)
 	if f.rated > 0 {
-		stars = float64(f.starSum) / float64(f.rated)
+		stars = f.meanStars()
 	}
-	lo := int(stars) // 1 to 5: a mean of ratings from 1 to 5
+	lo := int(stars) // 0 to 5: a mean of ratings from ½ to 5
+	if lo < 1 {
+		// Under 1★, only ½★ songs: the curve's first step, 1★ to 2★,
+		// continues down in log space, so ½★ weighs 0.2 × (0.2/0.6)^½.
+		first := math.Log(starCurve[0])
+		return math.Exp(ratings * (first + (stars-1)*(math.Log(starCurve[1])-first)))
+	}
 	w := math.Log(starCurve[lo-1])
-	if lo < int(MaxStars) {
+	if lo < len(starCurve) {
 		frac := stars - float64(lo)
 		w += frac * (math.Log(starCurve[lo]) - w)
 	}

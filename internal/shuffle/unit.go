@@ -16,20 +16,23 @@ type ArtistID int64
 // AlbumID is an album's id in the store.
 type AlbumID int64
 
-// Stars is a person's rating of a song, from 1 to [MaxStars], or [Unrated].
+// Stars is a person's rating of a song in half stars, from 1 (½★) to
+// [MaxStars] (5★), or [Unrated].
 type Stars uint8
 
 const (
 	// Unrated is the rating of a song the person hasn't rated.
 	Unrated Stars = 0
-	// MaxStars is the highest rating.
-	MaxStars Stars = 5
+	// MaxStars is the highest rating, 5★, in half stars.
+	MaxStars Stars = 10
+	// halvesPerStar is how many of [Stars] make a star.
+	halvesPerStar = 2
 )
 
 var (
 	// ErrBadTrack means a track's fields can't be true: a rating over
-	// [MaxStars], a negative count, more skips than starts, or more heard than
-	// listened.
+	// [MaxStars], stars by heart without stars or a heart, a negative count,
+	// more skips than starts, or more heard than listened.
 	ErrBadTrack = errors.New("bad track")
 	// ErrDuplicateTrack means two tracks share an id.
 	ErrDuplicateTrack = errors.New("duplicate track")
@@ -46,8 +49,12 @@ type Track struct {
 	Artists []ArtistID
 	// Album is the song's album.
 	Album AlbumID
-	// Stars is the person's rating.
+	// Stars is the person's rating, in half stars.
 	Stars Stars
+	// ByHeart is whether Stars come from the song's heart, the person not
+	// having rated it: they weigh as any rating, and say where they came from.
+	// It needs Stars and Hearted.
+	ByHeart bool
 	// Hearted is whether the person hearted the song.
 	Hearted bool
 	// Skipped is whether the song is skipped in shuffle: it never comes up
@@ -105,8 +112,9 @@ type Unit struct {
 
 // facts are a unit's signals, combined over its songs.
 type facts struct {
-	starSum    int     // the sum of the rated members' stars
+	halfSum    int     // the sum of the rated members' ratings, in half stars
 	rated      int     // how many members are rated
+	byHeart    int     // how many of those ratings come from a heart
 	hearted    bool    // any member is hearted
 	lastPlayed int64   // the latest member play, Unix ms; 0 for never
 	earlySkips int     // the most early skips of any member
@@ -188,7 +196,7 @@ func indexTracks(tracks []Track) (map[TrackID]int, error) {
 	byID := make(map[TrackID]int, len(tracks))
 	for i := range tracks {
 		t := &tracks[i]
-		if t.Stars > MaxStars || !t.History.valid() {
+		if t.Stars > MaxStars || t.ByHeart && (t.Stars == Unrated || !t.Hearted) || !t.History.valid() {
 			return nil, fmt.Errorf("track %d: %w", t.ID, ErrBadTrack)
 		}
 		if _, dup := byID[t.ID]; dup {
@@ -347,8 +355,11 @@ func (b *builder) unit(members []*Track) Unit {
 // add counts t's signals into f.
 func (f *facts) add(t *Track) {
 	if t.Stars != Unrated {
-		f.starSum += int(t.Stars)
+		f.halfSum += int(t.Stars)
 		f.rated++
+		if t.ByHeart {
+			f.byHeart++
+		}
 	}
 	f.hearted = f.hearted || t.Hearted
 	if !t.History.LastPlayed.IsZero() {

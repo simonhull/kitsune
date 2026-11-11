@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { floor } from '#lib/shell/floor.svelte.ts';
 	import Icon, { heartPath } from '#lib/shell/Icon.svelte';
+	import type { StarsBy } from '#lib/library/stars.ts';
+	import StarsInput from '#lib/shell/StarsInput.svelte';
 	import { factsLine, type SongActions } from './songActions.ts';
 
 	interface Props {
@@ -34,10 +36,18 @@
 	);
 	const facts = $derived(factsLine({ albums, durationMs }));
 
-	function rate(stars: number | null): void {
+	/** What the stars last set, while they are open: the keys go on from it. */
+	let chosen = $state<number | null>(null);
+
+	/** Rates them all. A pointer or a finger is done, and closes the stars; a key may go on. */
+	function rate(stars: number | null, by: StarsBy = 'pointer'): void {
 		actions.rate(stars);
-		rating = false;
-		more = false;
+		chosen = stars;
+		if (by === 'pointer') {
+			rating = false;
+			more = false;
+			chosen = null;
+		}
 	}
 </script>
 
@@ -58,16 +68,8 @@
 {/snippet}
 
 {#snippet stars()}
-	<div class="stars" role="group" aria-label={`Rate all ${String(count)}`}>
-		{#each [1, 2, 3, 4, 5] as star (star)}
-			<button
-				type="button"
-				aria-label={`${String(star)} of 5`}
-				onclick={() => {
-					rate(star);
-				}}>★</button
-			>
-		{/each}
+	<div class="stars">
+		<StarsInput size="bar" value={chosen} label={`Rate all ${String(count)}`} onchange={rate} />
 		<button
 			type="button"
 			class="clear-stars"
@@ -301,20 +303,8 @@
 		align-items: center;
 	}
 
-	.stars button {
-		width: 40px;
-		height: 44px;
-		font-size: 20px;
-		color: var(--star-empty);
-	}
-
-	.stars button:hover,
-	.stars button:has(~ button:not(.clear-stars):hover) {
-		color: var(--star);
-	}
-
 	.stars .clear-stars {
-		width: auto;
+		height: 44px;
 		padding: 0 14px;
 		font-size: 14px;
 		color: var(--text-secondary);
