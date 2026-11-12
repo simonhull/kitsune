@@ -2635,8 +2635,8 @@ components:
       description: >-
         Where the caller is, as `PUT /me/playback` takes it: the queue as track
         IDs, the current song's place in it, and how far in. `later` goes only
-        with `list`, `continues` only with `album`, and `shuffle` with
-        `shuffle` and nothing else.
+        with `list`, `continues` only with `album` and `songs`, and `shuffle`
+        with `shuffle` and nothing else.
       required: [kind, tracks, index, positionMs, ordered, clientId, device]
       properties:
         kind:
@@ -2664,7 +2664,9 @@ components:
           type: string
           minLength: 26
           maxLength: 26
-          description: For `album`, the album it goes on from, down the Library list.
+          description: >-
+            For `album` and `songs`, the album it goes on from, down the Library
+            list.
         shuffle: { $ref: "#/components/schemas/PlaybackShuffleSave" }
         clientId:
           type: string

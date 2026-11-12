@@ -61,8 +61,8 @@ type Record struct {
 	// Tracks are the queue's track ULIDs in play order, and Later the songs a
 	// list only names so far.
 	Tracks, Later []string
-	// Continues is the album ULID an album queue goes on from, down the
-	// Library list.
+	// Continues is the album ULID a queue goes on from, down the Library
+	// list: an album, or songs once the list has put another album after it.
 	Continues string
 	// Index is the current song's place in Tracks.
 	Index      int
@@ -95,7 +95,7 @@ var (
 	errULID       = errors.New("not a ULID")
 	errShuffle    = errors.New("shuffle goes with kind shuffle, and only with it")
 	errLater      = errors.New("later goes only with kind list")
-	errContinues  = errors.New("continues goes only with kind album")
+	errContinues  = errors.New("continues goes only with kind album or songs")
 	errShuffleNeg = errors.New("shuffle position is negative")
 )
 
@@ -144,7 +144,7 @@ func checkPairs(rec *Record) error {
 		return errShuffle
 	case len(rec.Later) > 0 && rec.Kind != List:
 		return errLater
-	case rec.Continues != "" && rec.Kind != Album:
+	case rec.Continues != "" && rec.Kind != Album && rec.Kind != Songs:
 		return errContinues
 	case rec.Shuffle != nil && rec.Shuffle.After < 0:
 		return errShuffleNeg
