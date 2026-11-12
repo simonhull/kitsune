@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -264,6 +265,11 @@ func (s *Server) guarded(rt *route) http.Handler {
 
 // routes lists every operation in the contract.
 func (s *Server) routes() []route {
+	return slices.Concat(s.serverRoutes(), s.meRoutes(), s.libraryRoutes())
+}
+
+// serverRoutes are the public routes and the administrator's.
+func (s *Server) serverRoutes() []route {
 	return []route{
 		{pattern: "GET /healthz", public: true, handle: s.getHealth},
 		{pattern: "GET /readyz", public: true, handle: s.getReady},
@@ -280,6 +286,13 @@ func (s *Server) routes() []route {
 		{pattern: "GET /admin/folders", admin: true, handle: s.getFolders},
 		{pattern: "GET /admin/users", admin: true, handle: s.getUsers},
 		{pattern: "POST /admin/users/{id}/password", admin: true, handle: s.postUserPassword},
+		{pattern: "GET /lastfm/callback", public: true, handle: s.lastfmCallback},
+	}
+}
+
+// meRoutes are the caller's own.
+func (s *Server) meRoutes() []route {
+	return []route{
 		{pattern: "GET /me", handle: s.getMe},
 		{pattern: "POST /me/password", handle: s.postMyPassword},
 		{pattern: "POST /me/plays", handle: s.postPlay},
@@ -291,6 +304,8 @@ func (s *Server) routes() []route {
 		{pattern: "GET /me/listening", handle: s.getListening},
 		{pattern: "GET /me/prefs/{key}", handle: s.getPref},
 		{pattern: "PUT /me/prefs/{key}", handle: s.putPref},
+		{pattern: "GET /me/playback", handle: s.getPlayback},
+		{pattern: "PUT /me/playback", handle: s.putPlayback},
 		{pattern: "GET /me/shuffle/rules", handle: s.getShuffleRules},
 		{pattern: "PUT /me/shuffle/runs", handle: s.putShuffleRun},
 		{pattern: "DELETE /me/shuffle/runs/{id}", handle: s.deleteShuffleRun},
@@ -302,9 +317,14 @@ func (s *Server) routes() []route {
 		{pattern: "PATCH /me/lastfm", handle: s.patchLastfm},
 		{pattern: "DELETE /me/lastfm", handle: s.deleteLastfm},
 		{pattern: "POST /me/lastfm/connect", handle: s.connectLastfm},
-		{pattern: "GET /lastfm/callback", public: true, handle: s.lastfmCallback},
 		{pattern: "POST /me/now-playing", handle: s.postNowPlaying},
 		{pattern: "GET /events", handle: s.getEvents},
+	}
+}
+
+// libraryRoutes read and edit the library.
+func (s *Server) libraryRoutes() []route {
+	return []route{
 		{pattern: "GET /artwork/{hash}", handle: s.getArtwork},
 		{pattern: "GET /albums", handle: s.getAlbums},
 		{pattern: "GET /albums/{id}", handle: s.getAlbum},

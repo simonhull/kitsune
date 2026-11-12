@@ -33,6 +33,7 @@ import {
 	type Me,
 	type ListenReport,
 	type PlayReport,
+	type PlaybackRecord,
 	type Prefs,
 	type ScanIssues,
 	type ScanStatus,
@@ -512,6 +513,29 @@ export function createApiSource({
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(value)
 			}),
+
+		async playback() {
+			try {
+				return await read<PlaybackRecord>('/me/playback');
+			} catch (error) {
+				if (error instanceof ServerError && error.status === 404) {
+					return null;
+				}
+				throw error;
+			}
+		},
+
+		savePlayback: (save, { keepalive }) =>
+			read<undefined>(
+				'/me/playback',
+				{
+					method: 'PUT',
+					keepalive,
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(save)
+				},
+				quietly
+			),
 
 		async ready() {
 			return (await call('/readyz')).ok;

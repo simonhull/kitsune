@@ -100,13 +100,17 @@ INSERT INTO shuffle_sessions (ulid, user_id, scope, mode, seed, position, state,
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: PruneShuffleSessions :exec
--- Keeps a person's latest few shuffles.
+-- Keeps a person's latest few shuffles, and the one their remembered playback
+-- names, so a long-paused shuffle can still go on.
 DELETE FROM shuffle_sessions
 WHERE shuffle_sessions.user_id = sqlc.arg(user_id) AND shuffle_sessions.id NOT IN (
     SELECT k.id FROM shuffle_sessions k
     WHERE k.user_id = sqlc.arg(user_id)
     ORDER BY k.updated_at DESC, k.id DESC
-    LIMIT sqlc.arg(keep));
+    LIMIT sqlc.arg(keep))
+  AND shuffle_sessions.ulid NOT IN (
+    SELECT p.shuffle_id FROM playback p
+    WHERE p.user_id = sqlc.arg(user_id) AND p.shuffle_id IS NOT NULL);
 
 -- name: GetShuffleSession :one
 SELECT ulid, scope, mode, seed, position, state, created_at, updated_at

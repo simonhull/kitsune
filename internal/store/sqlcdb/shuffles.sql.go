@@ -499,6 +499,9 @@ WHERE shuffle_sessions.user_id = ?1 AND shuffle_sessions.id NOT IN (
     WHERE k.user_id = ?1
     ORDER BY k.updated_at DESC, k.id DESC
     LIMIT ?2)
+  AND shuffle_sessions.ulid NOT IN (
+    SELECT p.shuffle_id FROM playback p
+    WHERE p.user_id = ?1 AND p.shuffle_id IS NOT NULL)
 `
 
 type PruneShuffleSessionsParams struct {
@@ -506,7 +509,8 @@ type PruneShuffleSessionsParams struct {
 	Keep   int64
 }
 
-// Keeps a person's latest few shuffles.
+// Keeps a person's latest few shuffles, and the one their remembered playback
+// names, so a long-paused shuffle can still go on.
 func (q *Queries) PruneShuffleSessions(ctx context.Context, arg PruneShuffleSessionsParams) error {
 	_, err := q.exec(ctx, q.pruneShuffleSessionsStmt, pruneShuffleSessions, arg.UserID, arg.Keep)
 	return err

@@ -4,7 +4,6 @@
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { Album, ColumnId } from '#lib/library/source.ts';
-	import { whenSettled } from '#lib/morph/settled.ts';
 	import AlbumHero from '#lib/pages/AlbumHero.svelte';
 	import BulkEditor from '#lib/pages/BulkEditor.svelte';
 	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
@@ -183,16 +182,6 @@
 		return () => {
 			tagEdits.depart(wanted);
 		};
-	});
-
-	// The album last opened is the one cued, but the island mustn't change under a flight.
-	$effect(() => {
-		const loaded = album;
-		if (loaded !== undefined) {
-			return whenSettled(() => {
-				library.cueAlbum(loaded);
-			});
-		}
 	});
 
 	async function openEditor(): Promise<void> {

@@ -168,6 +168,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getLookupStmt, err = db.PrepareContext(ctx, getLookup); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLookup: %w", err)
 	}
+	if q.getPlaybackStmt, err = db.PrepareContext(ctx, getPlayback); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPlayback: %w", err)
+	}
 	if q.getPrefStmt, err = db.PrepareContext(ctx, getPref); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPref: %w", err)
 	}
@@ -375,6 +378,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listLastfmDueUsersStmt, err = db.PrepareContext(ctx, listLastfmDueUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListLastfmDueUsers: %w", err)
 	}
+	if q.listLiveTracksByULIDStmt, err = db.PrepareContext(ctx, listLiveTracksByULID); err != nil {
+		return nil, fmt.Errorf("error preparing query ListLiveTracksByULID: %w", err)
+	}
 	if q.listOwningArtistPlaysStmt, err = db.PrepareContext(ctx, listOwningArtistPlays); err != nil {
 		return nil, fmt.Errorf("error preparing query ListOwningArtistPlays: %w", err)
 	}
@@ -575,6 +581,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertListenStmt, err = db.PrepareContext(ctx, upsertListen); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertListen: %w", err)
+	}
+	if q.upsertPlaybackStmt, err = db.PrepareContext(ctx, upsertPlayback); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertPlayback: %w", err)
 	}
 	if q.upsertPrefStmt, err = db.PrepareContext(ctx, upsertPref); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertPref: %w", err)
@@ -834,6 +843,11 @@ func (q *Queries) Close() error {
 	if q.getLookupStmt != nil {
 		if cerr := q.getLookupStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLookupStmt: %w", cerr)
+		}
+	}
+	if q.getPlaybackStmt != nil {
+		if cerr := q.getPlaybackStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPlaybackStmt: %w", cerr)
 		}
 	}
 	if q.getPrefStmt != nil {
@@ -1181,6 +1195,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listLastfmDueUsersStmt: %w", cerr)
 		}
 	}
+	if q.listLiveTracksByULIDStmt != nil {
+		if cerr := q.listLiveTracksByULIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listLiveTracksByULIDStmt: %w", cerr)
+		}
+	}
 	if q.listOwningArtistPlaysStmt != nil {
 		if cerr := q.listOwningArtistPlaysStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listOwningArtistPlaysStmt: %w", cerr)
@@ -1516,6 +1535,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertListenStmt: %w", cerr)
 		}
 	}
+	if q.upsertPlaybackStmt != nil {
+		if cerr := q.upsertPlaybackStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertPlaybackStmt: %w", cerr)
+		}
+	}
 	if q.upsertPrefStmt != nil {
 		if cerr := q.upsertPrefStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertPrefStmt: %w", cerr)
@@ -1628,6 +1652,7 @@ type Queries struct {
 	getLastfmAccountStmt                   *sql.Stmt
 	getLastfmTrackStmt                     *sql.Stmt
 	getLookupStmt                          *sql.Stmt
+	getPlaybackStmt                        *sql.Stmt
 	getPrefStmt                            *sql.Stmt
 	getShuffleSessionStmt                  *sql.Stmt
 	getTrackAlbumStmt                      *sql.Stmt
@@ -1697,6 +1722,7 @@ type Queries struct {
 	listIndexTracksOfStmt                  *sql.Stmt
 	listLastfmDueStmt                      *sql.Stmt
 	listLastfmDueUsersStmt                 *sql.Stmt
+	listLiveTracksByULIDStmt               *sql.Stmt
 	listOwningArtistPlaysStmt              *sql.Stmt
 	listOwningArtistsStmt                  *sql.Stmt
 	listRunsOfStmt                         *sql.Stmt
@@ -1764,6 +1790,7 @@ type Queries struct {
 	upsertArtworkStmt                      *sql.Stmt
 	upsertLastfmAccountStmt                *sql.Stmt
 	upsertListenStmt                       *sql.Stmt
+	upsertPlaybackStmt                     *sql.Stmt
 	upsertPrefStmt                         *sql.Stmt
 	upsertScanIssueStmt                    *sql.Stmt
 	upsertSettingStmt                      *sql.Stmt
@@ -1823,6 +1850,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getLastfmAccountStmt:                   q.getLastfmAccountStmt,
 		getLastfmTrackStmt:                     q.getLastfmTrackStmt,
 		getLookupStmt:                          q.getLookupStmt,
+		getPlaybackStmt:                        q.getPlaybackStmt,
 		getPrefStmt:                            q.getPrefStmt,
 		getShuffleSessionStmt:                  q.getShuffleSessionStmt,
 		getTrackAlbumStmt:                      q.getTrackAlbumStmt,
@@ -1892,6 +1920,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIndexTracksOfStmt:                  q.listIndexTracksOfStmt,
 		listLastfmDueStmt:                      q.listLastfmDueStmt,
 		listLastfmDueUsersStmt:                 q.listLastfmDueUsersStmt,
+		listLiveTracksByULIDStmt:               q.listLiveTracksByULIDStmt,
 		listOwningArtistPlaysStmt:              q.listOwningArtistPlaysStmt,
 		listOwningArtistsStmt:                  q.listOwningArtistsStmt,
 		listRunsOfStmt:                         q.listRunsOfStmt,
@@ -1959,6 +1988,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertArtworkStmt:                      q.upsertArtworkStmt,
 		upsertLastfmAccountStmt:                q.upsertLastfmAccountStmt,
 		upsertListenStmt:                       q.upsertListenStmt,
+		upsertPlaybackStmt:                     q.upsertPlaybackStmt,
 		upsertPrefStmt:                         q.upsertPrefStmt,
 		upsertScanIssueStmt:                    q.upsertScanIssueStmt,
 		upsertSettingStmt:                      q.upsertSettingStmt,

@@ -43,6 +43,9 @@ import {
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused';
 
+/** What the player tells whoever remembers where it is: a song first sounding, a pause, a seek. */
+export type Heard = 'sounded' | 'paused' | 'seeked';
+
 /** How many tracks may fail in a row before the player stops trying. */
 const mostFailures = 3;
 /** How far before the end the next track starts loading. */
@@ -80,6 +83,12 @@ export class Player implements PlayerView {
 	 * shuffle's queue, or a list's, ahead of it. Each is set by its owner.
 	 */
 	readonly onward: Partial<Record<Onward, (queue: Queue) => void>> = {};
+	/**
+	 * Told when a song first sounds, when it pauses, for a person or not, and when it seeks: what
+	 * saving where it is hangs off. Set by its owner. It must only note the moment and return: it
+	 * runs on the play path.
+	 */
+	heard: (moment: Heard) => void = () => undefined;
 
 	readonly #library: Library;
 	readonly #untagged: () => number;
@@ -100,6 +109,8 @@ export class Player implements PlayerView {
 	#listen: Listen | null = null;
 	/** The listen Last.fm was last told about, as now playing. */
 	#announced: Listen | null = null;
+	/** Set by a restore: the first sound does what beginning the queue would have. */
+	#restored = false;
 
 	/**
 	 * Nothing audio-related exists until the first play: this module loads with no window.
@@ -358,9 +369,9 @@ export class Player implements PlayerView {
 		}
 	}
 
-	/** Plays or pauses. The first press plays what's cued. */
+	/** Plays or pauses. With nothing loaded, there's nothing to do. */
 	toggle(): void {
-		if (this.#startCue(0)) {
+		if (this.queue === null) {
 			return;
 		}
 		if (this.sounding) {
@@ -374,6 +385,27 @@ export class Player implements PlayerView {
 		this.#run += 1;
 		this.status = 'paused';
 		this.#built?.pause();
+		this.heard('paused');
+	}
+
+	/**
+	 * Comes back to where someone left off, paused: the queue, the song and how far in, with no
+	 * sound, no listen and nothing loaded. Play loads the song there and sounds, as after a reload.
+	 */
+	restore(queue: Queue, seconds: number): void {
+		this.#endListen('stopped');
+		this.#fresh();
+		this.#run += 1;
+		this.queue = queue;
+		const current = currentOf(queue);
+		this.position = Math.min(Math.max(seconds, 0), (current?.durationMs ?? 0) / 1000);
+		this.status = 'paused';
+		this.#stale = true;
+		this.#ahead = null;
+		this.#reloadedAt = null;
+		this.#listen = null;
+		this.#restored = true;
+		this.#show();
 	}
 
 	resume(): void {
@@ -396,7 +428,7 @@ export class Player implements PlayerView {
 	}
 
 	next(): void {
-		if (!this.#startCue(1)) {
+		if (this.queue !== null) {
 			this.#fresh();
 			this.#advance(this.#movedOn());
 		}
@@ -413,7 +445,7 @@ export class Player implements PlayerView {
 
 	/** Goes back to the start of the track, or past that to the one before. */
 	previous(): void {
-		if (this.#startCue(0) || this.queue === null) {
+		if (this.queue === null) {
 			return;
 		}
 		this.#fresh();
@@ -445,6 +477,7 @@ export class Player implements PlayerView {
 		if (!this.#stale) {
 			this.#output.seek(this.position);
 		}
+		this.heard('seeked');
 	}
 
 	/** Takes in an album just edited: the names move at once, and the sound doesn't notice. */
@@ -467,6 +500,7 @@ export class Player implements PlayerView {
 		this.#ahead = null;
 		this.#reloadedAt = null;
 		this.#listen = null;
+		this.#restored = false;
 	}
 
 	/** The page is going away, and the song with it: that's no verdict on the song either. */
@@ -498,16 +532,6 @@ export class Player implements PlayerView {
 		this.finished = false;
 	}
 
-	/** With nothing started, the transport means what's cued, `ahead` tracks in. */
-	#startCue(ahead: number): boolean {
-		const cue = this.#library.playing;
-		if (this.queue !== null || cue === null) {
-			return false;
-		}
-		this.play(cue.album, Math.min(cue.index + ahead, cue.trackCount - 1));
-		return true;
-	}
-
 	#begin(queue: Queue, ending: ListenEnding): void {
 		this.#endListen(ending);
 		this.#run += 1;
@@ -518,6 +542,7 @@ export class Player implements PlayerView {
 		this.#stale = false;
 		this.#ahead = null;
 		this.#reloadedAt = null;
+		this.#restored = false;
 		this.#listen = this.#listenFromHere();
 		this.#show();
 		this.onward[onwardOf(queue)]?.(queue);
@@ -539,12 +564,16 @@ export class Player implements PlayerView {
 		return current === null ? null : new Listen(current, Date.now(), position, this.queue?.shuffle);
 	}
 
-	/** Moves the names on. A queue that starts on the track already cued has nothing to carry. */
+	/**
+	 * Moves the names on. With nothing showing, the island arrives at once, in the press's own
+	 * frame; a queue that starts on the track already showing has nothing to carry.
+	 */
 	#show(): void {
 		const show = (): void => {
 			this.#library.showQueue();
 		};
-		if (this.#library.playing?.track.id === this.current?.id) {
+		const showing = this.#library.playing;
+		if (showing === null || showing.track.id === this.current?.id) {
 			show();
 		} else {
 			this.carry(show);
@@ -596,6 +625,14 @@ export class Player implements PlayerView {
 			this.#listen.sounded = true;
 			this.#library.nowPlaying(this.#listen.trackId);
 			this.#library.reportListen(this.#listen.report());
+			this.heard('sounded');
+		}
+		const { queue } = this;
+		if (this.#restored && queue !== null) {
+			// What beginning it would have done: a shuffle tops up, a list fetches its next album.
+			this.#restored = false;
+			this.onward[onwardOf(queue)]?.(queue);
+			this.#feedList(queue);
 		}
 	}
 
@@ -610,6 +647,7 @@ export class Player implements PlayerView {
 		this.#run += 1;
 		this.status = 'paused';
 		this.#stale ||= stale;
+		this.heard('paused');
 	}
 
 	#timed(seconds: number): void {

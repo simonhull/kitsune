@@ -1,5 +1,5 @@
 import { library } from '#lib/library/library.svelte.ts';
-import type { Album, LibraryIndex } from '#lib/library/source.ts';
+import type { Album, LibraryIndex, ShuffleMode, ShuffleScope } from '#lib/library/source.ts';
 import { keepFor, type LibraryFilter } from '#lib/pages/libraryRows.ts';
 import { candidatesOf, unitsOf, type Candidate, type Unit } from './pick.ts';
 import type { ShuffleSource } from './session.svelte.ts';
@@ -122,4 +122,41 @@ async function albumUnits(album: Album): Promise<Unit[]> {
 	);
 	const everyone = [...inScope, ...found.filter((each) => each !== null)];
 	return unitsOf(inScope, everyone);
+}
+
+/**
+ * A remembered shuffle's source, rebuilt from what the server says it draws from, so Now playing
+ * says what it shuffles. An album's or an artist's name shows once it's known. A resumed shuffle
+ * never picks a first song, so its units are none.
+ */
+export function sourceOf(scope: ShuffleScope, mode: ShuffleMode): ShuffleSource {
+	const none = (): Unit[] => [];
+	switch (scope.kind) {
+		case 'library':
+		case 'hearted':
+		case 'rated':
+			return { ...librarySource(scope.kind === 'library' ? 'everything' : scope.kind), mode };
+		case 'tracks':
+			return { ...selectionSource(scope.tracks), mode };
+		case 'album':
+			return {
+				key: `album:${scope.id}`,
+				scope,
+				mode,
+				get label() {
+					return library.album(scope.id)?.title.toUpperCase() ?? 'THIS ALBUM';
+				},
+				units: none
+			};
+		case 'artist':
+			return {
+				key: `artist:${scope.id}`,
+				scope,
+				mode,
+				get label() {
+					return library.artistName(scope.id)?.toUpperCase() ?? 'THIS ARTIST';
+				},
+				units: none
+			};
+	}
 }

@@ -5,6 +5,7 @@ import { normalizeCode } from '#lib/pages/passwords.ts';
 import { discOf, discsOf } from './format.ts';
 import { counted, type Counted } from './heartStars.ts';
 import { partOf } from './indexPatch.ts';
+import { createPlaybackFixture, type PlaybackFixture } from './playbackFixture.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
 	AlbumNotFoundError,
@@ -845,6 +846,10 @@ export interface FixtureOptions {
 	setup?: SetupFixture | undefined;
 	/** The preferences the person has already saved. */
 	prefs?: Partial<Prefs>;
+	/** A remembered record to start with, when this tab has saved none. */
+	playback?: PlaybackFixture | undefined;
+	/** Where the remembered record outlives a reload: `sessionStorage` unless given. */
+	playbackStore?: () => Storage;
 }
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
@@ -922,6 +927,11 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		const done = shuffle.mode === 'finite' && to >= shuffle.picks.length;
 		return { id, mode: shuffle.mode, from, to, songs: shuffle.picks.length, done, picks };
 	}
+	const remembered = createPlaybackFixture({
+		albums: () => held,
+		seed: options.playback,
+		...(options.playbackStore === undefined ? {} : { store: options.playbackStore })
+	});
 	let lastfm = lastfmStatusOf(options.lastfm ?? 'none');
 	let settings = settingsFixture(lastfm.configured);
 	const prefs = new Map<PrefKey, unknown>(
@@ -1229,6 +1239,11 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		setPref: (key, value) =>
 			respond(() => {
 				prefs.set(key, structuredClone(value));
+			}),
+		playback: () => respond(() => remembered.playback()),
+		savePlayback: (save) =>
+			respond(() => {
+				remembered.savePlayback(save);
 			}),
 		ready: () => respond(() => true),
 		albumsPage: (sort, _cursor, limit) =>

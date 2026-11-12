@@ -250,6 +250,34 @@ CREATE TABLE match_states (
 --   column cid=2 name=at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   foreign key id=0 seq=0 table=albums from=album_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 
+-- table playback
+CREATE TABLE playback (
+	user_id       INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+	kind          TEXT    NOT NULL CHECK (kind IN ('album', 'songs', 'list', 'shuffle')),
+	queue         TEXT    NOT NULL,
+	at            INTEGER NOT NULL CHECK (at >= 0), -- the current song's index in tracks
+	position_ms   INTEGER NOT NULL CHECK (position_ms >= 0),
+	ordered       INTEGER NOT NULL CHECK (ordered IN (0, 1)),
+	shuffle_id    TEXT    CHECK (shuffle_id IS NULL OR length(shuffle_id) = 26),
+	shuffle_after INTEGER CHECK (shuffle_after IS NULL OR shuffle_after >= 0),
+	client_id     TEXT    NOT NULL,
+	device        TEXT    NOT NULL CHECK (device IN ('phone', 'tablet', 'computer')),
+	updated_at    INTEGER NOT NULL,
+	CHECK ((kind = 'shuffle') = (shuffle_id IS NOT NULL AND shuffle_after IS NOT NULL))
+) STRICT;
+--   column cid=0 name=user_id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=kind type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=queue type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=position_ms type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=ordered type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=shuffle_id type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=shuffle_after type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=8 name=client_id type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=9 name=device type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=10 name=updated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
 -- table plays
 CREATE TABLE plays (
 	user_id   INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
