@@ -9,3 +9,11 @@ sql:
         out: sqlcdb
         emit_pointers_for_null_types: true
         emit_prepared_queries: true
+  - engine: sqlite
+    schema: navidromedb/schema.sql
+    queries: navidromedb/queries.sql
+    gen:
+      go:
+        package: ndsql
+        out: navidromedb/ndsql
+        emit_pointers_for_null_types: true
