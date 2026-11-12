@@ -12,6 +12,7 @@ import {
 	type Track
 } from '#lib/library/source.ts';
 import { SilentOutput } from '#lib/player/output.ts';
+import { inOrder, picked } from '#lib/player/queue.ts';
 import { Player } from '#lib/player/player.svelte.ts';
 import type { Unit } from './pick.ts';
 import { distinctKeys, Shuffles, type ShuffleSource, type UpNextItem } from './session.svelte.ts';
@@ -331,5 +332,42 @@ describe('distinctKeys', () => {
 		const out = distinctKeys([item('a'), item('b'), item('a'), item('a')]);
 		expect(out.map(({ key }) => key)).toEqual(['a', 'b', 'a#2', 'a#3']);
 		expect(out.map(({ trackIds }) => trackIds[0])).toEqual(['a', 'b', 'a', 'a']);
+	});
+});
+
+describe('a remembered shuffle', () => {
+	it('says where its session stands after the unit playing', async () => {
+		const { library, player, shuffles } = setup();
+		await library.loadAlbum('c');
+		shuffles.start(sourceOf([unitOf('c-1')]));
+		expect(shuffles.current?.resumePoint()).toBeNull();
+		await settle();
+		// The first page gave 12, the lead is playing, three are queued ahead, and the rest wait.
+		expect(shuffles.current?.resumePoint()).toEqual({ after: 1, songs: ['c-1'] });
+		player.next();
+		await settle();
+		expect(shuffles.current?.resumePoint()).toEqual({ after: 2, songs: ['a-0'] });
+	});
+
+	it('goes on with the session after its place, once the song restored sounds', async () => {
+		const { library, player, shuffles, nexts, starts } = setup();
+		await library.loadAlbum('c');
+		const c = albums.get('c');
+		const first = c?.tracks.at(1);
+		if (c === undefined || first === undefined) {
+			throw new Error('no album c');
+		}
+		const ref = { id: 'S9' };
+		player.restore({ ...(picked([{ album: c, track: first }]) ?? inOrder(c)), shuffle: ref }, 30);
+		shuffles.resume(ref, sourceOf([]), 5);
+		await settle();
+		expect(nexts).toEqual([]);
+		player.toggle();
+		await settle();
+		expect(starts).toEqual([]);
+		expect(nexts.at(0)).toBe(5);
+		expect(shuffles.current?.ref).toBe(ref);
+		const queue = player.queue;
+		expect((queue?.tracks.length ?? 0) - (queue?.index ?? 0) - 1).toBeGreaterThanOrEqual(3);
 	});
 });

@@ -111,7 +111,7 @@ function entryOf(hit: TrackHit): AlbumEntry {
  */
 export class Shuffle {
 	/** The client's ID at first, the server's session once it answers: what listens name. */
-	readonly ref: ShuffleRef = { id: `pending-${newClientId()}` };
+	readonly ref: ShuffleRef;
 	readonly source: ShuffleSource;
 	/** Picks the server gave that aren't queued yet, in order. */
 	picks = $state.raw<ShufflePick[]>([]);
@@ -129,14 +129,55 @@ export class Shuffle {
 	#topping = false;
 	#retryMs = 1000;
 
-	constructor(host: Library, playing: Player, source: ShuffleSource, first: Unit) {
+	/**
+	 * A shuffle whose first unit is `first`. Resuming one the server already keeps, `resumed` gives
+	 * its session, as the queue names it, and the position after `first`: it goes on from there.
+	 */
+	constructor(
+		host: Library,
+		playing: Player,
+		source: ShuffleSource,
+		first: Unit,
+		resumed?: { ref: ShuffleRef; after: number }
+	) {
 		this.#host = host;
 		this.#player = playing;
 		this.source = source;
+		this.ref = resumed?.ref ?? { id: `pending-${newClientId()}` };
+		this.#to = resumed?.after ?? null;
 		this.#first = first.songs[0]?.id ?? '';
 		for (const { id } of first.songs) {
 			this.#unit.set(id, this.#first);
 		}
+	}
+
+	/**
+	 * Where the session stands at the song playing, for remembering it: the songs of the unit
+	 * playing, from the current one on, and the session's position right after that unit. Null
+	 * until the server has answered, or once the player has moved on from this shuffle.
+	 */
+	resumePoint(): { after: number; songs: string[] } | null {
+		const queue = this.#player.queue;
+		const to = this.#to;
+		const current = queue?.tracks.at(queue.index);
+		if (queue === null || queue.shuffle !== this.ref || to === null || current === undefined) {
+			return null;
+		}
+		const unitOf = (id: string): string => this.#unit.get(id) ?? id;
+		const unit = unitOf(current.id);
+		const rest = queue.tracks.slice(queue.index + 1);
+		const sameUnit = rest.findIndex(({ id }) => unitOf(id) !== unit);
+		const run = sameUnit < 0 ? rest : rest.slice(0, sameUnit);
+		// Each change of unit past the one playing is a unit queued ahead.
+		const queuedAhead = rest
+			.slice(run.length)
+			.filter(
+				(track, at, all) => at === 0 || unitOf(track.id) !== unitOf(all[at - 1]?.id ?? '')
+			).length;
+		return {
+			after: Math.max(0, to - this.picks.length - queuedAhead),
+			songs: [current.id, ...run.map(({ id }) => id)]
+		};
 	}
 
 	/** Whether the player is still playing this shuffle. */
@@ -472,6 +513,24 @@ export class Shuffles {
 				void shuffle.begin();
 			}
 		});
+	}
+
+	/**
+	 * Takes up a remembered shuffle the player has just restored: its session goes on after `after`
+	 * once the song playing first sounds, through the player's `onward` hook.
+	 */
+	resume(ref: ShuffleRef, source: ShuffleSource, after: number): void {
+		const queue = this.#player.queue;
+		if (queue?.shuffle !== ref) {
+			return;
+		}
+		const songs = queue.tracks.slice(queue.index).map((track) => ({
+			id: track.id,
+			albumId: albumOf(queue, track).id,
+			hearted: false
+		}));
+		this.#primed = null;
+		this.current = new Shuffle(this.#host, this.#player, source, { songs }, { ref, after });
 	}
 
 	/** Forgets the shuffle, and any pick made ahead: the next person's are their own. */
