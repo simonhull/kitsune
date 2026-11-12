@@ -446,7 +446,7 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
   suite (`web/perf`, Playwright) times clicks, keys and page loads in a release build against generated
   libraries of 1,000 and 50,000 songs, 20 runs each; `internal/server`'s `*Speed` tests time the
-  stream's first byte and `GET /library/index`. Each fails past its budget, and CI's `perf` job runs
+  stream's first byte, `GET /library/index` and `GET /me/home`. Each fails past its budget, and CI's `perf` job runs
   both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
   they were set; on CI they are multiplied by `ciMultiplier`, which comes from CI's own numbers.
 - `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes
