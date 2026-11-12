@@ -73,7 +73,7 @@ func (q *Queries) GroupKeyTaken(ctx context.Context, groupKey string) (bool, err
 const listAlbumCoverFiles = `-- name: ListAlbumCoverFiles :many
 SELECT root, rel_path FROM tracks
 WHERE album_id = ? AND missing_since IS NULL
-ORDER BY coalesce(disc_no, 1), track_no IS NULL, track_no, root || '/' || rel_path
+ORDER BY disc_no NULLS LAST, track_no NULLS LAST, title, root || '/' || rel_path
 `
 
 type ListAlbumCoverFilesRow struct {
@@ -207,19 +207,20 @@ const settleAlbum = `-- name: SettleAlbum :exec
 UPDATE albums SET
     year = (
         SELECT t.year FROM tracks t WHERE t.album_id = albums.id
-        ORDER BY t.missing_since IS NOT NULL, coalesce(t.disc_no, 1), t.track_no IS NULL, t.track_no, t.root || '/' || t.rel_path
+        ORDER BY t.missing_since IS NOT NULL, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.root || '/' || t.rel_path
         LIMIT 1
     ),
     compilation = coalesce((
         SELECT t.compilation FROM tracks t WHERE t.album_id = albums.id
-        ORDER BY t.missing_since IS NOT NULL, coalesce(t.disc_no, 1), t.track_no IS NULL, t.track_no, t.root || '/' || t.rel_path
+        ORDER BY t.missing_since IS NOT NULL, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.root || '/' || t.rel_path
         LIMIT 1
     ), albums.compilation)
 WHERE albums.id = ?
 `
 
-// First tracks are by disc (none is the first), then track number (none comes
-// last), then path, as the scanner's covers rank them; live tracks before missing.
+// An album's first track is the first the Library lists (store.Place): by disc,
+// none after every disc, then track number, none last, then title, then path;
+// live tracks before missing. The scanner's covers rank tracks the same way.
 // An album's year and compilation flag are its first track's.
 func (q *Queries) SettleAlbum(ctx context.Context, id int64) error {
 	_, err := q.exec(ctx, q.settleAlbumStmt, settleAlbum, id)

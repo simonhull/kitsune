@@ -349,7 +349,8 @@ func TestCoverComesFromTheFirstTrack(t *testing.T) {
 		{"the file read first is first", [2]int{1, 1}, [2]int{1, 2}, true},
 		{"the file read last is first", [2]int{1, 2}, [2]int{1, 1}, false},
 		{"disc beats track", [2]int{2, 1}, [2]int{1, 9}, false},
-		{"no disc is the first disc", [2]int{0, 1}, [2]int{1, 2}, true},
+		{"no disc comes after every disc", [2]int{0, 1}, [2]int{1, 2}, false},
+		{"with no disc anywhere, it is one disc", [2]int{0, 1}, [2]int{0, 2}, true},
 		{"no number comes last", [2]int{1, 0}, [2]int{1, 7}, false},
 		{"a tie goes to the path", [2]int{1, 1}, [2]int{1, 1}, true},
 	}
@@ -373,6 +374,27 @@ func TestCoverComesFromTheFirstTrack(t *testing.T) {
 			wantHash(t, l.albumOf("a.flac").hash, want)
 		})
 	}
+}
+
+// On an album with discs and a song with no disc number, the cover is the first
+// listed song's: disc 1's track 2, not the untagged track 1, which a rule that
+// counts no disc as disc 1 would put first.
+func TestCoverOfAMixedDiscAlbumIsTheFirstListedSongs(t *testing.T) {
+	t.Parallel()
+	l := newArtLib(t)
+	l.sequential()
+	root := l.roots[0]
+	rels := []string{"untagged.flac", "disc-1.flac", "disc-2.flac"}
+	for _, rel := range rels {
+		l.copyTo(root, rel, sampleFLAC)
+	}
+	sameAlbum(t, root, rels...)
+	untagged, disc1, disc2 := testPNG(t, red()), testPNG(t, blue()), testPNG(t, color.RGBA{0x10, 0x80, 0x40, 0xFF})
+	numbered(t, root, rels[0], 0, 1, untagged)
+	numbered(t, root, rels[1], 1, 2, disc1)
+	numbered(t, root, rels[2], 2, 1, disc2)
+	l.scan(Full)
+	wantHash(t, l.albumOf(rels[0]).hash, disc1)
 }
 
 func TestCoverIsTheSameEveryFullScan(t *testing.T) {
@@ -409,10 +431,10 @@ func TestLateCoverDoesNotReplaceAnEarlierOne(t *testing.T) {
 		return &store.TrackWrite{TrackNo: n, RelPath: "a", Album: store.AlbumWrite{GroupKey: "g", Artwork: &store.ArtworkWrite{}}}
 	}
 	early, late := track(1), track(5)
-	if !c.take("g", rankOf(late)) || !c.take("g", rankOf(early)) {
+	if !c.take("g", store.PlaceOf(late)) || !c.take("g", store.PlaceOf(early)) {
 		t.Fatal("a track ahead of the album's best did not take it")
 	}
-	if c.take("g", rankOf(late)) {
+	if c.take("g", store.PlaceOf(late)) {
 		t.Error("a later track took the album from an earlier one")
 	}
 	c.settle(early) // The writer sees them in either order.

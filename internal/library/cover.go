@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -32,50 +31,27 @@ var (
 )
 
 // covers finds and stores one cover per album during a read: the one the first
-// track of the album with art has, whichever file a worker happens to finish
-// first. A nil *covers finds nothing.
+// track of the album with art has, by [store.Place], whichever file a worker
+// happens to finish first. A nil *covers finds nothing.
 type covers struct {
 	cache *artwork.Cache
 	log   *slog.Logger
 	mu    sync.Mutex
-	best  map[string]rank // By group key: the first track found with a cover.
+	best  map[string]store.Place // By group key: the first track found with a cover.
 }
 
 func newCovers(cache *artwork.Cache, log *slog.Logger) *covers {
-	return &covers{cache: cache, log: log, best: make(map[string]rank)}
-}
-
-// rank is a track's place in its album when a cover is chosen: lowest disc, then
-// lowest track, then path. No disc tag means the only disc, and a track with no
-// number comes last.
-type rank struct {
-	disc, track int
-	path        string
-}
-
-func rankOf(tw *store.TrackWrite) rank {
-	r := rank{disc: tw.DiscNo, track: tw.TrackNo, path: filepath.Join(tw.Root, tw.RelPath)}
-	if r.disc == 0 {
-		r.disc = 1
-	}
-	if r.track == 0 {
-		r.track = math.MaxInt
-	}
-	return r
-}
-
-func (r rank) before(other rank) bool {
-	return cmp.Or(cmp.Compare(r.disc, other.disc), cmp.Compare(r.track, other.track), strings.Compare(r.path, other.path)) < 0
+	return &covers{cache: cache, log: log, best: make(map[string]store.Place)}
 }
 
 // ahead reports whether r comes before the album's best so far. The caller holds mu.
-func (c *covers) ahead(album string, r rank) bool {
+func (c *covers) ahead(album string, r store.Place) bool {
 	best, ok := c.best[album]
-	return !ok || r.before(best)
+	return !ok || r.Compare(best) < 0
 }
 
 // wants reports whether a cover from r would improve on the album's.
-func (c *covers) wants(album string, r rank) bool {
+func (c *covers) wants(album string, r store.Place) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.ahead(album, r)
@@ -83,7 +59,7 @@ func (c *covers) wants(album string, r rank) bool {
 
 // take makes r the album's best, and reports false when a track before it has
 // got there first.
-func (c *covers) take(album string, r rank) bool {
+func (c *covers) take(album string, r store.Place) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.ahead(album, r) {
@@ -109,7 +85,7 @@ func (c *covers) settle(tw *store.TrackWrite) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.best[tw.Album.GroupKey] != rankOf(tw) {
+	if c.best[tw.Album.GroupKey] != store.PlaceOf(tw) {
 		tw.Album.Artwork = nil
 	}
 }
@@ -122,7 +98,7 @@ func (c *covers) attach(ctx context.Context, f *audiometa.File, j *job, tw *stor
 	if c == nil || c.cache == nil {
 		return nil
 	}
-	r := rankOf(tw)
+	r := store.PlaceOf(tw)
 	if !c.wants(tw.Album.GroupKey, r) {
 		return nil
 	}

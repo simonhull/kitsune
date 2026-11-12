@@ -28,20 +28,21 @@ INSERT INTO album_hearts (user_id, album_id, hearted_at)
 SELECT h.user_id, sqlc.arg(into_id), h.hearted_at FROM album_hearts h WHERE h.album_id = sqlc.arg(from_id)
 ON CONFLICT (user_id, album_id) DO UPDATE SET hearted_at = min(album_hearts.hearted_at, excluded.hearted_at);
 
--- First tracks are by disc (none is the first), then track number (none comes
--- last), then path, as the scanner's covers rank them; live tracks before missing.
+-- An album's first track is the first the Library lists (store.Place): by disc,
+-- none after every disc, then track number, none last, then title, then path;
+-- live tracks before missing. The scanner's covers rank tracks the same way.
 
 -- name: SettleAlbum :exec
 -- An album's year and compilation flag are its first track's.
 UPDATE albums SET
     year = (
         SELECT t.year FROM tracks t WHERE t.album_id = albums.id
-        ORDER BY t.missing_since IS NOT NULL, coalesce(t.disc_no, 1), t.track_no IS NULL, t.track_no, t.root || '/' || t.rel_path
+        ORDER BY t.missing_since IS NOT NULL, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.root || '/' || t.rel_path
         LIMIT 1
     ),
     compilation = coalesce((
         SELECT t.compilation FROM tracks t WHERE t.album_id = albums.id
-        ORDER BY t.missing_since IS NOT NULL, coalesce(t.disc_no, 1), t.track_no IS NULL, t.track_no, t.root || '/' || t.rel_path
+        ORDER BY t.missing_since IS NOT NULL, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.root || '/' || t.rel_path
         LIMIT 1
     ), albums.compilation)
 WHERE albums.id = ?;
@@ -49,7 +50,7 @@ WHERE albums.id = ?;
 -- name: ListAlbumCoverFiles :many
 SELECT root, rel_path FROM tracks
 WHERE album_id = ? AND missing_since IS NULL
-ORDER BY coalesce(disc_no, 1), track_no IS NULL, track_no, root || '/' || rel_path;
+ORDER BY disc_no NULLS LAST, track_no NULLS LAST, title, root || '/' || rel_path;
 
 -- name: ArtistToRename :one
 SELECT a.id, a.name, a.sort_name, a.mbid, (SELECT count(*) FROM track_artists ta WHERE ta.artist_id = a.id) AS links

@@ -101,6 +101,103 @@ func TestWriteBatchGivesAnAlbumItsFirstTracksCompilation(t *testing.T) {
 	}
 }
 
+// mixedDiscs returns one album's tracks, in the order the Library lists them: a
+// disc 1, a disc 2, and a song with no disc number, which comes after both. It
+// is numbered 1 and its path sorts first, so a rule that counts no disc as disc 1
+// would put it first.
+func mixedDiscs() []store.TrackWrite {
+	tws := []store.TrackWrite{newWrite(1), newWrite(2), newWrite(3)}
+	places := []struct{ disc, track, year int }{{1, 2, 1999}, {2, 1, 2005}, {0, 1, 2011}}
+	paths := []string{"a/2.flac", "a/3.flac", "a/1.flac"}
+	for i := range tws {
+		tws[i].Album = tws[0].Album
+		tws[i].DiscNo, tws[i].TrackNo = places[i].disc, places[i].track
+		tws[i].Year, tws[i].Album.Year = places[i].year, places[i].year
+		tws[i].Compilation, tws[i].Album.Compilation = i > 0, i > 0
+		tws[i].RelPath = paths[i]
+	}
+	return tws
+}
+
+// writeMixedDiscs writes mixedDiscs, the first written last, and returns them
+// with the album as the store lists it.
+func writeMixedDiscs(t *testing.T, s *store.Store) ([]store.TrackWrite, store.AlbumDetail) {
+	t.Helper()
+	tws := mixedDiscs()
+	writeAll(t, s, tws[2], tws[1], tws[0])
+	album, err := s.Album(t.Context(), tws[0].Album.ULID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tws, album
+}
+
+// writeTitles returns the titles of tws, in order.
+func writeTitles(tws []store.TrackWrite) []string {
+	out := make([]string, len(tws))
+	for i := range tws {
+		out[i] = tws[i].Title
+	}
+	return out
+}
+
+// The album lists its songs as [store.Place] orders them, untagged after every disc.
+func TestPlaceIsTheOrderAnAlbumLists(t *testing.T) {
+	t.Parallel()
+	tws, album := writeMixedDiscs(t, openUsers(t))
+	listed := make([]string, len(album.Tracks))
+	for i := range album.Tracks {
+		listed[i] = album.Tracks[i].Title
+	}
+	if want := writeTitles(tws); !slices.Equal(listed, want) {
+		t.Fatalf("the album lists %q, want %q", listed, want)
+	}
+	byPlace := slices.Clone(tws)
+	slices.SortFunc(byPlace, func(a, b store.TrackWrite) int { return store.PlaceOf(&a).Compare(store.PlaceOf(&b)) })
+	if placed := writeTitles(byPlace); !slices.Equal(placed, listed) {
+		t.Errorf("Place orders %q, the album lists %q", placed, listed)
+	}
+}
+
+// An album's year and compilation flag are its first song's as the Library
+// shows it: songs with no disc number come after every disc there, so here too.
+func TestAnAlbumsYearIsTheFirstListedSongs(t *testing.T) {
+	t.Parallel()
+	_, album := writeMixedDiscs(t, openUsers(t))
+	if album.Year != 1999 {
+		t.Errorf("year = %d, want 1999, disc 1's", album.Year)
+	}
+	if album.Compilation {
+		t.Error("compilation = true, want false, disc 1's")
+	}
+}
+
+// An edit looks for an album's cover in its files in the order the album lists them.
+func TestAlbumCoverFilesGoInTheAlbumsOrder(t *testing.T) {
+	t.Parallel()
+	s := openUsers(t)
+	tws, _ := writeMixedDiscs(t, s)
+	row, err := s.AlbumRow(t.Context(), tws[0].Album.ULID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := s.AlbumCoverFiles(t.Context(), row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, len(files))
+	for i := range files {
+		got[i] = files[i].RelPath
+	}
+	want := make([]string, len(tws))
+	for i := range tws {
+		want[i] = tws[i].RelPath
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("cover files %q, want %q, the album's order", got, want)
+	}
+}
+
 func fileStates(t *testing.T, s *store.Store) map[string]store.FileState {
 	t.Helper()
 	got, err := s.FileStates(t.Context(), testRoot)
