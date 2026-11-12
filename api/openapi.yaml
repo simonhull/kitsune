@@ -518,6 +518,63 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           $ref: "#/components/responses/Problem"
+  /me/playback:
+    get:
+      operationId: getPlayback
+      summary: Return where the caller left off.
+      description: >-
+        Where the caller left off, resolved against the library now: gone songs
+        are left out, and each song carries its album as it is today. When the
+        song saved as current is gone, the next one after it that exists is
+        current, at 0 ms, and `moved` says so. 404 when nothing is remembered,
+        or nothing of it is left.
+      responses:
+        "200":
+          description: The record.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Playback" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: putPlayback
+      summary: Remember where the caller is.
+      description: >-
+        Replaces the record. Last write wins, and no event is published. At most
+        1,000 songs across `tracks` and `later`, and a body of at most 64 KiB.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaybackSave" }
+      responses:
+        "204":
+          description: Kept.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
   /me/shuffle/rules:
     get:
       operationId: getShuffleRules
@@ -2572,6 +2629,106 @@ components:
           minimum: 0
           maximum: 9007199254740991
           description: Repeats a shuffle of the same songs. Absent for a new one.
+    PlaybackSave:
+      type: object
+      additionalProperties: false
+      description: >-
+        Where the caller is, as `PUT /me/playback` takes it: the queue as track
+        IDs, the current song's place in it, and how far in. `later` goes only
+        with `list`, `continues` only with `album`, and `shuffle` with
+        `shuffle` and nothing else.
+      required: [kind, tracks, index, positionMs, ordered, clientId, device]
+      properties:
+        kind:
+          type: string
+          enum: [album, songs, list, shuffle]
+          description: >-
+            `album` is one album's songs in the order playing; `songs` are
+            songs picked from several albums; `list` is a list's songs taken in
+            so far, plus `later`; `shuffle` is the current song or run of a
+            shuffle session.
+        tracks:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string, minLength: 26, maxLength: 26 }
+        later:
+          type: array
+          maxItems: 1000
+          description: The songs a list only names so far. For `list`.
+          items: { type: string, minLength: 26, maxLength: 26 }
+        index: { type: integer, minimum: 0, description: The current song's place in `tracks`. }
+        positionMs: { type: integer, format: int64, minimum: 0, maximum: 86400000 }
+        ordered: { type: boolean, description: Album gain applies. }
+        continues:
+          type: string
+          minLength: 26
+          maxLength: 26
+          description: For `album`, the album it goes on from, down the Library list.
+        shuffle: { $ref: "#/components/schemas/PlaybackShuffleSave" }
+        clientId:
+          type: string
+          pattern: "^[0-9a-f]{16,64}$"
+          description: The saving browser's own random ID.
+        device:
+          type: string
+          enum: [phone, tablet, computer]
+          description: The coarse form of the saving browser.
+    PlaybackShuffleSave:
+      type: object
+      additionalProperties: false
+      description: For `shuffle`, the session and its position right after the songs saved.
+      required: [id, after]
+      properties:
+        id: { type: string, minLength: 26, maxLength: 26 }
+        after: { type: integer, format: int64, minimum: 0 }
+    Playback:
+      type: object
+      additionalProperties: false
+      description: >-
+        Where the caller left off, as `GET /me/playback` gives it: gone songs
+        left out, each with its album as it is now.
+      required: [kind, tracks, index, positionMs, ordered, moved, clientId, device, updatedAt]
+      properties:
+        kind: { type: string, enum: [album, songs, list, shuffle] }
+        tracks:
+          type: array
+          items: { $ref: "#/components/schemas/PlaybackSong" }
+        later:
+          type: array
+          items: { $ref: "#/components/schemas/PlaybackSong" }
+        index: { type: integer, minimum: 0 }
+        positionMs: { type: integer, format: int64, minimum: 0 }
+        ordered: { type: boolean }
+        moved:
+          type: boolean
+          description: >-
+            The song saved as current is gone; `index` is the next that exists,
+            and `positionMs` is 0.
+        continues: { type: string }
+        shuffle: { $ref: "#/components/schemas/PlaybackShuffle" }
+        clientId: { type: string }
+        device: { type: string, enum: [phone, tablet, computer] }
+        updatedAt: { type: integer, format: int64, description: When it was saved, Unix ms. }
+    PlaybackSong:
+      type: object
+      additionalProperties: false
+      required: [id, albumId]
+      properties:
+        id: { type: string }
+        albumId: { type: string }
+    PlaybackShuffle:
+      type: object
+      additionalProperties: false
+      description: >-
+        The shuffle session a `shuffle` record plays in, with what it draws from
+        and how. When the session is gone, the record comes back as `songs`.
+      required: [id, after, scope, mode]
+      properties:
+        id: { type: string }
+        after: { type: integer, format: int64, minimum: 0 }
+        scope: { $ref: "#/components/schemas/ShuffleScope" }
+        mode: { type: string, enum: [finite, endless] }
     ShuffleScope:
       type: object
       additionalProperties: false

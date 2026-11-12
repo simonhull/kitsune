@@ -634,6 +634,66 @@ type ShuffleScope struct {
 	Tracks []string `json:"tracks,omitzero"`
 }
 
+// PlaybackSave is the body of PUT /me/playback: where the caller is, as track
+// IDs, the current song's place and how far in.
+type PlaybackSave struct {
+	// Kind is album, songs, list or shuffle.
+	Kind   string   `json:"kind"`
+	Tracks []string `json:"tracks"`
+	// Later are the songs a list only names so far.
+	Later []string `json:"later,omitzero"`
+	Index int      `json:"index"`
+	// PositionMs is how far into the current song.
+	PositionMs int64 `json:"positionMs"`
+	Ordered    bool  `json:"ordered"`
+	// Continues is the album an album queue goes on from.
+	Continues string               `json:"continues,omitzero"`
+	Shuffle   *PlaybackShuffleSave `json:"shuffle,omitzero"`
+	ClientID  string               `json:"clientId"`
+	// Device is phone, tablet or computer.
+	Device string `json:"device"`
+}
+
+// PlaybackShuffleSave is a shuffle session and its position after the songs saved.
+type PlaybackShuffleSave struct {
+	ID    string `json:"id"`
+	After int64  `json:"after"`
+}
+
+// Playback is the response to GET /me/playback: where the caller left off, as
+// the library has it now.
+type Playback struct {
+	Kind       string         `json:"kind"`
+	Tracks     []PlaybackSong `json:"tracks"`
+	Later      []PlaybackSong `json:"later,omitzero"`
+	Index      int            `json:"index"`
+	PositionMs int64          `json:"positionMs"`
+	Ordered    bool           `json:"ordered"`
+	// Moved says the song saved as current is gone: Index is the next that
+	// exists, at 0 ms.
+	Moved     bool             `json:"moved"`
+	Continues string           `json:"continues,omitzero"`
+	Shuffle   *PlaybackShuffle `json:"shuffle,omitzero"`
+	ClientID  string           `json:"clientId"`
+	Device    string           `json:"device"`
+	// UpdatedAt is when it was saved, Unix ms.
+	UpdatedAt int64 `json:"updatedAt"`
+}
+
+// PlaybackSong is a remembered song and its album as it is now.
+type PlaybackSong struct {
+	ID      string `json:"id"`
+	AlbumID string `json:"albumId"`
+}
+
+// PlaybackShuffle is the shuffle session a remembered shuffle plays in.
+type PlaybackShuffle struct {
+	ID    string       `json:"id"`
+	After int64        `json:"after"`
+	Scope ShuffleScope `json:"scope"`
+	Mode  string       `json:"mode"`
+}
+
 // ShufflePage is a page of a shuffle: the response to POST /me/shuffles and to
 // GET /me/shuffles/{id}/next.
 type ShufflePage struct {
