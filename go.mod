@@ -13,7 +13,7 @@ require (
 	github.com/ncruces/go-sqlite3 v0.37.0
 	github.com/pb33f/libopenapi v0.42.5
 	github.com/pb33f/libopenapi-validator v0.16.3
-	github.com/simonhull/audiometa v0.14.0
+	github.com/simonhull/audiometa v0.15.0
 	golang.org/x/crypto v0.59.0
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261111203624-6bec4215b57b
 	golang.org/x/image v0.48.0
