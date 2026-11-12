@@ -120,6 +120,11 @@ type field struct {
 	// (LIST/INFO, NAME, AUTH...): mirrors of mp3, read after it and kept in
 	// step only where they exist.
 	native []string
+	// typed reports a field that ID3 writes through audiometa's typed field,
+	// which keeps the native text in step itself, so its native keys aren't
+	// written here: audiometa refuses an edit of both a field and a key it binds
+	// to the field.
+	typed bool
 	// mp3v23 replaces mp3 on an ID3v2.3 tag, which lacks some frames.
 	mp3v23 []string
 	// dependents are deleted on a change, in every format: they were made for the old value.
@@ -217,10 +222,10 @@ var fields = []field{
 		dependents: slices.Concat(keysAlbumArtistSort, keysAlbumArtistMBID, keys("ALBUMARTISTS_SORT", "ALBUMARTIST_CREDIT", "ALBUMARTISTS_CREDIT", "ALBUM ARTIST CREDIT")),
 	},
 	{name: FieldCompilation, flac: keys("COMPILATION"), mp3: keys("TCMP"), m4a: keys("cpil"), valid: validFlag},
-	number(FieldTrack, trackNumber, keys("TRACKNUMBER", "TRACK"), keys("TRCK"), keys("trkn"), "ITRK", "IPRT"),
-	number(FieldTrackTotal, trackTotal, keys("TRACKTOTAL", "TOTALTRACKS", "TRACKC"), keys("TRCK"), keys("trkn")),
-	number(FieldDisc, discNumber, keys("DISCNUMBER", "DISC"), keys("TPOS"), keys("disk")),
-	number(FieldDiscTotal, discTotal, keys("DISCTOTAL", "TOTALDISCS", "DISCC"), keys("TPOS"), keys("disk")),
+	number(FieldTrack, trackNumber, vorbisTrack, keys("TRCK"), keys("trkn"), "ITRK", "IPRT"),
+	numberTotal(FieldTrackTotal, trackTotal, vorbisTrack, keys("TRCK"), keys("trkn")),
+	number(FieldDisc, discNumber, vorbisDisc, keys("TPOS"), keys("disk")),
+	numberTotal(FieldDiscTotal, discTotal, vorbisDisc, keys("TPOS"), keys("disk")),
 	{
 		// ID3v2.3 has no TSST, which audiometa won't write there: its name is a
 		// TXXX. A stray TSST on such a file would still win a scan, so a change
@@ -261,7 +266,10 @@ var fields = []field{
 	{name: FieldBPM, flac: keys("BPM"), mp3: keys("TBPM"), m4a: keys("tmpo"), valid: validBPM},
 	{name: FieldKey, flac: keys("INITIALKEY"), mp3: keys("TKEY"), m4a: keys("INITIALKEY")},
 	{name: FieldCopyright, flac: keys("COPYRIGHT"), mp3: keys("TCOP"), m4a: keys("cprt"), native: keys("ICOP", "(c) ")},
-	{name: FieldComment, flac: keys("COMMENT", "DESCRIPTION"), mp3: keys(keyComment), m4a: keys("\xA9cmt"), native: keys("ICMT", "ANNO")},
+	{
+		name: FieldComment, flac: keys("COMMENT", "DESCRIPTION"), mp3: keys(keyComment), m4a: keys("\xA9cmt"),
+		native: keys("ICMT", "ANNO"), typed: true,
+	},
 	{
 		name: FieldLyrics, flac: keys("LYRICS"), mp3: keys(keyLyrics), m4a: keys("\xA9lyr"),
 		matching: []string{"UNSYNCEDLYRICS"}, frozen: timestamped,
@@ -324,22 +332,98 @@ func timestamped(values []string) bool {
 	return slices.ContainsFunc(values, lyricTimestamp.MatchString)
 }
 
-// number is the row of a numeric field. Its typed field reads every format, since
-// a Vorbis value can be "3/12", and writes the two that keep a number and a total
-// together. Vorbis keeps them apart, under the raw keys, and audiometa reads only
-// some: a value held only by a mirror is still the field's.
-func number(name Field, pick func(*audiometa.Tags) *int, flac, mp3, m4a []string, native ...string) field {
+// vorbisNumbers are the Vorbis keys of a number and of its total. A number key
+// may hold the total too, as "3/12", which audiometa reads as the total while no
+// total key holds one; a change to either keeps that suffix in step.
+type vorbisNumbers struct{ number, total []string }
+
+//nolint:gochecknoglobals // Fixed tables, never written.
+var (
+	vorbisTrack = vorbisNumbers{number: keys("TRACKNUMBER", "TRACK"), total: keys("TRACKTOTAL", "TOTALTRACKS", "TRACKC")}
+	vorbisDisc  = vorbisNumbers{number: keys("DISCNUMBER", "DISC"), total: keys("DISCTOTAL", "TOTALDISCS", "DISCC")}
+)
+
+// writeNumber saves the number, or with none removes it. A number key that
+// holds the total keeps it; once the number is gone, the total key holds it.
+func (n vorbisNumbers) writeNumber(t *audiometa.Tags, values []string) {
+	if len(values) == 0 {
+		total := n.suffix(t)
+		writeKeys(t, n.number, nil)
+		if total != "" && firstValues(t, n.total) == nil {
+			t.Set(n.total[0], total)
+		}
+		return
+	}
+	for i, key := range n.number {
+		if i > 0 && t.Get(key) == nil {
+			continue // A mirror, kept in step only where it exists.
+		}
+		v := values[0]
+		if _, total, held := strings.Cut(t.GetFirst(key), "/"); held {
+			v += "/" + total
+		}
+		t.Set(key, v)
+	}
+}
+
+// writeTotal saves the total, or with none removes it, wherever the file keeps
+// it: in the total keys and after a number. A file that keeps it only after a
+// number keeps it there.
+func (n vorbisNumbers) writeTotal(t *audiometa.Tags, values []string) {
+	after := false
+	for _, key := range n.number {
+		num, _, held := strings.Cut(t.GetFirst(key), "/")
+		if !held {
+			continue
+		}
+		after = true
+		if len(values) > 0 {
+			num += "/" + values[0]
+		}
+		set(t, key, clean([]string{num}))
+	}
+	if !after || len(values) == 0 || slices.ContainsFunc(n.total, func(key string) bool { return t.Get(key) != nil }) {
+		writeKeys(t, n.total, values)
+	}
+}
+
+// suffix returns the total the first number key holding one keeps after its
+// number, or "".
+func (n vorbisNumbers) suffix(t *audiometa.Tags) string {
+	for _, key := range n.number {
+		if _, total, held := strings.Cut(t.GetFirst(key), "/"); held {
+			return total
+		}
+	}
+	return ""
+}
+
+// number is the row of a track or disc number, and [numberTotal] that of its
+// total. Their typed fields read every format, since a Vorbis value can be
+// "3/12", and write the two that keep a number and a total together. Vorbis
+// keeps them under the raw keys, and audiometa reads only some: a value held
+// only by a mirror is still the field's.
+func number(name Field, pick func(*audiometa.Tags) *int, v vorbisNumbers, mp3, m4a []string, native ...string) field {
+	return numeric(name, pick, v.number, v.writeNumber, mp3, m4a, native)
+}
+
+// numberTotal is the row of a track or disc total; see [number].
+func numberTotal(name Field, pick func(*audiometa.Tags) *int, v vorbisNumbers, mp3, m4a []string) field {
+	return numeric(name, pick, v.total, v.writeTotal, mp3, m4a, nil)
+}
+
+func numeric(name Field, pick func(*audiometa.Tags) *int, flac []string, writeVorbis func(*audiometa.Tags, []string), mp3, m4a, native []string) field {
 	return field{
-		name: name, flac: flac, mp3: mp3, m4a: m4a, native: native, valid: validNumber,
+		name: name, flac: flac, mp3: mp3, m4a: m4a, native: native, typed: true, valid: validNumber,
 		read: func(t *audiometa.Tags, keys []string) []string {
 			if n := *pick(t); n != 0 {
 				return []string{strconv.Itoa(n)}
 			}
 			return firstValues(t, keys[1:])
 		},
-		write: func(t *audiometa.Tags, fam family, keys, values []string) {
+		write: func(t *audiometa.Tags, fam family, _, values []string) {
 			if fam == vorbis {
-				writeKeys(t, keys, values)
+				writeVorbis(t, values)
 				return
 			}
 			*pick(t) = 0
@@ -369,9 +453,10 @@ func validFlag(_ family, v string) error {
 	return nil
 }
 
-// validBPM refuses what M4A's integer can't hold.
+// validBPM refuses what M4A's integer can't hold, or would read back otherwise
+// ("07" as "7"), which audiometa refuses too.
 func validBPM(fam family, v string) error {
-	if _, err := strconv.ParseInt(v, 10, 16); err != nil && fam == mp4 {
+	if n, err := strconv.ParseInt(v, 10, 16); (err != nil || strconv.FormatInt(n, 10) != v) && fam == mp4 {
 		return fmt.Errorf("%q is not a whole number: %w", v, ErrUnsupportedEdit)
 	}
 	return nil
@@ -571,7 +656,7 @@ func (f *field) save(t *audiometa.Tags, fam family, old, values []string) {
 			t.Set(key, values...)
 		}
 	}
-	if isID3(fam) {
+	if isID3(fam) && !f.typed {
 		for _, key := range f.native {
 			if t.Get(key) != nil {
 				t.Set(key, values...)
@@ -685,9 +770,9 @@ func (e *Edit) apply(f *audiometa.File) error {
 	return e.applyTags(&f.Tags, fam)
 }
 
-// readsFromID3v1 reports whether f's names came from an ID3v1 trailer. Any
-// ID3v2 title or artist switches that fallback off, so the first edit would
-// silently take the other trailer fields away.
+// readsFromID3v1 reports whether f's names came from an ID3v1 trailer. The
+// table reads ID3v2 frames, which such a file lacks, so an editor would show
+// its title, artist, album and year as empty though a scan shows them.
 func readsFromID3v1(f *audiometa.File) bool {
 	t := &f.Tags
 	return f.Format == audiometa.FormatMP3 && (t.Title != "" || t.Artist != "") && multi(t, keysID3v2Names) == nil
