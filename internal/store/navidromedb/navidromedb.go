@@ -39,11 +39,18 @@ const (
 	ItemArtist = "artist"
 )
 
-// scrobblesTable is the one table the import can do without.
-const scrobblesTable = "scrobbles"
+// The tables the import can do without.
+const (
+	scrobblesTable = "scrobbles"
+	playlistTable  = "playlist"
+	bookmarkTable  = "bookmark"
+
+	// userIDColumn is how the tables that hold a person's rows name them.
+	userIDColumn = "user_id"
+)
 
 // required is every table and column the queries read, as in schema.sql.
-// TestSchemaMatchesRequired holds the two together.
+// TestSchemaMatchesWhatOpenChecks holds the two together.
 var required = []struct { //nolint:gochecknoglobals // Read-only table of what Open checks.
 	table    string
 	columns  []string
@@ -52,16 +59,18 @@ var required = []struct { //nolint:gochecknoglobals // Read-only table of what O
 	{table: "library", columns: []string{"id", "path"}},
 	{table: "media_file", columns: []string{"id", "path", "album_id", "mbz_recording_id", "mbz_release_track_id", "library_id", "missing"}},
 	{table: "user", columns: []string{"id", "user_name"}},
-	{table: "annotation", columns: []string{"user_id", "item_id", "item_type", "play_count", "play_date", "rating", "starred", "starred_at", "rated_at"}},
-	{table: scrobblesTable, columns: []string{"id", "media_file_id", "user_id", "submission_time"}, optional: true},
+	{table: "annotation", columns: []string{userIDColumn, "item_id", "item_type", "play_count", "play_date", "rating", "starred", "starred_at", "rated_at"}},
+	{table: scrobblesTable, columns: []string{"id", "media_file_id", userIDColumn, "submission_time"}, optional: true},
 	{table: "artist", columns: []string{"id", "name", "mbz_artist_id"}},
+	{table: playlistTable, columns: []string{"id", "owner_id"}, optional: true},
+	{table: bookmarkTable, columns: []string{userIDColumn, "item_id"}, optional: true},
 }
 
 // DB is an open Navidrome database. It is safe for concurrent use.
 type DB struct {
-	db           *sql.DB
-	q            *ndsql.Queries
-	hasScrobbles bool
+	db  *sql.DB
+	q   *ndsql.Queries
+	has map[string]bool // The optional tables there are.
 }
 
 // Library is one of Navidrome's music folders.
@@ -129,7 +138,7 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open navidrome database: %w", err)
 	}
-	d := &DB{db: db, q: ndsql.New(db)}
+	d := &DB{db: db, q: ndsql.New(db), has: map[string]bool{}}
 	if err = d.checkShape(ctx); err != nil {
 		return nil, errors.Join(fmt.Errorf("open navidrome database: %w", err), db.Close())
 	}
@@ -210,7 +219,7 @@ func (d *DB) Annotations(ctx context.Context, userID string) ([]Annotation, erro
 // Scrobbles returns the user's scrobbles, by ID; none when the database has
 // no scrobbles table.
 func (d *DB) Scrobbles(ctx context.Context, userID string) ([]Scrobble, error) {
-	if !d.hasScrobbles {
+	if !d.has[scrobblesTable] {
 		return nil, nil
 	}
 	rows, err := d.q.Scrobbles(ctx, userID)
@@ -240,6 +249,33 @@ func (d *DB) Artists(ctx context.Context, ids []string) ([]Artist, error) {
 	return out, nil
 }
 
+// Left is what of a person's the import leaves behind, counted.
+type Left struct {
+	Playlists int // Owned; Kitsune has no playlists yet.
+	Bookmarks int // Resume points in songs; Kitsune keeps none.
+}
+
+// Left counts the user's playlists and bookmarks; none for a table the
+// database lacks.
+func (d *DB) Left(ctx context.Context, userID string) (Left, error) {
+	var l Left
+	if d.has[playlistTable] {
+		n, err := d.q.CountPlaylists(ctx, userID)
+		if err != nil {
+			return Left{}, fmt.Errorf("count playlist: %w", err)
+		}
+		l.Playlists = int(n)
+	}
+	if d.has[bookmarkTable] {
+		n, err := d.q.CountBookmarks(ctx, userID)
+		if err != nil {
+			return Left{}, fmt.Errorf("count bookmark: %w", err)
+		}
+		l.Bookmarks = int(n)
+	}
+	return l, nil
+}
+
 // checkShape checks the tables and columns in required, noting whether the
 // optional scrobbles table is there.
 func (d *DB) checkShape(ctx context.Context) error {
@@ -260,9 +296,7 @@ func (d *DB) checkShape(ctx context.Context) error {
 				missing = append(missing, fmt.Errorf("%w: table %s has no column %s", ErrShape, t.table, c))
 			}
 		}
-		if t.table == scrobblesTable {
-			d.hasScrobbles = true
-		}
+		d.has[t.table] = true
 	}
 	return errors.Join(missing...)
 }

@@ -59,3 +59,16 @@ CREATE TABLE artist (
     name          varchar(255) NOT NULL,
     mbz_artist_id varchar      NOT NULL DEFAULT ''
 );
+
+CREATE TABLE playlist (
+    id       varchar(255) NOT NULL PRIMARY KEY,
+    name     varchar(255) NOT NULL DEFAULT '',
+    owner_id varchar(255) NOT NULL
+);
+
+CREATE TABLE bookmark (
+    user_id   varchar(255) NOT NULL,
+    item_id   varchar(255) NOT NULL,
+    item_type varchar(255) NOT NULL DEFAULT 'media_file',
+    position  INTEGER      NOT NULL DEFAULT 0
+);

@@ -26,6 +26,11 @@ type Artist struct {
 	MbzArtistID string
 }
 
+type Bookmark struct {
+	UserID string
+	ItemID string
+}
+
 type Library struct {
 	ID   int64
 	Path string
@@ -39,6 +44,11 @@ type MediaFile struct {
 	MbzReleaseTrackID string
 	LibraryID         int64
 	Missing           bool
+}
+
+type Playlist struct {
+	ID      string
+	OwnerID string
 }
 
 type Scrobble struct {

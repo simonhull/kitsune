@@ -31,3 +31,9 @@ SELECT id, media_file_id, submission_time FROM scrobbles WHERE user_id = ? ORDER
 
 -- name: Artists :many
 SELECT id, name, mbz_artist_id FROM artist WHERE id IN (sqlc.slice(ids)) ORDER BY id;
+
+-- name: CountPlaylists :one
+SELECT count(*) FROM playlist WHERE owner_id = ?;
+
+-- name: CountBookmarks :one
+SELECT count(*) FROM bookmark WHERE user_id = ?;

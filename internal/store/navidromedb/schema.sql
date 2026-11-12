@@ -49,3 +49,15 @@ CREATE TABLE artist (
     name          varchar(255) NOT NULL,
     mbz_artist_id varchar      NOT NULL
 );
+
+-- Optional, and only counted: Kitsune has no playlists or resume points yet,
+-- so the report says what stays behind.
+CREATE TABLE playlist (
+    id       varchar(255) NOT NULL PRIMARY KEY,
+    owner_id varchar(255) NOT NULL
+);
+
+CREATE TABLE bookmark (
+    user_id varchar(255) NOT NULL,
+    item_id varchar(255) NOT NULL
+);

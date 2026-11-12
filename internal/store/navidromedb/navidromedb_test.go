@@ -37,6 +37,8 @@ var fixture = []string{ //nolint:gochecknoglobals // Read-only fixture shared by
 	`INSERT INTO annotation (user_id, item_id, item_type, starred, starred_at) VALUES ('u1', 'al1', 'album', true, '2025-03-09 01:36:00+00:00')`,
 	`INSERT INTO annotation (user_id, item_id, item_type, rating) VALUES ('u1', 'ar1', 'artist', 5)`,
 	`INSERT INTO scrobbles (id, media_file_id, user_id, submission_time) VALUES (1, 'm1', 'u1', 1767323045), (2, 'm1', 'u1', 1767323000)`,
+	`INSERT INTO playlist (id, owner_id) VALUES ('p1', 'u1'), ('p2', 'u2')`,
+	`INSERT INTO bookmark (user_id, item_id) VALUES ('u1', 'm1'), ('u1', 'm2')`,
 }
 
 func open(t *testing.T, path string) *navidromedb.DB {
@@ -238,6 +240,27 @@ func TestNoScrobblesTableIsNoScrobbles(t *testing.T) {
 	}
 }
 
+func TestLeftCountsWhatStaysBehind(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		extra []string
+		want  navidromedb.Left
+	}{
+		{name: "both tables", want: navidromedb.Left{Playlists: 1, Bookmarks: 2}},
+		{name: "neither table", extra: []string{"DROP TABLE playlist", "DROP TABLE bookmark"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			db := open(t, navidromedbtest.New(t, append(slices.Clone(fixture), tt.extra...)...))
+			if got, err := db.Left(t.Context(), user1); err != nil || got != tt.want {
+				t.Errorf("Left = %+v, %v; want %+v", got, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestNothingReturnedHoldsASecret(t *testing.T) {
 	t.Parallel()
 	db := open(t, navidromedbtest.New(t, fixture...))
@@ -252,6 +275,7 @@ func TestNothingReturnedHoldsASecret(t *testing.T) {
 		{"Annotations", func() (any, error) { return db.Annotations(ctx, user1) }},
 		{"Scrobbles", func() (any, error) { return db.Scrobbles(ctx, user1) }},
 		{"Artists", func() (any, error) { return db.Artists(ctx, []string{artist1, "ar2"}) }},
+		{"Left", func() (any, error) { return db.Left(ctx, user1) }},
 	}
 	for _, c := range calls {
 		got, err := c.call()

@@ -105,6 +105,28 @@ func (q *Queries) Artists(ctx context.Context, ids []string) ([]Artist, error) {
 	return items, nil
 }
 
+const countBookmarks = `-- name: CountBookmarks :one
+SELECT count(*) FROM bookmark WHERE user_id = ?
+`
+
+func (q *Queries) CountBookmarks(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countBookmarks, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPlaylists = `-- name: CountPlaylists :one
+SELECT count(*) FROM playlist WHERE owner_id = ?
+`
+
+func (q *Queries) CountPlaylists(ctx context.Context, ownerID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPlaylists, ownerID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const libraries = `-- name: Libraries :many
 
 SELECT id, path FROM library ORDER BY id
