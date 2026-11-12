@@ -97,6 +97,16 @@ func TrackMBIDKeys() []string {
 	return out
 }
 
+// ReleaseTrackMBIDKeys returns the raw tag keys that hold the MusicBrainz ID
+// of a track on its release, as the store keeps them.
+func ReleaseTrackMBIDKeys() []string {
+	out := make([]string, len(keysReleaseTrackMBID))
+	for i, k := range keysReleaseTrackMBID {
+		out[i] = tagKey(k)
+	}
+	return out
+}
+
 // multi returns the values of the first key in keys that has any.
 func multi(t *audiometa.Tags, keys []string) []string {
 	for _, k := range keys {
