@@ -110,6 +110,20 @@ type Play struct {
 	ClientID string
 }
 
+type Playback struct {
+	UserID       int64
+	Kind         string
+	Queue        string
+	At           int64
+	PositionMs   int64
+	Ordered      int64
+	ShuffleID    *string
+	ShuffleAfter *int64
+	ClientID     string
+	Device       string
+	UpdatedAt    int64
+}
+
 type ScanIssue struct {
 	Root    string
 	RelPath string
