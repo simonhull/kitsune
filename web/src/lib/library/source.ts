@@ -392,6 +392,59 @@ export interface ShufflePage {
 	picks: ShufflePick[];
 }
 
+/** The coarse form of a browser: what a remembered record says it was saved on. */
+export type DeviceForm = 'phone' | 'tablet' | 'computer';
+
+/**
+ * What kind of queue a remembered record holds: one album's songs in the order playing, songs
+ * picked from several albums, a list's songs (taken in so far, then `later`), or a shuffle's
+ * current song or run.
+ */
+export type PlaybackKind = 'album' | 'songs' | 'list' | 'shuffle';
+
+/** Where this browser is, as `PUT /me/playback` takes it: track IDs only. */
+export interface PlaybackSave {
+	kind: PlaybackKind;
+	tracks: string[];
+	/** For a list: the songs it only names so far. */
+	later?: string[];
+	/** The current song's place in `tracks`. */
+	index: number;
+	positionMs: number;
+	/** Album gain applies. */
+	ordered: boolean;
+	/** The album a queue goes on from, down the Library list. */
+	continues?: string;
+	/** For a shuffle: its session, and the position right after the songs saved. */
+	shuffle?: { id: string; after: number };
+	clientId: string;
+	device: DeviceForm;
+}
+
+/** A remembered song, with its album as it is now. */
+export interface PlaybackSong {
+	id: string;
+	albumId: string;
+}
+
+/** Where the person left off, as `GET /me/playback` gives it: gone songs left out. */
+export interface PlaybackRecord {
+	kind: PlaybackKind;
+	tracks: PlaybackSong[];
+	later?: PlaybackSong[];
+	index: number;
+	positionMs: number;
+	ordered: boolean;
+	/** The song saved as current is gone: `index` is the next that exists, at 0 ms. */
+	moved: boolean;
+	continues?: string;
+	shuffle?: { id: string; after: number; scope: ShuffleScope; mode: ShuffleMode };
+	clientId: string;
+	device: DeviceForm;
+	/** When it was saved, Unix ms. */
+	updatedAt: number;
+}
+
 /** What `GET /library/index?fields=` can add to each track. */
 export type IndexField =
 	| 'albumArtist'
@@ -876,6 +929,13 @@ export interface LibrarySource {
 	pref<K extends PrefKey>(key: K): Promise<Prefs[K] | null>;
 	/** Rejects with a {@link ServerError}: 400 for a value the server won't keep. */
 	setPref<K extends PrefKey>(key: K, value: Prefs[K]): Promise<void>;
+	/** Where the caller left off, or null when nothing is remembered or nothing of it is left. */
+	playback(): Promise<PlaybackRecord | null>;
+	/**
+	 * Remembers where the caller is: the last write wins. Best effort, so it goes nowhere on a 401.
+	 * `keepalive` lets it outlive the page.
+	 */
+	savePlayback(save: PlaybackSave, options: { keepalive: boolean }): Promise<void>;
 	/** Reports whether the first scan has finished. */
 	ready(): Promise<boolean>;
 	albumsPage(sort: AlbumSort, cursor?: string, limit?: number): Promise<AlbumPage>;

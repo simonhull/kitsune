@@ -369,3 +369,80 @@ describe('the library index', () => {
 		}
 	});
 });
+
+describe("the fixtures' remembered playback", () => {
+	/** A storage of its own, standing in for a tab's sessionStorage. */
+	function tab(): Storage {
+		const held = new Map<string, string>();
+		return {
+			get length() {
+				return held.size;
+			},
+			clear: () => {
+				held.clear();
+			},
+			getItem: (key) => held.get(key) ?? null,
+			key: (index) => [...held.keys()].at(index) ?? null,
+			removeItem: (key) => {
+				held.delete(key);
+			},
+			setItem: (key, value) => {
+				held.set(key, value);
+			}
+		};
+	}
+
+	it('has nothing remembered at first', async () => {
+		const store = tab();
+		expect(await createFixtureSource({ playbackStore: () => store }).playback()).toBeNull();
+	});
+
+	it('keeps a record across a reload of the same tab', async () => {
+		const store = tab();
+		const first = createFixtureSource({ playbackStore: () => store });
+		await first.savePlayback(
+			{
+				kind: 'album',
+				tracks: ['glasshouse-66-1', 'glasshouse-66-2'],
+				index: 1,
+				positionMs: 5000,
+				ordered: true,
+				clientId: '0123456789abcdef',
+				device: 'computer'
+			},
+			{ keepalive: false }
+		);
+		const again = await createFixtureSource({ playbackStore: () => store }).playback();
+		expect(again).toMatchObject({
+			kind: 'album',
+			index: 1,
+			positionMs: 5000,
+			moved: false,
+			tracks: [
+				{ id: 'glasshouse-66-1', albumId: 'glasshouse-66' },
+				{ id: 'glasshouse-66-2', albumId: 'glasshouse-66' }
+			]
+		});
+	});
+
+	it('seeds a record from another browser', async () => {
+		const store = tab();
+		const record = await createFixtureSource({
+			playback: 'phone',
+			playbackStore: () => store
+		}).playback();
+		expect(record).toMatchObject({ device: 'phone', positionMs: 133_000, moved: false });
+		expect(record?.clientId).toBe('feedfacecafebeef');
+	});
+
+	it('resolves a gone song to the next, at 0, as the server does', async () => {
+		const store = tab();
+		const record = await createFixtureSource({
+			playback: 'gone',
+			playbackStore: () => store
+		}).playback();
+		expect(record?.moved).toBe(true);
+		expect(record?.positionMs).toBe(0);
+		expect(record?.tracks[record.index]?.id).toBe('glasshouse-66-1');
+	});
+});
