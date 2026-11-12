@@ -333,10 +333,12 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   The ladder is 128/512/1024 on the longest side and never upscales; `Path` returns the largest
   rung at or below the request. A zero-size file counts as missing.
 - The scanner finds one cover per album per scan (`covers` in `internal/library/cover.go`): the cover
-  of the album's first track, by disc, track number and path, that has one. A track looks unless one
-  before it has found a cover, and the writer drops a cover that arrives after a better one, so
-  worker order never decides. Art never fails
-  a file: bad images become warnings, cache failures are logged. Folder art is read through
+  of the album's first track that has one. An album's first track, whose cover, year and compilation
+  flag it takes, is the first the Library lists (`store.Place`): by disc, songs with no disc number
+  after every disc, then track number (none last), title and path; `SettleAlbum` and
+  `ListAlbumCoverFiles` spell the same order in SQL. A track looks unless one before it has found a
+  cover, and the writer drops a cover that arrives after a better one, so worker order never
+  decides. Art never fails a file: bad images become warnings, cache failures are logged. Folder art is read through
   `os.Root`, never through `fs.FS` (it rejects non-UTF-8 names).
 - A cover's accent and ground colors come from the encoded 128 rendition, so a fresh render and
   an idempotent `Put` agree.

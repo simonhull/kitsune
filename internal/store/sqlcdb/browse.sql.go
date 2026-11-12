@@ -335,7 +335,9 @@ type ListAlbumTracksRow struct {
 // An album's tracks go by disc, then track number, then title. Those with no
 // disc number come after every disc: on an album with no disc numbers at all,
 // that is all of them, in the same order a single disc has. Every query that
-// lists an album's tracks repeats this order.
+// lists an album's tracks repeats this order, and store.Place states it in Go;
+// the album's first track by it gives the album its cover, year and compilation
+// flag (SettleAlbum in edits.sql).
 // With Kitsune's own loudness measure of each file, and of the album it was
 // pooled into: see migrations/0013_loudness.sql.
 func (q *Queries) ListAlbumTracks(ctx context.Context, albumID int64) ([]ListAlbumTracksRow, error) {

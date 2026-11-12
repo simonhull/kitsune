@@ -215,7 +215,7 @@ func (s *Store) TrackAlbumRows(ctx context.Context, tracks []int64) ([]int64, er
 }
 
 // SettleAlbums gives each album the year and compilation flag of its first
-// track, by disc, track number and path, as covers are chosen: with the tracks
+// track, by [Place], as covers are chosen: with the tracks
 // of an edit written one at a time, the last one written must not decide. An
 // album that is gone is skipped.
 func (s *Store) SettleAlbums(ctx context.Context, albums []int64) error {
