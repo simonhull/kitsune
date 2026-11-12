@@ -47,10 +47,18 @@ async function openArtist(page: Page, id: string): Promise<void> {
 	await atRest(page);
 }
 
-/** Opens the full list, flat, from Top songs. */
+/**
+ * Opens the full list, flat, from Top songs. The grouping is a saved pref, so a test before this one
+ * may have left it by album, if its page closed before the save went: choose flat here, never assume it.
+ */
 async function expand(page: Page): Promise<void> {
 	await page.locator('main .more-all').click();
-	await page.locator('main .songs.expanded .list > .row').nth(11).waitFor();
+	await page.locator('main .songs.expanded').waitFor();
+	const flat = page.getByRole('button', { name: 'FLAT' });
+	if ((await flat.getAttribute('aria-pressed')) !== 'true') {
+		await flat.click();
+	}
+	await page.locator('main .songs.expanded:not(.grouped) .list > .row').nth(11).waitFor();
 	await atRest(page);
 }
 
