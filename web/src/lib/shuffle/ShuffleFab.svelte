@@ -1,6 +1,6 @@
 <!--
 	The Library's Shuffle, as the Shuffle FAB board has it: a fox disc in the corner, on the island's
-	line, that stamps in, presses into its print and plays on the click. What it shuffles and by what
+	line, that stamps in, sinks under a press and plays on the click. What it shuffles and by what
 	are on a card that opens on hover, keyboard focus or a long press; a click or a tap always plays.
 -->
 <script lang="ts">
@@ -41,7 +41,7 @@
 	const id = $props.id();
 
 	let open = $state(false);
-	/** The disc is down on its print: set on the frame of the press, with no transition. */
+	/** The disc is pressed down: set on the frame of the press, with no transition. */
 	let down = $state(false);
 	/** Counts presses, so each one's flourish starts afresh. */
 	let fired = $state(0);
@@ -224,7 +224,6 @@
 	onblur={blurred}
 	onkeydown={onKey}
 >
-	<span class="print" aria-hidden="true"></span>
 	<span class="disc">
 		{#key fired}
 			<span class="glyph" class:fired={fired > 0}
@@ -315,8 +314,6 @@
 	}
 
 	.fab {
-		--print: 3px;
-
 		position: fixed;
 		z-index: 1;
 		right: var(--fab-edge);
@@ -350,16 +347,6 @@
 		outline-offset: 4px;
 	}
 
-	/* The print: a hard ring off register, as a lifted column's offset. The disc presses into it. */
-	.print {
-		position: absolute;
-		inset: 0;
-		border-radius: 50%;
-		border: 2px solid var(--lift-offset);
-		translate: var(--print) var(--print);
-		transition: translate var(--morph-room) var(--curve-room);
-	}
-
 	.disc {
 		position: absolute;
 		inset: 0;
@@ -368,8 +355,11 @@
 		overflow: hidden;
 		border-radius: 50%;
 		background: var(--fox);
-		box-shadow: var(--glass-shadow);
-		transition: translate var(--morph-fast) var(--curve-settle);
+		/* Quiet: no print, a tight edge and a fox glow. It rises to a hover and sinks to a press. */
+		box-shadow: var(--fab-shadow);
+		transition:
+			translate var(--morph-fast) var(--curve-settle),
+			box-shadow var(--morph-fast) var(--curve-settle);
 	}
 
 	/* Grain on the fill: the fox, printed rather than lit. */
@@ -398,22 +388,17 @@
 
 	@media (hover: hover) {
 		.fab:hover .disc {
-			translate: -1px -1px;
-		}
-
-		.fab:hover .print {
-			--print: 4px;
+			translate: 0 -2px;
+			box-shadow: var(--fab-shadow-lift);
 		}
 	}
 
-	/* Down: at once, no transition. The disc lands on its print. */
-	.fab.down .disc {
-		translate: var(--print) var(--print);
+	/* Down: at once, no transition. The disc sinks onto its edge. */
+	.fab.down .disc,
+	.fab.down:hover .disc {
+		translate: 0 1px;
+		box-shadow: var(--fab-shadow-down);
 		transition: none;
-	}
-
-	.fab.down .print {
-		--print: 3px;
 	}
 
 	/* After the song has started: the glyph reprints along its strokes, and one ring goes out. */
@@ -449,13 +434,9 @@
 		}
 	}
 
-	/* Arrival: stamped in, tilted, landing on its print, after the list's first rows. */
+	/* Arrival: stamped in, tilted, after the list's first rows. */
 	.fab.arrive {
 		animation: stamp var(--morph) var(--curve-settle) 120ms backwards;
-	}
-
-	.fab.arrive .print {
-		animation: print-in var(--morph-fast) var(--curve-room) 360ms backwards;
 	}
 
 	@keyframes stamp {
@@ -466,13 +447,6 @@
 
 		45% {
 			opacity: 1;
-		}
-	}
-
-	@keyframes print-in {
-		from {
-			translate: 0 0;
-			opacity: 0;
 		}
 	}
 
@@ -663,30 +637,17 @@
 			animation: fade-in 120ms linear backwards;
 		}
 
-		.fab.arrive .print {
-			animation: none;
-		}
-
 		.fab.away {
 			animation: fade-out 120ms linear forwards;
 		}
 
-		.disc,
-		.print {
+		.disc {
 			transition: none;
 		}
 
 		.fab:hover .disc,
 		.fab.down .disc {
 			translate: 0 0;
-		}
-
-		.fab:hover .print {
-			--print: 3px;
-		}
-
-		.fab.down .disc {
-			box-shadow: 0 0 0 3px var(--lift-offset);
 		}
 
 		.ripple {

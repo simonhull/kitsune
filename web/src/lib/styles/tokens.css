@@ -71,6 +71,13 @@
 	--shadow-hero: 0 40px 90px rgb(0 0 0 / 50%);
 	--shadow-poster: 0 60px 120px rgb(0 0 0 / 55%);
 	--shadow-float: 0 24px 64px rgb(0 0 0 / 60%);
+	/* The Shuffle button: a tight edge under it and a fox glow, at rest, lifted and pressed. */
+	--fab-shadow:
+		0 2px 0 rgb(0 0 0 / 30%), 0 8px 24px -6px color-mix(in srgb, var(--fox) 50%, transparent);
+	--fab-shadow-lift:
+		0 4px 0 rgb(0 0 0 / 30%), 0 14px 30px -6px color-mix(in srgb, var(--fox) 60%, transparent);
+	--fab-shadow-down:
+		0 1px 0 rgb(0 0 0 / 30%), 0 4px 12px -6px color-mix(in srgb, var(--fox) 50%, transparent);
 
 	/* A column lifted to move: its hard offset, printed off register, and the lane's grain. */
 	--lift-offset: rgb(245 241 236 / 80%);
@@ -135,6 +142,13 @@
 	--shadow-hero: 0 40px 90px -34px rgb(60 40 20 / 45%);
 	--shadow-poster: 0 60px 120px -46px rgb(60 40 20 / 50%);
 	--shadow-float: 0 24px 64px -24px rgb(60 40 20 / 35%);
+	/* The Shuffle button: a tight edge under it and a fox glow, at rest, lifted and pressed. */
+	--fab-shadow:
+		0 2px 0 rgb(60 40 20 / 22%), 0 8px 24px -6px color-mix(in srgb, var(--fox) 55%, transparent);
+	--fab-shadow-lift:
+		0 4px 0 rgb(60 40 20 / 22%), 0 14px 30px -6px color-mix(in srgb, var(--fox) 65%, transparent);
+	--fab-shadow-down:
+		0 1px 0 rgb(60 40 20 / 22%), 0 4px 12px -6px color-mix(in srgb, var(--fox) 55%, transparent);
 
 	--lift-offset: rgb(22 18 14 / 85%);
 	--grain-alpha: 0.07;
