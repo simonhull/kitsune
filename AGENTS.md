@@ -84,6 +84,11 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   there are and what each holds, and checks a value on the way in and again on the way out; the
   store keeps the text. A new key is an entry there and its schema in the contract. Server settings
   never go there.
+- Where a person left off is `GET`/`PUT /me/playback`, one record per person, last write wins: track
+  ULIDs (at most 1,000), the index, `positionMs`, and a shuffle's session and position. `internal/playback`
+  alone says what a record holds and resolves it against live tracks on the way out (gone songs
+  dropped, albums as they are now). It publishes no event. `PruneShuffleSessions` keeps the session a
+  record names.
 - `ratings.heart_stars` is what a hearted song with no stars of its own counts as wherever stars are
   read (0 for nothing, else 1★ to 5★ in halves). It is worked out where it's read
   (`prefs.HeartStars.Of`, `marks.counted`), and never written or sent as a song's `stars`.
@@ -393,13 +398,16 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - An artist page's queue is its list as shown, and stops at its end: `player.playList` holds the songs
   ahead as track and album IDs (`Queue.later`) and fetches each next album after the song before it
   has begun, so nothing waits on the play path.
+- Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
+  `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
+  path and only writes once this browser has changed something.
 - `app.html` sets `data-theme` before the first paint, from `localStorage['kitsune.theme']` or the
   system, by the same rule as `lib/theme`'s `resolveTheme`: change them together. The person's choice
   is the `ui.theme` pref, read after sign-in and forgotten at sign-out.
 - An open tab learns of a new build by SvelteKit's version poll (`version.pollInterval` in
-  `web/vite.config.ts`). The next navigation loads it whole, but only when nothing plays and no queue
-  has started (`lib/shell/freshness.ts`), since the queue lives in the tab. The server serves
-  `_app/version.json` uncached for this.
+  `web/vite.config.ts`). The next navigation loads it whole, but only when nothing plays and the
+  server holds where the player is (`lib/shell/freshness.ts`): `reloadsInto` reloads a paused, saved
+  player, which comes back after the load. The server serves `_app/version.json` uncached for this.
 
 ## Speed
 - Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser

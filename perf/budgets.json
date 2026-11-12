@@ -40,7 +40,8 @@
 		"artist-scroll": {
 			"interaction": "Longest frame in a 2 s fling of an artist's 800 songs",
 			"p95Ms": 32
-		}
+		},
+		"resume-island": { "interaction": "Page load to the restored island, paused", "p95Ms": 1000 }
 	},
 	"server": {
 		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 0.5 },
