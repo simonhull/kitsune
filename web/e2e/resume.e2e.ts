@@ -8,15 +8,15 @@ import { expect, fixtures, test } from './fixture';
 test('there is no island until something plays', async ({ page }) => {
 	await page.goto(fixtures('/'));
 	await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
-	const recent = page.getByRole('region', { name: 'Recently added' });
-	await expect(recent.locator('.recent-row > .recent').first()).toBeVisible();
+	const added = page.getByRole('region', { name: 'Just added' });
+	await expect(added.locator('.cover').first()).toBeVisible();
 	const island = page.locator('aside[aria-label="Player"]');
 	await expect(island).toHaveCount(0);
 
 	await page.keyboard.press('Space');
 	await expect(island).toHaveCount(0);
 
-	const card = recent.locator('.recent-row > .recent').first();
+	const card = added.locator('.cover').first();
 	await card.hover();
 	await card.getByRole('button', { name: /^Play / }).click();
 	await expect(island).toBeVisible();
@@ -25,8 +25,8 @@ test('there is no island until something plays', async ({ page }) => {
 
 test('a refresh comes back paused, where it was', async ({ page }) => {
 	await page.goto(fixtures('/'));
-	const recent = page.getByRole('region', { name: 'Recently added' });
-	const card = recent.locator('.recent-row > .recent').first();
+	const added = page.getByRole('region', { name: 'Just added' });
+	const card = added.locator('.cover').first();
 	await card.hover();
 	await card.getByRole('button', { name: /^Play / }).click();
 	const island = page.locator('aside[aria-label="Player"]');

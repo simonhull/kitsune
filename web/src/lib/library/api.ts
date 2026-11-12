@@ -23,6 +23,7 @@ import {
 	type LastfmSwitches,
 	type LibraryFacts,
 	type LibraryIndex,
+	type History,
 	type Listening,
 	type LibrarySource,
 	type LoginFailure,
@@ -436,6 +437,8 @@ export function createApiSource({
 		logout: () => read<undefined>('/auth/logout', { method: 'POST' }),
 
 		listening: () => read<Listening>('/me/listening'),
+
+		history: () => read<History>('/me/home'),
 
 		lastfm: () => read<LastfmStatus>('/me/lastfm'),
 

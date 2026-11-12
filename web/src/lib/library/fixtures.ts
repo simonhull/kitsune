@@ -26,6 +26,7 @@ import {
 	type ArtistDetail,
 	type ListedArtist,
 	type ArtistLink,
+	type History,
 	type IndexField,
 	type LastfmStatus,
 	type LibraryAlbum,
@@ -424,6 +425,41 @@ function listEntry(album: Album): AlbumEntry {
 	delete entry.tracks;
 	return entry as AlbumEntry;
 }
+
+/** An album the fixtures hold, as a list has it. */
+function heldEntry({ id }: AlbumEntry): AlbumEntry[] {
+	const album = albums.get(id);
+	return album === undefined ? [] : [listEntry(album)];
+}
+
+/** Albums the fixtures' person played in the last 90 days, and how often. */
+const boardRepeats: [AlbumEntry, number][] = [
+	[orbitals, 42],
+	[nightFerry, 31],
+	[harbourLights, 18],
+	[quietMachines, 12],
+	[tidewater, 9],
+	[afterHours, 4]
+];
+
+/** What the fixtures' person has played: Home's history rows. */
+const boardHistory: History = {
+	recent: [
+		nightFerry,
+		orbitals,
+		quietMachines,
+		harbourLights,
+		seaSampler,
+		longSummer,
+		redSignal
+	].flatMap(heldEntry),
+	onRepeat: boardRepeats.flatMap(([entry, plays]) =>
+		heldEntry(entry).map((album) => ({ album, plays }))
+	)
+};
+
+/** A person who has played nothing yet. */
+const noHistory: History = { recent: [], onRepeat: [] };
 
 const byName = [...albums.values()]
 	.filter((album) => album.id !== tinLantern.id)
@@ -850,6 +886,8 @@ export interface FixtureOptions {
 	playback?: PlaybackFixture | undefined;
 	/** Where the remembered record outlives a reload: `sessionStorage` unless given. */
 	playbackStore?: () => Storage;
+	/** `none`: a person who has played nothing yet, so Home has no history rows. */
+	history?: 'none' | undefined;
 }
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
@@ -1201,6 +1239,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			}),
 		logout: () => respond(() => undefined),
 		listening: () => respond(() => ({ plays: boardPlays, hearts: hearts.size, rated: stars.size })),
+		history: () => respond(() => (options.history === 'none' ? noHistory : boardHistory)),
 		lastfm: () => respond(() => lastfm),
 		connectLastfm: () =>
 			respond(() => {
@@ -1563,6 +1602,8 @@ export function createScanFixtureSource({
 				};
 			}),
 		ready: () => respond(() => now() - startedAt >= scanMs),
+		// A first scan's library is new: nothing in it has been played.
+		history: () => respond(() => noHistory),
 		albumsPage: (sort, cursor, limit = 60) => respond(() => page(sort, cursor, limit)),
 		album: (id) =>
 			respond(() => {

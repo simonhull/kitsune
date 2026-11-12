@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { healthNote } from '#lib/library/home.ts';
 	import { library, type Load } from '#lib/library/library.svelte.ts';
 	import { SettingsError, type LibraryFolder, type ServerSettings } from '#lib/library/source.ts';
 	import ScanCard from '#lib/pages/ScanCard.svelte';
@@ -206,6 +207,14 @@
 		<p class="lede">Everything this server does, set here. Only administrators see this page.</p>
 		{#if facts !== null}
 			<p class="mono compact">{libraryFactsLine(facts, bytes).toUpperCase()}</p>
+			{#if library.admin}
+				<!-- The nav's Health hides below wide: here is a phone's way there. -->
+				<p class="mono compact">
+					<a href={resolve('/health')}
+						>{healthNote(facts.issues, facts.issueCounts).toUpperCase()}</a
+					>
+				</p>
+			{/if}
 		{/if}
 		<dl>
 			{#if facts !== null}
@@ -213,6 +222,12 @@
 				<dd>{libraryFactsLine(facts, bytes)}</dd>
 				<dt class="mono">LAST SCAN</dt>
 				<dd>{lastScanLine(facts.scan.last, scanning, now)}</dd>
+				{#if library.admin}
+					<dt class="mono">HEALTH</dt>
+					<dd>
+						<a href={resolve('/health')}>{healthNote(facts.issues, facts.issueCounts)}</a>
+					</dd>
+				{/if}
 			{/if}
 			{#if settings !== null}
 				<dt class="mono">VERSION</dt>
