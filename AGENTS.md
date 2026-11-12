@@ -271,8 +271,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   once its own differs.
 - WAV and AIFF keep tags in an ID3v2 chunk and in their own text (LIST/INFO; NAME, AUTH, ANNO).
   A field's `native` keys are mirrors of its ID3 keys, read after them and kept in step where they
-  exist; audiometa mirrors the typed fields itself. The ID3 version, which decides the family, comes
-  from the chunk (`chunks.go`).
+  exist. Kitsune writes them for the fields it edits through raw keys; a `typed` field (track and
+  disc numbers, comment) is mirrored by audiometa itself, which refuses an edit of both a field and a
+  key it binds to the field. The ID3 version, which decides the family, comes from the chunk
+  (`chunks.go`).
 - One library lock covers a whole scan, walk included, and a whole edit. An edit that meets it
   gets `ErrBusy`; a scan that meets an edit waits. Readers never take it. The fingerprint pass holds
   it for one batch at a time (32 files or about 2 s), so an edit or a scan waits out a batch, and

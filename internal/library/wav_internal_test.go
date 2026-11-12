@@ -2,6 +2,7 @@ package library
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -124,6 +125,8 @@ func wantNative(t *testing.T, tw *store.TrackWrite, want map[string][]string, ab
 
 // An edit of a WAV or AIFF file writes its ID3 chunk and keeps the native text
 // the file has in step, so a player that reads only that sees the edit too.
+// Clearing a field takes its native text with it, and a file without native
+// text gains none.
 func TestEditKeepsNativeTextInStep(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -135,6 +138,7 @@ func TestEditKeepsNativeTextInStep(t *testing.T) {
 			keyINAM: {newTitle}, "IART": {artistOne, artistTwo}, keyIPRD: {albumValue},
 			"IGNR": {jazz}, keyICRD: {newDate}, "ICMT": {aComment}, "IPRT": {"7"},
 		}, []string{"ICOP", "ITRK"}},
+		{sampleWAVBare, nil, wavText()},
 		{sampleAIFF, map[string][]string{"NAME": {newTitle}, "ANNO": {aComment}, keyAIFFCopy: {copyright}}, []string{"AUTH"}},
 	}
 	edit := Edit{Fields: map[Field][]string{
@@ -142,6 +146,11 @@ func TestEditKeepsNativeTextInStep(t *testing.T) {
 		FieldGenres: {jazz}, FieldDate: {newDate}, FieldComment: {aComment}, FieldTrack: {"7"},
 		FieldCopyright: {copyright},
 	}}
+	remove := Edit{Fields: maps.Clone(edit.Fields)}
+	delete(remove.Fields, FieldTitle)
+	for name := range remove.Fields {
+		remove.Fields[name] = nil
+	}
 	for _, tt := range tests {
 		t.Run(tt.sample, func(t *testing.T) {
 			t.Parallel()
@@ -158,14 +167,39 @@ func TestEditKeepsNativeTextInStep(t *testing.T) {
 			if *got.Digest != *before.Digest {
 				t.Error("the edit changed the audio digest")
 			}
+			if err := audiometa.Write(path, remove.apply); err != nil {
+				t.Fatalf("clear: %v", err)
+			}
+			wantCleared(t, path, tt.want, tt.absent)
 		})
 	}
+}
+
+// wantCleared checks that the file at path, edited to want and then cleared,
+// holds only its title under the native keys of want, and nothing under absent.
+func wantCleared(t *testing.T, path string, want map[string][]string, absent []string) {
+	t.Helper()
+	kept, gone := map[string][]string{}, slices.Clone(absent)
+	for key, values := range want {
+		if slices.Equal(values, []string{newTitle}) { // The title can't be cleared.
+			kept[key] = values
+		} else {
+			gone = append(gone, key)
+		}
+	}
+	got := reread(t, path)
+	wantNative(t, &got, kept, gone)
+}
+
+// wavText returns the LIST/INFO IDs the table owns.
+func wavText() []string {
+	return []string{keyINAM, "IART", keyIPRD, "IGNR", keyICRD, "ICMT", "ICOP", "ITRK", "IPRT"}
 }
 
 // A raw edit can't reach a native key a field owns, any more than its ID3 frame.
 func TestNativeTextIsReadOnlyRaw(t *testing.T) {
 	t.Parallel()
-	for _, key := range []string{keyINAM, "IART", keyIPRD, "IGNR", keyICRD, "ICMT", "ICOP", "ITRK", "IPRT", "NAME", "AUTH", "ANNO", keyAIFFCopy} {
+	for _, key := range append(wavText(), "NAME", "AUTH", "ANNO", keyAIFFCopy) {
 		if !readOnlyKey(key) {
 			t.Errorf("%q can be edited raw", key)
 		}

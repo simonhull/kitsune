@@ -2,6 +2,7 @@ package library
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -185,6 +186,56 @@ func TestEditUpdatesNumbersRepeatedUnderOtherKeys(t *testing.T) {
 	}
 	if v := rawValues(&got, "DISC"); !slices.Equal(v, []string{"2"}) {
 		t.Errorf("DISC = %q, want the new number", v)
+	}
+}
+
+// A Vorbis number may carry its total ("3/12"), which a scan reads as the total
+// while no total key holds one. An edit of either keeps the other where it is.
+func TestEditKeepsATotalAfterTheNumber(t *testing.T) {
+	t.Parallel()
+	const keyTrack, keyTrackTotal = "TRACKNUMBER", "TRACKTOTAL"
+	tests := []struct {
+		name          string
+		seed          map[string][]string
+		edit          map[Field][]string
+		track, total  int
+		number, count []string // TRACKNUMBER and TRACKTOTAL after the edit.
+	}{
+		{name: "a new number", edit: map[Field][]string{FieldTrack: {"4"}}, track: 4, total: 12, number: []string{"4/12"}},
+		{name: "a new total", edit: map[Field][]string{FieldTrackTotal: {"14"}}, track: 3, total: 14, number: []string{"3/14"}},
+		{name: "no total", edit: map[Field][]string{FieldTrackTotal: nil}, track: 3, number: []string{"3"}},
+		{name: "no number", edit: map[Field][]string{FieldTrack: nil}, total: 12, count: []string{"12"}},
+		{
+			name: "a total key too", seed: map[string][]string{keyTrackTotal: {"12"}},
+			edit: map[Field][]string{FieldTrackTotal: {"14"}}, track: 3, total: 14, number: []string{"3/14"}, count: []string{"14"},
+		},
+		{
+			name: "no total, with a total key", seed: map[string][]string{keyTrackTotal: {"12"}},
+			edit: map[Field][]string{FieldTrackTotal: nil}, track: 3, number: []string{"3"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			path := copySample(t, sampleFLAC)
+			tags := map[string][]string{keyTrack: {"3/12"}, keyTrackTotal: nil, keyTotalTracks: nil}
+			maps.Copy(tags, tt.seed)
+			seed(t, path, tags)
+			edit := Edit{Fields: tt.edit}
+			if err := audiometa.Write(path, edit.apply); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			got := reread(t, path)
+			if got.TrackNo != tt.track || got.TrackTotal != tt.total {
+				t.Errorf("track %d/%d, want %d/%d", got.TrackNo, got.TrackTotal, tt.track, tt.total)
+			}
+			if v := rawValues(&got, keyTrack); !slices.Equal(v, tt.number) {
+				t.Errorf("%s = %q, want %q", keyTrack, v, tt.number)
+			}
+			if v := rawValues(&got, keyTrackTotal); !slices.Equal(v, tt.count) {
+				t.Errorf("%s = %q, want %q", keyTrackTotal, v, tt.count)
+			}
+		})
 	}
 }
 
@@ -665,6 +716,7 @@ func TestEditRefuses(t *testing.T) {
 		{name: "ID3v1 only", sample: sampleMP3, prepare: id3v1Only, edit: Edit{Fields: map[Field][]string{FieldTitle: {newTitle}}}},
 		{name: "a year MP3 can't read back", sample: sampleMP3, edit: Edit{Fields: map[Field][]string{FieldDate: {"1850"}}}},
 		{name: "a BPM M4A can't hold", sample: sampleM4A, edit: Edit{Fields: map[Field][]string{FieldBPM: {"120.5"}}}},
+		{name: "a BPM M4A would read back otherwise", sample: sampleM4A, edit: Edit{Fields: map[Field][]string{FieldBPM: {"0120"}}}},
 		{name: "a NUL", sample: sampleFLAC, edit: Edit{Fields: map[Field][]string{FieldComment: {"a\x00b"}}}},
 		{name: "two comments", sample: sampleFLAC, edit: Edit{Fields: map[Field][]string{FieldComment: {"a", "b"}}}},
 		{name: "not an MBID", sample: sampleFLAC, edit: Edit{Fields: map[Field][]string{FieldMusicBrainzAlbumID: {"Glasshouse"}}}},
