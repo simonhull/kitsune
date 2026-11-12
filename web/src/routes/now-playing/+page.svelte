@@ -11,6 +11,8 @@
 	import StarsInput from '#lib/shell/StarsInput.svelte';
 	import { appliedGain } from '#lib/player/gain.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import { leftNote } from '#lib/player/remember.ts';
+	import { resume } from '#lib/player/resume.svelte.ts';
 	import { reserveIslandSlot } from '#lib/shell/slot.svelte.ts';
 	import { shuffles, type UpNextItem } from '#lib/shuffle/session.svelte.ts';
 	import UpNext from '#lib/shuffle/UpNext.svelte';
@@ -35,7 +37,9 @@
 			? "Dead air. That wouldn't play, so we stopped."
 			: player.finished
 				? "That's the record. Flip it?"
-				: null
+				: resume.left === null
+					? null
+					: leftNote(resume.left, Date.now())
 	);
 
 	function goUp(event: MouseEvent & { currentTarget: HTMLAnchorElement }): void {
@@ -57,7 +61,7 @@
 </svelte:head>
 
 {#if playing === null}
-	<!-- An empty library, or a page opened before the shell could load anything to cue. -->
+	<!-- Nothing played and nothing remembered, or the moment before a remembered record lands. -->
 	<div class="stage quiet">
 		<p>Nothing is cued yet.</p>
 		<a href={resolve('/')} data-sveltekit-reset="false">Back to Home</a>

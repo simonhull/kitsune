@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { onMount, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { clock } from '#lib/library/format.ts';
 	import type { NowPlaying } from '#lib/library/cue.ts';
 	import { morph, type MorphSlot } from '#lib/morph/registry.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import { leftSpoken, tagWords, type Left } from '#lib/player/remember.ts';
+	import type { Arrival } from '#lib/player/resume.svelte.ts';
 	import HeartButton from './HeartButton.svelte';
 	import Icon from './Icon.svelte';
 	import { floor } from './floor.svelte.ts';
@@ -17,15 +20,120 @@
 		expanded: boolean;
 		/** Songs are picked on the Library list: their bar has the island's place until they aren't. */
 		away?: boolean;
+		/** How it arrives when it mounts: restored, or by a first play (the default). */
+		arrival?: Arrival | null;
+		/** Where a remembered record was left, when another browser left it or its song is gone. */
+		left?: Left | null;
+		/** Told once the arrival has run. */
+		onArrived?: () => void;
 	}
 
-	let { playing, expanded, away = false }: Props = $props();
+	let {
+		playing,
+		expanded,
+		away = false,
+		arrival = null,
+		left = null,
+		onArrived = () => undefined
+	}: Props = $props();
+
+	/** How long an arrival takes, the wind and the print included. */
+	const arrivalMs = 1000;
+	/** The wind starts once the island has mostly risen, and counts for this long. */
+	const windDelayMs = 260;
+	const windMs = 600;
+	/** The tag fades on its own this long after it stamps in. */
+	const tagLastsMs = 10_000;
+
+	const reduced = (): boolean =>
+		typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+	// The arrival is how it mounted: nothing arrives on Now playing, where it's the page's controls.
+	let arriving = $state<Arrival | null>(untrack(() => (expanded ? null : (arrival ?? 'play'))));
+	/** The clock's seconds while the line winds out to where it was left. */
+	let wound = $state<number | null>(null);
 
 	// The clock is the sound's, not the cue's: a held change must not put them out of step.
 	const seconds = $derived((player.current ?? playing.track).durationMs / 1000);
 	const position = $derived(player.current === null ? 0 : player.position);
 	const percent = $derived(`${String(seconds > 0 ? (position / seconds) * 100 : 0)}%`);
 	const slot = $derived(expanded ? islandSlot.rect : null);
+	const spoken = $derived(left === null ? undefined : leftSpoken(left, Date.now()));
+	/** Where the words a screen reader hears of the record are, under the island. */
+	const leftId = $props.id();
+
+	onMount(() => {
+		const kind = arriving;
+		if (kind === null) {
+			return;
+		}
+		let frame = 0;
+		if (kind === 'restore' && !reduced() && position > 0) {
+			// The clock counts up with the line, 0:00 to where it was left: ease-out, like the wind.
+			const to = position;
+			const start = performance.now();
+			wound = 0;
+			const count = (now: number): void => {
+				const p = Math.min(1, Math.max(0, (now - start - windDelayMs) / windMs));
+				wound = to * (1 - (1 - p) ** 3);
+				frame = p < 1 ? requestAnimationFrame(count) : 0;
+				if (p >= 1) {
+					wound = null;
+				}
+			};
+			frame = requestAnimationFrame(count);
+		}
+		const done = setTimeout(() => {
+			// A tab that stops painting mid-wind still ends on the right time.
+			wound = null;
+			arriving = null;
+			onArrived();
+		}, arrivalMs);
+		return () => {
+			cancelAnimationFrame(frame);
+			clearTimeout(done);
+		};
+	});
+
+	/** The stamped tag: it stamps in, and goes when the sound starts, or on its own a while later. */
+	let tag = $state<{ words: string; phase: 'stamp' | 'drop' | 'fade' } | null>(null);
+	let tagTimer: ReturnType<typeof setTimeout> | undefined;
+
+	$effect(() => {
+		const now = left;
+		untrack(() => {
+			clearTimeout(tagTimer);
+			if (now === null) {
+				return;
+			}
+			tag = { words: tagWords(now, Date.now()), phase: 'stamp' };
+			tagTimer = setTimeout(() => {
+				if (tag?.phase === 'stamp') {
+					tag = reduced() ? null : { ...tag, phase: 'fade' };
+				}
+			}, tagLastsMs);
+		});
+		return () => {
+			clearTimeout(tagTimer);
+		};
+	});
+
+	// Play pressed: the tag drops away at once, into the island.
+	$effect(() => {
+		if (player.sounding) {
+			untrack(() => {
+				if (tag?.phase === 'stamp') {
+					tag = { ...tag, phase: 'drop' };
+				}
+			});
+		}
+	});
+
+	function tagGone(event: AnimationEvent): void {
+		if (event.target === event.currentTarget && tag !== null && tag.phase !== 'stamp') {
+			tag = null;
+		}
+	}
 </script>
 
 {#snippet transport(place: MorphSlot, skip: number | undefined, pause: number)}
@@ -64,15 +172,20 @@
 
 <aside
 	aria-label="Player"
+	aria-describedby={spoken === undefined ? undefined : leftId}
 	class="island"
 	class:expanded
 	class:away
+	class:arrive={arriving !== null}
+	class:restore={arriving === 'restore'}
 	inert={away}
 	use:floor={!away && !expanded}
 	style:--slot-left={slot === null ? undefined : `${String(slot.left)}px`}
 	style:--slot-top={slot === null ? undefined : `${String(slot.top)}px`}
 	style:--slot-width={slot === null ? undefined : `${String(slot.width)}px`}
 >
+	<!-- A hard print, off register, flashes once under the glass as it lands. -->
+	{#if arriving === 'play'}<span class="print" aria-hidden="true"></span>{/if}
 	<!-- The glass is its own layer: in flight it changes shape while the island's box is final. -->
 	<div class="glass" data-island-glass>
 		{#if !expanded}
@@ -122,7 +235,7 @@
 					</span>
 				{/key}
 			</a>
-			<span class="time compact">{clock(position)} / {clock(seconds)}</span>
+			<span class="time compact">{clock(wound ?? position)} / {clock(seconds)}</span>
 			<span class="favorite"
 				><HeartButton
 					kind="tracks"
@@ -134,6 +247,17 @@
 			{@render transport('island', undefined, 20)}
 		{/if}
 	</div>
+	{#if spoken !== undefined}<span id={leftId} class="visually-hidden">{spoken}</span>{/if}
+	{#if tag !== null && !expanded}
+		<span
+			class="tag"
+			class:stamp={tag.phase === 'stamp'}
+			class:drop={tag.phase === 'drop'}
+			class:fade={tag.phase === 'fade'}
+			aria-hidden="true"
+			onanimationend={tagGone}>{tag.words}</span
+		>
+	{/if}
 </aside>
 
 <style>
@@ -338,6 +462,165 @@
 		bottom: 0;
 		height: 3px;
 		background: var(--fox);
+	}
+
+	/* First play: it rises off the floor and lands; a hard print flashes once under the glass. */
+	.island.arrive {
+		animation: island-rise var(--morph) var(--curve-settle) backwards;
+	}
+
+	.island.arrive .content {
+		animation: content-land var(--morph-fast) var(--curve-morph) 80ms backwards;
+	}
+
+	.island.arrive .names {
+		animation: needle-drop 120ms steps(3, jump-end) 120ms backwards;
+	}
+
+	.print {
+		position: absolute;
+		inset: 0;
+		border-radius: var(--island-radius);
+		border: 2px solid var(--lift-offset);
+		translate: 4px 4px;
+		opacity: 0;
+		pointer-events: none;
+		animation: print-flash 520ms var(--curve-morph) 200ms;
+	}
+
+	@keyframes island-rise {
+		from {
+			opacity: 0;
+			translate: 0 40px;
+			scale: 0.94;
+		}
+
+		40% {
+			opacity: 1;
+		}
+	}
+
+	@keyframes content-land {
+		from {
+			opacity: 0;
+		}
+	}
+
+	@keyframes print-flash {
+		0% {
+			opacity: 0;
+		}
+
+		35% {
+			opacity: 0.9;
+		}
+
+		100% {
+			opacity: 0;
+			translate: 0 0;
+		}
+	}
+
+	/* Restored: the same rise, then the line winds out to where it was left as the clock counts. */
+	.island.restore .progress {
+		animation: wind var(--morph-slow) var(--curve-room) 260ms backwards;
+	}
+
+	@keyframes wind {
+		from {
+			width: 0;
+		}
+	}
+
+	/* Where it was left: a stamped tag on the island's shoulder. */
+	.tag {
+		position: absolute;
+		left: 22px;
+		bottom: calc(100% - 12px);
+		z-index: 5;
+		height: 26px;
+		padding: 0 10px;
+		display: flex;
+		align-items: center;
+		border-radius: var(--radius-pill);
+		background: var(--ground);
+		border: 2px solid var(--fox-line);
+		color: var(--fox-text);
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		white-space: nowrap;
+		rotate: -2deg;
+		transform-origin: 0 100%;
+		pointer-events: none;
+	}
+
+	.tag::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		background-image: var(--grain);
+		background-size: 160px;
+		opacity: calc(var(--grain-alpha) * 2);
+		pointer-events: none;
+	}
+
+	.tag.stamp {
+		animation: tag-stamp var(--morph-fast) var(--curve-settle) 520ms backwards;
+	}
+
+	.tag.drop {
+		animation: tag-drop var(--morph-drop) var(--curve-fall) forwards;
+	}
+
+	.tag.fade {
+		animation: tag-fade var(--morph-slow) var(--curve-morph) forwards;
+	}
+
+	@keyframes tag-stamp {
+		from {
+			opacity: 0;
+			scale: 1.5;
+			rotate: -12deg;
+		}
+	}
+
+	@keyframes tag-drop {
+		to {
+			opacity: 0;
+			translate: 0 14px;
+			rotate: 3deg;
+		}
+	}
+
+	@keyframes tag-fade {
+		to {
+			opacity: 0;
+		}
+	}
+
+	/* Reduced motion: opacity only, with the line and the clock already in place. */
+	@media (prefers-reduced-motion: reduce) {
+		.island.arrive {
+			animation: content-land 120ms linear backwards;
+		}
+
+		.island.arrive .content,
+		.island.arrive .names,
+		.island.restore .progress,
+		.print {
+			animation: none;
+		}
+
+		.tag.stamp {
+			animation: content-land 120ms linear 120ms backwards;
+		}
+
+		.tag.drop {
+			animation: tag-fade 120ms linear forwards;
+		}
 	}
 
 	.transport {

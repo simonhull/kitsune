@@ -3,7 +3,7 @@
 	import '@fontsource-variable/geist-mono/wght.css';
 	import '#lib/styles/tokens.css';
 	import '#lib/styles/base.css';
-	import { onMount, setContext } from 'svelte';
+	import { onMount, setContext, untrack } from 'svelte';
 	import { page, updated } from '$app/state';
 	import { beforeNavigate, goto, onNavigate, preloadCode } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -30,6 +30,7 @@
 	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
 	import { playbackSettings } from '#lib/player/playback.svelte.ts';
 	import { player } from '#lib/player/player.svelte.ts';
+	import { resume } from '#lib/player/resume.svelte.ts';
 	import { reloadsInto } from '#lib/shell/freshness.ts';
 	import { shuffles } from '#lib/shuffle/session.svelte.ts';
 	import { shuffleSettings } from '#lib/shuffle/settings.svelte.ts';
@@ -84,7 +85,8 @@
 	const morphs = startMorphs();
 	setContext(morphsKey, morphs);
 	onNavigate(morphs.navigate);
-	// A newer build waits: the next navigation loads it whole, unless a song would be cut off.
+	// A newer build waits: the next navigation loads it whole, unless a song would be cut off or the
+	// server doesn't hold where the player is yet.
 	beforeNavigate((navigation) => {
 		const to = navigation.to?.url;
 		if (
@@ -92,7 +94,7 @@
 			reloadsInto({
 				updated: updated.current,
 				sounding: player.sounding,
-				started: player.started,
+				unsaved: resume.unsaved,
 				type: navigation.type
 			})
 		) {
@@ -111,6 +113,10 @@
 	function onVisibilityChange(): void {
 		if (document.hidden) {
 			carrier.flush();
+			// Mobile browsers often never fire pagehide: hidden may be the last word this page gets.
+			void resume.flush({ keepalive: true });
+		} else {
+			void resume.catchUp();
 		}
 	}
 
@@ -121,10 +127,12 @@
 		}
 	}
 
-	// Read as soon as someone is signed in, so the first song already plays at their level.
+	// Read as soon as someone is signed in, so the first song already plays at their level. Where
+	// they left off is asked for beside the shell's own reads, and never holds them up.
 	$effect(() => {
 		if (library.user !== null) {
 			void playbackSettings.load();
+			untrack(() => void resume.restore());
 		}
 	});
 
@@ -159,12 +167,15 @@
 			sorts.reset();
 			selection.clear();
 			shuffles.reset();
+			resume.reset();
 			shuffleSettings.reset();
 			playbackSettings.reset();
 			tagEdits.reset();
 			bulkEdits.reset();
 			matchSheet.reset();
 		};
+		// Signing out saves where the player is first, so the next sign-in, anywhere, comes back to it.
+		library.beforeSignOut = () => resume.flush();
 		void Promise.all(routeIds.map((route) => preloadCode(route)));
 		const leaveSession = followMediaSession(player);
 		const stopWatching = watchInput();
@@ -184,6 +195,7 @@
 	}}
 	onpagehide={() => {
 		player.leave();
+		void resume.flush({ keepalive: true });
 	}}
 />
 <svelte:document onvisibilitychange={onVisibilityChange} />
@@ -227,6 +239,11 @@
 			playing={library.playing}
 			expanded={onNowPlaying}
 			away={onScreen.current?.any === true && bulkEdits.current === null}
+			arrival={resume.arrival}
+			left={resume.left}
+			onArrived={() => {
+				resume.arrival = null;
+			}}
 		/>
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
