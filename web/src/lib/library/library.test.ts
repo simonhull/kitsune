@@ -426,12 +426,11 @@ describe('Library', () => {
 		expect(theme.choice).toBeNull();
 	});
 
-	it('cues the feature album once the shell has loaded', async () => {
+	it('cues nothing once the shell has loaded: the island waits for something to play', async () => {
 		const library = new Library(source());
 		await library.loadShell();
 		expect(library.facts).not.toBeNull();
-		expect(library.playing?.album.title).toBe('Glasshouse');
-		expect(library.playing?.track.title).toBe('Breakwater');
+		expect(library.playing).toBeNull();
 	});
 
 	it('keeps a 404 for good, but lets anything else clear on retry', async () => {
@@ -795,7 +794,7 @@ describe('the deck', () => {
 		expect(library.pile).toEqual([]);
 		expect(library.facts?.albums).toBe(6);
 		expect(library.recent.at(0)?.id).toBe('album-5');
-		expect(library.playing?.album.id).toBe('album-5');
+		expect(library.playing).toBeNull();
 		library.reset();
 	});
 
@@ -1030,7 +1029,7 @@ describe('the deck', () => {
 			expect(library.deck).toBe(true);
 			expect(library.dealing).toBe('held');
 			expect(library.recent.length).toBeGreaterThan(0);
-			expect(library.playing?.album.id).toBe('album-3');
+			expect(library.playing).toBeNull();
 			finish();
 			await vi.advanceTimersByTimeAsync(0);
 			expect(library.deck).toBe(false);
@@ -1039,14 +1038,13 @@ describe('the deck', () => {
 			library.reset();
 		});
 
-		it('does not cue anything before Home opens, so the island can form with it', async () => {
+		it('cues nothing as Home opens', async () => {
 			const scan = new Scripted();
 			const library = new Library(scan.source(), { readyMemory: forgetful() });
 			await library.loadShell();
 			const dealer = vi.fn((open: () => void) => {
-				expect(library.playing).toBeNull();
 				open();
-				expect(library.playing).not.toBeNull();
+				expect(library.playing).toBeNull();
 				return Promise.resolve();
 			});
 			library.dealer = dealer;
@@ -1269,7 +1267,8 @@ describe('tag edits', () => {
 	});
 
 	it('shows an album edit everywhere at once', async () => {
-		const { library, album } = await opened();
+		const { library, player, album } = await opened();
+		player.play(album);
 		await edit(library, { all: { set: { date: ['1999'], genres: ['Noise'] } } });
 		expect(library.album(id)?.year).toBe(1999);
 		expect(library.album(id)?.etag).not.toBe(album.etag);
@@ -1294,12 +1293,14 @@ describe('tag edits', () => {
 		expect(library.album(id)?.tracks.at(-1)?.id).toBe(first.id);
 	});
 
-	it('renames the cued track, and follows it if it moves', async () => {
-		const { library } = await opened();
+	it('renames a paused song in place: the queue keeps its order', async () => {
+		const { library, player, album } = await opened();
+		player.play(album);
+		player.pause();
 		const first = trackAt(library, 0);
 		await edit(library, { tracks: [{ id: first.id, set: { title: ['New'], track: ['99'] } }] });
 		expect(library.playing?.track.title).toBe('New');
-		expect(library.playing?.index).toBe(9);
+		expect(library.playing?.index).toBe(0);
 	});
 
 	it('renames what is playing without touching the sound or the order', async () => {
@@ -1347,7 +1348,8 @@ describe('tag edits', () => {
 
 	it('reads an album again over what it holds', async () => {
 		const fixtures = createFixtureSource();
-		const { library, album } = await opened({ album: fixtures.album });
+		const { library, player, album } = await opened({ album: fixtures.album });
+		player.play(album);
 		await fixtures.editAlbum(id, album.etag, { all: { set: { date: ['1999'] } } });
 		await library.reread(id);
 		expect(library.album(id)?.year).toBe(1999);

@@ -5,7 +5,7 @@ import { theme } from '#lib/theme/theme.svelte.ts';
 import { createApiSource } from './api.ts';
 import { once } from './bulk.ts';
 import type { RuleChange } from './shuffleRules.ts';
-import { cueOf, retagged, type NowPlaying } from './cue.ts';
+import { retagged, type NowPlaying } from './cue.ts';
 import {
 	createFixtureSource,
 	createScanFixtureSource,
@@ -17,6 +17,7 @@ import {
 } from './fixtures.ts';
 import { healthFixture } from './healthFixtures.ts';
 import { patchIndex } from './indexPatch.ts';
+import type { PlaybackFixture } from './playbackFixture.ts';
 import { eventsUrl, Live, type EventStream } from './live.ts';
 import { heartStarsOff, isHeartStars } from './heartStars.ts';
 import { Marks } from './marks.svelte.ts';
@@ -38,6 +39,8 @@ import {
 	type ArtistLink,
 	type EditedTracks,
 	type IndexField,
+	type PlaybackRecord,
+	type PlaybackSave,
 	type LastfmStatus,
 	type LastfmSwitches,
 	type LibraryFacts,
@@ -102,6 +105,8 @@ const hiddenRetryMs = 1000;
 export const issuesRetryMs = 3000;
 /** How long a listen's report waits to go, so the sound starting has the connection to itself. */
 export const listenFlushMs = 1500;
+/** The longest sign-out waits for where the player is to be saved. */
+const signOutSaveMs = 1000;
 
 export type Session = 'signed-in' | 'signed-out' | 'down';
 
@@ -141,8 +146,6 @@ export function readyMemoryIn(store: () => Storage, key: string): ReadyMemory {
 }
 
 export interface LibraryOptions {
-	/** Holds the cue on this album, for the lab: a hero condensing into the island needs another. */
-	pinnedAlbumId?: string;
 	readyMemory?: ReadyMemory;
 	/** Where plays wait for the server. */
 	outbox?: () => Storage;
@@ -253,7 +256,6 @@ export class Library {
 	settingsHeard = $state(0);
 
 	readonly #source: LibrarySource;
-	readonly #pinnedAlbumId: string | undefined;
 	readonly #entries = new SvelteMap<string, AlbumEntry>();
 	readonly #albums = new SvelteMap<string, Album>();
 	/** Albums' songs as song rows show them, read one album at a time, with the fields asked. */
@@ -321,7 +323,6 @@ export class Library {
 		options: LibraryOptions = {}
 	) {
 		this.#source = typeof source === 'function' ? source(() => void this.expire()) : source;
-		this.#pinnedAlbumId = options.pinnedAlbumId;
 		this.simulated = options.simulated ?? false;
 		this.#readyMemory =
 			options.readyMemory ?? readyMemoryIn(() => localStorage, 'kitsune:ready-seen');
@@ -518,10 +519,41 @@ export class Library {
 		return this.#source.listening();
 	}
 
-	/** Ends the session and goes to the door, the way a lost session does. */
+	/**
+	 * Set by the shell: saves where the player is, so the next sign-in, anywhere, comes back to it.
+	 * The library can't import the player, which is built on it.
+	 */
+	beforeSignOut: (() => Promise<void>) | null = null;
+
+	/**
+	 * Ends the session and goes to the door, the way a lost session does. Where the player is gets
+	 * saved first, for a second at the most.
+	 */
 	async signOut(): Promise<void> {
+		const saving = this.beforeSignOut?.();
+		if (saving !== undefined) {
+			await Promise.race([
+				saving.catch(() => undefined),
+				new Promise((done) => setTimeout(done, signOutSaveMs))
+			]);
+		}
 		await this.#source.logout();
 		await this.expire();
+	}
+
+	/** Where the signed-in person left off, or null: nothing remembered, or nobody signed in. */
+	async playback(): Promise<PlaybackRecord | null> {
+		if (this.user === null) {
+			return null;
+		}
+		return this.#source.playback();
+	}
+
+	/** Remembers where the signed-in person is. Nobody signed in has nowhere to keep it. */
+	async savePlayback(save: PlaybackSave, options: { keepalive: boolean }): Promise<void> {
+		if (this.user !== null) {
+			await this.#source.savePlayback(save, options);
+		}
 	}
 
 	/** Exchanges a name and password for a session. Rejects with `LoginError`. */
@@ -681,14 +713,7 @@ export class Library {
 			this.albums = first.albums;
 			this.#cursor = first.nextCursor;
 			this.hasMoreAlbums = first.nextCursor !== undefined;
-			const cue = await this.#openingCue(leavingDeck);
-			if (epoch !== this.#epoch) {
-				return;
-			}
 			const open = (): void => {
-				if (cue !== null) {
-					this.#cue(cue);
-				}
 				this.facts = facts;
 				this.down = false;
 				this.dealing = leavingDeck ? 'held' : 'no';
@@ -1039,46 +1064,11 @@ export class Library {
 	}
 
 	/**
-	 * Finds what to cue for the island's first frame, without holding up the page if it can't, or null
-	 * to leave the cue as it is. It only reads: the cue is what makes the island appear, and that's
-	 * for whoever opens Home. Leaving the deck it asks again for what's already cued, because that
-	 * was read part way through the scan. A queue that has started is left alone: it keeps the track
-	 * list it was built from, even one read part way through a scan, because swapping that under
-	 * the sound would lose its place. That list stays short until the album is next played.
+	 * Shows what the player is on, and nothing when it's on nothing: nothing is cued before something
+	 * plays or a remembered record comes back.
 	 */
-	async #openingCue(again: boolean): Promise<Album | undefined | null> {
-		if (this.#player?.started === true) {
-			return null;
-		}
-		const cued = again ? this.playing?.album.id : undefined;
-		const id = this.#pinnedAlbumId ?? cued ?? this.recent.at(0)?.id;
-		if ((this.playing !== null && !again) || id === undefined) {
-			return null;
-		}
-		await this.loadAlbum(id);
-		return this.#albums.get(id);
-	}
-
-	/** Cues an album's first track, unless a queue has started: then the player speaks for the cue. */
-	#cue(album: Album | undefined): void {
-		if (this.#player?.started !== true) {
-			this.playing = album === undefined ? null : cueOf(album);
-		}
-	}
-
-	/** Shows what the player is on. It outranks the lab's pin: that only holds a cue, not a queue. */
 	showQueue(): void {
-		this.playing = this.#player?.cue ?? this.playing;
-	}
-
-	/**
-	 * Cues the album just opened. The caller waits until its details are here and the flight has
-	 * settled, so the island can't change under anything in the air.
-	 */
-	cueAlbum(album: Album): void {
-		if (this.#pinnedAlbumId === undefined && this.playing?.album.id !== album.id) {
-			this.#cue(album);
-		}
+		this.playing = this.#player?.cue ?? null;
 	}
 
 	/** Loads the next page of {@link Library.albums}. Only one page is ever in flight. */
@@ -1707,20 +1697,11 @@ export class Library {
 		this.recent = this.recent.map(retold);
 		this.albums = this.albums.map(retold);
 		this.#player?.retag(album);
-		this.#recue(album);
-	}
-
-	/** A cue only shows what would play, so it follows the album's order; a queue keeps its own. */
-	#recue(album: Album): void {
 		const { playing } = this;
-		if (playing?.album.id !== album.id) {
-			return;
+		if (playing?.album.id === album.id) {
+			// The queue keeps its own order: the names move, the place doesn't.
+			this.playing = retagged(playing, album);
 		}
-		const index = album.tracks.findIndex(({ id }) => id === playing.track.id);
-		this.playing =
-			this.#player?.started === true || index < 0
-				? retagged(playing, album)
-				: cueOf(album, album.tracks, index);
 	}
 
 	/** Reacts to a lost session. Parallel calls are one event: the app leaves once. */
@@ -1792,17 +1773,19 @@ function fromQuery(): Library {
 	const editFault = (query.get('editFault') ?? undefined) as FixtureEditFault | undefined;
 	const lastfm = lastfmFixture(query.get('lastfm'));
 	const setup = setupFixture(query.get('setup'));
-	const pinnedAlbumId = query.get('playing') ?? undefined;
+	const playback = playbackFixture(query.get('playback'));
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
 		const readyMemory = { seen: () => false, mark: () => undefined };
-		return new Library(createFixtureSource({ latencyMs, health, role, editFault, lastfm, setup }), {
-			pinnedAlbumId,
-			readyMemory,
-			simulated: true,
-			events: null
-		});
+		return new Library(
+			createFixtureSource({ latencyMs, health, role, editFault, lastfm, setup, playback }),
+			{
+				readyMemory,
+				simulated: true,
+				events: null
+			}
+		);
 	}
 	const gap = Number(query.get('gap') ?? defaultScanGap);
 	const key = `kitsune:scan:${String(scan)}:${String(gap)}`;
@@ -1813,11 +1796,15 @@ function fromQuery(): Library {
 		latencyMs
 	});
 	return new Library(source, {
-		pinnedAlbumId,
 		readyMemory: readyMemoryIn(() => sessionStorage, `${key}:ready`),
 		simulated: true,
 		events: null
 	});
+}
+
+/** The remembered record a fixtures page starts with: `?playback=phone` or `?playback=gone`. */
+function playbackFixture(value: string | null): PlaybackFixture | undefined {
+	return value === 'phone' || value === 'gone' ? value : undefined;
 }
 
 /** Chosen once, from the URL the app opened on, and held here for every later navigation. */

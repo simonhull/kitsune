@@ -11,6 +11,7 @@ import {
 } from '#lib/library/source.ts';
 import { SilentOutput } from './output.ts';
 import { listPrefetchMs, Player } from './player.svelte.ts';
+import { inOrder } from './queue.ts';
 
 function track(index: number, extra: Partial<Track> = {}): Track {
 	return {
@@ -391,46 +392,118 @@ describe('Player', () => {
 });
 
 describe('the transport before the first play', () => {
-	async function cued() {
-		const context = setup();
-		context.library.cueAlbum(album(4));
-		await settle();
-		return context;
-	}
-
-	it('plays what is cued', async () => {
-		const { player } = await cued();
-		player.toggle();
-		await settle();
-		expect(player.current?.id).toBe('t0');
-		expect(player.status).toBe('playing');
-	});
-
-	it('starts one track in on Next, and at the top on Previous', async () => {
-		const forward = await cued();
-		forward.player.next();
-		expect(forward.player.current?.id).toBe('t1');
-		const back = await cued();
-		back.player.previous();
-		expect(back.player.current?.id).toBe('t0');
-	});
-
-	it('does nothing with nothing cued', () => {
-		const { player } = setup();
+	it('does nothing with nothing loaded', () => {
+		const { library, player } = setup();
 		player.toggle();
 		player.next();
 		player.previous();
 		player.seek(10);
 		expect(player.queue).toBeNull();
 		expect(player.status).toBe('idle');
+		expect(library.playing).toBeNull();
+	});
+});
+
+describe('a restore', () => {
+	function restored() {
+		const context = setup();
+		const nowPlaying = vi.spyOn(context.library, 'nowPlaying');
+		const listened = vi.spyOn(context.library, 'reportListen');
+		const heard = vi.fn();
+		context.player.heard = heard;
+		context.player.restore({ ...inOrder(album(3)), index: 1 }, 42);
+		return { ...context, nowPlaying, listened, heard };
+	}
+
+	it('comes back paused where it was, with no sound, no listen and nothing loaded', () => {
+		const { library, player, create, nowPlaying, listened, heard } = restored();
+		expect(player.status).toBe('paused');
+		expect(player.started).toBe(true);
+		expect(player.current?.id).toBe('t1');
+		expect(player.position).toBe(42);
+		expect(library.playing?.track.id).toBe('t1');
+		expect(create).not.toHaveBeenCalled();
+		expect(nowPlaying).not.toHaveBeenCalled();
+		expect(listened).not.toHaveBeenCalled();
+		expect(heard).not.toHaveBeenCalled();
 	});
 
-	it('leaves a single on its one track', async () => {
-		const { library, player } = setup();
-		library.cueAlbum(album(1));
-		player.next();
+	it('loads the song on Play, seeks to where it was and sounds', async () => {
+		const { player, output, nowPlaying, heard } = restored();
+		player.toggle();
 		await settle();
-		expect(player.current?.id).toBe('t0');
+		expect(player.status).toBe('playing');
+		expect(output.url).toBe('t1');
+		expect(output.position).toBe(42);
+		expect(nowPlaying).toHaveBeenCalledWith('t1');
+		expect(heard).toHaveBeenCalledWith('sounded');
+	});
+
+	it('moves the position on a seek while paused, and loads there on Play', async () => {
+		const { player, output, create, heard } = restored();
+		player.seek(70);
+		expect(create).not.toHaveBeenCalled();
+		expect(heard).toHaveBeenCalledWith('seeked');
+		player.toggle();
+		await settle();
+		expect(output.position).toBe(70);
+	});
+
+	it('does what beginning would have on its first sound, once', async () => {
+		const { player } = restored();
+		const shuffleOn = vi.fn();
+		const listOn = vi.fn();
+		player.onward.shuffle = shuffleOn;
+		player.onward.rest = listOn;
+		player.restore({ ...inOrder(album(3)), shuffle: { id: 'S1' } }, 0);
+		expect(shuffleOn).not.toHaveBeenCalled();
+		player.toggle();
+		await settle();
+		expect(shuffleOn).toHaveBeenCalledOnce();
+		player.pause();
+		player.toggle();
+		await settle();
+		expect(shuffleOn).toHaveBeenCalledOnce();
+	});
+
+	it("fetches a list's next album after its first sound", async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout'] });
+		try {
+			const asked: string[] = [];
+			const b = {
+				...album(2, 'b'),
+				tracks: album(2).tracks.map((t) => ({ ...t, id: `b${t.id}` }))
+			};
+			const { player } = setup({
+				album: (id) => {
+					asked.push(id);
+					return Promise.resolve(b);
+				}
+			});
+			player.restore({ ...inOrder(album(1)), later: [{ trackId: 'bt0', albumId: 'b' }] }, 3);
+			await vi.advanceTimersByTimeAsync(listPrefetchMs * 2);
+			expect(asked).toEqual([]);
+			player.toggle();
+			await vi.advanceTimersByTimeAsync(listPrefetchMs);
+			expect(asked).toEqual(['b']);
+			expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['t0', 'bt0']);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('tells of a pause, by a person or not', async () => {
+		const { player, output } = setup();
+		const heard = vi.fn();
+		player.heard = heard;
+		player.play(album(2));
+		await settle();
+		player.pause();
+		expect(heard).toHaveBeenLastCalledWith('paused');
+		player.toggle();
+		await settle();
+		output.stopFromOutside();
+		expect(heard).toHaveBeenLastCalledWith('paused');
 	});
 });
 
@@ -474,13 +547,11 @@ describe('a track change', () => {
 		expect(library.playing).toBeNull();
 	});
 
-	it('has nothing to carry when a queue starts on the cued track', async () => {
+	it('shows the first queue at once, with nothing to carry', () => {
 		const { library, player } = setup();
 		const carry = vi.fn();
-		library.cueAlbum(album(3));
 		player.carry = carry;
 		player.play(album(3));
-		await settle();
 		expect(carry).not.toHaveBeenCalled();
 		expect(library.playing?.index).toBe(0);
 	});
@@ -502,25 +573,6 @@ describe('the cue under a player', () => {
 		expect(library.playing?.upNext).toEqual(order.slice(2, 5));
 	});
 
-	it('still follows the album opened until the first play', () => {
-		const { library } = setup();
-		library.cueAlbum(album(2, 'first'));
-		library.cueAlbum(album(2, 'second'));
-		expect(library.playing?.album.id).toBe('second');
-	});
-
-	it('leaves cue and sound alone when another album opens during playback', async () => {
-		const { library, player, output } = setup();
-		player.play(album(4), 2);
-		await settle();
-		library.cueAlbum(album(3, 'other'));
-		expect(library.playing?.album.id).toBe('a');
-		expect(library.playing?.track.id).toBe('t2');
-		expect(player.queue?.album.id).toBe('a');
-		expect(output.url).toBe('t2');
-		expect(output.playing).toBe(true);
-	});
-
 	it.each([
 		['paused', (player: Player) => player.pause()],
 		['past the end of the queue', (player: Player) => player.next()]
@@ -529,19 +581,14 @@ describe('the cue under a player', () => {
 		player.play(album(2), 1);
 		await settle();
 		happen(player);
-		library.cueAlbum(album(3, 'other'));
+		expect(player.started).toBe(true);
 		expect(library.playing?.album.id).toBe('a');
 	});
 
-	it('takes over from the pin', async () => {
-		const pinned = new Library(createFixtureSource(), { pinnedAlbumId: 'night-ferry-94' });
-		await pinned.loadShell();
-		expect(pinned.playing?.album.id).toBe('night-ferry-94');
-		const under = new Player(pinned, () => new ScriptedOutput());
-		under.play(album(3, 'glass'), 1);
-		await settle();
-		expect(pinned.playing?.album.id).toBe('glass');
-		expect(pinned.playing?.index).toBe(1);
+	it('cues nothing when the shell loads', async () => {
+		const { library } = setup();
+		await library.loadShell();
+		expect(library.playing).toBeNull();
 	});
 
 	it('leaves nothing in the island after a reset', async () => {
@@ -550,8 +597,6 @@ describe('the cue under a player', () => {
 		await settle();
 		library.reset();
 		expect(library.playing).toBeNull();
-		library.cueAlbum(album(2, 'next-user'));
-		expect(library.playing?.album.id).toBe('next-user');
 	});
 });
 
