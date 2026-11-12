@@ -22,6 +22,9 @@ Commands:
   users passwd NAME   set a user's password and sign them out everywhere
                    (-password-stdin, -keep-sessions, -config FILE)
   users list       print every user's name and role (-config FILE)
+  import navidrome FILE   bring plays, hearts and ratings over from a copy of
+                   a Navidrome database (-dry-run, -v, -user ND=KITSUNE,
+                   -root ND=KITSUNE, -map OLD=NEW, -config FILE)
   version   print the version and exit
   help      print this help and exit
 
@@ -80,6 +83,8 @@ func run(args []string, env config.Env, stdin io.Reader, stdout, stderr io.Write
 		return runSettings(rest, env, stdout)
 	case "users":
 		return runUsers(rest, env, stdin, stdout, stderr)
+	case "import":
+		return runImport(rest, env, stdout)
 	case "version":
 		return runVersion(cmd, rest, stdout)
 	case "help", "-h", "--help":

@@ -188,6 +188,30 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   it touches, artists' only where they line up with the song's artists.
 - Tests use `internal/matching/musicbrainztest`; nothing ever talks to the real MusicBrainz.
 
+## Import
+- `kitsune-server import navidrome FILE` brings plays, hearts and ratings over from a copy of a
+  Navidrome database, once, while a server runs. `internal/store/navidromedb` reads it read-only and
+  immutable, so nothing is created beside it, and refuses a non-empty `-wal`. It selects only the
+  columns in its `schema.sql`, which sqlc generates from and `Open` checks: the file also holds
+  password hashes and Last.fm session keys, and `TestNothingReturnedHoldsASecret` keeps them out.
+  `internal/navidrome` plans the import and is pure (no SQL, no writes); `Store.ApplyImport` writes
+  each person in one transaction.
+- It never creates tracks or accounts, and like `users add` refuses a database with migrations
+  pending. Songs match by path under the paired root (`-root`, and `-map OLD=NEW` for a moved file),
+  then by a release-track or recording MBID exactly one song on each side has; people by name,
+  ignoring ASCII case (`-user`). Albums are hearted through their songs, artists by match key then
+  MBID, and a rated artist is hearted. An option that names nothing is an error, not a skip.
+- Plays are `plays` rows, never `listens`, which say how much played. Client IDs
+  (`navidrome:s:<scrobble>`, `navidrome:d:<song>`, `navidrome:u:<song>:<k>`) make a re-run add
+  nothing. A play Navidrome kept only as a count has source `navidrome-undated` and the latest time it
+  can have happened, so each song's latest play is its `play_date`; a history view leaves them out.
+  Ratings arrive as `halves = 2r` and never replace one Kitsune has; a heart keeps the earlier time.
+- Nothing an import writes reaches Last.fm: it never goes through `RecordPlay` or `Heart`, and
+  `TestApplyImportQueuesNothingForLastfm` holds `lastfm_outbox` empty.
+- Below half the played or marked songs matching by path, it writes nothing (the gate); `-dry-run`
+  prints the same table and writes nothing either. Playlists and bookmarks are only counted. Tests
+  build Navidrome files with `navidromedbtest`; none ever reads a real one.
+
 ## Settings
 - Server settings live in the database's `settings` table, one JSON value per key with its source.
   `internal/settings` alone says which keys there are, what each holds (`defs`) and when a change
