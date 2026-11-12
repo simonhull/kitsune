@@ -9,6 +9,68 @@ import (
 	"context"
 )
 
+const albumsOnRepeat = `-- name: AlbumsOnRepeat :many
+WITH counted AS (
+    SELECT p.track_id, count(*) AS n, max(p.played_at) AS latest
+    FROM plays AS p
+    WHERE p.user_id = ?2 AND p.played_at >= ?3
+      AND p.source <> ?4
+    GROUP BY p.track_id
+)
+SELECT a.ulid, CAST(sum(c.n) AS INTEGER) AS plays
+FROM counted AS c
+JOIN tracks AS t ON t.id = c.track_id
+JOIN albums AS a ON a.id = t.album_id
+WHERE t.missing_since IS NULL
+GROUP BY a.id
+ORDER BY plays DESC, max(c.latest) DESC, a.id
+LIMIT ?1
+`
+
+type AlbumsOnRepeatParams struct {
+	Lim     int64
+	UserID  int64
+	Since   int64
+	Undated string
+}
+
+type AlbumsOnRepeatRow struct {
+	Ulid  string
+	Plays int64
+}
+
+// Albums by how many plays of their live tracks began at or after since, most
+// first, ties to the latest play: Home's On repeat row. Undated plays don't
+// count, since their time isn't when they happened. Plays are counted by track
+// first, so each track is looked up once.
+func (q *Queries) AlbumsOnRepeat(ctx context.Context, arg AlbumsOnRepeatParams) ([]AlbumsOnRepeatRow, error) {
+	rows, err := q.query(ctx, q.albumsOnRepeatStmt, albumsOnRepeat,
+		arg.Lim,
+		arg.UserID,
+		arg.Since,
+		arg.Undated,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AlbumsOnRepeatRow
+	for rows.Next() {
+		var i AlbumsOnRepeatRow
+		if err := rows.Scan(&i.Ulid, &i.Plays); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countUserListening = `-- name: CountUserListening :one
 SELECT
     (SELECT count(*) FROM plays p WHERE p.user_id = ?1) AS plays,

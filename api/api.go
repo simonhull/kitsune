@@ -156,6 +156,19 @@ const (
 	LastfmReconnect = "reconnect" // Last.fm rejected the session; nothing goes until the user connects again.
 )
 
+// Home is the response to GET /me/home: the albums the caller played most
+// recently, and the ones they have on repeat.
+type Home struct {
+	Recent   []AlbumEntry `json:"recent"`
+	OnRepeat []AlbumPlays `json:"onRepeat"`
+}
+
+// AlbumPlays is an album and how many times its songs were played.
+type AlbumPlays struct {
+	Album AlbumEntry `json:"album"`
+	Plays int        `json:"plays"`
+}
+
 // Listening is the response to GET /me/listening: what the caller has done
 // with the library, counted.
 type Listening struct {

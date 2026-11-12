@@ -52,6 +52,10 @@
 		"artist-index": {
 			"interaction": "GET /library/index?artist=, 825 songs of 50k, default fields, gzip",
 			"p95Ms": 24
+		},
+		"home-history": {
+			"interaction": "GET /me/home, 217k plays of 50k songs, 43k of them in the last 90 days",
+			"p95Ms": 75
 		}
 	}
 }

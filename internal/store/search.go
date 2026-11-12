@@ -153,6 +153,15 @@ func (s *Store) artistHits(ctx context.Context, ids []string) ([]ArtistLink, err
 
 // albumHits fetches the albums with the given IDs, in that order.
 func (s *Store) albumHits(ctx context.Context, ids []string) ([]AlbumSummary, error) {
+	byID, err := s.albumsByID(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	return inOrder(ids, byID), nil
+}
+
+// albumsByID fetches the albums with the given IDs that have a live track.
+func (s *Store) albumsByID(ctx context.Context, ids []string) (map[string]AlbumSummary, error) {
 	encoded, err := json.Marshal(ids)
 	if err != nil {
 		return nil, fmt.Errorf("encode IDs: %w", err)
@@ -166,7 +175,7 @@ func (s *Store) albumHits(ctx context.Context, ids []string) ([]AlbumSummary, er
 		row := sqlcdb.ListAlbumsByNameRow(rows[i])
 		byID[row.Ulid] = summarize(&row)
 	}
-	return inOrder(ids, byID), nil
+	return byID, nil
 }
 
 // trackMatch is a track that matched, ranked by how close its title came.
