@@ -5,7 +5,7 @@ RUN bun install --frozen-lockfile
 COPY web ./
 RUN bun run build
 
-FROM golang:1.27.3 AS server
+FROM golang:1.27.4 AS server
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
