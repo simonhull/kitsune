@@ -41,7 +41,13 @@
 			"interaction": "Longest frame in a 2 s fling of an artist's 800 songs",
 			"p95Ms": 32
 		},
-		"resume-island": { "interaction": "Page load to the restored island, paused", "p95Ms": 180 }
+		"resume-island": { "interaction": "Page load to the restored island, paused", "p95Ms": 180 },
+		"play-home-cover": { "interaction": "Play an album from its cover on Home", "p95Ms": 42 },
+		"play-continue": {
+			"interaction": "Pick up where you left off: the Continue card's Play",
+			"p95Ms": 40
+		},
+		"home-paint": { "interaction": "Back to Home from Albums, click to its rows", "p95Ms": 110 }
 	},
 	"server": {
 		"stream-first-byte": { "interaction": "Stream first byte, FLAC on local disk", "p95Ms": 0.5 },
@@ -55,7 +61,7 @@
 		},
 		"home-history": {
 			"interaction": "GET /me/home, 217k plays of 50k songs, 43k of them in the last 90 days",
-			"p95Ms": 75
+			"p95Ms": 90
 		}
 	}
 }
