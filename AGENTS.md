@@ -448,6 +448,14 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - An artist page's queue is its list as shown, and stops at its end: `player.playList` holds the songs
   ahead as track and album IDs (`Queue.later`) and fetches each next album after the song before it
   has begun, so nothing waits on the play path.
+- Repeat and Shuffle live in the player. Repeat (`off`/`all`/`one`, `repeat.ts`) is the player's
+  mode and outlives a queue; an endless shuffle skips `all`. Shuffle belongs to the queue: the
+  player's own (`Queue.shuffled`, a seed and the queue's own order to go back to, `shuffledOn`/
+  `shuffledOff`) or a session's (`Queue.shuffle`), which turning off leaves for its scope's order
+  from the song playing (`Shuffles.toggle`, `scopeOrder.ts`). Both join the playback record
+  (`repeat`, `shuffled`); one saved before them is off and off, and `shuffled.order` counts against
+  the 1,000. A press reorders in memory and never stops the song; the save follows. The island is
+  one Tab stop (`roving.ts`), and the player's keys are `playerKey` in `lib/player/keys.ts`.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
