@@ -1,7 +1,10 @@
 import { runs, test } from './fixture.ts';
 import { albumPage, albumTracks, atRest, nextLoudAlbum, openLibrary, playing } from './pages.ts';
 
-test('Album: open it, play, skip, and star from the island and the row', async ({ page, perf }) => {
+test('Album: open it, play, skip, star from the island and the row, and shuffle', async ({
+	page,
+	perf
+}) => {
 	// A song's stars are its Rating column: the person's.
 	const columns = {
 		order: ['artist', 'genre', 'rating', 'plays', 'lastPlayed', 'format'],
@@ -18,6 +21,7 @@ test('Album: open it, play, skip, and star from the island and the row', async (
 	const previous = perf.samples('previous');
 	const islandStar = perf.samples('island-star');
 	const star = perf.samples('star');
+	const toggleShuffle = perf.samples('toggle-shuffle');
 	const used = new Set<string>();
 	const island = page.locator('aside[aria-label="Player"]');
 	for (let i = 0; i < runs; i++) {
@@ -83,6 +87,23 @@ test('Album: open it, play, skip, and star from the island and the row', async (
 			},
 			() => rating.click({ position: { x: box.width * 0.75, y: box.height / 2 } })
 		);
+
+		// Shuffle on Now playing: the press to Up next in its new order.
+		await island.locator('a.now').click();
+		const upNext = 'main section[aria-label="Up next"]';
+		await page.locator(upNext).waitFor();
+		await atRest(page);
+		const shuffleButton = island.getByRole('button', { name: 'Shuffle', exact: true });
+		await perf.time(
+			toggleShuffle,
+			'click',
+			{ kind: 'selector', selector: `${upNext}[data-shuffled]` },
+			() => shuffleButton.click()
+		);
+		await shuffleButton.click();
+		await page.locator(`${upNext}:not([data-shuffled])`).waitFor();
+		await page.goBack();
+		await page.locator('main section[aria-label="Tracks"] .row').first().waitFor();
 		await page.goBack();
 		await page.locator('main .row[data-track]').first().waitFor();
 	}

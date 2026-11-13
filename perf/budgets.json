@@ -8,6 +8,7 @@
 		"next": { "interaction": "Next", "p95Ms": 35 },
 		"previous": { "interaction": "Previous", "p95Ms": 45 },
 		"island-star": { "interaction": "Star the song playing from the island, on screen", "p95Ms": 30 },
+		"toggle-shuffle": { "interaction": "Shuffle on Now playing, press to Up next reordered", "p95Ms": 25 },
 		"star": { "interaction": "Star a song, on screen", "p95Ms": 30 },
 		"open-album": { "interaction": "Open an album from the Library", "p95Ms": 120 },
 		"library-paint": { "interaction": "Library first rows, from page load", "p95Ms": 500 },

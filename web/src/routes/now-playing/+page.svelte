@@ -170,7 +170,12 @@
 					/>
 				</div>
 			{:else if playing.upNext.length > 0 || player.repeating !== 'off'}
-				<section aria-label="Up next" class="next" data-morph-part="panel">
+				<section
+					aria-label="Up next"
+					class="next"
+					data-morph-part="panel"
+					data-shuffled={shuffledFrom === false ? undefined : true}
+				>
 					<span class="next-label">{nextLine}</span>
 					<!-- Repeating this song, it is what's next: Next still goes on to the others. -->
 					{#if player.repeating !== 'one'}
