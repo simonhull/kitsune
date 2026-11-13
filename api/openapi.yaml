@@ -400,6 +400,29 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           $ref: "#/components/responses/Problem"
+  /me/home:
+    get:
+      operationId: getHome
+      summary: What Home shows of the caller's listening.
+      description: >-
+        The albums the caller played most recently, newest first, and the ones
+        they played most in the last 90 days by the server's clock, most first,
+        ties to the latest play. Only plays count, not listens, and only plays
+        of songs in the library now. Each list holds at most 25 albums.
+      responses:
+        "200":
+          description: The caller's history.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Home" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /me/listening:
     get:
       operationId: getListening
@@ -2191,6 +2214,31 @@ components:
           maximum: 5
           multipleOf: 0.5
           description: The rating in stars, ½ to 5 in halves. Whole stars are whole numbers.
+    Home:
+      type: object
+      additionalProperties: false
+      required: [recent, onRepeat]
+      properties:
+        recent:
+          type: array
+          maxItems: 25
+          description: Albums by their latest play, newest first.
+          items: { $ref: "#/components/schemas/AlbumEntry" }
+        onRepeat:
+          type: array
+          maxItems: 25
+          description: Albums by their plays in the last 90 days, most first.
+          items: { $ref: "#/components/schemas/AlbumPlays" }
+    AlbumPlays:
+      type: object
+      additionalProperties: false
+      required: [album, plays]
+      properties:
+        album: { $ref: "#/components/schemas/AlbumEntry" }
+        plays:
+          type: integer
+          minimum: 1
+          description: Plays of the album's songs in the window.
     Listening:
       type: object
       additionalProperties: false

@@ -74,7 +74,10 @@
 		pointer-events: none;
 	}
 
-	/* The Library's disc play, filled with the fox: it comes up on hover and focus, and moves nothing. */
+	/*
+	 * The Library's disc play, filled with the fox, or with the album's accent where a page gives it
+	 * one: it comes up on hover and focus, and moves nothing.
+	 */
 	.cover-play {
 		--size: var(--cover-play-size, calc(48px * var(--step)));
 
@@ -88,8 +91,8 @@
 		place-items: center;
 		border: 0;
 		border-radius: var(--radius-pill);
-		background: var(--fox);
-		color: var(--fox-ink);
+		background: var(--cover-play-fill, var(--fox));
+		color: var(--cover-play-ink, var(--fox-ink));
 		box-shadow: var(--shadow-deck);
 		pointer-events: auto;
 		opacity: 0;
@@ -113,7 +116,7 @@
 	}
 
 	.cover-play:hover {
-		background: color-mix(in srgb, var(--fox) 88%, var(--text));
+		background: color-mix(in srgb, var(--cover-play-fill, var(--fox)) 88%, var(--text));
 	}
 
 	.cover-play:active {

@@ -18,7 +18,7 @@ import (
 // can have happened, not when it did: a history view should leave them out.
 const (
 	SourceDated   = "navidrome"
-	SourceUndated = "navidrome-undated"
+	SourceUndated = store.SourceUndated
 )
 
 // Sentinels for a -user that names nobody, and for the path gate.

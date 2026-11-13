@@ -89,6 +89,11 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   alone says what a record holds and resolves it against live tracks on the way out (gone songs
   dropped, albums as they are now). It publishes no event. `PruneShuffleSessions` keeps the session a
   record names.
+- `GET /me/home` is Home's history, 25 albums each as `GET /albums` lists them: `recent`, by latest
+  play, and `onRepeat`, by plays in the last 90 days (`onRepeatWindow`, the server's clock). Both
+  count `plays` (imports included, but undated ones never on repeat, `store.SourceUndated`), never
+  listens, and only live tracks. Recent reads plays newest first and stops at 25 albums
+  (`recentAlbumsSQL`, hand-written since sqlc reads every row); `home-history` is its budget.
 - `ratings.heart_stars` is what a hearted song with no stars of its own counts as wherever stars are
   read (0 for nothing, else 1★ to 5★ in halves). It is worked out where it's read
   (`prefs.HeartStars.Of`, `marks.counted`), and never written or sent as a song's `stars`.
@@ -441,7 +446,7 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
   suite (`web/perf`, Playwright) times clicks, keys and page loads in a release build against generated
   libraries of 1,000 and 50,000 songs, 20 runs each; `internal/server`'s `*Speed` tests time the
-  stream's first byte and `GET /library/index`. Each fails past its budget, and CI's `perf` job runs
+  stream's first byte, `GET /library/index` and `GET /me/home`. Each fails past its budget, and CI's `perf` job runs
   both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
   they were set; on CI they are multiplied by `ciMultiplier`, which comes from CI's own numbers.
 - `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes

@@ -39,6 +39,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.albumRowIDStmt, err = db.PrepareContext(ctx, albumRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query AlbumRowID: %w", err)
 	}
+	if q.albumsOnRepeatStmt, err = db.PrepareContext(ctx, albumsOnRepeat); err != nil {
+		return nil, fmt.Errorf("error preparing query AlbumsOnRepeat: %w", err)
+	}
 	if q.albumsToPoolStmt, err = db.PrepareContext(ctx, albumsToPool); err != nil {
 		return nil, fmt.Errorf("error preparing query AlbumsToPool: %w", err)
 	}
@@ -658,6 +661,11 @@ func (q *Queries) Close() error {
 	if q.albumRowIDStmt != nil {
 		if cerr := q.albumRowIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing albumRowIDStmt: %w", cerr)
+		}
+	}
+	if q.albumsOnRepeatStmt != nil {
+		if cerr := q.albumsOnRepeatStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing albumsOnRepeatStmt: %w", cerr)
 		}
 	}
 	if q.albumsToPoolStmt != nil {
@@ -1689,6 +1697,7 @@ type Queries struct {
 	albumHeartedStmt                       *sql.Stmt
 	albumLoudnessInputsStmt                *sql.Stmt
 	albumRowIDStmt                         *sql.Stmt
+	albumsOnRepeatStmt                     *sql.Stmt
 	albumsToPoolStmt                       *sql.Stmt
 	anyMissingWithDigestStmt               *sql.Stmt
 	artistRowIDStmt                        *sql.Stmt
@@ -1897,6 +1906,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		albumHeartedStmt:                       q.albumHeartedStmt,
 		albumLoudnessInputsStmt:                q.albumLoudnessInputsStmt,
 		albumRowIDStmt:                         q.albumRowIDStmt,
+		albumsOnRepeatStmt:                     q.albumsOnRepeatStmt,
 		albumsToPoolStmt:                       q.albumsToPoolStmt,
 		anyMissingWithDigestStmt:               q.anyMissingWithDigestStmt,
 		artistRowIDStmt:                        q.artistRowIDStmt,

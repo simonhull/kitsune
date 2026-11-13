@@ -16,7 +16,6 @@
 	import { watchInput } from '#lib/morph/journey.ts';
 	import AlbumMenu from '#lib/pages/AlbumMenu.svelte';
 	import { albumsView } from '#lib/pages/albumsView.svelte.ts';
-	import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
 	import { libraryView } from '#lib/pages/libraryView.svelte.ts';
 	import { onScreen, selection } from '#lib/pages/selection.svelte.ts';
@@ -160,7 +159,6 @@
 				// eslint-disable-next-line svelte/no-navigation-without-resolve -- Built from resolve('/login') and the current path, with its `next`.
 				await goto(loginPath(location), { replaceState: true });
 			}
-			homeGrid.reset();
 			albumsView.reset();
 			libraryView.reset();
 			columnsView.reset();

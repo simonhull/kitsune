@@ -302,6 +302,7 @@ func (s *Server) meRoutes() []route {
 		{pattern: "PUT /me/ratings/tracks/{id}", handle: s.putRating},
 		{pattern: "DELETE /me/ratings/tracks/{id}", handle: s.deleteRating},
 		{pattern: "GET /me/listening", handle: s.getListening},
+		{pattern: "GET /me/home", handle: s.getHome},
 		{pattern: "GET /me/prefs/{key}", handle: s.getPref},
 		{pattern: "PUT /me/prefs/{key}", handle: s.putPref},
 		{pattern: "GET /me/playback", handle: s.getPlayback},

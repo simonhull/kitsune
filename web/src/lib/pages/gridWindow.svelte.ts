@@ -1,4 +1,4 @@
-import { albumPageSize, library } from '#lib/library/library.svelte.ts';
+import { albumPageSize } from '#lib/library/library.svelte.ts';
 import type { AlbumEntry } from '#lib/library/source.ts';
 
 /** How far past the viewport a page still counts as in view, in viewports. */
@@ -168,13 +168,3 @@ export function createGridWindow(
 ): GridWindow {
 	return new GridWindow(entries, nearEnd);
 }
-
-/** Home's grid, which fetches its albums a page at a time as they come near. */
-export const homeGrid = createGridWindow(
-	() => library.albums,
-	() => {
-		if (library.hasMoreAlbums) {
-			void library.loadMoreAlbums();
-		}
-	}
-);

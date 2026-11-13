@@ -1,26 +1,39 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
+		count,
 		emptyLine,
+		everythingNote,
 		greeting,
-		healthNote,
-		listeningTime,
-		summary,
-		trackCount
+		homeRows,
+		playsLine,
+		summary
 	} from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import AlbumGrid from '#lib/pages/AlbumGrid.svelte';
+	import ContinueCard from '#lib/pages/ContinueCard.svelte';
 	import Deck from '#lib/pages/Deck.svelte';
-	import FeatureTile from '#lib/pages/FeatureTile.svelte';
-	import { homeGrid } from '#lib/pages/gridWindow.svelte.ts';
-	import RecentCover from '#lib/pages/RecentCover.svelte';
-	import Icon from '#lib/shell/Icon.svelte';
+	import HomeCover from '#lib/pages/HomeCover.svelte';
+	import HomeRow from '#lib/pages/HomeRow.svelte';
+	import ShuffleTile from '#lib/pages/ShuffleTile.svelte';
+	import { librarySource } from '#lib/shuffle/sources.ts';
 
 	const facts = $derived(library.facts);
-	const feature = $derived(library.recent.at(0));
 	const name = $derived(library.user?.name ?? '');
 	/** Under a deck that's dealing, Home is already there. */
 	const showsHome = $derived(!library.deck || library.dealing !== 'no');
+	const rows = $derived(
+		homeRows(library.recent, library.history, library.playing?.album.id ?? null)
+	);
+	const artists = $derived(library.artists.kind === 'ready' ? library.artists.value.length : null);
+
+	const everything = librarySource('everything');
+	const favourites = librarySource('rated');
+
+	// The copy here shows at once; one over a minute old is read again, and swapped in place.
+	onMount(() => {
+		void library.freshenHistory();
+	});
 </script>
 
 <svelte:head>
@@ -29,65 +42,99 @@
 
 {#if facts !== null}
 	<div class="page-frame home">
-		<div class="intro" data-morph-part="intro" data-morph-key="intro">
-			<h1>{greeting(new Date().getHours(), name)}</h1>
-			{#if facts.albums > 0 && (!library.deck || library.dealing === 'dealt')}
-				<span class="summary" class:arriving={library.deck}>{summary(facts)}</span>
+		<div class="lead">
+			<div class="intro" data-morph-part="intro" data-morph-key="intro">
+				<h1>{greeting(new Date().getHours(), name)}</h1>
+				{#if facts.albums > 0 && (!library.deck || library.dealing === 'dealt')}
+					{@const [albums, songs, hours] = summary(facts)}
+					<span class="summary" class:arriving={library.deck}
+						>{`${albums} · ${songs}`}<span class="hours">{` · ${hours}`}</span></span
+					>
+				{/if}
+			</div>
+
+			{#if library.deck}
+				<Deck {facts} />
+			{/if}
+			{#if showsHome}
+				{#if facts.albums === 0}
+					<p class="empty" role="status">{emptyLine(facts, false)}</p>
+				{:else}
+					<section aria-label="Start" class="start">
+						<ContinueCard feature={rows.feature} />
+						<ShuffleTile
+							source={everything}
+							look="system"
+							title="Everything"
+							short="Everything"
+							note={everythingNote(facts.tracks, artists)}
+							morphKey="shuffle"
+						/>
+						<ShuffleTile
+							source={favourites}
+							look="card"
+							title="Your favourites"
+							short="Favourites"
+							note="4★ and up"
+							morphKey="favourites"
+						/>
+					</section>
+				{/if}
 			{/if}
 		</div>
 
-		{#if library.deck}
-			<Deck {facts} />
-		{/if}
-		{#if showsHome}
-			{#if facts.albums === 0}
-				<p class="empty" role="status">{emptyLine(facts, false)}</p>
-			{:else}
-				<section aria-label="Overview" class="overview">
-					{#if feature !== undefined}<FeatureTile album={feature} />{/if}
-
-					<a
-						class="health"
-						href={resolve('/health')}
-						data-morph-part="card"
-						data-morph-key="health"
+		<!--
+			The rows come in together once the history is known, the first time only: below the start
+			row, so nothing on screen moves for them. After that the copy here shows at once.
+		-->
+		{#if showsHome && facts.albums > 0 && library.history !== null}
+			<div class="rows">
+				{#if rows.played.length > 0}
+					<HomeRow
+						label="Recently played"
+						morphKey="played"
+						items={rows.played}
+						key={(album) => album.id}
 					>
-						<span class="fox-mark"><Icon name="fox" size={220} /></span>
-						<span class="label">Library health</span>
-						<span class="figure">
-							<span class="number">{facts.issues.toLocaleString('en-US')}</span>
-							<span class="note">{healthNote(facts.issues, facts.issueCounts)}</span>
-						</span>
-					</a>
-
-					<div class="week" data-morph-part="card" data-morph-key="stats">
-						<span class="label">Your library</span>
-						<span class="figure">
-							<span class="number">{listeningTime(facts.durationMs)}</span>
-							<span class="note">{trackCount(facts.tracks)} of listening</span>
-						</span>
-					</div>
-
-					<section
-						aria-label="Recently added"
-						class="recent"
-						data-morph-part="card"
-						data-morph-key="recent"
+						{#snippet item(album)}<HomeCover {album} />{/snippet}
+					</HomeRow>
+				{/if}
+				{#if rows.onRepeat.length > 0}
+					<HomeRow
+						label="On repeat"
+						note="the last 90 days"
+						morphKey="repeat"
+						items={rows.onRepeat}
+						key={({ album }) => album.id}
 					>
-						<h2>Recently added</h2>
-						<div class="recent-row">
-							{#each library.recent.slice(1) as album (album.id)}
-								<RecentCover {album} />
-							{/each}
-						</div>
-					</section>
-				</section>
-
-				<section aria-label="Your albums" class="repeat">
-					<h2 data-morph-part="card" data-morph-key="albums">Your albums</h2>
-					<AlbumGrid grid={homeGrid} />
-				</section>
-			{/if}
+						{#snippet item({ album, plays })}<HomeCover
+								{album}
+								extra={playsLine(plays)}
+							/>{/snippet}
+					</HomeRow>
+				{/if}
+				<HomeRow label="Just added" morphKey="recent" items={rows.added} key={(album) => album.id}>
+					{#snippet item(album)}<HomeCover {album} />{/snippet}
+					{#snippet aside()}<a class="all-link" href={resolve('/albums')}>All albums</a>{/snippet}
+					{#snippet end()}
+						<a class="all" href={resolve('/albums')}>
+							<span class="all-count">{count(facts.albums)} albums</span>
+							<span class="all-name"
+								>All albums<svg
+									width="20"
+									height="20"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke-width="2.2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg
+								></span
+							>
+						</a>
+					{/snippet}
+				</HomeRow>
+			</div>
 		{/if}
 	</div>
 {/if}
@@ -97,6 +144,14 @@
 		display: flex;
 		flex-direction: column;
 		gap: calc(56px * var(--step));
+	}
+
+	.lead,
+	.rows {
+		display: flex;
+		flex-direction: column;
+		gap: calc(56px * var(--step));
+		min-width: 0;
 	}
 
 	.intro {
@@ -138,190 +193,137 @@
 		color: var(--text-secondary);
 	}
 
-	/*
-	 * The hero row spans the frame: Just added takes two columns and two rows, and the rest share
-	 * what's left, Recently added across the second row. A wider screen gives the rest more columns.
-	 */
-	.overview {
+	/* One big way back in, two ways to shuffle: three columns, two rows of 208. */
+	.start {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-		grid-auto-rows: calc(200px * var(--step));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-rows: repeat(2, calc(208px * var(--step)));
 		gap: calc(16px * var(--step));
+		margin-top: calc(-8px * var(--step));
 	}
 
-	@media (min-width: 1280px) {
-		.overview {
-			grid-template-columns: repeat(4, minmax(0, 1fr));
-		}
-	}
-
-	.health,
-	.week {
-		position: relative;
-		overflow: hidden;
-		border-radius: var(--radius-28);
-		padding: calc(24px * var(--step));
+	/* The row's last card: the way to every album, the size of a cover. */
+	.all {
+		box-sizing: border-box;
+		width: var(--home-cover);
+		height: var(--home-cover);
+		padding: calc(18px * var(--step));
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
+		border: 1px solid var(--edge-strong);
+		border-radius: var(--radius-20);
+		color: var(--text);
 	}
 
-	.health {
-		background: var(--fox);
-		color: var(--fox-ink);
+	.all:hover {
+		border-color: var(--edge-hover);
 	}
 
-	.health:hover {
-		background: color-mix(in srgb, var(--fox) 90%, var(--text));
-	}
-
-	.fox-mark {
-		display: flex;
-		position: absolute;
-		right: -30px;
-		bottom: -40px;
-		opacity: 0.18;
-	}
-
-	.week,
-	.recent {
-		background: var(--card);
-		border: 1px solid var(--edge-card);
-	}
-
-	.label,
-	.recent h2 {
-		font-size: calc(13px * var(--step));
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-
-	.health .label {
-		font-weight: 700;
-	}
-
-	.week .label,
-	.recent h2 {
+	.all-count {
+		font-family: var(--font-mono);
+		font-size: var(--type-mono);
 		color: var(--text-meta);
 	}
 
-	.figure {
-		position: relative;
+	.all-name {
 		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.week .figure {
-		gap: 6px;
-	}
-
-	.number {
-		font-size: calc(72px * var(--step));
-		font-weight: 900;
-		letter-spacing: -0.05em;
-		line-height: 0.85;
-	}
-
-	.week .number {
-		font-size: calc(56px * var(--step));
+		align-items: flex-end;
+		justify-content: space-between;
+		font-size: calc(20px * var(--step));
 		font-weight: 800;
-		line-height: 0.9;
+		letter-spacing: -0.03em;
+		line-height: 1;
 	}
 
-	.note {
-		font-size: var(--type-body);
+	.all-name svg {
+		flex: none;
+		width: calc(20px * var(--step));
+		height: calc(20px * var(--step));
+		stroke: var(--fox-text);
+	}
+
+	/* A phone's way to every album: a link beside the heading, where the card would scroll away. */
+	.all-link {
+		display: none;
+		align-items: center;
+		min-height: var(--target);
+		font-size: 14px;
 		font-weight: 600;
-	}
-
-	.week .note {
-		font-weight: 400;
-		color: var(--text-secondary);
-	}
-
-	.recent {
-		grid-column: span 2;
-		border-radius: var(--radius-28);
-		padding: calc(24px * var(--step));
-		display: flex;
-		flex-direction: column;
-		gap: calc(16px * var(--step));
-		overflow: hidden;
+		color: var(--fox-text);
 	}
 
 	/*
-	 * As many whole covers as one row holds, spread to both edges: the rest wrap out of sight below.
+	 * From 2560 the page is two columns: the greeting and the ways in on the left, the rows on the
+	 * right, so a 4K screen holds all of it at once.
 	 */
-	.recent-row {
-		--recent-size: calc(112px * var(--step));
-
-		display: grid;
-		grid-template-columns: repeat(auto-fill, var(--recent-size));
-		justify-content: space-between;
-		grid-template-rows: var(--recent-size);
-		grid-auto-rows: var(--recent-size);
-		gap: var(--recent-size) calc(14px * var(--step));
-		height: var(--recent-size);
-		overflow: hidden;
-	}
-
-	.repeat {
-		display: flex;
-		flex-direction: column;
-		gap: calc(20px * var(--step));
-	}
-
-	.repeat h2 {
-		font-size: var(--type-section);
-		font-weight: 800;
-		letter-spacing: var(--tracking-section);
-	}
-
-	/* After the cards' own rules, which it overrides. */
 	@media (min-width: 2560px) {
-		.overview {
-			grid-template-columns: repeat(6, minmax(0, 1fr));
+		.home {
+			display: grid;
+			grid-template-columns: minmax(0, 46fr) minmax(0, 70fr);
+			align-items: start;
+			gap: calc(96px * var(--step));
 		}
 
-		.health,
-		.week {
-			grid-column: span 2;
+		.lead {
+			gap: calc(24px * var(--step));
 		}
 
-		.recent {
-			grid-column: 3 / -1;
+		.intro {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: calc(18px * var(--step));
+			margin-bottom: calc(32px * var(--step));
+		}
+
+		.start {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			grid-template-rows: auto calc(200px * var(--step));
+			gap: calc(24px * var(--step));
+			margin-top: 0;
+		}
+
+		.rows {
+			gap: calc(64px * var(--step));
+			padding-top: calc(8px * var(--step));
 		}
 	}
 
 	@media (max-width: 720px) {
-		.home {
+		.home,
+		.lead,
+		.rows {
 			gap: 40px;
 		}
 
-		.overview {
-			grid-template-columns: minmax(0, 1fr);
-			grid-auto-rows: auto;
+		.intro {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 10px;
 		}
 
-		.health,
-		.week {
-			min-height: 180px;
+		.summary {
+			font-size: 12px;
 		}
 
-		.recent {
-			grid-column: auto;
+		.hours {
+			display: none;
 		}
 
-		.recent-row {
-			display: flex;
-			justify-content: start;
-			gap: 14px;
-			height: auto;
-			overflow-x: auto;
-			margin-right: -24px;
-			padding-right: 24px;
-			scrollbar-width: none;
+		.start {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			grid-template-rows: none;
+			gap: 12px;
+			margin-top: -12px;
+		}
+
+		/* The way to every album moves up beside the heading, as a link. */
+		.all {
+			display: none;
+		}
+
+		.all-link {
+			display: inline-flex;
 		}
 	}
 </style>

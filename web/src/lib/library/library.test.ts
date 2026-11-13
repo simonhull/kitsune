@@ -1562,3 +1562,57 @@ describe('Last.fm', () => {
 		expect(nowPlaying).toHaveBeenCalledOnce();
 	});
 });
+
+describe("Home's history", () => {
+	const played: AlbumEntry = {
+		id: 'a',
+		title: 'A',
+		artist: 'B',
+		trackCount: 1,
+		compilation: false
+	};
+
+	it('is asked for with the shell, kept, and asked again only once a minute has passed', async () => {
+		const history = vi.fn<LibrarySource['history']>(() =>
+			Promise.resolve({ recent: [played], onRepeat: [{ album: played, plays: 3 }] })
+		);
+		const library = new Library(source({ history }), { readyMemory: forgetful(true) });
+		await library.loadShell();
+		await vi.waitFor(() => {
+			expect(library.history?.recent).toEqual([played]);
+		});
+		expect(library.entry('a')).toEqual(played);
+		const asked = history.mock.calls.length;
+
+		await library.freshenHistory(Date.now() + 30_000);
+		expect(history).toHaveBeenCalledTimes(asked);
+		await library.freshenHistory(Date.now() + 61_000);
+		expect(history).toHaveBeenCalledTimes(asked + 1);
+		library.reset();
+		expect(library.history).toBeNull();
+	});
+
+	it('keeps the copy it has through a failure, and asks again next time', async () => {
+		let fail = false;
+		const history = vi.fn<LibrarySource['history']>(() =>
+			fail
+				? Promise.reject(new ServerError(500))
+				: Promise.resolve({ recent: [played], onRepeat: [] })
+		);
+		const library = new Library(source({ history }), { readyMemory: forgetful(true) });
+		await library.loadHistory();
+		fail = true;
+		await library.loadHistory();
+		expect(library.history?.recent).toEqual([played]);
+		const asked = history.mock.calls.length;
+		await library.freshenHistory();
+		expect(history).toHaveBeenCalledTimes(asked + 1);
+	});
+
+	it('shows no history when there is none to keep and the server fails', async () => {
+		const history = vi.fn<LibrarySource['history']>(() => Promise.reject(new ServerError(500)));
+		const library = new Library(source({ history }), { readyMemory: forgetful(true) });
+		await library.loadHistory();
+		expect(library.history).toEqual({ recent: [], onRepeat: [] });
+	});
+});

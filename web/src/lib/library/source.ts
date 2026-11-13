@@ -820,6 +820,20 @@ export interface ListenReport {
 	listenedMs?: number;
 }
 
+/** An album, and how many times its songs were played. */
+export interface AlbumPlays {
+	album: AlbumEntry;
+	plays: number;
+}
+
+/** What Home shows of someone's plays. Each list holds at most 25 albums, and no plays means none. */
+export interface History {
+	/** Albums by their latest play, newest first. */
+	recent: AlbumEntry[];
+	/** Albums by their plays in the last 90 days, most first. */
+	onRepeat: AlbumPlays[];
+}
+
 /** What someone has done with the library, counted. */
 export interface Listening {
 	/** Plays that counted. */
@@ -903,6 +917,8 @@ export interface LibrarySource {
 	logout(): Promise<void>;
 	/** Counts the caller's plays, hearts and rated tracks. */
 	listening(): Promise<Listening>;
+	/** The albums the caller played last, and has on repeat. */
+	history(): Promise<History>;
 	lastfm(): Promise<LastfmStatus>;
 	/** The last.fm page to send the browser to. Rejects with a {@link ServerError}: 409 when not set up. */
 	connectLastfm(): Promise<string>;

@@ -43,6 +43,7 @@ import {
 	type PlaybackSave,
 	type LastfmStatus,
 	type LastfmSwitches,
+	type History,
 	type LibraryFacts,
 	type LibraryAlbum,
 	type LibraryIndex,
@@ -75,6 +76,8 @@ export const albumPageSize = 60;
 const wholeListPageSize = 200;
 /** The feature tile and the covers beside it: as many as a 4K screen's row holds, and some. */
 const recentCount = 25;
+/** How long Home's copy of the history is good for: a visit after this asks again. */
+export const historyFreshMs = 60_000;
 /** How long to leave a server that isn't answering, or a library still empty. */
 const retryMs = 5000;
 /** How often a broken cover may ask whether the session is still good. */
@@ -207,6 +210,11 @@ export class Library {
 	facts = $state.raw<LibraryFacts | null>(null);
 	/** Newest first: the feature album, then what's beside it. */
 	recent = $state.raw<AlbumEntry[]>([]);
+	/**
+	 * What the person has played, for Home's rows: null until the first answer. A copy is kept
+	 * through every later read, so Home shows it at once and swaps it in place.
+	 */
+	history = $state.raw<History | null>(null);
 	/** Every album loaded so far, by name. */
 	albums = $state.raw<AlbumEntry[]>([]);
 	/** Whether the server has more albums than {@link Library.albums} holds. */
@@ -281,6 +289,9 @@ export class Library {
 	#session: Promise<Session> | null = null;
 	#setup: Promise<SetupStatus | null> | null = null;
 	#shell: Promise<void> | null = null;
+	/** When {@link Library.history} was asked for: 0 makes the next look ask again. */
+	#historyAt = 0;
+	#historyLoad: Promise<void> | null = null;
 	#cursor: string | undefined;
 	#more: Promise<void> | null = null;
 	#retry: ReturnType<typeof setTimeout> | undefined;
@@ -675,6 +686,7 @@ export class Library {
 			void this.refreshLastfm();
 			void this.#adoptTheme(epoch);
 			void this.#adoptHeartStars(epoch);
+			void this.loadHistory();
 			const [facts, recent, first, ready] = await Promise.all([
 				this.#source.facts(),
 				this.#source.albumsPage('added', undefined, recentCount),
@@ -732,6 +744,40 @@ export class Library {
 			if (epoch === this.#epoch && !(error instanceof UnauthorizedError)) {
 				this.down = true;
 				this.#retryLater(() => this.loadShell());
+			}
+		}
+	}
+
+	/**
+	 * Reads the person's history again when the copy here is older than {@link historyFreshMs}, or
+	 * there is none. Nothing waits on it: Home shows the copy it has. A failure keeps that copy, and
+	 * one with nothing to keep shows no history, so the next look asks again.
+	 */
+	freshenHistory(now = Date.now()): Promise<void> {
+		return now - this.#historyAt < historyFreshMs ? Promise.resolve() : this.loadHistory(now);
+	}
+
+	/** Reads the person's history, once at a time. */
+	loadHistory(now = Date.now()): Promise<void> {
+		this.#historyLoad ??= this.#loadHistory(now).finally(() => {
+			this.#historyLoad = null;
+		});
+		return this.#historyLoad;
+	}
+
+	async #loadHistory(now: number): Promise<void> {
+		const epoch = this.#epoch;
+		this.#historyAt = now;
+		try {
+			const history = await this.#source.history();
+			if (epoch === this.#epoch) {
+				this.#remember([...history.recent, ...history.onRepeat.map(({ album }) => album)]);
+				this.history = history;
+			}
+		} catch {
+			if (epoch === this.#epoch) {
+				this.#historyAt = 0;
+				this.history ??= { recent: [], onRepeat: [] };
 			}
 		}
 	}
@@ -1213,6 +1259,8 @@ export class Library {
 			return; // A first scan's deck follows the library its own way.
 		}
 		void this.#refreshHome();
+		// An album in the history may have changed: the next look at Home reads it again.
+		this.#historyAt = 0;
 		// An artist's songs can gain an album nobody has read yet, so any change reads them again.
 		this.#artistSongsChanged();
 		const held = all ? [...this.#albums.keys()] : albums.filter((id) => this.#albums.has(id));
@@ -1731,6 +1779,8 @@ export class Library {
 		this.facts = null;
 		this.lastfm = null;
 		this.recent = [];
+		this.history = null;
+		this.#historyAt = 0;
 		this.albums = [];
 		this.hasMoreAlbums = false;
 		this.down = false;
@@ -1774,12 +1824,22 @@ function fromQuery(): Library {
 	const lastfm = lastfmFixture(query.get('lastfm'));
 	const setup = setupFixture(query.get('setup'));
 	const playback = playbackFixture(query.get('playback'));
+	const history = query.get('history') === 'none' ? 'none' : undefined;
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
 		const readyMemory = { seen: () => false, mark: () => undefined };
 		return new Library(
-			createFixtureSource({ latencyMs, health, role, editFault, lastfm, setup, playback }),
+			createFixtureSource({
+				latencyMs,
+				health,
+				role,
+				editFault,
+				lastfm,
+				setup,
+				playback,
+				history
+			}),
 			{
 				readyMemory,
 				simulated: true,
