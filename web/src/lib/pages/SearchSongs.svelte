@@ -71,8 +71,7 @@
 					id: hit.id,
 					title: hit.title,
 					artists: hit.artists,
-					durationMs: hit.durationMs,
-					hearted: library.marks.hearted('tracks', hit.id)
+					durationMs: hit.durationMs
 				},
 				album: album ?? {
 					id: hit.albumId,
@@ -242,8 +241,7 @@
 				{artistWhenDifferent}
 				lineChars={Math.floor((width - 120) / monoAdvance)}
 				{now}
-				rating={library.marks.counted(track.id)}
-				hearted={library.marks.hearted('tracks', track.id)}
+				stars={library.marks.stars(track.id)}
 				cued={track.id === library.playing?.track.id}
 				sounding={player.sounding}
 				picked={selection.has(track.id)}
@@ -277,7 +275,6 @@
 		hidden={0}
 		albums={facts.albums}
 		durationMs={facts.durationMs}
-		hearted={picked.every((trackId) => library.marks.hearted('tracks', trackId))}
 		actions={pickedActions}
 		compact={phone}
 		edit={undefined}

@@ -2,7 +2,6 @@
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { library } from '#lib/library/library.svelte.ts';
-	import { heartPath } from '#lib/shell/Icon.svelte';
 	import StarsInput from '#lib/shell/StarsInput.svelte';
 	import FileInfo from './FileInfo.svelte';
 	import Floating from './Floating.svelte';
@@ -34,19 +33,10 @@
 	);
 
 	const ids = $derived(target.kind === 'song' ? [target.trackId] : target.trackIds);
-	const hearted = $derived(ids.every((id) => library.marks.hearted('tracks', id)));
-	/**
-	 * The stars a song counts as, its own or its heart's; for several, the stars of their own they all
-	 * share, if they do. A heart's stars a selection shares aren't shown: setting all of them is a
-	 * real rating, and the bar shouldn't seem to hold one already.
-	 */
-	const rating = $derived.by(() => {
-		if (ids.length === 1) {
-			return library.marks.counted(ids[0] ?? '');
-		}
+	/** A song's stars; for several, the stars they all share, if they do. */
+	const stars = $derived.by(() => {
 		const all = new Set(ids.map((id) => library.marks.stars(id)));
-		const shared = all.size === 1 ? ([...all][0] ?? null) : null;
-		return shared === null ? null : { stars: shared, byHeart: false };
+		return all.size === 1 ? ([...all][0] ?? null) : null;
 	});
 
 	function then(action: () => void): () => void {
@@ -93,29 +83,12 @@
 			onclick={then(actions.addToQueue)}>Add to queue</button
 		>
 		<div class="rule"></div>
-		<button
-			type="button"
-			role="menuitemcheckbox"
-			aria-checked={hearted}
-			class="item with-icon"
-			class:on={hearted}
-			data-menu-item
-			onclick={() => {
-				actions.heart();
-			}}
-			><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"
-				><path d={heartPath}></path></svg
-			>{hearted ? 'Hearted' : 'Heart'}</button
-		>
 		<div class="rating">
-			<span class="rating-name" aria-hidden="true"
-				>Rating{#if rating?.byHeart === true}<small>FROM YOUR HEART</small>{/if}</span
-			>
+			<span class="rating-name" aria-hidden="true">Rating</span>
 			<!-- ↑ and ↓ stay the menu's, to go between its items; ← and → move the rating. -->
 			<StarsInput
 				size="menu"
-				value={rating?.stars ?? null}
-				byHeart={rating?.byHeart ?? false}
+				value={stars}
 				label={target.kind === 'song' ? `Rating of ${target.title}` : 'Rating of all of them'}
 				vertical={false}
 				data-menu-item
@@ -220,17 +193,6 @@
 		color: var(--text-secondary);
 	}
 
-	.with-icon path {
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 2;
-	}
-
-	.with-icon.on path {
-		fill: var(--fox-text);
-		stroke: var(--fox-text);
-	}
-
 	.rule {
 		height: 1px;
 		margin: 8px 4px;
@@ -248,14 +210,5 @@
 
 	.rating-name {
 		flex: 1;
-	}
-
-	.rating-name small {
-		display: block;
-		font-family: var(--font-mono);
-		font-size: 10px;
-		font-weight: 500;
-		letter-spacing: 0.06em;
-		color: var(--text-label);
 	}
 </style>

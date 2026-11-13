@@ -19,6 +19,8 @@ import {
 	type EditedTracks,
 	type EditFailure,
 	type EditStopped,
+	type HeartsConverted,
+	type HeartsSummary,
 	type LastfmStatus,
 	type LastfmSwitches,
 	type LibraryFacts,
@@ -30,7 +32,6 @@ import {
 	type PasswordFailure,
 	type ResetFailure,
 	type Account,
-	type MarkKind,
 	type Me,
 	type ListenReport,
 	type PlayReport,
@@ -301,11 +302,6 @@ export function createApiSource({
 				quietly
 			),
 
-		setHeart: (kind: MarkKind, id: string, on: boolean) =>
-			read<undefined>(`/me/hearts/${kind}/${encodeURIComponent(id)}`, {
-				method: on ? 'PUT' : 'DELETE'
-			}),
-
 		setStars: (trackId: string, stars: number | null) =>
 			read<undefined>(
 				`/me/ratings/tracks/${encodeURIComponent(trackId)}`,
@@ -441,6 +437,15 @@ export function createApiSource({
 		history: () => read<History>('/me/home'),
 
 		lastfm: () => read<LastfmStatus>('/me/lastfm'),
+
+		heartsSummary: () => read<HeartsSummary>('/me/hearts/summary'),
+
+		convertHearts: (stars: number | null) =>
+			read<HeartsConverted>('/me/hearts/convert', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ stars })
+			}),
 
 		async connectLastfm() {
 			const { url } = await read<{ url: string }>('/me/lastfm/connect', { method: 'POST' });

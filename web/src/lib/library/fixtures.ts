@@ -3,7 +3,6 @@ import { fnv1a } from '#lib/cover/cover.ts';
 import { letterOf } from '#lib/pages/libraryRows.ts';
 import { normalizeCode } from '#lib/pages/passwords.ts';
 import { discOf, discsOf } from './format.ts';
-import { counted, type Counted } from './heartStars.ts';
 import { partOf } from './indexPatch.ts';
 import { createPlaybackFixture, type PlaybackFixture } from './playbackFixture.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
@@ -28,13 +27,13 @@ import {
 	type ArtistLink,
 	type History,
 	type IndexField,
+	type HeartsSummary,
 	type LastfmStatus,
 	type LibraryAlbum,
 	type LibraryArtist,
 	type LibraryIndex,
 	type LibrarySource,
 	type LibraryTrack,
-	type MarkKind,
 	type Me,
 	type PrefKey,
 	type Prefs,
@@ -131,8 +130,7 @@ function track(
 		trackTotal: album.trackCount,
 		discTotal: 1,
 		genres: boardTags,
-		etag: `${album.id}-${String(trackNo)}:0`,
-		hearted: false
+		etag: `${album.id}-${String(trackNo)}:0`
 	};
 }
 
@@ -179,8 +177,7 @@ function albumFrom(entry: AlbumEntry, tracks: Track[], year: number): Album {
 		formats: ['FLAC'],
 		addedAt: '2026-10-12T18:00:00Z',
 		genres: boardTags,
-		etag: `${entry.id}:0`,
-		hearted: false
+		etag: `${entry.id}:0`
 	};
 }
 
@@ -286,7 +283,6 @@ function listed({ tracks, year, discs, ...album }: Album): LibraryAlbum {
 		title,
 		artist,
 		compilation,
-		hearted: false,
 		...(year === undefined ? {} : { year }),
 		...(telling ? { discs } : {}),
 		tracks: tracks.map(({ id: track, title: name, durationMs, artists, discNo, trackNo }) => ({
@@ -294,7 +290,6 @@ function listed({ tracks, year, discs, ...album }: Album): LibraryAlbum {
 			title: name,
 			durationMs,
 			artists,
-			hearted: false,
 			...(discNo === undefined ? {} : { discNo }),
 			...(trackNo === undefined ? {} : { trackNo })
 		}))
@@ -366,7 +361,6 @@ function indexFixture(): LibraryIndex {
 		const group = groups.get(owner.name) ?? {
 			...owner,
 			...(album.compilation ? {} : { id: artistLink(owner.name).id }),
-			hearted: false,
 			albums: []
 		};
 		group.albums.push(listed(album));
@@ -388,8 +382,10 @@ function indexFixture(): LibraryIndex {
 }
 
 /**
- * Board A's marks, which every fixture source opens with: hearts of every kind, and Glasshouse
- * rated 6 of its 10 songs to a 3.8. A few more songs elsewhere give 4 and up something to find.
+ * Board A's marks, which every fixture source opens with: hearts of every kind, kept from before
+ * stars were the only like and waiting for the You page's card to turn them into stars, and
+ * Glasshouse rated 6 of its 10 songs to a 3.8. A few more songs elsewhere give 4 and up something to
+ * find. Hearts show and weigh nowhere: only the card reads them.
  */
 const boardHearts: readonly string[] = [
 	'artists/artist-low-tide-choir',
@@ -418,10 +414,9 @@ const boardStars: readonly (readonly [string, number])[] = [
 
 const newestFirst = [glasshouse, paperSuns, redSignal, longSummer, tidewater, afterHours];
 
-/** An album as a list has it: no tracks, and no heart, which a list never says. */
+/** An album as a list has it: no tracks. */
 function listEntry(album: Album): AlbumEntry {
 	const entry: Partial<Album> = { ...album };
-	delete entry.hearted;
 	delete entry.tracks;
 	return entry as AlbumEntry;
 }
@@ -555,7 +550,6 @@ function artistIndexOf(index: LibraryIndex, link: ArtistLink): LibraryIndex {
 				id: link.id,
 				name: link.name,
 				sortName: heading?.sortName ?? link.name,
-				hearted: heading?.hearted ?? false,
 				albums: [...all.filter(owned).toSorted(newest), ...appears.toSorted(newest)]
 			}
 		]
@@ -787,7 +781,14 @@ const boardPlays = 3412;
 
 /** What the states board shows for each state, as of `now`. */
 export function lastfmStatusOf(fixture: LastfmFixture, now = Date.now()): LastfmStatus {
-	const off = { scrobble: true, nowPlaying: true, loves: true, state: 'ok', waiting: 0 } as const;
+	const off = {
+		scrobble: true,
+		nowPlaying: true,
+		loves: true,
+		loveFrom: 0,
+		state: 'ok',
+		waiting: 0
+	} as const;
 	switch (fixture) {
 		case 'unset':
 			return { ...off, configured: false, connected: false };
@@ -796,6 +797,7 @@ export function lastfmStatusOf(fixture: LastfmFixture, now = Date.now()): Lastfm
 		case 'connected':
 			return {
 				...off,
+				loveFrom: 4,
 				configured: true,
 				connected: true,
 				name: 'simonhull',
@@ -891,14 +893,11 @@ export interface FixtureOptions {
 }
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
-/** Why a fixture song came up: its marks, and nothing learned. */
-function neutralWhy(rating: Counted | null, hearted: boolean): ShuffleWhy {
+/** Why a fixture song came up: its stars, and nothing learned. */
+function neutralWhy(stars: number | null): ShuffleWhy {
 	return {
-		stars: rating?.stars ?? 0,
+		stars: stars ?? 0,
 		rating: 1,
-		heartStars: rating?.byHeart === true ? 1 : 0,
-		hearted,
-		heart: 1,
 		played: false,
 		sinceDays: 0,
 		recency: 1.2,
@@ -945,10 +944,8 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				return all.filter(({ album }) => album.artists.some(({ id }) => id === scope.id));
 			case 'tracks':
 				return all.filter(({ track }) => scope.tracks.includes(track.id));
-			case 'hearted':
-				return all.filter(({ track }) => hearts.has(`tracks/${track.id}`));
 			case 'rated':
-				return all.filter(({ track }) => (countedOf(track.id)?.stars ?? 0) >= 4);
+				return all.filter(({ track }) => (stars.get(track.id) ?? 0) >= 4);
 			case 'library':
 				return all;
 		}
@@ -975,14 +972,37 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	const prefs = new Map<PrefKey, unknown>(
 		Object.entries(options.prefs ?? {}) as [PrefKey, unknown][]
 	);
-	/** The stars a song counts as, by the same rule as the server: its own, else its heart's. */
-	function countedOf(trackId: string): Counted | null {
-		const heartStars = prefs.get('ratings.heart_stars');
-		return counted(
-			stars.get(trackId) ?? null,
-			hearts.has(`tracks/${trackId}`),
-			typeof heartStars === 'number' ? heartStars : 0
+	/** The hearts kept, as `GET /me/hearts/summary` counts them. */
+	function heartsSummary(): HeartsSummary {
+		const tracks = [...hearts]
+			.filter((key) => key.startsWith('tracks/'))
+			.map((key) => key.slice(7));
+		const byStars = [0, 0, 0, 0, 0];
+		const unrated: string[] = [];
+		for (const id of tracks) {
+			const rated = stars.get(id);
+			if (rated === undefined) {
+				unrated.push(id);
+			} else {
+				byStars[Math.ceil(rated) - 1] += 1;
+			}
+		}
+		const count = (kind: string) => [...hearts].filter((key) => key.startsWith(kind)).length;
+		const songs = indexFixture().artists.flatMap(({ albums: listed }) =>
+			listed.flatMap(({ tracks }) => tracks)
 		);
+		const preview = unrated.slice(0, 5).flatMap((id) => {
+			const song = songs.find((each) => each.id === id);
+			return song === undefined ? [] : [{ id, title: song.title, artist: song.artists[0] ?? '' }];
+		});
+		return {
+			tracksRated: tracks.length - unrated.length,
+			tracksUnrated: unrated.length,
+			albums: count('albums/'),
+			artists: count('artists/'),
+			byStars,
+			preview
+		};
 	}
 	let hasAccounts = options.setup === undefined || options.setup === 'done';
 	let signedOut = options.setup !== undefined;
@@ -1023,18 +1043,14 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 
 	/** A track as the marks have it: a stale rating goes, as the server leaves one out. */
 	function markedTrack<T extends Track | LibraryTrack>(track: T): T {
-		const fresh = { ...track, hearted: hearts.has(`tracks/${track.id}`) };
+		const fresh = { ...track };
 		delete fresh.stars;
 		const rated = stars.get(track.id);
 		return rated === undefined ? fresh : { ...fresh, stars: rated };
 	}
 
 	function marked(album: Album): Album {
-		return {
-			...album,
-			hearted: hearts.has(`albums/${album.id}`),
-			tracks: album.tracks.map(markedTrack)
-		};
+		return { ...album, tracks: album.tracks.map(markedTrack) };
 	}
 
 	function shuffleMarkOf(trackId: string): ShuffleMark | undefined {
@@ -1063,10 +1079,8 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		return {
 			artists: indexFixture().artists.map((artist) => ({
 				...artist,
-				hearted: artist.id !== undefined && hearts.has(`artists/${artist.id}`),
 				albums: artist.albums.map((album) => ({
 					...album,
-					hearted: hearts.has(`albums/${album.id}`),
 					tracks: album.tracks.map((track) => markedTrack(extra(album, track)))
 				}))
 			}))
@@ -1155,15 +1169,6 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		sessionUser: () => respond(whoIsSignedIn),
 		reportPlay: () => respond(() => undefined),
 		reportListen: () => respond(() => undefined),
-		setHeart: (kind: MarkKind, id: string, on: boolean) =>
-			respond(() => {
-				const key = `${kind}/${id}`;
-				if (on) {
-					hearts.add(key);
-				} else {
-					hearts.delete(key);
-				}
-			}),
 		setStars: (trackId, rating) =>
 			respond(() => {
 				if (rating === null) {
@@ -1238,7 +1243,28 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				}
 			}),
 		logout: () => respond(() => undefined),
-		listening: () => respond(() => ({ plays: boardPlays, hearts: hearts.size, rated: stars.size })),
+		listening: () => respond(() => ({ plays: boardPlays, rated: stars.size })),
+		heartsSummary: () => respond(heartsSummary),
+		convertHearts: (given) =>
+			respond(() => {
+				const done = heartsSummary();
+				const rated =
+					given === null
+						? []
+						: [...hearts]
+								.filter((key) => key.startsWith('tracks/') && !stars.has(key.slice(7)))
+								.map((key) => key.slice(7));
+				for (const id of rated) {
+					stars.set(id, given ?? 0);
+				}
+				hearts.clear();
+				return {
+					rated: rated.length,
+					tracks: done.tracksRated + done.tracksUnrated,
+					albums: done.albums,
+					artists: done.artists
+				};
+			}),
 		history: () => respond(() => (options.history === 'none' ? noHistory : boardHistory)),
 		lastfm: () => respond(() => lastfm),
 		connectLastfm: () =>
@@ -1390,7 +1416,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 							artwork: album.artwork
 						}
 					],
-					why: neutralWhy(countedOf(track.id), hearts.has(`tracks/${track.id}`))
+					why: neutralWhy(stars.get(track.id) ?? null)
 				}));
 				const id = `shuffle-${String(shuffles.size + 1)}`;
 				shuffles.set(id, { mode: start.mode, picks });

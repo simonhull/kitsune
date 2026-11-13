@@ -6,16 +6,12 @@ import type { ShuffleSource } from './session.svelte.ts';
 import { libraryLabels } from './words.ts';
 
 /**
- * A song's marks as they stand now: what a press of a heart or a star has said since the index came.
- * Its stars are the counted ones, read from memory as the server's shuffle reads its pref, so the
- * first pick weighs songs as the server will, and waits on nothing.
+ * A song's stars as they stand now: what a press has said since the index came, read from memory,
+ * so the first pick weighs songs as the server will, and waits on nothing.
  */
-function marksOf(trackId: string): { stars?: number; hearted: boolean } {
-	const rating = library.marks.counted(trackId);
-	return {
-		hearted: library.marks.hearted('tracks', trackId),
-		...(rating === null ? {} : { stars: rating.stars })
-	};
+function marksOf(trackId: string): { stars?: number } {
+	const stars = library.marks.stars(trackId);
+	return stars === null ? {} : { stars };
 }
 
 /** The index, when the Library page has it. */
@@ -133,7 +129,6 @@ export function sourceOf(scope: ShuffleScope, mode: ShuffleMode): ShuffleSource 
 	const none = (): Unit[] => [];
 	switch (scope.kind) {
 		case 'library':
-		case 'hearted':
 		case 'rated':
 			return { ...librarySource(scope.kind === 'library' ? 'everything' : scope.kind), mode };
 		case 'tracks':

@@ -14,7 +14,6 @@ export function rowsOf(album: Album): LibraryAlbum {
 		compilation: album.compilation,
 		year: album.year,
 		artwork: album.artwork,
-		hearted: album.hearted,
 		discs: album.discs,
 		tracks: album.tracks.map((track) => ({
 			id: track.id,
@@ -23,7 +22,6 @@ export function rowsOf(album: Album): LibraryAlbum {
 			artists: track.artists,
 			discNo: track.discNo,
 			trackNo: track.trackNo,
-			hearted: track.hearted,
 			stars: track.stars,
 			year: track.year,
 			format: track.format,

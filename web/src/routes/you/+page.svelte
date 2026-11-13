@@ -5,7 +5,10 @@
 	import { resolve } from '$app/paths';
 	import { palettes } from '#lib/cover/cover.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import type { LastfmSwitches, Listening } from '#lib/library/source.ts';
+	import type { HeartsSummary, LastfmSwitches, Listening } from '#lib/library/source.ts';
+	import { defaultStars, hasHearts, loveFromValue, loveHint } from '#lib/pages/heartsCard.ts';
+	import HeartsToStars from '#lib/pages/HeartsToStars.svelte';
+	import StarPick from '#lib/shell/StarPick.svelte';
 	import {
 		cardOf,
 		countsLine,
@@ -25,9 +28,12 @@
 	/** How long the one-line result stays, fades included. */
 	const resultMs = 4200;
 
-	type SwitchKey = keyof Required<LastfmSwitches>;
+	type SwitchKey = Exclude<keyof Required<LastfmSwitches>, 'loveFrom'>;
 
-	const switches: readonly { key: SwitchKey; name: string; hint: string }[] = [
+	/** The love line before a connected account says its own: 4★. */
+	const loveFromDefault = 4;
+
+	const switches: readonly { key: Exclude<SwitchKey, 'loves'>; name: string; hint: string }[] = [
 		{
 			key: 'scrobble',
 			name: 'Scrobble what I play',
@@ -37,11 +43,6 @@
 			key: 'nowPlaying',
 			name: 'Show what’s playing now',
 			hint: 'Your profile shows the song while it plays'
-		},
-		{
-			key: 'loves',
-			name: 'Send hearts as loves',
-			hint: 'Hearting a song loves it; un-hearting un-loves it'
 		}
 	];
 
@@ -54,9 +55,30 @@
 	/** Says what went wrong with the last thing asked for here, until the next. */
 	let trouble = $state('');
 	let busy = $state(false);
+	/** The hearts kept from before stars were the only like: none drawn until they're known. */
+	let hearts = $state.raw<HeartsSummary | null>(null);
+	/** The stars the card would give their unrated songs: the person's most common, else 4★. */
+	let heartStars = $state(4);
+	const pendingHearts = $derived(hearts !== null && hasHearts(hearts) ? hearts : null);
+	const loveFrom = $derived(
+		status !== null && status.loveFrom > 0 ? status.loveFrom : loveFromDefault
+	);
+	/** How many songs are over the love line, once the songs are here to count. */
+	const lovedNow = $derived(
+		library.index.kind === 'ready' ? library.marks.ratedAtLeast(loveFrom) : null
+	);
+	const loveWords = $derived(
+		loveHint(
+			loveFrom,
+			lovedNow,
+			pendingHearts === null || pendingHearts.tracksUnrated === 0
+				? null
+				: { songs: pendingHearts.tracksUnrated, stars: heartStars }
+		)
+	);
 
 	onMount(() => {
-		// Every visit asks: a play, a heart or Last.fm may have moved on since.
+		// Every visit asks: a play, a rating or Last.fm may have moved on since.
 		void library.refreshLastfm();
 		library.listening().then(
 			(counts) => {
@@ -64,6 +86,17 @@
 			},
 			() => undefined
 		);
+		library.heartsSummary().then(
+			(kept) => {
+				hearts = kept;
+				heartStars = defaultStars(kept.byStars);
+			},
+			() => undefined
+		);
+		// The love line counts the songs over it, which the index holds; it never waits for them.
+		if (library.index.kind !== 'ready') {
+			void library.loadIndex();
+		}
 		const arrived = resultOf(page.url.searchParams.get('lastfm'));
 		let fade: ReturnType<typeof setTimeout> | undefined;
 		if (arrived !== null) {
@@ -123,6 +156,15 @@
 		}
 	}
 
+	async function moveLoveLine(stars: number): Promise<void> {
+		trouble = '';
+		try {
+			await library.setLastfm({ loveFrom: stars });
+		} catch {
+			trouble = "That line couldn't be saved, so it's back where it was.";
+		}
+	}
+
 	const themeNames: Record<ThemeChoice, string> = {
 		system: 'System',
 		light: 'Light',
@@ -152,7 +194,6 @@
 			trouble = "Signing out didn't work. Try again.";
 		}
 	}
-	import HeartsCard from '#lib/pages/HeartsCard.svelte';
 	import ShuffleCard from '#lib/shuffle/ShuffleCard.svelte';
 	import PlaybackCard from '#lib/player/PlaybackCard.svelte';
 </script>
@@ -181,6 +222,27 @@
 			</div>
 			<PasswordCard />
 		</div>
+
+		{#if pendingHearts !== null}
+			<div class="hearts" data-morph-part="panel">
+				<HeartsToStars
+					hearts={pendingHearts}
+					stars={heartStars}
+					choose={(stars) => {
+						heartStars = stars;
+					}}
+					done={() => {
+						hearts = null;
+						library.listening().then(
+							(counts) => {
+								listening = counts;
+							},
+							() => undefined
+						);
+					}}
+				/>
+			</div>
+		{/if}
 
 		<section aria-labelledby="looks" class="looks" data-morph-part="panel">
 			<h2 id="looks" class="mono">HOW KITSUNE LOOKS</h2>
@@ -218,11 +280,6 @@
 						: 'dark'}.
 				</p>
 			</div>
-		</section>
-
-		<section aria-labelledby="hearts-head" class="shuffles" data-morph-part="panel">
-			<h2 id="hearts-head" class="mono">HOW HEARTS COUNT</h2>
-			<HeartsCard />
 		</section>
 
 		<section id="shuffle" aria-labelledby="shuffle-head" class="shuffles" data-morph-part="panel">
@@ -338,6 +395,28 @@
 									<span class="track" aria-hidden="true"><span class="knob"></span></span>
 								</label>
 							{/each}
+							<div class="love">
+								<div class="love-line">
+									<span class="name">Love songs rated</span>
+									<StarPick
+										size="line"
+										value={loveFrom}
+										label="Love songs rated from"
+										onchange={(stars) => void moveLoveLine(stars)}
+									/>
+									<span class="mono love-value">{loveFromValue(loveFrom)}</span>
+									<label class="love-switch">
+										<input
+											type="checkbox"
+											aria-label="Love on Last.fm"
+											checked={status.loves}
+											onchange={(event) => void flip('loves', event.currentTarget.checked)}
+										/>
+										<span class="track" aria-hidden="true"><span class="knob"></span></span>
+									</label>
+								</div>
+								<p class="hint">{loveWords}</p>
+							</div>
 						</div>
 						<div class="actions">
 							<button type="button" class="ghost" disabled={busy} onclick={() => void disconnect()}
@@ -607,6 +686,41 @@
 		flex: 1;
 	}
 
+	/* The love line: Last.fm loves follow stars, from the line chosen up. */
+	.love {
+		padding: 12px 0 4px;
+		border-top: 1px solid var(--edge-card);
+	}
+
+	.love-line {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 14px;
+	}
+
+	.love-line .name {
+		flex: 1;
+		min-width: max-content;
+	}
+
+	.love-value {
+		min-width: 96px;
+		text-align: right;
+		color: var(--fox-text);
+	}
+
+	.love-switch {
+		position: relative;
+		display: flex;
+		cursor: pointer;
+	}
+
+	.love .hint {
+		margin-top: 6px;
+		line-height: 1.5;
+	}
+
 	.name {
 		display: block;
 		font-size: var(--type-body);
@@ -703,6 +817,7 @@
 		min-width: 0;
 	}
 
+	.hearts,
 	.looks,
 	.shuffles,
 	.where {
@@ -729,6 +844,7 @@
 			grid-row: span 2;
 		}
 
+		.hearts,
 		.looks,
 		.shuffles,
 		.where {
@@ -907,6 +1023,7 @@
 		}
 
 		.left,
+		.hearts,
 		.looks,
 		.shuffles,
 		.where {

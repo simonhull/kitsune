@@ -9,9 +9,7 @@
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { trackLabel } from '#lib/library/format.ts';
-	import type { Counted } from '#lib/library/heartStars.ts';
 	import type { ColumnId, LibraryTrack, MovableId } from '#lib/library/source.ts';
-	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsInput from '#lib/shell/StarsInput.svelte';
 	import {
@@ -60,9 +58,8 @@
 		height?: number | undefined;
 		/** When "Yesterday" is, for Last played. */
 		now: number;
-		/** The stars it counts as: its own, or its heart's (`marks.counted`), or null. */
-		rating: Counted | null;
-		hearted: boolean;
+		/** The person's stars for it, or null. */
+		stars: number | null;
 		/** It's the song cued, and whether it's sounding now. */
 		cued: boolean;
 		sounding: boolean;
@@ -92,8 +89,7 @@
 		top,
 		height,
 		now,
-		rating,
-		hearted,
+		stars,
 		cued,
 		sounding,
 		picked,
@@ -105,8 +101,7 @@
 	const context = $derived({
 		track,
 		album,
-		rating,
-		hearted,
+		rating: stars,
 		artistWhenDifferent,
 		now,
 		pageArtist,
@@ -194,13 +189,8 @@
 			class="rate"
 			data-col={id}
 			value={cell.stars === 0 ? null : cell.stars}
-			byHeart={cell.byHeart}
 			label={`Rating of ${track.title}`}
 		/>
-	{:else if cell.look === 'heart'}
-		<span class="heart-cell" data-col={id}
-			><HeartButton kind="tracks" id={track.id} name={track.title} size={16} /></span
-		>
 	{:else if id === 'album' && cell.text !== ''}
 		<span class="cell name" data-col={id}
 			><a class="link" href={resolve('/album/[id]', { id: album.id })}>{cell.text}</a></span
@@ -309,9 +299,6 @@
 <style>
 	/* The grid is the header's: every cell sits under its label. */
 	.row {
-		--heart-on: var(--star);
-		--heart-off: var(--star-off);
-
 		position: relative;
 		box-sizing: border-box;
 		min-width: 0;
@@ -515,16 +502,6 @@
 		color: var(--fox-ink);
 	}
 
-	.heart-cell {
-		display: flex;
-		justify-content: center;
-	}
-
-	.heart-cell :global(.heart) {
-		width: 28px;
-		height: 28px;
-	}
-
 	/* A queue's handle: half there at rest, whole on hover, gone on the song playing. */
 	.handle {
 		width: var(--box-size, 16px);
@@ -633,14 +610,10 @@
 	/* Playing is the frame's amber, in every list: amber means playback. */
 	.row.cued,
 	.row.cued:hover {
-		--heart-on: var(--fox-ink);
-		--heart-off: color-mix(in srgb, var(--fox-ink) 40%, transparent);
 		--stars-on: var(--fox-ink);
 		--stars-off: color-mix(in srgb, var(--fox-ink) 30%, transparent);
 		/* The stars a hover would set, in the ink: the star's own amber vanishes on the row's. */
 		--stars-preview: color-mix(in srgb, var(--fox-ink) 75%, transparent);
-		/* And the stars a heart gives, at their half strength. */
-		--stars-by: color-mix(in srgb, var(--fox-ink) 58%, transparent);
 
 		border-radius: var(--radius-12);
 		background: var(--fox);

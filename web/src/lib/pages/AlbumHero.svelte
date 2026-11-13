@@ -10,7 +10,6 @@
 	import { player } from '#lib/player/player.svelte.ts';
 	import { shuffles } from '#lib/shuffle/session.svelte.ts';
 	import { albumSource } from '#lib/shuffle/sources.ts';
-	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsShown from '#lib/shell/StarsShown.svelte';
 	import { albumMenu } from './albumMenu.svelte.ts';
@@ -154,9 +153,6 @@
 			{/if}
 			{#if !editing}
 				<button type="button" class="ghost" disabled={!playable} onclick={shuffle}>Shuffle</button>
-				<span class="favorite"
-					><HeartButton kind="albums" id={albumId} name={entry?.title ?? 'album'} size={18} /></span
-				>
 				{#if edit !== undefined}
 					<button
 						type="button"
@@ -189,9 +185,7 @@
 						<span class="glyphs"><StarsShown {stars} empty="dim" /></span>
 						<span class="from" aria-hidden="true"
 							>{stars.mean} · FROM {stars.rated} OF {stars.of}
-							{stars.of === 1 ? 'SONG' : 'SONGS'}{stars.byHeart > 0
-								? ` · ${String(stars.byHeart)} BY HEART`
-								: ''}</span
+							{stars.of === 1 ? 'SONG' : 'SONGS'}</span
 						>
 					</span>
 				{/if}
@@ -430,19 +424,6 @@
 	.ghost:disabled {
 		color: var(--text-label);
 		cursor: default;
-	}
-
-	/* The ghost buttons' ring, on the art: so it wears the accent. */
-	.favorite {
-		--heart-on: var(--accent);
-		--heart-off: var(--text);
-
-		display: flex;
-	}
-
-	.favorite :global(.heart) {
-		border: 1px solid var(--edge-strong);
-		background: color-mix(in srgb, var(--ground) 30%, transparent);
 	}
 
 	.rating {

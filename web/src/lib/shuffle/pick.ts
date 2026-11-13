@@ -1,12 +1,11 @@
 import type { LibraryIndex, ShuffleMark } from '#lib/library/source.ts';
 
-/** A song as the first pick sees it: where it is, the person's marks, and their rules on it. */
+/** A song as the first pick sees it: where it is, the person's stars, and their rules on it. */
 export interface Candidate {
 	id: string;
 	albumId: string;
-	/** 1 to 5, or absent. */
+	/** ½ to 5 in halves, or absent. */
 	stars?: number;
-	hearted: boolean;
 	mark?: ShuffleMark;
 }
 
@@ -17,8 +16,6 @@ export interface Unit {
 
 /** The rating curve at "how much ratings matter" 1, as the server's engine has it. */
 const starCurve = [0.2, 0.6, 1, 1.6, 2.4] as const;
-/** A heart at "how much ratings matter" 1; 1.25 at the default 0.5. */
-const heartAtFull = 1.5625;
 /** What an unrated song weighs as: the middle of the scale. */
 const unratedStars = 3;
 
@@ -64,8 +61,7 @@ export function unitsOf(
 }
 
 /**
- * A unit's weight from its rating and heart alone: what is known here, without the server's
- * history. The mean of its rated songs, unrated counting as 3, on the server's curve, at `ratings`.
+ * A unit's weight from its rating alone: what is known here, without the server's history. The mean of its rated songs, unrated counting as 3, on the server's curve, at `ratings`.
  */
 export function weightOf({ songs }: Unit, ratings: number): number {
 	const rated = songs.filter(({ stars }) => stars !== undefined && stars >= 0.5 && stars <= 5);
@@ -78,8 +74,7 @@ export function weightOf({ songs }: Unit, ratings: number): number {
 	const at = (stars: number): number => Math.log(starCurve[stars - 1] ?? 1);
 	const curve =
 		low >= starCurve.length ? at(low) : at(low) + (mean - low) * (at(low + 1) - at(low));
-	const heart = songs.some(({ hearted }) => hearted) ? Math.log(heartAtFull) : 0;
-	return Math.exp(ratings * (curve + heart));
+	return Math.exp(ratings * curve);
 }
 
 /** Draws a unit, each in proportion to its weight. None for no units. */
@@ -99,20 +94,17 @@ export function pickUnit(
 	return units.at(-1);
 }
 
-/**
- * Says whether a song of the index is in scope: what a Library filter keeps, or anything. A filter's
- * `'byHeart'` keeps it too.
- */
+/** Says whether a song of the index is in scope: what a Library filter keeps, or anything. */
 export type InScope = (
 	artist: LibraryIndex['artists'][number],
 	album: LibraryIndex['artists'][number]['albums'][number],
 	track: LibraryIndex['artists'][number]['albums'][number]['tracks'][number]
-) => boolean | 'byHeart';
+) => boolean;
 
 /** What the index holds, as candidates: those `keep` keeps, and everyone, for the runs. */
 export function candidatesOf(
 	index: LibraryIndex,
-	marksOf: (trackId: string) => { stars?: number; hearted: boolean },
+	marksOf: (trackId: string) => { stars?: number },
 	keep: InScope = () => true
 ): { inScope: Candidate[]; everyone: Candidate[] } {
 	const inScope: Candidate[] = [];

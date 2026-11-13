@@ -351,7 +351,6 @@
 					hidden={0}
 					albums={facts.albums}
 					durationMs={facts.durationMs}
-					hearted={picked.every((trackId) => library.marks.hearted('tracks', trackId))}
 					actions={pickedActions}
 					compact={innerWidth < 700}
 					edit={canEditTags ? editPicked : undefined}

@@ -32,17 +32,14 @@ const album = (id: string, artistId = 'ar1') => ({
 	title: id,
 	artist: artistId,
 	compilation: false,
-	hearted: false,
-	tracks: [{ id: `${id}-t`, title: 't', durationMs: 1, artists: [], hearted: false }]
+	tracks: [{ id: `${id}-t`, title: 't', durationMs: 1, artists: [] }]
 });
 
 const one: LibraryIndex = {
-	artists: [{ id: 'ar1', name: 'Ann', sortName: 'Ann', hearted: false, albums: [album('a1')] }]
+	artists: [{ id: 'ar1', name: 'Ann', sortName: 'Ann', albums: [album('a1')] }]
 };
 const two: LibraryIndex = {
-	artists: [
-		{ id: 'ar1', name: 'Ann', sortName: 'Ann', hearted: false, albums: [album('a1'), album('a2')] }
-	]
+	artists: [{ id: 'ar1', name: 'Ann', sortName: 'Ann', albums: [album('a1'), album('a2')] }]
 };
 
 describe('following the server', () => {
@@ -71,11 +68,9 @@ describe('following the server', () => {
 		expect(state.wholeReads).toBe(2);
 	});
 
-	it('shows hearts and stars changed on another device', async () => {
+	it('shows stars changed on another device', async () => {
 		const { library, stream } = await heard(one);
-		stream.send('marks', { kind: 'albums', id: 'a1', hearted: true });
 		stream.send('marks', { kind: 'tracks', id: 'a1-t', stars: 4 });
-		expect(library.marks.hearted('albums', 'a1')).toBe(true);
 		expect(library.marks.stars('a1-t')).toBe(4);
 		stream.send('marks', { kind: 'tracks', id: 'a1-t', stars: 0 });
 		expect(library.marks.stars('a1-t')).toBeNull();
@@ -90,22 +85,6 @@ describe('following the server', () => {
 		stream.send('prefs', { key: 'ui.theme' });
 		await vi.waitFor(() => {
 			expect(theme.choice).toBe('light');
-		});
-	});
-
-	it('takes what hearts count as from another device', async () => {
-		let saved = 4;
-		const { library, stream } = await heard(one, {
-			pref: ((key: string) =>
-				Promise.resolve(key === 'ratings.heart_stars' ? saved : null)) as LibrarySource['pref']
-		});
-		await vi.waitFor(() => {
-			expect(library.marks.heartStars).toBe(4);
-		});
-		saved = 4.5;
-		stream.send('prefs', { key: 'ratings.heart_stars' });
-		await vi.waitFor(() => {
-			expect(library.marks.heartStars).toBe(4.5);
 		});
 	});
 

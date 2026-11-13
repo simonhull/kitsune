@@ -26,10 +26,8 @@ describe('the You page', () => {
 	});
 
 	it('counts as board A does', () => {
-		expect(countsLine({ plays: 3412, hearts: 64, rated: 211 })).toBe(
-			'3,412 PLAYS · 64 HEARTS · 211 SONGS RATED'
-		);
-		expect(countsLine({ plays: 1, hearts: 1, rated: 1 })).toBe('1 PLAY · 1 HEART · 1 SONG RATED');
+		expect(countsLine({ plays: 3412, rated: 211 })).toBe('3,412 PLAYS · 211 SONGS RATED');
+		expect(countsLine({ plays: 1, rated: 1 })).toBe('1 PLAY · 1 SONG RATED');
 	});
 
 	it('names the role', () => {

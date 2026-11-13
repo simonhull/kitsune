@@ -19,7 +19,6 @@ import { healthFixture } from './healthFixtures.ts';
 import { patchIndex } from './indexPatch.ts';
 import type { PlaybackFixture } from './playbackFixture.ts';
 import { eventsUrl, Live, type EventStream } from './live.ts';
-import { heartStarsOff, isHeartStars } from './heartStars.ts';
 import { Marks } from './marks.svelte.ts';
 import { ListenOutbox, Outbox } from './outbox.ts';
 import { createPrefs, type PrefsStore } from './prefs.ts';
@@ -42,6 +41,8 @@ import {
 	type PlaybackRecord,
 	type PlaybackSave,
 	type LastfmStatus,
+	type HeartsConverted,
+	type HeartsSummary,
 	type LastfmSwitches,
 	type History,
 	type LibraryFacts,
@@ -88,8 +89,6 @@ const restartGraceMs = 1500;
 const scanPollMs = 1000;
 /** How often anyone else asks how a running scan is doing. */
 const progressPollMs = 1000;
-/** The preference of what an unrated heart counts as. */
-const heartStarsKey = 'ratings.heart_stars';
 /** How often anyone asks how the fingerprint pass is doing: it runs for many minutes. */
 const passPollMs = 5000;
 /** When to read again what a settings change changes, which the server applies a moment later. */
@@ -254,7 +253,7 @@ export class Library {
 		return found;
 	});
 	readonly simulated: boolean;
-	/** The signed-in person's hearts and stars: what every page shows, whatever it was given. */
+	/** The signed-in person's stars: what every page shows, whatever it was given. */
 	readonly marks: Marks;
 	/** The signed-in person's preferences, kept on the server. */
 	readonly prefs: PrefsStore;
@@ -341,9 +340,6 @@ export class Library {
 		this.#listens = new ListenOutbox(options.outbox ?? (() => localStorage), this.#source);
 		this.marks = new Marks(this.#source);
 		this.prefs = createPrefs(this.#source);
-		this.watchPref(heartStarsKey, (value) => {
-			this.#takeHeartStars(value);
-		});
 		const events = options.events === undefined ? browserEvents() : options.events;
 		this.#live =
 			events === null
@@ -525,9 +521,27 @@ export class Library {
 		await this.refreshLastfm();
 	}
 
-	/** Counts the signed-in person's plays, hearts and rated songs. */
+	/** Counts the signed-in person's plays and rated songs. */
 	listening(): Promise<Listening> {
 		return this.#source.listening();
+	}
+
+	/** The hearts the signed-in person kept from before stars were the only like. */
+	heartsSummary(): Promise<HeartsSummary> {
+		return this.#source.heartsSummary();
+	}
+
+	/**
+	 * Turns the person's hearts into stars, once: their unrated hearted songs get `stars`, or stay
+	 * unrated for null, and every heart goes. Each song rated arrives as a `marks` event, here and on
+	 * the person's other devices, as any rating does; without the stream, the songs are read again.
+	 */
+	async convertHearts(stars: number | null): Promise<HeartsConverted> {
+		const done = await this.#source.convertHearts(stars);
+		if (done.rated > 0 && !this.live && this.index.kind === 'ready') {
+			void this.loadIndex(this.#fields());
+		}
+		return done;
 	}
 
 	/**
@@ -640,34 +654,6 @@ export class Library {
 		}
 	}
 
-	/**
-	 * Reads what the person's unrated hearts count as. It never holds anything up: rows paint with
-	 * hearts Off, and their implied stars blend in when this answers.
-	 */
-	async #adoptHeartStars(epoch: number): Promise<void> {
-		const chosen = await this.prefs.get(heartStarsKey);
-		if (chosen !== null && epoch === this.#epoch && !this.prefs.pending(heartStarsKey)) {
-			this.#takeHeartStars(chosen);
-		}
-	}
-
-	#takeHeartStars(value: number): void {
-		this.marks.heartStars = isHeartStars(value) ? value : heartStarsOff;
-	}
-
-	/**
-	 * Changes what an unrated heart counts as: at once here, and saved now, since a shuffle the
-	 * server builds next reads it there.
-	 */
-	setHeartStars(stars: number): void {
-		if (!isHeartStars(stars)) {
-			return;
-		}
-		this.marks.heartStars = stars;
-		this.prefs.put(heartStarsKey, stars);
-		void this.prefs.flush();
-	}
-
 	/** Loads everything the shell shows. Failures surface through {@link Library.down}. */
 	loadShell(): Promise<void> {
 		this.#shell ??= this.#loadShell().finally(() => {
@@ -685,7 +671,6 @@ export class Library {
 			this.flushPlays();
 			void this.refreshLastfm();
 			void this.#adoptTheme(epoch);
-			void this.#adoptHeartStars(epoch);
 			void this.loadHistory();
 			const [facts, recent, first, ready] = await Promise.all([
 				this.#source.facts(),

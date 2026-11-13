@@ -526,8 +526,7 @@ export class Shuffles {
 		}
 		const songs = queue.tracks.slice(queue.index).map((track) => ({
 			id: track.id,
-			albumId: albumOf(queue, track).id,
-			hearted: false
+			albumId: albumOf(queue, track).id
 		}));
 		this.#primed = null;
 		this.current = new Shuffle(this.#host, this.#player, source, { songs }, { ref, after });

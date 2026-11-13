@@ -111,16 +111,6 @@
 	transition: none;
 }
 
-/* heart */
-.song-list[data-held='heart'] [data-col='heart'] {
-	position: relative;
-	z-index: 3;
-}
-
-.song-list[data-phase='drag'][data-held='heart'] [data-col='heart'] {
-	transition: none;
-}
-
 /* plays */
 .song-list[data-held='plays'] [data-col='plays'] {
 	position: relative;

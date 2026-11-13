@@ -63,23 +63,15 @@ export function starWeight(stars: number | null): number {
 	return stars === null ? 1 : (topWeights[Math.round(stars * 2) - 1] ?? 1);
 }
 
-/** How much a heart counts toward Top. */
-export const heartWeight = 1.25;
-
 /**
- * A song's place in Top: `(plays + 1) × w(stars) × 1.25 if hearted`, from the person's own plays
- * and marks only. A song nobody has played, rated or hearted scores 1. The stars are the counted
- * ones, and the heart's 1.25 stays on top of them: a hearted song with no stars ranks as the same
- * song rated what hearts count as.
+ * A song's place in Top: `(plays + 1) × w(stars)`, from the person's own plays and stars only. A
+ * song nobody has played or rated scores 1.
  */
 export function topScore(track: LibraryTrack, marks: MarksView): number {
-	const plays = track.plays ?? 0;
-	const hearted = marks.hearted('tracks', track.id);
-	const stars = marks.counted(track.id)?.stars ?? null;
-	return (plays + 1) * starWeight(stars) * (hearted ? heartWeight : 1);
+	return ((track.plays ?? 0) + 1) * starWeight(marks.stars(track.id));
 }
 
-/** Whether nothing has been played, rated or hearted, so a ranking would only be noise. */
+/** Whether nothing has been played or rated, so a ranking would only be noise. */
 export function coldStart(songs: readonly ArtistSong[], marks: MarksView): boolean {
 	return songs.every(({ track }) => topScore(track, marks) === 1);
 }
@@ -126,7 +118,7 @@ function keyOf(
 		case 'plays':
 			return song.track.plays ?? 0;
 		case 'rating':
-			return marks.counted(song.track.id)?.stars ?? 0;
+			return marks.stars(song.track.id) ?? 0;
 		case 'title':
 			return sortKey(song.track.title);
 		case 'year':
@@ -190,7 +182,7 @@ export type Heading = 'top' | 'songs' | 'cold' | 'all';
 
 /**
  * The heading: Top songs, or for an artist with no more songs than Top shows, or with nothing
- * played, rated or hearted, just Songs (with NOTHING PLAYED YET · NEWEST FIRST for the second); the
+ * played or rated, just Songs (with NOTHING PLAYED YET · NEWEST FIRST for the second); the
  * full list says All songs.
  */
 export function headingOf(expanded: boolean, count: number, shown: number, cold: boolean): Heading {
@@ -274,7 +266,6 @@ export function albumsLayout(
 		height: appears.albums.length === 0 ? own.height : offset + appears.height,
 		songs: own.songs + appears.songs,
 		totalSongs: own.totalSongs + appears.totalSongs,
-		byHeart: 0,
 		divider
 	};
 }

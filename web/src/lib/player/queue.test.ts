@@ -38,8 +38,7 @@ function album(count: number): Album {
 		durationMs: 1000,
 		format: 'FLAC',
 		genres: [],
-		etag: '',
-		hearted: false
+		etag: ''
 	}));
 	return {
 		id: 'a',
@@ -54,8 +53,7 @@ function album(count: number): Album {
 		formats: ['FLAC'],
 		addedAt: '2026-10-12T18:00:00Z',
 		genres: [],
-		etag: '',
-		hearted: false
+		etag: ''
 	};
 }
 

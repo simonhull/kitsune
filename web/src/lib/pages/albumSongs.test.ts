@@ -12,7 +12,6 @@ function song(no: number, replayGain?: ReplayGain): Track {
 		format: 'FLAC',
 		genres: [],
 		etag: `t${String(no)}:0`,
-		hearted: false,
 		...(replayGain === undefined ? {} : { replayGain })
 	};
 }
@@ -31,7 +30,6 @@ function album(tracks: Track[]): Album {
 		addedAt: '2026-11-01T00:00:00Z',
 		genres: [],
 		etag: 'a1',
-		hearted: false,
 		discs: [{ no: 1, songs: tracks.length, durationMs: 60_000 * tracks.length }]
 	};
 }

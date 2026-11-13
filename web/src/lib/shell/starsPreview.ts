@@ -36,11 +36,3 @@ export function valueOf(el: Element): number | null {
 	const now = Number(el.getAttribute('aria-valuenow'));
 	return Number.isFinite(now) && now > 0 ? now : null;
 }
-
-/**
- * The song's own rating on a slider, which a press compares with: none while it shows the stars a
- * heart gives, so pressing them sets them for real.
- */
-export function ownOf(el: Element): number | null {
-	return el.hasAttribute('data-by-heart') ? null : valueOf(el);
-}

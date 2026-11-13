@@ -8,7 +8,6 @@
 	import { cubicOut } from 'svelte/easing';
 	import { fade } from 'svelte/transition';
 	import { resolve } from '$app/paths';
-	import { heartPath } from '#lib/shell/Icon.svelte';
 	import Icon from '#lib/shell/Icon.svelte';
 	import type { LibraryFilter } from '#lib/pages/libraryRows.ts';
 	import { shuffles, type ShuffleSource } from './session.svelte.ts';
@@ -236,13 +235,7 @@
 	{/key}
 	{#key filter}
 		{#if words.tag !== ''}
-			<span class="tag" aria-hidden="true">
-				{#if filter === 'hearted'}
-					<svg width="12" height="12" viewBox="0 0 24 24"><path d={heartPath}></path></svg>
-				{:else}
-					{words.tag}
-				{/if}
-			</span>
+			<span class="tag" aria-hidden="true">{words.tag}</span>
 		{/if}
 	{/key}
 </button>
@@ -492,10 +485,6 @@
 		scale: var(--fab-scale);
 		transform-origin: 100% 100%;
 		animation: tag-stamp var(--morph-fast) var(--curve-settle);
-	}
-
-	.tag svg {
-		fill: currentColor;
 	}
 
 	@keyframes tag-stamp {

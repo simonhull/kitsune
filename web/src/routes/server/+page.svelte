@@ -55,7 +55,7 @@
 	const pass = $derived(facts?.fingerprints);
 	const passing = $derived(pass !== undefined && pass.done < pass.total);
 	const graceHint = $derived(
-		'A song that disappears keeps its plays, hearts and ratings this long, in case its folder comes back.' +
+		'A song that disappears keeps its plays and ratings this long, in case its folder comes back.' +
 			(!passing && facts !== null && facts.tracks > 0
 				? ' Every song has its fingerprint, so a moved file keeps them too.'
 				: '')

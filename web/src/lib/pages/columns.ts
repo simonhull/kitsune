@@ -1,5 +1,4 @@
 import { clock, gain } from '#lib/library/format.ts';
-import type { Counted } from '#lib/library/heartStars.ts';
 import { starsLine } from '#lib/library/stars.ts';
 import type {
 	ColumnId,
@@ -62,7 +61,7 @@ export interface ColumnSpec {
 	/** What it asks the index for. */
 	field?: IndexField;
 	/** Names are in the sans; facts and numbers in the mono. */
-	look: 'name' | 'fact' | 'stars' | 'heart';
+	look: 'name' | 'fact' | 'stars';
 }
 
 const names: Widths = [128, 180];
@@ -97,7 +96,6 @@ export const columnSpecs: readonly ColumnSpec[] = [
 		field: 'format',
 		look: 'fact'
 	},
-	{ id: 'heart', label: 'Heart', head: '', width: [20, 24], look: 'heart' },
 	{
 		id: 'albumArtist',
 		label: 'Album artist',
@@ -225,9 +223,6 @@ export function savedColumns(saved: ColumnsPref | null): ColumnsPref {
 export function widthRange(id: ColumnId): { min: number; max: number } {
 	const spec = specOf(id);
 	const base = spec.width[0];
-	if (spec.look === 'heart') {
-		return { min: 20, max: 48 };
-	}
 	if (spec.look === 'stars') {
 		return { min: 76, max: 160 };
 	}
@@ -543,9 +538,8 @@ export type RowAlbum = Pick<LibraryAlbum, 'id' | 'title' | 'artist' | 'year' | '
 export interface CellContext {
 	track: LibraryTrack;
 	album: RowAlbum;
-	/** The stars the song counts as (`marks.counted`): its own, or its heart's, or null. */
-	rating: Counted | null;
-	hearted: boolean;
+	/** The person's stars for the song, or null. */
+	rating: number | null;
 	artistWhenDifferent: boolean;
 	/** Unix ms: when "Yesterday" is. */
 	now: number;
@@ -566,8 +560,7 @@ export type Cell =
 			/** A gain Kitsune measured, as no tag says it: the cell marks it quietly. */
 			measured?: true;
 	  }
-	| { look: 'stars'; stars: number; byHeart: boolean }
-	| { look: 'heart'; hearted: boolean };
+	| { look: 'stars'; stars: number };
 
 const dayMs = 86_400_000;
 const monthDay = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
@@ -646,13 +639,7 @@ export function cellOf(id: ColumnId, context: CellContext): Cell {
 			return fact(year === undefined ? '' : String(year));
 		}
 		case 'rating':
-			return {
-				look: 'stars',
-				stars: context.rating?.stars ?? 0,
-				byHeart: context.rating?.byHeart ?? false
-			};
-		case 'heart':
-			return { look: 'heart', hearted: context.hearted };
+			return { look: 'stars', stars: context.rating ?? 0 };
 		case 'plays':
 			return fact(String(track.plays ?? 0));
 		case 'lastPlayed':
@@ -689,7 +676,6 @@ export function sameOnAlbum(
 				track,
 				album,
 				rating: null,
-				hearted: false,
 				artistWhenDifferent,
 				now
 			});
@@ -701,7 +687,7 @@ export function sameOnAlbum(
 }
 
 /** Columns that say something of each song, so they're never left out for being shared. */
-const perSong = new Set<ColumnId>(['artist', 'rating', 'heart', 'plays', 'gain']);
+const perSong = new Set<ColumnId>(['artist', 'rating', 'plays', 'gain']);
 
 /**
  * What a phone row's second line says, from the person's columns in their order, before its time.
@@ -807,13 +793,7 @@ function phonePart(
 			if (cell.look !== 'stars' || cell.stars <= 0) {
 				return '';
 			}
-			// By heart, the heart takes the first star's place: ♥★★★ is 4, from the heart. A thin
-			// space keeps the stars, which run wide in the mono, off the heart.
-			return cell.byHeart
-				? `♥${cell.stars > 1 ? '\u2009' : ''}${starsLine(cell.stars).slice(1)}`
-				: starsLine(cell.stars);
-		case 'heart':
-			return cell.look === 'heart' && cell.hearted ? '♥' : '';
+			return starsLine(cell.stars);
 		case 'plays': {
 			const plays = track.plays ?? 0;
 			return plays === 0 ? '' : `${String(plays)} ${plays === 1 ? 'play' : 'plays'}`;

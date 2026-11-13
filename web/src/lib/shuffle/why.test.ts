@@ -5,9 +5,6 @@ import { agoWords, whyFactors, whyLine } from './why.ts';
 const plain: ShuffleWhy = {
 	stars: 0,
 	rating: 1,
-	heartStars: 0,
-	hearted: false,
-	heart: 1,
 	played: true,
 	sinceDays: 3,
 	recency: 0.7,
@@ -23,24 +20,6 @@ const plain: ShuffleWhy = {
 	flow: 1
 };
 
-describe('stars a heart gives', () => {
-	const byHeart = { ...plain, stars: 4.5, heartStars: 1, hearted: true, heart: 1.25 };
-
-	it('name their source on the line, in place of "hearted"', () => {
-		expect(whyLine({ ...byHeart, sinceDays: 92 })).toBe('4½★ by heart · not heard in 3 months');
-		expect(whyLine({ ...byHeart, stars: 4 })).toBe('4★ by heart');
-	});
-
-	it('say so in the popover, and keep the heart as its own factor', () => {
-		const names = whyFactors({ ...byHeart, rating: 1.4 }).map(({ name }) => name);
-		expect(names.slice(0, 2)).toEqual(['Rated 4½★ · from your heart', 'Hearted']);
-	});
-
-	it('leave a rating of the person’s own as it was', () => {
-		expect(whyLine({ ...plain, stars: 4.5, hearted: true, heart: 1.25 })).toBe('4½★ · hearted');
-	});
-});
-
 describe('whyLine', () => {
 	it('says the board’s lines', () => {
 		expect(whyLine({ ...plain, stars: 5, rating: 1.55, sinceDays: 92, recency: 1 })).toBe(
@@ -55,8 +34,8 @@ describe('whyLine', () => {
 				similarity: 0.8
 			})
 		).toBe('Close to Low Tide Choir · 4★');
-		expect(whyLine({ ...plain, hearted: true, heart: 1.25, listens: 9, heard: 0.97 })).toBe(
-			'Hearted · you usually hear it all'
+		expect(whyLine({ ...plain, listens: 9, heard: 0.97 })).toBe(
+			'Unrated · you usually hear it all'
 		);
 		expect(whyLine({ ...plain, played: false, recency: 1.2 })).toBe(
 			'Never played · a nudge for new'
@@ -134,9 +113,7 @@ describe('whyFactors', () => {
 	});
 
 	it('leaves skips and listening out when memory is off', () => {
-		const names = whyFactors({ ...plain, memory: false, hearted: true, heart: 1.25 }).map(
-			({ name }) => name
-		);
-		expect(names).toEqual(['Unrated', 'Hearted', 'Last heard 3 days ago']);
+		const names = whyFactors({ ...plain, memory: false }).map(({ name }) => name);
+		expect(names).toEqual(['Unrated', 'Last heard 3 days ago']);
 	});
 });

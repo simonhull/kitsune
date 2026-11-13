@@ -6,7 +6,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { untrack } from 'svelte';
-	import { library } from '#lib/library/library.svelte.ts';
 	import type { AlbumEntry, LibraryTrack, ShuffleMode } from '#lib/library/source.ts';
 	import { columnsFrom, largeFrom, template, type RowParts } from '#lib/pages/columns.ts';
 	import { songGrid } from '#lib/pages/songGrid.ts';
@@ -65,8 +64,7 @@
 			id: item.key,
 			title: item.titles.join(' + '),
 			artists: [item.artist],
-			durationMs: item.durationMs,
-			hearted: false
+			durationMs: item.durationMs
 		};
 	}
 
@@ -246,8 +244,7 @@
 				id: playing.id,
 				title: playing.title,
 				artists: [playing.artist],
-				durationMs: playing.durationMs,
-				hearted: false
+				durationMs: playing.durationMs
 			}}
 			album={playing.album}
 			phone={false}
@@ -259,8 +256,7 @@
 			credit={playing.artist}
 			second={nowPlaying}
 			{now}
-			rating={null}
-			hearted={false}
+			stars={null}
 			cued
 			sounding={player.sounding}
 			picked={false}
@@ -288,8 +284,7 @@
 					credit={item.artist}
 					second={why === undefined ? undefined : reason}
 					{now}
-					rating={null}
-					hearted={false}
+					stars={null}
 					cued={false}
 					sounding={false}
 					picked={selection.has(item.key)}
@@ -323,7 +318,6 @@
 		hidden={0}
 		albums={picks.albums}
 		durationMs={picks.durationMs}
-		hearted={pickedSongs.every((id) => library.marks.hearted('tracks', id))}
 		actions={pickedActions}
 		compact={phone}
 		edit={undefined}
