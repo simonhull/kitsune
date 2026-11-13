@@ -196,7 +196,7 @@ export function framed(order: readonly MovableId[]): MovableId[] {
 
 export const defaultColumns: ColumnsPref = {
 	order: ['number', 'title', 'artist', 'genre', 'rating', 'plays', 'lastPlayed', 'format'],
-	artistWhenDifferent: true
+	artistWhenDifferent: false
 };
 
 const frameIds = new Set<MovableId>(['number', 'title'] satisfies FrameId[]);
