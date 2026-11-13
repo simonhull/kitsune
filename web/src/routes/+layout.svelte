@@ -13,7 +13,7 @@
 	import { loginPath } from '#lib/library/session.ts';
 	import { morphsKey, startMorphs } from '#lib/morph/engine.ts';
 	import Hud from '#lib/morph/Hud.svelte';
-	import { watchInput } from '#lib/morph/journey.ts';
+	import { hasInAppHistory, watchInput } from '#lib/morph/journey.ts';
 	import AlbumMenu from '#lib/pages/AlbumMenu.svelte';
 	import { albumsView } from '#lib/pages/albumsView.svelte.ts';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
@@ -25,7 +25,7 @@
 	import { matchSheet } from '#lib/matching/sheet.svelte.ts';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
-	import { togglesOnSpace } from '#lib/player/keys.ts';
+	import { playerKey } from '#lib/player/keys.ts';
 	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
 	import { playbackSettings } from '#lib/player/playback.svelte.ts';
 	import { player } from '#lib/player/player.svelte.ts';
@@ -115,10 +115,50 @@
 		}
 	}
 
+	/** The player's shortcuts, anywhere in the app once something is in the island. */
 	function onKeyDown(event: KeyboardEvent): void {
-		if (togglesOnSpace(event) && library.playing !== null && !atDoor) {
-			event.preventDefault();
-			player.toggle();
+		const playing = library.playing;
+		const key = playing === null || atDoor ? null : playerKey(event);
+		if (key === null || playing === null) {
+			return;
+		}
+		event.preventDefault();
+		switch (key.kind) {
+			case 'toggle':
+				player.toggle();
+				break;
+			case 'seek':
+				player.seek(player.position + key.by);
+				break;
+			case 'previous':
+				player.previous();
+				break;
+			case 'next':
+				player.next();
+				break;
+			case 'shuffle':
+				shuffles.toggle();
+				break;
+			case 'repeat':
+				player.cycleRepeat();
+				break;
+			case 'rate':
+				library.marks.rate(playing.track.id, key.stars);
+				break;
+			case 'now-playing':
+				toggleNowPlaying(playing.album.id);
+				break;
+		}
+	}
+
+	/** N: into Now playing, or out again the way its Close goes. */
+	function toggleNowPlaying(albumId: string): void {
+		if (!onNowPlaying) {
+			void goto(resolve('/now-playing'));
+		} else if (hasInAppHistory()) {
+			history.back();
+		} else {
+			void goto(resolve('/album/[id]', { id: albumId }));
 		}
 	}
 
