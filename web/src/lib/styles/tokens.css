@@ -82,6 +82,15 @@
 	/* A column lifted to move: its hard offset, printed off register, and the lane's grain. */
 	--lift-offset: rgb(245 241 236 / 80%);
 	--grain-alpha: 0.1;
+
+	/*
+	 * The player's round controls: the disc that comes up behind a glyph on hover, and stronger
+	 * pressed. (Not --wash: the shell's --wash is the album's wash text.)
+	 */
+	--control-wash: rgb(255 255 255 / 9%);
+	--control-wash-strong: rgb(255 255 255 / 14%);
+	/* Keyboard focus is printed off register: the fox ring, and this teal a pixel and a half off. */
+	--misprint: #3fb6c4;
 }
 
 /*
@@ -152,6 +161,10 @@
 
 	--lift-offset: rgb(22 18 14 / 85%);
 	--grain-alpha: 0.07;
+
+	--control-wash: rgb(22 18 14 / 7%);
+	--control-wash-strong: rgb(22 18 14 / 12%);
+	--misprint: #2b8f9b;
 }
 
 :root {

@@ -17,6 +17,7 @@
 	import UpNext from '#lib/shuffle/UpNext.svelte';
 	import Why from '#lib/shuffle/Why.svelte';
 	import { whyShown } from '#lib/shuffle/why.ts';
+	import { upNextLine } from '#lib/shuffle/words.ts';
 
 	const playing = $derived(library.playing);
 	/** The shuffle playing, if one is: then Up next is its list, and says what it shuffles. */
@@ -38,6 +39,17 @@
 					? null
 					: leftNote(resume.left, Date.now())
 	);
+
+	/** What the player's own shuffle is of: an album, songs from several, or nothing. */
+	const shuffledFrom = $derived.by(() => {
+		const queue = player.queue;
+		if (queue?.shuffled === undefined) {
+			return false;
+		}
+		return queue.albums === undefined ? queue.album.title : true;
+	});
+	/** The line under the controls: what's next, and how it goes on. */
+	const nextLine = $derived(upNextLine(shuffledFrom, player.repeating));
 
 	function goUp(event: MouseEvent & { currentTarget: HTMLAnchorElement }): void {
 		goUpToAlbum(event, event.currentTarget.pathname);
@@ -135,6 +147,9 @@
 					{#if note !== null}<p class="note" role="status">{note}</p>{/if}
 				</div>
 				<div class="controls-slot" use:reserveIslandSlot></div>
+				{#if shuffle !== null && player.repeating === 'one'}
+					<p class="next-label repeating" role="status">{nextLine}</p>
+				{/if}
 			</div>
 
 			{#if shuffle !== null}
@@ -154,17 +169,20 @@
 						why={whyShown ? reason : undefined}
 					/>
 				</div>
-			{:else if playing.upNext.length > 0}
+			{:else if playing.upNext.length > 0 || player.repeating !== 'off'}
 				<section aria-label="Up next" class="next" data-morph-part="panel">
-					<span class="next-label">UP NEXT</span>
-					{#each playing.upNext as upcoming, index (`${String(index)}:${upcoming.id}`)}
-						{@const from = playing.upNextAlbums.at(index) ?? playing.album}
-						<span class="pill" style:opacity={1 - index * 0.2}>
-							<span class="dot"><Cover albumId={from.id} entry={from} place="small" /></span>
-							<span class="pill-name" class:lead={index === 0}>{upcoming.title}</span>
-						</span>
-					{/each}
-					{#if playing.moreCount > 0}<span class="more">+{playing.moreCount} more</span>{/if}
+					<span class="next-label">{nextLine}</span>
+					<!-- Repeating this song, it is what's next: Next still goes on to the others. -->
+					{#if player.repeating !== 'one'}
+						{#each playing.upNext as upcoming, index (`${String(index)}:${upcoming.id}`)}
+							{@const from = playing.upNextAlbums.at(index) ?? playing.album}
+							<span class="pill" style:opacity={1 - index * 0.2}>
+								<span class="dot"><Cover albumId={from.id} entry={from} place="small" /></span>
+								<span class="pill-name" class:lead={index === 0}>{upcoming.title}</span>
+							</span>
+						{/each}
+						{#if playing.moreCount > 0}<span class="more">+{playing.moreCount} more</span>{/if}
+					{/if}
 				</section>
 			{/if}
 		</div>
@@ -401,6 +419,12 @@
 		white-space: nowrap;
 		margin-right: 6px;
 		align-self: center;
+		letter-spacing: 0.08em;
+	}
+
+	/* A shuffle's Up next has its own list: the line under the controls says only that it repeats. */
+	.repeating {
+		margin: 0;
 	}
 
 	.pill {

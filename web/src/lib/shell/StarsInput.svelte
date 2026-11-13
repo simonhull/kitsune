@@ -165,7 +165,7 @@
 	.stars-input {
 		--on: var(--stars-on, var(--star));
 		--off: var(--stars-off, var(--star-off));
-		--pv: var(--stars-preview, color-mix(in srgb, var(--star) 70%, transparent));
+		--pv: var(--stars-preview, color-mix(in srgb, var(--star) 55%, transparent));
 		--glyph: var(--star-type, 13px);
 		--cell: calc(var(--glyph) + 2px);
 		--cell-height: 28px;
@@ -208,6 +208,26 @@
 		--glyph: 16px;
 		--cell: 22px;
 		--cell-height: 44px;
+
+		position: relative;
+	}
+
+	/* In the island, keyboard focus is the controls' print as a 2 px underline, a pixel and a half off. */
+	.island:focus-visible {
+		outline: none;
+	}
+
+	.island:focus-visible::after {
+		content: '';
+		position: absolute;
+		left: 2px;
+		right: 2px;
+		bottom: 6px;
+		height: 2px;
+		border-radius: 2px;
+		background: var(--fox-line);
+		box-shadow: 1.5px 1.5px 0 0 color-mix(in srgb, var(--misprint) 55%, transparent);
+		pointer-events: none;
 	}
 
 	/* A setting's line, as the Last.fm love line: 20 px stars in 32 × 44 targets. */
@@ -292,6 +312,24 @@
 	.stars-input:global([data-preview='9']) .st:nth-child(-n + 4),
 	.stars-input:global([data-preview='10']) .st {
 		color: var(--c);
+	}
+
+	/* The star under the pointer comes up to meet it, wherever a rating is. */
+	@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+		.st {
+			transition:
+				scale 140ms var(--curve-room),
+				translate 140ms var(--curve-room);
+		}
+
+		.stars-input:global(:is([data-preview='1'], [data-preview='2'])) .st:nth-child(1),
+		.stars-input:global(:is([data-preview='3'], [data-preview='4'])) .st:nth-child(2),
+		.stars-input:global(:is([data-preview='5'], [data-preview='6'])) .st:nth-child(3),
+		.stars-input:global(:is([data-preview='7'], [data-preview='8'])) .st:nth-child(4),
+		.stars-input:global(:is([data-preview='9'], [data-preview='10'])) .st:nth-child(5) {
+			scale: 1.18;
+			translate: 0 -1px;
+		}
 	}
 
 	.stars-input:global([data-preview='1']) .st:nth-child(1),
