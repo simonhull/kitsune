@@ -30,9 +30,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.albumGroupKeyStmt, err = db.PrepareContext(ctx, albumGroupKey); err != nil {
 		return nil, fmt.Errorf("error preparing query AlbumGroupKey: %w", err)
 	}
-	if q.albumHeartedStmt, err = db.PrepareContext(ctx, albumHearted); err != nil {
-		return nil, fmt.Errorf("error preparing query AlbumHearted: %w", err)
-	}
 	if q.albumLoudnessInputsStmt, err = db.PrepareContext(ctx, albumLoudnessInputs); err != nil {
 		return nil, fmt.Errorf("error preparing query AlbumLoudnessInputs: %w", err)
 	}
@@ -57,11 +54,20 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.clearMatchStateStmt, err = db.PrepareContext(ctx, clearMatchState); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearMatchState: %w", err)
 	}
+	if q.countAlbumHeartsStmt, err = db.PrepareContext(ctx, countAlbumHearts); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAlbumHearts: %w", err)
+	}
 	if q.countAlbumTracksStmt, err = db.PrepareContext(ctx, countAlbumTracks); err != nil {
 		return nil, fmt.Errorf("error preparing query CountAlbumTracks: %w", err)
 	}
+	if q.countArtistHeartsStmt, err = db.PrepareContext(ctx, countArtistHearts); err != nil {
+		return nil, fmt.Errorf("error preparing query CountArtistHearts: %w", err)
+	}
 	if q.countArtistTracksStmt, err = db.PrepareContext(ctx, countArtistTracks); err != nil {
 		return nil, fmt.Errorf("error preparing query CountArtistTracks: %w", err)
+	}
+	if q.countHeartedTracksByRatingStmt, err = db.PrepareContext(ctx, countHeartedTracksByRating); err != nil {
+		return nil, fmt.Errorf("error preparing query CountHeartedTracksByRating: %w", err)
 	}
 	if q.countLiveAlbumsStmt, err = db.PrepareContext(ctx, countLiveAlbums); err != nil {
 		return nil, fmt.Errorf("error preparing query CountLiveAlbums: %w", err)
@@ -96,14 +102,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deferLastfmStmt, err = db.PrepareContext(ctx, deferLastfm); err != nil {
 		return nil, fmt.Errorf("error preparing query DeferLastfm: %w", err)
 	}
-	if q.deleteAlbumHeartStmt, err = db.PrepareContext(ctx, deleteAlbumHeart); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteAlbumHeart: %w", err)
+	if q.deleteAlbumHeartsStmt, err = db.PrepareContext(ctx, deleteAlbumHearts); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAlbumHearts: %w", err)
 	}
 	if q.deleteAlbumLoudnessStmt, err = db.PrepareContext(ctx, deleteAlbumLoudness); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAlbumLoudness: %w", err)
 	}
-	if q.deleteArtistHeartStmt, err = db.PrepareContext(ctx, deleteArtistHeart); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteArtistHeart: %w", err)
+	if q.deleteArtistHeartsStmt, err = db.PrepareContext(ctx, deleteArtistHearts); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteArtistHearts: %w", err)
 	}
 	if q.deleteExcludedStmt, err = db.PrepareContext(ctx, deleteExcluded); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteExcluded: %w", err)
@@ -141,8 +147,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteTrackArtistsStmt, err = db.PrepareContext(ctx, deleteTrackArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTrackArtists: %w", err)
 	}
-	if q.deleteTrackHeartStmt, err = db.PrepareContext(ctx, deleteTrackHeart); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteTrackHeart: %w", err)
+	if q.deleteTrackHeartsStmt, err = db.PrepareContext(ctx, deleteTrackHearts); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTrackHearts: %w", err)
 	}
 	if q.deleteTrackRatingStmt, err = db.PrepareContext(ctx, deleteTrackRating); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteTrackRating: %w", err)
@@ -152,15 +158,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.dropOldLastfmScrobblesStmt, err = db.PrepareContext(ctx, dropOldLastfmScrobbles); err != nil {
 		return nil, fmt.Errorf("error preparing query DropOldLastfmScrobbles: %w", err)
-	}
-	if q.earlierAlbumHeartStmt, err = db.PrepareContext(ctx, earlierAlbumHeart); err != nil {
-		return nil, fmt.Errorf("error preparing query EarlierAlbumHeart: %w", err)
-	}
-	if q.earlierArtistHeartStmt, err = db.PrepareContext(ctx, earlierArtistHeart); err != nil {
-		return nil, fmt.Errorf("error preparing query EarlierArtistHeart: %w", err)
-	}
-	if q.earlierTrackHeartStmt, err = db.PrepareContext(ctx, earlierTrackHeart); err != nil {
-		return nil, fmt.Errorf("error preparing query EarlierTrackHeart: %w", err)
 	}
 	if q.enqueueLastfmStmt, err = db.PrepareContext(ctx, enqueueLastfm); err != nil {
 		return nil, fmt.Errorf("error preparing query EnqueueLastfm: %w", err)
@@ -173,6 +170,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getLastfmAccountStmt, err = db.PrepareContext(ctx, getLastfmAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLastfmAccount: %w", err)
+	}
+	if q.getLastfmLoveFromStmt, err = db.PrepareContext(ctx, getLastfmLoveFrom); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLastfmLoveFrom: %w", err)
 	}
 	if q.getLastfmTrackStmt, err = db.PrepareContext(ctx, getLastfmTrack); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLastfmTrack: %w", err)
@@ -195,14 +195,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTrackFileStmt, err = db.PrepareContext(ctx, getTrackFile); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTrackFile: %w", err)
 	}
+	if q.getTrackRatingStmt, err = db.PrepareContext(ctx, getTrackRating); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTrackRating: %w", err)
+	}
 	if q.groupKeyTakenStmt, err = db.PrepareContext(ctx, groupKeyTaken); err != nil {
 		return nil, fmt.Errorf("error preparing query GroupKeyTaken: %w", err)
-	}
-	if q.importAlbumHeartStmt, err = db.PrepareContext(ctx, importAlbumHeart); err != nil {
-		return nil, fmt.Errorf("error preparing query ImportAlbumHeart: %w", err)
-	}
-	if q.importArtistHeartStmt, err = db.PrepareContext(ctx, importArtistHeart); err != nil {
-		return nil, fmt.Errorf("error preparing query ImportArtistHeart: %w", err)
 	}
 	if q.importArtistsStmt, err = db.PrepareContext(ctx, importArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ImportArtists: %w", err)
@@ -270,9 +267,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAlbumFilesStmt, err = db.PrepareContext(ctx, listAlbumFiles); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumFiles: %w", err)
 	}
-	if q.listAlbumHeartedTracksStmt, err = db.PrepareContext(ctx, listAlbumHeartedTracks); err != nil {
-		return nil, fmt.Errorf("error preparing query ListAlbumHeartedTracks: %w", err)
-	}
 	if q.listAlbumHitsStmt, err = db.PrepareContext(ctx, listAlbumHits); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumHits: %w", err)
 	}
@@ -323,15 +317,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listExcludedOfStmt, err = db.PrepareContext(ctx, listExcludedOf); err != nil {
 		return nil, fmt.Errorf("error preparing query ListExcludedOf: %w", err)
-	}
-	if q.listHeartedAlbumsStmt, err = db.PrepareContext(ctx, listHeartedAlbums); err != nil {
-		return nil, fmt.Errorf("error preparing query ListHeartedAlbums: %w", err)
-	}
-	if q.listHeartedArtistsStmt, err = db.PrepareContext(ctx, listHeartedArtists); err != nil {
-		return nil, fmt.Errorf("error preparing query ListHeartedArtists: %w", err)
-	}
-	if q.listHeartedTracksStmt, err = db.PrepareContext(ctx, listHeartedTracks); err != nil {
-		return nil, fmt.Errorf("error preparing query ListHeartedTracks: %w", err)
 	}
 	if q.listIndexAlbumsStmt, err = db.PrepareContext(ctx, listIndexAlbums); err != nil {
 		return nil, fmt.Errorf("error preparing query ListIndexAlbums: %w", err)
@@ -426,9 +411,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listSettingsStmt, err = db.PrepareContext(ctx, listSettings); err != nil {
 		return nil, fmt.Errorf("error preparing query ListSettings: %w", err)
 	}
-	if q.listShuffleHeartedAlbumsStmt, err = db.PrepareContext(ctx, listShuffleHeartedAlbums); err != nil {
-		return nil, fmt.Errorf("error preparing query ListShuffleHeartedAlbums: %w", err)
-	}
 	if q.listShuffleLastPlaysStmt, err = db.PrepareContext(ctx, listShuffleLastPlays); err != nil {
 		return nil, fmt.Errorf("error preparing query ListShuffleLastPlays: %w", err)
 	}
@@ -461,6 +443,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTrackRowIDsStmt, err = db.PrepareContext(ctx, listTrackRowIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackRowIDs: %w", err)
+	}
+	if q.listUnratedHeartedTracksStmt, err = db.PrepareContext(ctx, listUnratedHeartedTracks); err != nil {
+		return nil, fmt.Errorf("error preparing query ListUnratedHeartedTracks: %w", err)
 	}
 	if q.listUsersStmt, err = db.PrepareContext(ctx, listUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUsers: %w", err)
@@ -579,9 +564,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.trackForListenStmt, err = db.PrepareContext(ctx, trackForListen); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackForListen: %w", err)
 	}
-	if q.trackRatingHalvesStmt, err = db.PrepareContext(ctx, trackRatingHalves); err != nil {
-		return nil, fmt.Errorf("error preparing query TrackRatingHalves: %w", err)
-	}
 	if q.trackRowIDStmt, err = db.PrepareContext(ctx, trackRowID); err != nil {
 		return nil, fmt.Errorf("error preparing query TrackRowID: %w", err)
 	}
@@ -648,11 +630,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing albumGroupKeyStmt: %w", cerr)
 		}
 	}
-	if q.albumHeartedStmt != nil {
-		if cerr := q.albumHeartedStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing albumHeartedStmt: %w", cerr)
-		}
-	}
 	if q.albumLoudnessInputsStmt != nil {
 		if cerr := q.albumLoudnessInputsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing albumLoudnessInputsStmt: %w", cerr)
@@ -693,14 +670,29 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing clearMatchStateStmt: %w", cerr)
 		}
 	}
+	if q.countAlbumHeartsStmt != nil {
+		if cerr := q.countAlbumHeartsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAlbumHeartsStmt: %w", cerr)
+		}
+	}
 	if q.countAlbumTracksStmt != nil {
 		if cerr := q.countAlbumTracksStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countAlbumTracksStmt: %w", cerr)
 		}
 	}
+	if q.countArtistHeartsStmt != nil {
+		if cerr := q.countArtistHeartsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countArtistHeartsStmt: %w", cerr)
+		}
+	}
 	if q.countArtistTracksStmt != nil {
 		if cerr := q.countArtistTracksStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countArtistTracksStmt: %w", cerr)
+		}
+	}
+	if q.countHeartedTracksByRatingStmt != nil {
+		if cerr := q.countHeartedTracksByRatingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countHeartedTracksByRatingStmt: %w", cerr)
 		}
 	}
 	if q.countLiveAlbumsStmt != nil {
@@ -758,9 +750,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deferLastfmStmt: %w", cerr)
 		}
 	}
-	if q.deleteAlbumHeartStmt != nil {
-		if cerr := q.deleteAlbumHeartStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteAlbumHeartStmt: %w", cerr)
+	if q.deleteAlbumHeartsStmt != nil {
+		if cerr := q.deleteAlbumHeartsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAlbumHeartsStmt: %w", cerr)
 		}
 	}
 	if q.deleteAlbumLoudnessStmt != nil {
@@ -768,9 +760,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteAlbumLoudnessStmt: %w", cerr)
 		}
 	}
-	if q.deleteArtistHeartStmt != nil {
-		if cerr := q.deleteArtistHeartStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteArtistHeartStmt: %w", cerr)
+	if q.deleteArtistHeartsStmt != nil {
+		if cerr := q.deleteArtistHeartsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteArtistHeartsStmt: %w", cerr)
 		}
 	}
 	if q.deleteExcludedStmt != nil {
@@ -833,9 +825,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteTrackArtistsStmt: %w", cerr)
 		}
 	}
-	if q.deleteTrackHeartStmt != nil {
-		if cerr := q.deleteTrackHeartStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteTrackHeartStmt: %w", cerr)
+	if q.deleteTrackHeartsStmt != nil {
+		if cerr := q.deleteTrackHeartsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTrackHeartsStmt: %w", cerr)
 		}
 	}
 	if q.deleteTrackRatingStmt != nil {
@@ -851,21 +843,6 @@ func (q *Queries) Close() error {
 	if q.dropOldLastfmScrobblesStmt != nil {
 		if cerr := q.dropOldLastfmScrobblesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing dropOldLastfmScrobblesStmt: %w", cerr)
-		}
-	}
-	if q.earlierAlbumHeartStmt != nil {
-		if cerr := q.earlierAlbumHeartStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing earlierAlbumHeartStmt: %w", cerr)
-		}
-	}
-	if q.earlierArtistHeartStmt != nil {
-		if cerr := q.earlierArtistHeartStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing earlierArtistHeartStmt: %w", cerr)
-		}
-	}
-	if q.earlierTrackHeartStmt != nil {
-		if cerr := q.earlierTrackHeartStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing earlierTrackHeartStmt: %w", cerr)
 		}
 	}
 	if q.enqueueLastfmStmt != nil {
@@ -886,6 +863,11 @@ func (q *Queries) Close() error {
 	if q.getLastfmAccountStmt != nil {
 		if cerr := q.getLastfmAccountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getLastfmAccountStmt: %w", cerr)
+		}
+	}
+	if q.getLastfmLoveFromStmt != nil {
+		if cerr := q.getLastfmLoveFromStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLastfmLoveFromStmt: %w", cerr)
 		}
 	}
 	if q.getLastfmTrackStmt != nil {
@@ -923,19 +905,14 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTrackFileStmt: %w", cerr)
 		}
 	}
+	if q.getTrackRatingStmt != nil {
+		if cerr := q.getTrackRatingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTrackRatingStmt: %w", cerr)
+		}
+	}
 	if q.groupKeyTakenStmt != nil {
 		if cerr := q.groupKeyTakenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing groupKeyTakenStmt: %w", cerr)
-		}
-	}
-	if q.importAlbumHeartStmt != nil {
-		if cerr := q.importAlbumHeartStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing importAlbumHeartStmt: %w", cerr)
-		}
-	}
-	if q.importArtistHeartStmt != nil {
-		if cerr := q.importArtistHeartStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing importArtistHeartStmt: %w", cerr)
 		}
 	}
 	if q.importArtistsStmt != nil {
@@ -1048,11 +1025,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAlbumFilesStmt: %w", cerr)
 		}
 	}
-	if q.listAlbumHeartedTracksStmt != nil {
-		if cerr := q.listAlbumHeartedTracksStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listAlbumHeartedTracksStmt: %w", cerr)
-		}
-	}
 	if q.listAlbumHitsStmt != nil {
 		if cerr := q.listAlbumHitsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAlbumHitsStmt: %w", cerr)
@@ -1136,21 +1108,6 @@ func (q *Queries) Close() error {
 	if q.listExcludedOfStmt != nil {
 		if cerr := q.listExcludedOfStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listExcludedOfStmt: %w", cerr)
-		}
-	}
-	if q.listHeartedAlbumsStmt != nil {
-		if cerr := q.listHeartedAlbumsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listHeartedAlbumsStmt: %w", cerr)
-		}
-	}
-	if q.listHeartedArtistsStmt != nil {
-		if cerr := q.listHeartedArtistsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listHeartedArtistsStmt: %w", cerr)
-		}
-	}
-	if q.listHeartedTracksStmt != nil {
-		if cerr := q.listHeartedTracksStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listHeartedTracksStmt: %w", cerr)
 		}
 	}
 	if q.listIndexAlbumsStmt != nil {
@@ -1308,11 +1265,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listSettingsStmt: %w", cerr)
 		}
 	}
-	if q.listShuffleHeartedAlbumsStmt != nil {
-		if cerr := q.listShuffleHeartedAlbumsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing listShuffleHeartedAlbumsStmt: %w", cerr)
-		}
-	}
 	if q.listShuffleLastPlaysStmt != nil {
 		if cerr := q.listShuffleLastPlaysStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listShuffleLastPlaysStmt: %w", cerr)
@@ -1366,6 +1318,11 @@ func (q *Queries) Close() error {
 	if q.listTrackRowIDsStmt != nil {
 		if cerr := q.listTrackRowIDsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTrackRowIDsStmt: %w", cerr)
+		}
+	}
+	if q.listUnratedHeartedTracksStmt != nil {
+		if cerr := q.listUnratedHeartedTracksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listUnratedHeartedTracksStmt: %w", cerr)
 		}
 	}
 	if q.listUsersStmt != nil {
@@ -1563,11 +1520,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing trackForListenStmt: %w", cerr)
 		}
 	}
-	if q.trackRatingHalvesStmt != nil {
-		if cerr := q.trackRatingHalvesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing trackRatingHalvesStmt: %w", cerr)
-		}
-	}
 	if q.trackRowIDStmt != nil {
 		if cerr := q.trackRowIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing trackRowIDStmt: %w", cerr)
@@ -1694,7 +1646,6 @@ type Queries struct {
 	tx                                     *sql.Tx
 	albumExistsStmt                        *sql.Stmt
 	albumGroupKeyStmt                      *sql.Stmt
-	albumHeartedStmt                       *sql.Stmt
 	albumLoudnessInputsStmt                *sql.Stmt
 	albumRowIDStmt                         *sql.Stmt
 	albumsOnRepeatStmt                     *sql.Stmt
@@ -1703,8 +1654,11 @@ type Queries struct {
 	artistRowIDStmt                        *sql.Stmt
 	artistToRenameStmt                     *sql.Stmt
 	clearMatchStateStmt                    *sql.Stmt
+	countAlbumHeartsStmt                   *sql.Stmt
 	countAlbumTracksStmt                   *sql.Stmt
+	countArtistHeartsStmt                  *sql.Stmt
 	countArtistTracksStmt                  *sql.Stmt
+	countHeartedTracksByRatingStmt         *sql.Stmt
 	countLiveAlbumsStmt                    *sql.Stmt
 	countLoudnessWaitingStmt               *sql.Stmt
 	countScanIssuesByKindStmt              *sql.Stmt
@@ -1716,9 +1670,9 @@ type Queries struct {
 	createSessionStmt                      *sql.Stmt
 	createUserStmt                         *sql.Stmt
 	deferLastfmStmt                        *sql.Stmt
-	deleteAlbumHeartStmt                   *sql.Stmt
+	deleteAlbumHeartsStmt                  *sql.Stmt
 	deleteAlbumLoudnessStmt                *sql.Stmt
-	deleteArtistHeartStmt                  *sql.Stmt
+	deleteArtistHeartsStmt                 *sql.Stmt
 	deleteExcludedStmt                     *sql.Stmt
 	deleteExpiredSessionsStmt              *sql.Stmt
 	deleteLastfmAccountStmt                *sql.Stmt
@@ -1731,17 +1685,15 @@ type Queries struct {
 	deleteSessionsOfStmt                   *sql.Stmt
 	deleteSettingStmt                      *sql.Stmt
 	deleteTrackArtistsStmt                 *sql.Stmt
-	deleteTrackHeartStmt                   *sql.Stmt
+	deleteTrackHeartsStmt                  *sql.Stmt
 	deleteTrackRatingStmt                  *sql.Stmt
 	deleteTrackTagsStmt                    *sql.Stmt
 	dropOldLastfmScrobblesStmt             *sql.Stmt
-	earlierAlbumHeartStmt                  *sql.Stmt
-	earlierArtistHeartStmt                 *sql.Stmt
-	earlierTrackHeartStmt                  *sql.Stmt
 	enqueueLastfmStmt                      *sql.Stmt
 	getAlbumStmt                           *sql.Stmt
 	getArtistStmt                          *sql.Stmt
 	getLastfmAccountStmt                   *sql.Stmt
+	getLastfmLoveFromStmt                  *sql.Stmt
 	getLastfmTrackStmt                     *sql.Stmt
 	getLookupStmt                          *sql.Stmt
 	getPlaybackStmt                        *sql.Stmt
@@ -1749,9 +1701,8 @@ type Queries struct {
 	getShuffleSessionStmt                  *sql.Stmt
 	getTrackAlbumStmt                      *sql.Stmt
 	getTrackFileStmt                       *sql.Stmt
+	getTrackRatingStmt                     *sql.Stmt
 	groupKeyTakenStmt                      *sql.Stmt
-	importAlbumHeartStmt                   *sql.Stmt
-	importArtistHeartStmt                  *sql.Stmt
 	importArtistsStmt                      *sql.Stmt
 	importTrackRatingStmt                  *sql.Stmt
 	importTrackTagsStmt                    *sql.Stmt
@@ -1774,7 +1725,6 @@ type Queries struct {
 	leaveRunStmt                           *sql.Stmt
 	listAlbumCoverFilesStmt                *sql.Stmt
 	listAlbumFilesStmt                     *sql.Stmt
-	listAlbumHeartedTracksStmt             *sql.Stmt
 	listAlbumHitsStmt                      *sql.Stmt
 	listAlbumNamesStmt                     *sql.Stmt
 	listAlbumOwnersStmt                    *sql.Stmt
@@ -1792,9 +1742,6 @@ type Queries struct {
 	listArtistNamesStmt                    *sql.Stmt
 	listArtistTrackIDsStmt                 *sql.Stmt
 	listExcludedOfStmt                     *sql.Stmt
-	listHeartedAlbumsStmt                  *sql.Stmt
-	listHeartedArtistsStmt                 *sql.Stmt
-	listHeartedTracksStmt                  *sql.Stmt
 	listIndexAlbumsStmt                    *sql.Stmt
 	listIndexPlaysStmt                     *sql.Stmt
 	listIndexPlaysByArtistStmt             *sql.Stmt
@@ -1826,7 +1773,6 @@ type Queries struct {
 	listRunsOfStmt                         *sql.Stmt
 	listScanIssuesStmt                     *sql.Stmt
 	listSettingsStmt                       *sql.Stmt
-	listShuffleHeartedAlbumsStmt           *sql.Stmt
 	listShuffleLastPlaysStmt               *sql.Stmt
 	listShuffleListensStmt                 *sql.Stmt
 	listShuffleRunsStmt                    *sql.Stmt
@@ -1838,6 +1784,7 @@ type Queries struct {
 	listTrackHitsStmt                      *sql.Stmt
 	listTrackRatingsStmt                   *sql.Stmt
 	listTrackRowIDsStmt                    *sql.Stmt
+	listUnratedHeartedTracksStmt           *sql.Stmt
 	listUsersStmt                          *sql.Stmt
 	listWarnedTracksStmt                   *sql.Stmt
 	liveTrackFactsStmt                     *sql.Stmt
@@ -1877,7 +1824,6 @@ type Queries struct {
 	trackAlbumRowStmt                      *sql.Stmt
 	trackAlbumULIDStmt                     *sql.Stmt
 	trackForListenStmt                     *sql.Stmt
-	trackRatingHalvesStmt                  *sql.Stmt
 	trackRowIDStmt                         *sql.Stmt
 	trackStatesStmt                        *sql.Stmt
 	undigestedStmt                         *sql.Stmt
@@ -1903,7 +1849,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		tx:                                     tx,
 		albumExistsStmt:                        q.albumExistsStmt,
 		albumGroupKeyStmt:                      q.albumGroupKeyStmt,
-		albumHeartedStmt:                       q.albumHeartedStmt,
 		albumLoudnessInputsStmt:                q.albumLoudnessInputsStmt,
 		albumRowIDStmt:                         q.albumRowIDStmt,
 		albumsOnRepeatStmt:                     q.albumsOnRepeatStmt,
@@ -1912,8 +1857,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		artistRowIDStmt:                        q.artistRowIDStmt,
 		artistToRenameStmt:                     q.artistToRenameStmt,
 		clearMatchStateStmt:                    q.clearMatchStateStmt,
+		countAlbumHeartsStmt:                   q.countAlbumHeartsStmt,
 		countAlbumTracksStmt:                   q.countAlbumTracksStmt,
+		countArtistHeartsStmt:                  q.countArtistHeartsStmt,
 		countArtistTracksStmt:                  q.countArtistTracksStmt,
+		countHeartedTracksByRatingStmt:         q.countHeartedTracksByRatingStmt,
 		countLiveAlbumsStmt:                    q.countLiveAlbumsStmt,
 		countLoudnessWaitingStmt:               q.countLoudnessWaitingStmt,
 		countScanIssuesByKindStmt:              q.countScanIssuesByKindStmt,
@@ -1925,9 +1873,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createSessionStmt:                      q.createSessionStmt,
 		createUserStmt:                         q.createUserStmt,
 		deferLastfmStmt:                        q.deferLastfmStmt,
-		deleteAlbumHeartStmt:                   q.deleteAlbumHeartStmt,
+		deleteAlbumHeartsStmt:                  q.deleteAlbumHeartsStmt,
 		deleteAlbumLoudnessStmt:                q.deleteAlbumLoudnessStmt,
-		deleteArtistHeartStmt:                  q.deleteArtistHeartStmt,
+		deleteArtistHeartsStmt:                 q.deleteArtistHeartsStmt,
 		deleteExcludedStmt:                     q.deleteExcludedStmt,
 		deleteExpiredSessionsStmt:              q.deleteExpiredSessionsStmt,
 		deleteLastfmAccountStmt:                q.deleteLastfmAccountStmt,
@@ -1940,17 +1888,15 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteSessionsOfStmt:                   q.deleteSessionsOfStmt,
 		deleteSettingStmt:                      q.deleteSettingStmt,
 		deleteTrackArtistsStmt:                 q.deleteTrackArtistsStmt,
-		deleteTrackHeartStmt:                   q.deleteTrackHeartStmt,
+		deleteTrackHeartsStmt:                  q.deleteTrackHeartsStmt,
 		deleteTrackRatingStmt:                  q.deleteTrackRatingStmt,
 		deleteTrackTagsStmt:                    q.deleteTrackTagsStmt,
 		dropOldLastfmScrobblesStmt:             q.dropOldLastfmScrobblesStmt,
-		earlierAlbumHeartStmt:                  q.earlierAlbumHeartStmt,
-		earlierArtistHeartStmt:                 q.earlierArtistHeartStmt,
-		earlierTrackHeartStmt:                  q.earlierTrackHeartStmt,
 		enqueueLastfmStmt:                      q.enqueueLastfmStmt,
 		getAlbumStmt:                           q.getAlbumStmt,
 		getArtistStmt:                          q.getArtistStmt,
 		getLastfmAccountStmt:                   q.getLastfmAccountStmt,
+		getLastfmLoveFromStmt:                  q.getLastfmLoveFromStmt,
 		getLastfmTrackStmt:                     q.getLastfmTrackStmt,
 		getLookupStmt:                          q.getLookupStmt,
 		getPlaybackStmt:                        q.getPlaybackStmt,
@@ -1958,9 +1904,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getShuffleSessionStmt:                  q.getShuffleSessionStmt,
 		getTrackAlbumStmt:                      q.getTrackAlbumStmt,
 		getTrackFileStmt:                       q.getTrackFileStmt,
+		getTrackRatingStmt:                     q.getTrackRatingStmt,
 		groupKeyTakenStmt:                      q.groupKeyTakenStmt,
-		importAlbumHeartStmt:                   q.importAlbumHeartStmt,
-		importArtistHeartStmt:                  q.importArtistHeartStmt,
 		importArtistsStmt:                      q.importArtistsStmt,
 		importTrackRatingStmt:                  q.importTrackRatingStmt,
 		importTrackTagsStmt:                    q.importTrackTagsStmt,
@@ -1983,7 +1928,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		leaveRunStmt:                           q.leaveRunStmt,
 		listAlbumCoverFilesStmt:                q.listAlbumCoverFilesStmt,
 		listAlbumFilesStmt:                     q.listAlbumFilesStmt,
-		listAlbumHeartedTracksStmt:             q.listAlbumHeartedTracksStmt,
 		listAlbumHitsStmt:                      q.listAlbumHitsStmt,
 		listAlbumNamesStmt:                     q.listAlbumNamesStmt,
 		listAlbumOwnersStmt:                    q.listAlbumOwnersStmt,
@@ -2001,9 +1945,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listArtistNamesStmt:                    q.listArtistNamesStmt,
 		listArtistTrackIDsStmt:                 q.listArtistTrackIDsStmt,
 		listExcludedOfStmt:                     q.listExcludedOfStmt,
-		listHeartedAlbumsStmt:                  q.listHeartedAlbumsStmt,
-		listHeartedArtistsStmt:                 q.listHeartedArtistsStmt,
-		listHeartedTracksStmt:                  q.listHeartedTracksStmt,
 		listIndexAlbumsStmt:                    q.listIndexAlbumsStmt,
 		listIndexPlaysStmt:                     q.listIndexPlaysStmt,
 		listIndexPlaysByArtistStmt:             q.listIndexPlaysByArtistStmt,
@@ -2035,7 +1976,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listRunsOfStmt:                         q.listRunsOfStmt,
 		listScanIssuesStmt:                     q.listScanIssuesStmt,
 		listSettingsStmt:                       q.listSettingsStmt,
-		listShuffleHeartedAlbumsStmt:           q.listShuffleHeartedAlbumsStmt,
 		listShuffleLastPlaysStmt:               q.listShuffleLastPlaysStmt,
 		listShuffleListensStmt:                 q.listShuffleListensStmt,
 		listShuffleRunsStmt:                    q.listShuffleRunsStmt,
@@ -2047,6 +1987,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listTrackHitsStmt:                      q.listTrackHitsStmt,
 		listTrackRatingsStmt:                   q.listTrackRatingsStmt,
 		listTrackRowIDsStmt:                    q.listTrackRowIDsStmt,
+		listUnratedHeartedTracksStmt:           q.listUnratedHeartedTracksStmt,
 		listUsersStmt:                          q.listUsersStmt,
 		listWarnedTracksStmt:                   q.listWarnedTracksStmt,
 		liveTrackFactsStmt:                     q.liveTrackFactsStmt,
@@ -2086,7 +2027,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		trackAlbumRowStmt:                      q.trackAlbumRowStmt,
 		trackAlbumULIDStmt:                     q.trackAlbumULIDStmt,
 		trackForListenStmt:                     q.trackForListenStmt,
-		trackRatingHalvesStmt:                  q.trackRatingHalvesStmt,
 		trackRowIDStmt:                         q.trackRowIDStmt,
 		trackStatesStmt:                        q.trackStatesStmt,
 		undigestedStmt:                         q.undigestedStmt,

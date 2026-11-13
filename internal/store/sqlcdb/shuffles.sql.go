@@ -144,49 +144,6 @@ func (q *Queries) ListArtistTrackIDs(ctx context.Context, ulid string) ([]int64,
 	return items, nil
 }
 
-const listShuffleHeartedAlbums = `-- name: ListShuffleHeartedAlbums :many
-SELECT a.id FROM albums a
-WHERE EXISTS (SELECT 1 FROM album_hearts h WHERE h.user_id = ?1 AND h.album_id = a.id)
-   OR EXISTS (SELECT 1 FROM artist_hearts h WHERE h.user_id = ?1 AND h.artist_id = (
-        SELECT ta.artist_id
-        FROM tracks t
-        JOIN track_artists ta ON ta.track_id = t.id
-        WHERE t.album_id = a.id AND t.missing_since IS NULL
-          AND (ta.role = 'album_artist'
-           OR (ta.ord = 0 AND a.compilation = 0 AND NOT EXISTS (
-                SELECT 1 FROM tracks o
-                JOIN track_artists oa ON oa.track_id = o.id AND oa.role = 'album_artist'
-                WHERE o.album_id = a.id AND o.missing_since IS NULL)))
-        ORDER BY ta.ord, t.id
-        LIMIT 1))
-`
-
-// The albums the Library list's Hearted filter keeps whole: hearted ones, and
-// those whose artist is. An album's artist there is its first owner, as the
-// index spells it.
-func (q *Queries) ListShuffleHeartedAlbums(ctx context.Context, userID int64) ([]int64, error) {
-	rows, err := q.query(ctx, q.listShuffleHeartedAlbumsStmt, listShuffleHeartedAlbums, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listShuffleLastPlays = `-- name: ListShuffleLastPlays :many
 SELECT track_id, CAST(max(played_at) AS INTEGER) AS last_at
 FROM plays
@@ -406,12 +363,10 @@ const listShuffleTracks = `-- name: ListShuffleTracks :many
 
 SELECT t.id, t.album_id, a.ulid AS album_ulid,
     CAST(coalesce(r.halves, 0) AS INTEGER) AS halves,
-    CAST(h.track_id IS NOT NULL AS INTEGER) AS hearted,
     CAST(e.track_id IS NOT NULL AS INTEGER) AS excluded
 FROM tracks t
 JOIN albums a ON a.id = t.album_id
 LEFT JOIN track_ratings r ON r.user_id = ?1 AND r.track_id = t.id
-LEFT JOIN track_hearts h ON h.user_id = ?1 AND h.track_id = t.id
 LEFT JOIN shuffle_excluded e ON e.user_id = ?1 AND e.track_id = t.id
 WHERE t.missing_since IS NULL
 ORDER BY t.id
@@ -422,12 +377,11 @@ type ListShuffleTracksRow struct {
 	AlbumID   int64
 	AlbumUlid string
 	Halves    int64
-	Hearted   int64
 	Excluded  int64
 }
 
 // What a person's shuffle is built from: every live song with its album and its
-// own artists, the person's marks and rules on it, and their listening. ids is a
+// own artists, the person's rating and rules on it, and their listening. ids is a
 // JSON array, so one prepared statement serves any number of them.
 func (q *Queries) ListShuffleTracks(ctx context.Context, userID int64) ([]ListShuffleTracksRow, error) {
 	rows, err := q.query(ctx, q.listShuffleTracksStmt, listShuffleTracks, userID)
@@ -443,7 +397,6 @@ func (q *Queries) ListShuffleTracks(ctx context.Context, userID int64) ([]ListSh
 			&i.AlbumID,
 			&i.AlbumUlid,
 			&i.Halves,
-			&i.Hearted,
 			&i.Excluded,
 		); err != nil {
 			return nil, err

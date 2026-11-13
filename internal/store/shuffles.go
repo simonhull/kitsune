@@ -24,8 +24,7 @@ type ShuffleSong struct {
 	AlbumULID string
 	Artists   []int64       // Its own artists, the primary first.
 	Rating    rating.Rating // The person's rating, or none.
-	Hearted   bool
-	Excluded  bool // The person left it out of shuffle.
+	Excluded  bool          // The person left it out of shuffle.
 }
 
 // ShuffleCatalog is every live song as a person's shuffle sees it, and their
@@ -36,7 +35,7 @@ type ShuffleCatalog struct {
 	Runs  [][]int64
 }
 
-// ShuffleCatalog reads every live song with the user's marks and rules on it.
+// ShuffleCatalog reads every live song with the user's rating and rules on it.
 func (s *Store) ShuffleCatalog(ctx context.Context, userID int64) (ShuffleCatalog, error) {
 	tracks, err := s.rq.ListShuffleTracks(ctx, userID)
 	if err != nil {
@@ -79,7 +78,7 @@ func shuffleSongs(tracks []sqlcdb.ListShuffleTracksRow, links []sqlcdb.ListShuff
 		}
 		out[i] = ShuffleSong{
 			ID: t.ID, AlbumID: t.AlbumID, AlbumULID: t.AlbumUlid, Artists: artists[from:at:at],
-			Rating: ratingOf(t.Halves), Hearted: t.Hearted != 0, Excluded: t.Excluded != 0,
+			Rating: ratingOf(t.Halves), Excluded: t.Excluded != 0,
 		}
 	}
 	return out
@@ -152,17 +151,6 @@ func (s *Store) ShuffleSittings(ctx context.Context, userID int64, since time.Ti
 		out[i] = Sitting{At: time.UnixMilli(rows[i].StartedAt).UTC(), Artist: rows[i].ArtistID}
 	}
 	return out, nil
-}
-
-// HeartedAlbumRows returns the row IDs of the albums the Library list's Hearted
-// filter keeps whole for the user: those they hearted, and those whose artist
-// they hearted.
-func (s *Store) HeartedAlbumRows(ctx context.Context, userID int64) ([]int64, error) {
-	rows, err := s.rq.ListShuffleHeartedAlbums(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("hearted albums: %w", err)
-	}
-	return rows, nil
 }
 
 // AlbumRow returns the row ID of the album with the ULID id, or an error

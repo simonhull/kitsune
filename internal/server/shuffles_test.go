@@ -17,6 +17,7 @@ const (
 	shufflesPath = "/me/shuffles"
 	scopeLibrary = "library"
 	scopeAlbum   = "album"
+	scopeRated   = "rated"
 	modeFinite   = "finite"
 	modeEndless  = "endless"
 	endSkipped   = "skipped"
@@ -202,15 +203,14 @@ func TestShuffleScopes(t *testing.T) {
 	ts.send(t, rateCall(sess.token, songAt(1, 2), stars(3.5)))
 	ts.send(t, rateCall(sess.token, songAt(1, 3), stars(4)))
 	ts.send(t, rateCall(sess.token, songAt(2, 1), stars(4.5)))
-	ts.send(t, heartCall(http.MethodPut, sess.token, kindTracks, songAt(3, 3)))
-	ts.send(t, heartCall(http.MethodPut, sess.token, kindAlbums, albumULID(2)))
+	ts.heart(t, sess.user.ID, store.KindTrack, songAt(3, 3)) // Hearts keep nothing in or out.
+	ts.heart(t, sess.user.ID, store.KindAlbum, albumULID(2))
 	for name, tt := range map[string]struct {
 		scope api.ShuffleScope
 		songs int
 	}{
 		"everything":   {api.ShuffleScope{Kind: scopeLibrary}, 60},
-		"4 and up":     {api.ShuffleScope{Kind: "rated"}, 3}, // 5, 4½ and 4, not 3½ or 3.
-		"a heart":      {api.ShuffleScope{Kind: "hearted"}, 21},
+		"4 and up":     {api.ShuffleScope{Kind: scopeRated}, 3}, // 5, 4½ and 4, not 3½ or 3.
 		"by an artist": {api.ShuffleScope{Kind: "artist", ID: annID}, 60},
 		"selection":    {api.ShuffleScope{Kind: kindTracks, Tracks: []string{songAt(1, 1), songAt(3, 4), missingID}}, 2},
 	} {
@@ -222,87 +222,47 @@ func TestShuffleScopes(t *testing.T) {
 			}
 		})
 	}
-	page := ts.startShuffle(t, ts.tokenFor(t, store.RoleUser), &api.ShuffleStart{Scope: api.ShuffleScope{Kind: "hearted"}, Mode: modeEndless})
+	page := ts.startShuffle(t, ts.tokenFor(t, store.RoleUser), &api.ShuffleStart{Scope: api.ShuffleScope{Kind: scopeRated}, Mode: modeEndless})
 	if len(page.Picks) != 0 || page.Songs != 0 {
-		t.Errorf("someone with no hearts got %d picks", len(page.Picks))
+		t.Errorf("someone with no ratings got %d picks", len(page.Picks))
 	}
 }
 
-func TestShuffleCountsHeartStars(t *testing.T) {
+// A shuffle saved with the Hearted scope, which went with hearts, goes on as 4
+// and up, page and playback record alike.
+func TestAHeartedShuffleGoesOnAsRated(t *testing.T) {
 	t.Parallel()
 	ts, sess := shufflesFixture(t)
-	hearted, low, rated := songAt(3, 3), songAt(2, 2), songAt(1, 1)
-	ts.send(t, rateCall(sess.token, rated, stars(5)))
-	ts.send(t, rateCall(sess.token, low, stars(3)))
-	ts.send(t, rateCall(sess.token, songAt(1, 4), stars(4)))
-	for _, song := range []string{hearted, low, songAt(1, 4)} {
-		ts.send(t, heartCall(http.MethodPut, sess.token, kindTracks, song))
+	good := []string{songAt(1, 1), songAt(2, 2)}
+	for _, song := range good {
+		ts.send(t, rateCall(sess.token, song, stars(4.5)))
 	}
-	// A hearted album gives its songs no stars.
-	ts.send(t, heartCall(http.MethodPut, sess.token, kindAlbums, albumULID(1)))
-	rated4 := ts.whyOf(t, sess.token, songAt(1, 4)) // hearted and rated 4 by hand
-
-	for _, tt := range []struct {
-		heartStars string
-		inRated    int     // songs in 4 and up
-		stars      float64 // what the hearted, unrated song weighs as
-	}{
-		{"0", 2, 0}, {"3", 2, 3}, {"3.5", 2, 3.5}, {"4", 3, 4}, {"4.5", 3, 4.5}, {"5", 3, 5},
-	} {
-		wantNoContent(t, ts.send(t, putPrefCall(sess.token, heartStarsPath, tt.heartStars)))
-		page := ts.startShuffle(t, sess.token, &api.ShuffleStart{Scope: api.ShuffleScope{Kind: "rated"}, Mode: modeFinite})
-		if got := songsOf(&page); page.Songs != tt.inRated || slices.Contains(got, low) {
-			t.Errorf("at %s: 4 and up = %v, want %d songs, never the hearted 3★", tt.heartStars, got, tt.inRated)
-		}
-		why := ts.whyOf(t, sess.token, hearted)
-		type weighs struct {
-			stars      float64
-			heartStars int
-			heart      float64
-			ratedAs4   bool
-		}
-		got := weighs{why.Stars, why.HeartStars, why.Heart, why.Rating == rated4.Rating}
-		if want := (weighs{tt.stars, min(1, int(tt.stars)), rated4.Heart, tt.stars == 4}); got != want {
-			t.Errorf("at %s: why weighs %+v, want %+v: as rated by hand, and the heart's own factor", tt.heartStars, got, want)
-		}
-		// Own stars win, and a hearted album's songs stay unrated.
-		ts.wantOwnStars(t, sess.token, map[string]float64{low: 3, songAt(1, 9): 0})
-	}
-}
-
-func TestShuffleCountsARunsHeartStars(t *testing.T) {
-	t.Parallel()
-	ts, sess := shufflesFixture(t)
-	hearted, rated := songAt(3, 3), songAt(1, 1)
-	ts.send(t, rateCall(sess.token, rated, stars(5)))
-	ts.send(t, heartCall(http.MethodPut, sess.token, kindTracks, hearted))
-
-	// A run counts its songs by heart.
-	wantNoContent(t, ts.send(t, putPrefCall(sess.token, heartStarsPath, "4.5")))
-	if resp := ts.send(t, call{method: http.MethodPut, path: runsPath, body: tracksBody(hearted, rated), header: jsonHeader(sess.token)}); resp.Status != http.StatusOK {
-		t.Fatalf("PUT %s = %d", runsPath, resp.Status)
-	}
-	if why := ts.whyOf(t, sess.token, hearted); why.Stars != 4.75 || why.HeartStars != 1 {
-		t.Errorf("a run of 4½ by heart and 5 = %+v, want 4.75★, 1 by heart", why)
-	}
-
-	// A stored value its rule no longer takes counts as Off.
-	if err := ts.Store.SetPref(t.Context(), sess.user.ID, "ratings.heart_stars", []byte(`0.5`)); err != nil {
+	ts.heart(t, sess.user.ID, store.KindTrack, songAt(3, 3)) // A heart alone keeps nothing.
+	page := ts.startShuffle(t, sess.token, &api.ShuffleStart{Scope: api.ShuffleScope{Kind: scopeRated}, Mode: modeEndless})
+	saved, err := ts.Store.ShuffleSessionOf(t.Context(), sess.user.ID, page.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if why := ts.whyOf(t, sess.token, hearted); why.Stars != 5 || why.HeartStars != 0 {
-		t.Errorf("with a bad stored value, why = %+v, want the run at its 5★ alone, none by heart", why)
+	saved.ID, saved.Scope = "01J0000000000000000000HRTD", `{"kind":"hearted"}`
+	if err = ts.Store.CreateShuffleSession(t.Context(), sess.user.ID, &saved); err != nil {
+		t.Fatal(err)
 	}
-}
-
-// wantOwnStars checks each song weighs as its own stars, none by heart.
-func (ts *testServer) wantOwnStars(t *testing.T, token string, songs map[string]float64) {
-	t.Helper()
-	for song, stars := range songs {
-		if w := ts.whyOf(t, token, song); w.Stars != stars || w.HeartStars != 0 {
-			t.Errorf("%s = %+v, want %v★ of its own", song, w, stars)
+	next := ts.nextShuffle(t, sess.token, saved.ID, page.To)
+	for _, song := range songsOf(&next) {
+		if !slices.Contains(good, song) {
+			t.Errorf("the hearted shuffle went on with %s, want only the 4-and-up songs %v", song, good)
 		}
 	}
+	save := &api.PlaybackSave{
+		Kind: kindShuffle, Tracks: []string{good[0]}, Shuffle: &api.PlaybackShuffleSave{ID: saved.ID, After: 1},
+		ClientID: aClientID, Device: deviceTablet,
+	}
+	wantNoContent(t, ts.putPlayback(t, sess.token, save))
+	if got := ts.playback(t, sess.token); got.Shuffle == nil || got.Shuffle.Scope.Kind != scopeRated {
+		t.Errorf("GET playback = %+v, want the shuffle going on as rated", got)
+	}
+	start := call{method: http.MethodPost, path: shufflesPath, body: `{"scope":{"kind":"hearted"},"mode":"endless"}`, header: jsonHeader(sess.token), invalid: true}
+	ts.send(t, start).problem(t, http.StatusBadRequest)
 }
 
 // listenedTo reports five listens to song two days ago, in a shuffle: skipped

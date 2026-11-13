@@ -38,6 +38,9 @@ type Options struct {
 	Roots    map[string]string // -root: Navidrome library path to Kitsune root, for one mounted elsewhere.
 	Paths    map[string]string // -map: Navidrome relative path to Kitsune relative path, for a moved file.
 	Now      time.Time         // Stands in for a heart's or a rating's missing time.
+	// HeartStars is what a starred song with no rating is rated, -heart-stars:
+	// [rating.None] leaves it unrated.
+	HeartStars rating.Rating
 }
 
 // Account is a Kitsune account.
@@ -59,21 +62,25 @@ type Person struct {
 	From   string // The Navidrome name.
 	To     string // The Kitsune name.
 	Import store.Import
-	Report Report
+	// HeartStars is what their starred songs with no rating are rated.
+	HeartStars rating.Rating
+	Report     Report
 }
 
 // Report says what a person's import found, before anything is written.
-// Plays are counted one by one; marks one per item.
+// Plays are counted one by one; marks one per item. Kitsune likes songs only,
+// in stars: album and artist marks are counted, and not imported.
 type Report struct {
 	Plays, Dated, Undated Tally
-	SongHearts            Tally
-	AlbumHearts           Tally // Matched through their songs.
-	ArtistHearts          Tally // Starred or rated artists.
 	Ratings               Tally
-	SplitAlbums           int // Navidrome albums whose songs lie in more than one Kitsune album.
-	ArtistRatings         int // Rated artists without a star, hearted for their rating.
-	AlbumRatings          int // Dropped: Kitsune rates songs only.
-	NoDatePlays           int // Dropped: a count with no time at all to stamp.
+	UnratedHearts         Tally // Starred songs with no rating, rated [Options.HeartStars].
+	RatedHearts           int   // Starred songs with a rating, which keep just the rating.
+	AlbumHearts           Tally // Matched through their songs. Not imported.
+	ArtistHearts          Tally // Starred or rated artists. Not imported.
+	SplitAlbums           int   // Starred Navidrome albums whose songs lie in more than one Kitsune album.
+	ArtistRatings         int   // Rated artists without a star. Not imported.
+	AlbumRatings          int   // Dropped: Kitsune rates songs only.
+	NoDatePlays           int   // Dropped: a count with no time at all to stamp.
 	Left                  navidromedb.Left
 	Unmatched             []string // Paths of songs with plays or marks that matched nothing, relative.
 }
@@ -126,7 +133,7 @@ func New(src *Source, targets *store.ImportTargets, opts *Options) (Plan, error)
 	if err != nil {
 		return Plan{}, err
 	}
-	p := planner{src: src, matches: matches, r: r, now: opts.Now, albums: albumsOf(src.Songs, matches)}
+	p := planner{src: src, matches: matches, r: r, now: opts.Now, heartStars: opts.HeartStars, albums: albumsOf(src.Songs, matches)}
 	plan := Plan{Unmapped: unmapped}
 	gate := map[string]bool{} // Annotated songs, by ID: matched by path or not.
 	for _, pair := range people {
@@ -225,13 +232,15 @@ type planner struct {
 	albums  map[string][]string
 	r       *resolver
 	now     time.Time
+	// heartStars is what an unrated heart becomes.
+	heartStars rating.Rating
 }
 
 // person plans one Navidrome user's import into account, noting in gate each
 // song they played or marked and whether it matched by path.
 func (p *planner) person(nd navidromedb.User, account Account, gate map[string]bool) Person {
 	marks := p.src.Marks[nd.ID]
-	out := Person{From: nd.Name, To: account.Name, Import: store.Import{UserID: account.ID}}
+	out := Person{From: nd.Name, To: account.Name, Import: store.Import{UserID: account.ID}, HeartStars: p.heartStars}
 	out.Report.Left = marks.Left
 	paths := make(map[string]string, len(p.src.Songs))
 	for i := range p.src.Songs {
@@ -366,7 +375,8 @@ type rated struct {
 	at, by time.Time
 }
 
-// songMarks adds the person's song hearts and ratings.
+// songMarks adds the person's song ratings. A starred song keeps its rating
+// alone; one with none is rated the plan's heart stars, when it has them.
 func (p *planner) songMarks(out *Person, songs map[string]*navidromedb.Annotation, note func(string)) {
 	tm := trackMarks{hearts: map[string]time.Time{}, ratings: map[string]rated{}}
 	for _, id := range slices.Sorted(maps.Keys(songs)) {
@@ -376,24 +386,29 @@ func (p *planner) songMarks(out *Person, songs map[string]*navidromedb.Annotatio
 		}
 		note(id)
 		m := p.matches[id]
-		if a.Starred {
-			out.Report.SongHearts.add(m.how)
-			if m.how != unmatched {
-				tm.heart(m.track, p.or(a.StarredAt))
-			}
-		}
-		if r, err := rating.FromHalves(halvesPerStar * a.Rating); err == nil {
+		r, err := rating.FromHalves(halvesPerStar * a.Rating)
+		if err == nil {
 			out.Report.Ratings.add(m.how)
 			if m.how != unmatched {
 				tm.rate(m.track, rated{r: r, at: p.or(a.RatedAt), by: a.RatedAt})
 			}
 		}
+		switch {
+		case !a.Starred:
+		case err == nil:
+			out.Report.RatedHearts++
+		default:
+			out.Report.UnratedHearts.add(m.how)
+			if m.how != unmatched {
+				tm.heart(m.track, p.or(a.StarredAt))
+			}
+		}
 	}
-	tm.into(&out.Import)
+	tm.into(&out.Import, p.heartStars)
 }
 
 // trackMarks are song marks by Kitsune track, where two Navidrome songs may
-// meet: the earliest heart, and the latest rating.
+// meet: the earliest unrated heart, and the latest rating.
 type trackMarks struct {
 	hearts  map[string]time.Time
 	ratings map[string]rated
@@ -411,18 +426,25 @@ func (t *trackMarks) rate(track string, r rated) {
 	}
 }
 
-// into adds the marks to imp, by track ULID.
-func (t *trackMarks) into(imp *store.Import) {
-	for _, id := range slices.Sorted(maps.Keys(t.hearts)) {
-		imp.TrackHearts = append(imp.TrackHearts, store.ImportedHeart{ID: id, At: t.hearts[id]})
-	}
+// into adds the marks to imp, by track ULID: the ratings, then heartStars for
+// each heart on a track no Navidrome song rated, at the heart's time. With no
+// heart stars, a heart adds nothing.
+func (t *trackMarks) into(imp *store.Import, heartStars rating.Rating) {
 	for _, id := range slices.Sorted(maps.Keys(t.ratings)) {
 		imp.Ratings = append(imp.Ratings, store.ImportedRating{TrackID: id, Rating: t.ratings[id].r, At: t.ratings[id].at})
 	}
+	if !heartStars.Valid() {
+		return
+	}
+	for _, id := range slices.Sorted(maps.Keys(t.hearts)) {
+		if _, ok := t.ratings[id]; !ok {
+			imp.HeartRatings = append(imp.HeartRatings, store.ImportedRating{TrackID: id, Rating: heartStars, At: t.hearts[id]})
+		}
+	}
 }
 
-// album adds hearts for a starred Navidrome album: one on each Kitsune album
-// its songs lie in.
+// album counts a starred or rated Navidrome album. Neither is imported:
+// Kitsune likes songs only.
 func (p *planner) album(out *Person, a *navidromedb.Annotation) {
 	if a.Rating > 0 {
 		out.Report.AlbumRatings++
@@ -441,12 +463,11 @@ func (p *planner) album(out *Person, a *navidromedb.Annotation) {
 	if len(albums) > 1 {
 		out.Report.SplitAlbums++
 	}
-	for _, id := range albums {
-		out.Import.AlbumHearts = addHeart(out.Import.AlbumHearts, id, p.or(a.StarredAt))
-	}
 }
 
-// artist adds a heart for a starred or rated Navidrome artist.
+// artist counts a starred or rated Navidrome artist, matched as an artist
+// would be. Neither is imported: how much a person likes an artist comes from
+// how they rate the artist's songs.
 func (p *planner) artist(out *Person, a *navidromedb.Annotation) {
 	if !marked(a) {
 		return
@@ -454,33 +475,11 @@ func (p *planner) artist(out *Person, a *navidromedb.Annotation) {
 	if !a.Starred {
 		out.Report.ArtistRatings++
 	}
-	var (
-		id string
-		h  how
-	)
+	h := unmatched
 	if i := slices.IndexFunc(p.src.Artists, func(x navidromedb.Artist) bool { return x.ID == a.ItemID }); i >= 0 {
-		id, h = p.r.artist(&p.src.Artists[i])
+		h = p.r.artist(&p.src.Artists[i])
 	}
 	out.Report.ArtistHearts.add(h)
-	if h != unmatched {
-		at := a.StarredAt
-		if at.IsZero() {
-			at = a.RatedAt
-		}
-		out.Import.ArtistHearts = addHeart(out.Import.ArtistHearts, id, p.or(at))
-	}
-}
-
-// addHeart adds a heart on id, or moves the one there to at if that is earlier.
-func addHeart(hearts []store.ImportedHeart, id string, at time.Time) []store.ImportedHeart {
-	i := slices.IndexFunc(hearts, func(h store.ImportedHeart) bool { return h.ID == id })
-	if i < 0 {
-		return append(hearts, store.ImportedHeart{ID: id, At: at})
-	}
-	if at.Before(hearts[i].At) {
-		hearts[i].At = at
-	}
-	return hearts
 }
 
 // or returns t, or the plan's now when t is zero.

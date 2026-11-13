@@ -120,7 +120,8 @@ func newMarker(l *testLib) *marker {
 	return &marker{l: l, userID: u.ID}
 }
 
-// mark plays, hearts and rates the track id.
+// mark plays, hearts and rates the track id: a heart kept from before stars
+// were the only like follows a track as its rating does.
 func (m *marker) mark(id string) {
 	m.l.t.Helper()
 	ctx := m.l.t.Context()
@@ -147,12 +148,19 @@ func (m *marker) wantMarked(album, id string) {
 	if !slices.ContainsFunc(plays, func(p store.Play) bool { return p.TrackID == id }) {
 		m.l.t.Errorf("plays = %+v, want one of %s", plays, id)
 	}
-	marks, err := m.l.st.AlbumMarks(ctx, m.userID, album)
+	ratings, err := m.l.st.AlbumRatings(ctx, m.userID, album)
 	if err != nil {
 		m.l.t.Fatal(err)
 	}
-	if got := marks.Tracks[id]; !got.Hearted || got.Rating != 8 {
-		m.l.t.Errorf("marks of %s on %s = %+v, want hearted with 4 stars", id, album, got)
+	if got := ratings[id]; got != 8 {
+		m.l.t.Errorf("rating of %s on %s = %v, want 4 stars", id, album, got)
+	}
+	hearts, err := m.l.st.HeartsSummary(ctx, m.userID)
+	if err != nil {
+		m.l.t.Fatal(err)
+	}
+	if hearts.ByStars[3] != 1 {
+		m.l.t.Errorf("hearts = %+v, want the one 4★ song still hearted", hearts)
 	}
 }
 
@@ -247,8 +255,8 @@ func TestMovingEveryTrackMergesTheAlbum(t *testing.T) {
 		t.Errorf("merged album has %d tracks, added %v; want 2, added %v", len(merged.Tracks), merged.AddedAt, first.AddedAt)
 	}
 	m.wantMarked(first.ID, track)
-	if marks, _ := l.st.AlbumMarks(t.Context(), m.userID, first.ID); !marks.Hearted {
-		t.Error("the merged album's heart did not move")
+	if hearts, _ := l.st.HeartsSummary(t.Context(), m.userID); hearts.Albums != 1 {
+		t.Errorf("album hearts = %d, want the merged album's moved, 1", hearts.Albums)
 	}
 }
 

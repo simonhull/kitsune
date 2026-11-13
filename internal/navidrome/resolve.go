@@ -177,14 +177,14 @@ func (r *resolver) checkMap(src *Source, roots map[int64]string, paths map[strin
 	return errors.Join(errs...)
 }
 
-// artist finds a Navidrome artist's Kitsune artist: by match key, else by an
+// artist says how a Navidrome artist matches a Kitsune artist: by match key, else by an
 // MBID exactly one Kitsune artist has. Various Artists is never among them.
-func (r *resolver) artist(a *navidromedb.Artist) (string, how) {
-	if id, ok := r.byKey[library.MatchKey(a.Name)]; ok {
-		return id, byName
+func (r *resolver) artist(a *navidromedb.Artist) how {
+	if _, ok := r.byKey[library.MatchKey(a.Name)]; ok {
+		return byName
 	}
 	if ids := r.byArtist[strings.ToLower(strings.TrimSpace(a.MBID))]; a.MBID != "" && len(ids) == 1 {
-		return ids[0], byMBID
+		return byMBID
 	}
-	return "", unmatched
+	return unmatched
 }

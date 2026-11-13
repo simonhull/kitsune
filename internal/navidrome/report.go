@@ -66,17 +66,19 @@ func writePerson(b *strings.Builder, p *Person, counts *store.ImportCounts, verb
 		{label: "plays", tally: &r.Plays, path: true, mbid: true, counts: &plays},
 		{label: "  dated", tally: &r.Dated, path: true, mbid: true, counts: &dated},
 		{label: "  undated", tally: &r.Undated, path: true, mbid: true, counts: &undated},
-		{label: "song hearts", tally: &r.SongHearts, path: true, mbid: true, counts: &c.TrackHearts},
-		{label: "album hearts", tally: &r.AlbumHearts, counts: &c.AlbumHearts},
-		{label: "artist hearts", tally: &r.ArtistHearts, mbid: true, counts: &c.ArtistHearts},
 		{label: "ratings", tally: &r.Ratings, path: true, mbid: true, counts: &c.Ratings, kept: true},
+		{label: "unrated hearts", tally: &r.UnratedHearts, path: true, mbid: true, counts: &c.HeartRatings, kept: true},
+		{label: "album hearts", tally: &r.AlbumHearts},
+		{label: "artist hearts", tally: &r.ArtistHearts, mbid: true},
 	} {
 		cells := []string{
 			strconv.Itoa(rw.tally.Source), strconv.Itoa(rw.tally.Matched()),
 			cell(rw.path, rw.tally.ByPath), cell(rw.mbid, rw.tally.ByMBID), strconv.Itoa(rw.tally.Unmatched),
 		}
-		if counts != nil {
+		if counts != nil && rw.counts != nil {
 			cells = append(cells, strconv.Itoa(rw.counts.Added), strconv.Itoa(rw.counts.There), cell(rw.kept, rw.counts.Kept))
+		} else if counts != nil {
+			cells = append(cells, notApplicable, notApplicable, notApplicable)
 		}
 		writeCells(b, rw.label, cells)
 	}
@@ -89,14 +91,20 @@ func writeNotes(b *strings.Builder, p *Person, verbose bool) {
 	r := &p.Report
 	split := ""
 	if r.SplitAlbums > 0 {
-		split = fmt.Sprintf(" (%d lie in more than one Kitsune album, and each is hearted)", r.SplitAlbums)
+		split = fmt.Sprintf(" (%d lie in more than one Kitsune album)", r.SplitAlbums)
 	}
 	fmt.Fprintf(b, "Albums match through their songs%s; artists by name, then MBID.\n", split)
-	hearts, ratings := r.SongHearts.Matched()-len(p.Import.TrackHearts), r.Ratings.Matched()-len(p.Import.Ratings)
-	if hearts > 0 || ratings > 0 {
-		fmt.Fprintf(b, "Marks on a track another Navidrome song also marks, as after a -map onto a kept copy, written once: %d hearts, %d ratings\n", hearts, ratings)
+	if ratings := r.Ratings.Matched() - len(p.Import.Ratings); ratings > 0 {
+		fmt.Fprintf(b, "Ratings of a track another Navidrome song also rates, as after a -map onto a kept copy, written once: %d\n", ratings)
 	}
-	fmt.Fprintf(b, "Artists rated but not starred, hearted for their rating: %d\n", r.ArtistRatings)
+	fmt.Fprintf(b, "Starred songs with a rating keep just the rating: %d\n", r.RatedHearts)
+	if p.HeartStars.Valid() {
+		fmt.Fprintf(b, "Starred songs with no rating are rated %s (-heart-stars %d)\n", p.HeartStars, p.HeartStars.Halves())
+	} else {
+		fmt.Fprintf(b, "Starred songs with no rating stay unrated (-heart-stars 0)\n")
+	}
+	fmt.Fprintf(b, "Not imported, since Kitsune likes songs only, in stars: album hearts %d, artist hearts %d (%d of them rated, not starred)\n",
+		r.AlbumHearts.Source, r.ArtistHearts.Source, r.ArtistRatings)
 	fmt.Fprintf(b, "Not imported: album ratings %d, bookmarks %d, playlists %d (Kitsune has no playlists yet; keep the Navidrome file)\n",
 		r.AlbumRatings, r.Left.Bookmarks, r.Left.Playlists)
 	if r.NoDatePlays > 0 {

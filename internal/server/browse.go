@@ -105,16 +105,14 @@ func (s *Server) albumDetail(ctx context.Context, userID int64, id string) (api.
 	if err != nil {
 		return api.AlbumDetail{}, fmt.Errorf("album detail: %w", err)
 	}
-	marks, err := s.library.AlbumMarks(ctx, userID, id)
+	ratings, err := s.library.AlbumRatings(ctx, userID, id)
 	if err != nil {
 		return api.AlbumDetail{}, fmt.Errorf("album detail: %w", err)
 	}
 	out := toAPIAlbumDetail(&d, genres)
 	out.DisplayGenres = append(out.DisplayGenres, s.genres.Of(id)...)
-	out.Hearted = marks.Hearted
 	for i := range out.Tracks {
-		m := marks.Tracks[out.Tracks[i].ID]
-		out.Tracks[i].Hearted, out.Tracks[i].Stars = m.Hearted, m.Rating.Stars()
+		out.Tracks[i].Stars = ratings[out.Tracks[i].ID].Stars()
 	}
 	return out, nil
 }
@@ -255,7 +253,7 @@ func toAPILibraryIndex(index *store.LibraryIndex, fields *fieldWriter) api.Libra
 	for i := range index.Artists {
 		a := &index.Artists[i]
 		out.Artists[i] = api.LibraryArtist{
-			ID: a.ID, Name: a.Name, SortName: a.SortName, Hearted: a.Hearted, Albums: make([]api.LibraryAlbum, len(a.Albums)),
+			ID: a.ID, Name: a.Name, SortName: a.SortName, Albums: make([]api.LibraryAlbum, len(a.Albums)),
 		}
 		for j := range a.Albums {
 			out.Artists[i].Albums[j] = toAPILibraryAlbum(&a.Albums[j], fields)
@@ -269,7 +267,7 @@ func toAPILibraryIndex(index *store.LibraryIndex, fields *fieldWriter) api.Libra
 
 func toAPILibraryAlbum(a *store.IndexAlbum, fields *fieldWriter) api.LibraryAlbum {
 	out := api.LibraryAlbum{
-		ID: a.ID, Title: a.Title, Artist: a.Artist, Compilation: a.Compilation, Hearted: a.Hearted, Year: a.Year,
+		ID: a.ID, Title: a.Title, Artist: a.Artist, Compilation: a.Compilation, Year: a.Year,
 		Artwork: toAPIArtwork(a.Cover), Tracks: make([]api.LibraryTrack, len(a.Tracks)),
 	}
 	if a.Discs != nil {
@@ -280,7 +278,7 @@ func toAPILibraryAlbum(a *store.IndexAlbum, fields *fieldWriter) api.LibraryAlbu
 		out.Tracks[i] = api.LibraryTrack{
 			ID: t.ID, Title: t.Title, DurationMs: t.Duration.Milliseconds(),
 			Artists: append([]string{}, t.Artists...), DiscNo: t.DiscNo, TrackNo: t.TrackNo,
-			Hearted: t.Marks.Hearted, Stars: t.Marks.Rating.Stars(),
+			Stars: t.Rating.Stars(),
 		}
 		fields.add(&out.Tracks[i], t)
 	}

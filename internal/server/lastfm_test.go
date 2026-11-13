@@ -203,7 +203,7 @@ func TestLastfmConnectRoundTrip(t *testing.T) {
 	if got := f.callback(t, path, cookies(f.sess.token, lastfmStateCookie+"="+c.state)); got != lastfmConnected {
 		t.Fatalf("result = %q, want connected; log:\n%s", got, f.ts.Log)
 	}
-	want := api.LastfmStatus{Configured: true, Connected: true, Name: fakeUser, Scrobble: true, NowPlaying: true, Loves: true, State: api.LastfmOK}
+	want := api.LastfmStatus{Configured: true, Connected: true, Name: fakeUser, Scrobble: true, NowPlaying: true, Loves: true, LoveFrom: 4, State: api.LastfmOK}
 	if s := f.status(t); s != want {
 		t.Errorf("after = %+v, want %+v", s, want)
 	}
@@ -309,18 +309,49 @@ func TestLastfmPlayIsScrobbled(t *testing.T) {
 	}
 }
 
-func TestLastfmHeartIsLoved(t *testing.T) {
+func TestLastfmLovesFollowTheLoveLine(t *testing.T) {
 	t.Parallel()
 	f := newLastfmFixture(t)
 	f.connect(t)
-	wantNoContent(t, f.ts.send(t, heartCall(http.MethodPut, f.sess.token, kindTracks, firstTrack)))
-	wantNoContent(t, f.ts.send(t, heartCall(http.MethodPut, f.sess.token, kindAlbums, albumULID(1)))) // Sends nothing.
+	if s := f.status(t); !s.Loves || s.LoveFrom != 4 {
+		t.Errorf("status = %+v, want loves on from 4★", s)
+	}
+	wantNoContent(t, f.ts.send(t, rateCall(f.sess.token, firstTrack, stars(3.5)))) // Under the line: nothing.
+	wantNoContent(t, f.ts.send(t, rateCall(f.sess.token, firstTrack, stars(4))))
 	eventually(t, "the love", func() bool { return len(f.fake.CallsTo("track.love")) == 1 })
 	if p := f.fake.CallsTo("track.love")[0].Params; p.Get("artist") != annName || p.Get("track") != trackOne {
 		t.Errorf("love = %v", p)
 	}
-	wantNoContent(t, f.ts.send(t, heartCall(http.MethodDelete, f.sess.token, kindTracks, firstTrack)))
+	wantNoContent(t, f.ts.send(t, rateCall(f.sess.token, firstTrack, stars(5)))) // Still over: nothing more.
+	wantNoContent(t, f.ts.send(t, call{method: http.MethodDelete, path: ratingsPath + firstTrack, header: bearer(f.sess.token)}))
 	eventually(t, "the unlove", func() bool { return len(f.fake.CallsTo("track.unlove")) == 1 })
+}
+
+// Moving the love line, and turning hearts into stars, send nothing.
+func TestLastfmMovingTheLineAndConvertingSendNothing(t *testing.T) {
+	t.Parallel()
+	f := newLastfmFixture(t)
+	f.connect(t)
+	wantNoContent(t, f.ts.send(t, rateCall(f.sess.token, firstTrack, stars(3))))
+	resp := f.ts.send(t, call{method: http.MethodPatch, path: lastfmPath, body: `{"loveFrom":2.5}`, header: jsonHeader(f.sess.token)})
+	var s api.LastfmStatus
+	if err := json.Unmarshal(resp.Body, &s); err != nil || resp.Status != http.StatusOK || s.LoveFrom != 2.5 {
+		t.Fatalf("PATCH loveFrom = %d %s, want 200 at 2½", resp.Status, resp.Body)
+	}
+	// A heart turned into stars was loved through the heart: nothing goes.
+	f.ts.heart(t, f.sess.user.ID, store.KindTrack, trackOf(2))
+	f.ts.convert(t, f.sess.token, stars(5))
+	wantNoContent(t, f.ts.send(t, rateCall(f.sess.token, firstTrack, stars(3.5)))) // Over the new line, as 3★ was: nothing.
+	f.ts.Clock.Advance(time.Minute)
+	wantNoContent(t, f.ts.send(t, call{method: http.MethodPost, path: playsPath, body: playsBody(1, f.ts.Clock.Now()), header: jsonHeader(f.sess.token)}))
+	eventually(t, "the scrobble", func() bool { return len(f.fake.Scrobbles()) == 1 })
+	if loves, unloves := len(f.fake.CallsTo("track.love")), len(f.fake.CallsTo("track.unlove")); loves+unloves != 0 {
+		t.Errorf("loves %d, unloves %d; want none: moving the line and converting hearts send nothing", loves, unloves)
+	}
+	for _, body := range []string{`{"loveFrom":0}`, `{"loveFrom":4.25}`, `{"loveFrom":"4"}`} {
+		c := call{method: http.MethodPatch, path: lastfmPath, body: body, header: jsonHeader(f.sess.token), invalid: true}
+		f.ts.send(t, c).problem(t, http.StatusBadRequest)
+	}
 }
 
 func TestLastfmOutageWaitsThenSends(t *testing.T) {
@@ -335,7 +366,7 @@ func TestLastfmOutageWaitsThenSends(t *testing.T) {
 		t.Errorf("status = %+v, want 1 waiting, retried in a minute", s)
 	}
 	f.ts.Clock.Advance(time.Minute)
-	wantNoContent(t, f.ts.send(t, heartCall(http.MethodPut, f.sess.token, kindTracks, firstTrack))) // Wakes the sender.
+	wantNoContent(t, f.ts.send(t, rateCall(f.sess.token, firstTrack, stars(4)))) // Wakes the sender.
 	eventually(t, "the scrobble", func() bool { return len(f.fake.Scrobbles()) == 1 })
 	eventually(t, "an empty outbox", func() bool { s := f.status(t); return s.Waiting == 0 && s.State == api.LastfmOK })
 }
@@ -437,7 +468,7 @@ func TestLastfmKeepsSecrets(t *testing.T) {
 	eventually(t, "a wait", func() bool { return f.status(t).State == api.LastfmWaiting })
 	f.ts.Clock.Advance(time.Minute)
 	wantNoContent(t, f.ts.send(t, call{method: http.MethodPost, path: nowPlayingPath, body: `{"trackId":"` + trackOf(1) + `"}`, header: jsonHeader(f.sess.token)}))
-	wantNoContent(t, f.ts.send(t, heartCall(http.MethodPut, f.sess.token, kindTracks, firstTrack)))
+	wantNoContent(t, f.ts.send(t, rateCall(f.sess.token, firstTrack, stars(4))))
 	eventually(t, "reconnect", func() bool { return f.status(t).State == api.LastfmReconnect })
 	var bodies strings.Builder
 	for _, c := range []call{

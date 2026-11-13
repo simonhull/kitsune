@@ -212,20 +212,19 @@ func (s *eventStream) wantMark(want *api.EventMarks) {
 	}
 }
 
-func TestEventsOfHeartsGoToTheirPerson(t *testing.T) {
+func TestEventsOfMarksGoToTheirPerson(t *testing.T) {
 	t.Parallel()
 	ts, sess := markFixture(t)
 	mine := ts.openStream(t, sess.token, "")
 	other := ts.openStream(t, ts.tokenFor(t, store.RoleUser), "")
 	mine.want(events.Ready)
 	other.want(events.Ready)
-	for _, k := range everyKind() {
-		ts.send(t, heartCall(http.MethodPut, sess.token, k.kind, k.id))
-		mine.wantMark(&api.EventMarks{Kind: k.kind, ID: k.id, Hearted: new(true)})
-	}
-	ts.send(t, heartCall(http.MethodDelete, sess.token, kindTracks, firstTrack))
-	mine.wantMark(&api.EventMarks{Kind: kindTracks, ID: firstTrack, Hearted: new(false)})
-	ts.send(t, heartCall(http.MethodPut, sess.token, kindTracks, missingID)) // A 404 says nothing.
+	ts.send(t, rateCall(sess.token, firstTrack, stars(3)))
+	mine.wantMark(&api.EventMarks{Kind: kindTracks, ID: firstTrack, Stars: 3})
+	ts.heart(t, sess.user.ID, store.KindTrack, secondTrack)
+	ts.send(t, convertCall(sess.token, stars(4)))
+	mine.wantMark(&api.EventMarks{Kind: kindTracks, ID: secondTrack, Stars: 4})
+	ts.send(t, rateCall(sess.token, missingID, stars(3))) // A 404 says nothing.
 	ts.ping()
 	mine.want(events.Library)
 	other.want(events.Library) // The other person heard none of it.
@@ -237,9 +236,9 @@ func TestEventsOfRatings(t *testing.T) {
 	s := ts.openStream(t, sess.token, "")
 	s.want(events.Ready)
 	ts.send(t, rateCall(sess.token, firstTrack, stars(4.5)))
-	s.wantMark(&api.EventMarks{Kind: kindTracks, ID: firstTrack, Stars: new(4.5)})
+	s.wantMark(&api.EventMarks{Kind: kindTracks, ID: firstTrack, Stars: 4.5})
 	ts.send(t, call{method: http.MethodDelete, path: ratingsPath + firstTrack, header: bearer(sess.token)})
-	s.wantMark(&api.EventMarks{Kind: kindTracks, ID: firstTrack, Stars: new(0.0)})
+	s.wantMark(&api.EventMarks{Kind: kindTracks, ID: firstTrack, Stars: 0})
 }
 
 func TestEventsOfPrefsListeningAndLastfm(t *testing.T) {
@@ -364,8 +363,9 @@ func TestNoEventHoldsASecret(t *testing.T) {
 	token := fx.token
 	fx.patchSettings(t, token, `{"lastfm.shared_secret":"`+secretValue+`","library.roots":["`+fx.root+`"]}`, false)
 	fx.send(t, putPrefCall(token, themePath, `"dark"`))
-	fx.send(t, heartCall(http.MethodPut, token, kindAlbums, fx.album.ID))
+	fx.heart(t, 1, store.KindTrack, fx.album.Tracks[1].ID)
 	fx.send(t, rateCall(token, fx.album.Tracks[0].ID, stars(3)))
+	fx.send(t, convertCall(token, stars(4)))
 	fx.send(t, call{method: http.MethodPost, path: nowPlayingPath, body: `{"trackId":"` + fx.album.Tracks[0].ID + `"}`, header: jsonHeader(token)})
 	fx.send(t, fx.postCall(fx.editsPath(), fx.album.Etag, `{"all":{"set":{"title":["Renamed"]}}}`))
 	fx.startShuffle(t, token, &api.ShuffleStart{Scope: api.ShuffleScope{Kind: scopeLibrary}, Mode: modeEndless})

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/simonhull/kitsune/internal/rating"
 )
 
 // mbidKey is the raw tag the tests keep a track's MusicBrainz ID under.
@@ -60,7 +62,7 @@ func TestConnectLastfmStartsWithEverythingOn(t *testing.T) {
 	s, _ := lastfmStore(t)
 	got := mustAccount(t, s)
 	want := LastfmAccount{
-		Name: "simonhull", SessionKey: "sk-1", Switches: LastfmSwitches{Scrobble: true, NowPlaying: true, Loves: true},
+		Name: "simonhull", SessionKey: "sk-1", Switches: LastfmSwitches{Scrobble: true, NowPlaying: true, Loves: true, LoveFrom: loveLine},
 		State: LastfmOK, ConnectedAt: time.UnixMilli(1000).UTC(),
 	}
 	if got != want {
@@ -90,41 +92,94 @@ func TestNothingQueuedWithoutAnAccountOrSwitch(t *testing.T) {
 	s, _ := lastfmStore(t)
 	other := addUser(t, s)
 	mustRecord(t, s, play(other, "a"))
-	mustHeart(t, s, other, KindTrack, firstTrack)
-	mustSwitch(t, s, LastfmSwitches{NowPlaying: true})
+	mustRate(t, s, other, firstTrack, loveLine)
+	mustSwitch(t, s, LastfmSwitches{NowPlaying: true, LoveFrom: loveLine})
 	mustRecord(t, s, play(1, "b"))
-	mustHeart(t, s, 1, KindTrack, firstTrack)
+	mustRate(t, s, 1, firstTrack, loveLine)
 	if got := outbox(t, s); len(got) != 0 {
 		t.Errorf("outbox = %q, want empty", got)
 	}
 }
 
-func TestTrackHeartsQueueLoves(t *testing.T) {
+// loveLine is a new account's love line, 4★.
+const loveLine rating.Rating = 8
+
+func TestRatingsCrossingTheLoveLineQueueLoves(t *testing.T) {
 	t.Parallel()
-	s, now := lastfmStore(t)
-	mustHeart(t, s, 1, KindTrack, firstTrack)
-	mustHeart(t, s, 1, KindTrack, firstTrack) // Already hearted: nothing changes.
-	mustHeart(t, s, 1, KindAlbum, seedAlbum)  // Last.fm has nothing to match.
-	mustHeart(t, s, 1, KindArtist, seedArtist)
-	*now = time.UnixMilli(2000)
-	for range 2 {
-		if err := s.Unheart(t.Context(), 1, KindTrack, firstTrack); err != nil {
-			t.Fatal(err)
-		}
+	for _, tc := range []struct {
+		name  string
+		steps []rating.Rating // Ratings in turn; None unrates.
+		want  []OutboxKind
+	}{
+		{"unrated to the line loves", []rating.Rating{loveLine}, []OutboxKind{OutboxLove}},
+		{"unrated to under it sends nothing", []rating.Rating{loveLine - 1}, nil},
+		{"under to over loves", []rating.Rating{2, rating.Max}, []OutboxKind{OutboxLove}},
+		{"over to under unloves", []rating.Rating{rating.Max, loveLine - 1}, []OutboxKind{OutboxLove, OutboxUnlove}},
+		{"over to unrated unloves", []rating.Rating{loveLine, rating.None}, []OutboxKind{OutboxLove, OutboxUnlove}},
+		{"staying over sends nothing more", []rating.Rating{loveLine, rating.Max, loveLine + 1}, []OutboxKind{OutboxLove}},
+		{"staying under sends nothing", []rating.Rating{1, loveLine - 1, rating.None}, nil},
+		{"the same rating again sends nothing more", []rating.Rating{loveLine, loveLine}, []OutboxKind{OutboxLove}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s, _ := lastfmStore(t)
+			for _, r := range tc.steps {
+				if r == rating.None {
+					if err := s.Unrate(t.Context(), 1, firstTrack); err != nil {
+						t.Fatal(err)
+					}
+					continue
+				}
+				mustRate(t, s, 1, firstTrack, r)
+			}
+			got := make([]OutboxKind, 0, len(tc.want))
+			for _, row := range rawRows(t, s.w, "SELECT kind FROM lastfm_outbox ORDER BY id") {
+				got = append(got, parseOutboxKind(row))
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("outbox = %v, want %v", got, tc.want)
+			}
+		})
 	}
-	want := []string{"1 love " + firstTrack + " 1000 0 1000", "1 unlove " + firstTrack + " 2000 0 2000"}
+}
+
+func TestMovingTheLoveLineSendsNothing(t *testing.T) {
+	t.Parallel()
+	s, _ := lastfmStore(t)
+	mustSwitch(t, s, LastfmSwitches{Loves: true, LoveFrom: rating.Max})
+	mustRate(t, s, 1, firstTrack, loveLine) // Under 5★: nothing.
+	mustSwitch(t, s, LastfmSwitches{Loves: true, LoveFrom: 2})
+	if got := outbox(t, s); len(got) != 0 {
+		t.Errorf("outbox = %q, want empty: moving the line sends nothing", got)
+	}
+	mustRate(t, s, 1, firstTrack, rating.Max) // Over the new line both times: nothing.
+	mustRate(t, s, 1, firstTrack, 1)          // Under it: an unlove, for a song Last.fm may love.
+	want := []string{"1 unlove " + firstTrack + " 1000 0 1000"}
 	if got := outbox(t, s); !slices.Equal(got, want) {
 		t.Errorf("outbox = %q, want %q", got, want)
 	}
-	if got := mustAccount(t, s).Waiting; got != 0 {
-		t.Errorf("Waiting = %d, want 0: only plays count", got)
+	if got := mustAccount(t, s).Switches.LoveFrom; got != 2 {
+		t.Errorf("love from = %v, want 2 halves", got)
+	}
+}
+
+func TestLovesOffQueuesNoLove(t *testing.T) {
+	t.Parallel()
+	s, _ := lastfmStore(t)
+	mustSwitch(t, s, LastfmSwitches{Scrobble: true, NowPlaying: true, LoveFrom: loveLine})
+	mustRate(t, s, 1, firstTrack, rating.Max)
+	if got := outbox(t, s); len(got) != 0 {
+		t.Errorf("outbox = %q, want empty", got)
+	}
+	if err := s.SetLastfmSwitches(t.Context(), 1, LastfmSwitches{Loves: true}); !errors.Is(err, rating.ErrBad) {
+		t.Errorf("a switch with no love line = %v, want rating.ErrBad", err)
 	}
 }
 
 func TestSetLastfmSwitches(t *testing.T) {
 	t.Parallel()
 	s, _ := lastfmStore(t)
-	sw := LastfmSwitches{Scrobble: false, NowPlaying: true, Loves: false}
+	sw := LastfmSwitches{Scrobble: false, NowPlaying: true, Loves: false, LoveFrom: 7}
 	mustSwitch(t, s, sw)
 	if got := mustAccount(t, s).Switches; got != sw {
 		t.Errorf("switches = %+v, want %+v", got, sw)
@@ -172,7 +227,7 @@ func TestLastfmDueInOrderWithTrackFacts(t *testing.T) {
 	for i, n := range []int{2, 1, 3} {
 		mustRecord(t, s, &NewPlay{UserID: 1, TrackID: trackULID(n), PlayedAt: time.UnixMilli(int64(100 * (i + 1))), Source: playSource, ClientID: strconv.Itoa(i)})
 	}
-	mustHeart(t, s, 1, KindTrack, trackULID(3))
+	mustRate(t, s, 1, trackULID(3), loveLine)
 	track := func(word string) LastfmTrack {
 		return LastfmTrack{Artists: []string{seedBand}, Title: "Hørizøn " + word, Album: "Album", AlbumArtist: seedBand, Duration: time.Second}
 	}
@@ -255,7 +310,7 @@ func TestReconnectHoldsTheOutbox(t *testing.T) {
 func TestConnectAgainResumesAtOnce(t *testing.T) {
 	t.Parallel()
 	s, now := lastfmStore(t)
-	mustSwitch(t, s, LastfmSwitches{Scrobble: true})
+	mustSwitch(t, s, LastfmSwitches{Scrobble: true, LoveFrom: loveLine})
 	mustRecord(t, s, play(1, "a"))
 	if err := s.DeferLastfm(t.Context(), 1, time.UnixMilli(1_000_000)); err != nil {
 		t.Fatal(err)
@@ -268,7 +323,7 @@ func TestConnectAgainResumesAtOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := mustAccount(t, s)
-	if a.State != LastfmOK || a.SessionKey != "sk-2" || a.Switches != (LastfmSwitches{Scrobble: true}) || a.Attempts != 0 {
+	if a.State != LastfmOK || a.SessionKey != "sk-2" || a.Switches != (LastfmSwitches{Scrobble: true, LoveFrom: loveLine}) || a.Attempts != 0 {
 		t.Errorf("account = %+v, want ok, the new key and its switches kept", a)
 	}
 	if due, err := s.LastfmDueUsers(t.Context(), *now); err != nil || !slices.Equal(due, []int64{1}) {
@@ -280,7 +335,7 @@ func TestSentAndDropped(t *testing.T) {
 	t.Parallel()
 	s, now := lastfmStore(t)
 	mustRecord(t, s, play(1, "a"))
-	mustHeart(t, s, 1, KindTrack, firstTrack)
+	mustRate(t, s, 1, firstTrack, loveLine)
 	items, err := s.LastfmDue(t.Context(), 1, *now, 50, nil, OutboxScrobble)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("due = %v, %v", items, err)
@@ -306,7 +361,7 @@ func TestDropOldLastfmScrobbles(t *testing.T) {
 	s, _ := lastfmStore(t)
 	mustRecord(t, s, play(1, "a"))
 	mustRecord(t, s, &NewPlay{UserID: 1, TrackID: firstTrack, PlayedAt: time.UnixMilli(5000), Source: playSource, ClientID: "b"})
-	mustHeart(t, s, 1, KindTrack, firstTrack) // Loves don't age out.
+	mustRate(t, s, 1, firstTrack, loveLine) // Loves don't age out.
 	n, err := s.DropOldLastfmScrobbles(t.Context(), 1, time.UnixMilli(2000))
 	if err != nil || n != 1 {
 		t.Fatalf("DropOldLastfmScrobbles = %d, %v, want 1", n, err)

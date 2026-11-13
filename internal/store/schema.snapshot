@@ -136,7 +136,7 @@ CREATE TABLE lastfm_accounts (
 	state        TEXT    NOT NULL CHECK (state IN ('ok', 'reconnect')),
 	connected_at INTEGER NOT NULL,
 	last_sent_at INTEGER -- the latest send Last.fm took; NULL before the first
-) STRICT;
+, love_from INTEGER NOT NULL DEFAULT 8 CHECK (love_from BETWEEN 1 AND 10)) STRICT;
 --   column cid=0 name=user_id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
 --   column cid=1 name=name type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=2 name=session_key type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
@@ -146,6 +146,7 @@ CREATE TABLE lastfm_accounts (
 --   column cid=6 name=state type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=7 name=connected_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=8 name=last_sent_at type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=9 name=love_from type=INTEGER notnull=1 dflt_value=8 pk=0 hidden=0
 --   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 
 -- table lastfm_outbox

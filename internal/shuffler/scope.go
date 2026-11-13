@@ -2,11 +2,11 @@ package shuffler
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
 
-	"github.com/simonhull/kitsune/internal/prefs"
 	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -22,11 +22,8 @@ type Kind string
 const (
 	// Library is every song.
 	Library Kind = "library"
-	// Hearted is what the Library list's Hearted filter shows: hearted songs,
-	// and every song of a hearted album or of an album whose artist is hearted.
-	Hearted Kind = "hearted"
 	// Rated is what the Library list's 4★-and-up filter shows: songs whose
-	// counted stars, their own or their heart's, are 4★ or more.
+	// own stars are 4★ or more.
 	Rated Kind = "rated"
 	// Album is one album's songs.
 	Album Kind = "album"
@@ -52,6 +49,28 @@ type Scope struct {
 	Tracks []string `json:"tracks,omitzero"`
 }
 
+// hearted is the scope of the Library list's Hearted filter, which went when
+// stars became the only like. A shuffle session or playback record that still
+// names it goes on as [Rated].
+const hearted = "hearted"
+
+// ParseScope decodes a scope as a shuffle session keeps it, the Hearted scope
+// going on as [Rated].
+//
+// # Errors
+//
+// An error wrapping [ErrBadScope] for text that isn't a scope.
+func ParseScope(text string) (Scope, error) {
+	var sc Scope
+	if err := json.Unmarshal([]byte(text), &sc); err != nil {
+		return Scope{}, fmt.Errorf("decode scope: %w: %w", ErrBadScope, err)
+	}
+	if sc.Kind == hearted {
+		sc.Kind = Rated
+	}
+	return sc, nil
+}
+
 // check reports whether the scope has what its kind needs, and nothing else.
 func (sc *Scope) check() error {
 	if !sc.fits() {
@@ -64,7 +83,7 @@ func (sc *Scope) check() error {
 func (sc *Scope) fits() bool {
 	named, listed := sc.ID != "", sc.Tracks != nil
 	switch sc.Kind {
-	case Library, Hearted, Rated:
+	case Library, Rated:
 		return !named && !listed
 	case Album, Artist:
 		return named && !listed
@@ -91,22 +110,14 @@ func (m Mode) valid() bool { return m == Finite || m == Endless }
 // keep says whether a song is in scope.
 type keep func(song *store.ShuffleSong) bool
 
-// keeper works out which songs sc holds, from the store, with an unrated heart
-// counting as hearts. It returns an error wrapping [store.ErrNotFound] for an
-// album or artist that isn't there.
-func keeper(ctx context.Context, st *store.Store, userID int64, sc *Scope, hearts prefs.HeartStars) (keep, error) {
+// keeper works out which songs sc holds, from the store. It returns an error
+// wrapping [store.ErrNotFound] for an album or artist that isn't there.
+func keeper(ctx context.Context, st *store.Store, sc *Scope) (keep, error) {
 	switch sc.Kind {
 	case Library:
 		return func(*store.ShuffleSong) bool { return true }, nil
 	case Rated:
-		return func(s *store.ShuffleSong) bool {
-			counted, _ := hearts.Of(s.Rating, s.Hearted)
-			return counted >= goodRating
-		}, nil
-	case Hearted:
-		albums, err := st.HeartedAlbumRows(ctx, userID)
-		whole := setOf(albums)
-		return func(s *store.ShuffleSong) bool { return s.Hearted || whole[s.AlbumID] }, err //nolint:wrapcheck // The store names it.
+		return func(s *store.ShuffleSong) bool { return s.Rating >= goodRating }, nil
 	case Album:
 		album, err := st.AlbumRow(ctx, sc.ID)
 		return func(s *store.ShuffleSong) bool { return s.AlbumID == album }, err //nolint:wrapcheck // The store names it.

@@ -14,7 +14,7 @@
 // # Weights
 //
 // A unit's weight ([Weight], explained by [Explain]) is the product of its
-// rating, heart, recency, skip memory, skip rate and listen time factors. Each
+// rating, recency, skip memory, skip rate and listen time factors. Each
 // constant behind them is documented where it is declared, with its source.
 //
 // # Orders

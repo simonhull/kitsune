@@ -12,7 +12,7 @@ import (
 // libraryRows keeps what the whole index reads of the library between library
 // writes: the album rows, each with its owner from a subquery, the tracks and
 // their artists, and what the song columns read of them. They are most of what an
-// index costs to read, and they change only when the library does: a heart or a
+// index costs to read, and they change only when the library does: a rating or a
 // play leaves them alone, so those are read every time. So are loudness measures,
 // which the loudness pass writes outside library writes, a file at a time.
 // Library writes go through [Store.inLibraryTx], which counts them.

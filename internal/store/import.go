@@ -20,7 +20,7 @@ type MBIDKeys struct {
 }
 
 // ImportTrack is a track as an import resolves another server's songs against
-// it. A track missing from disk is one too: it keeps its marks.
+// it. A track missing from disk is one too: it keeps its ratings.
 type ImportTrack struct {
 	ULID          string
 	Root, RelPath string
@@ -38,7 +38,7 @@ type ImportArtist struct {
 }
 
 // ImportTargets is what an import resolves another server's items against:
-// every track and every artist but Various Artists, which nobody hearts.
+// every track and every artist but Various Artists, which nobody rates.
 type ImportTargets struct {
 	Tracks  []ImportTrack
 	Artists []ImportArtist
@@ -116,12 +116,6 @@ func importArtists(ctx context.Context, q *sqlcdb.Queries) ([]ImportArtist, erro
 	return artists, nil
 }
 
-// ImportedHeart is a heart from another server, on the item with the ULID ID.
-type ImportedHeart struct {
-	ID string
-	At time.Time
-}
-
 // ImportedRating is a rating from another server, of the track with the ULID
 // TrackID.
 type ImportedRating struct {
@@ -133,12 +127,12 @@ type ImportedRating struct {
 // Import is one person's resolved import, everything by ULID. Plays carry the
 // client IDs and sources the importer chose; their UserID is ignored.
 type Import struct {
-	UserID       int64
-	Plays        []NewPlay
-	TrackHearts  []ImportedHeart
-	AlbumHearts  []ImportedHeart
-	ArtistHearts []ImportedHeart
-	Ratings      []ImportedRating
+	UserID  int64
+	Plays   []NewPlay
+	Ratings []ImportedRating
+	// HeartRatings are ratings the importer gave songs for a heart. They are
+	// written as Ratings are, after them, and counted apart.
+	HeartRatings []ImportedRating
 }
 
 // ImportCount says what became of one kind of an import's rows.
@@ -152,24 +146,21 @@ type ImportCount struct {
 // counted by source.
 type ImportCounts struct {
 	Plays        map[string]ImportCount
-	TrackHearts  ImportCount
-	AlbumHearts  ImportCount
-	ArtistHearts ImportCount
 	Ratings      ImportCount
+	HeartRatings ImportCount
 }
 
 // ApplyImport writes imp in one transaction, so a failure leaves the person's
 // rows as they were. It queues nothing for Last.fm: the other server sent its
 // plays and loves there already.
 //
-// Plays already there, by client ID, are left alone. A heart already there
-// keeps the earlier of its two times, since a heart's time is when it was
-// first given. A rating already there is kept, since it is the newer opinion.
+// Plays already there, by client ID, are left alone. A rating already there
+// is kept, since it is the newer opinion.
 //
 // It returns an error wrapping [ErrNotFound] if an item's ULID is no longer in
 // the library, and [rating.ErrBad] for a rating that isn't one.
 func (s *Store) ApplyImport(ctx context.Context, imp *Import) (ImportCounts, error) {
-	for _, r := range imp.Ratings {
+	for _, r := range slices.Concat(imp.Ratings, imp.HeartRatings) {
 		if !r.Rating.Valid() {
 			return ImportCounts{}, fmt.Errorf("apply import: track %s: %w", r.TrackID, rating.ErrBad)
 		}
@@ -181,20 +172,10 @@ func (s *Store) ApplyImport(ctx context.Context, imp *Import) (ImportCounts, err
 		if err := w.plays(ctx, imp.Plays, c.Plays); err != nil {
 			return err
 		}
-		for _, h := range []struct {
-			kind   Kind
-			hearts []ImportedHeart
-			count  *ImportCount
-		}{
-			{KindTrack, imp.TrackHearts, &c.TrackHearts},
-			{KindAlbum, imp.AlbumHearts, &c.AlbumHearts},
-			{KindArtist, imp.ArtistHearts, &c.ArtistHearts},
-		} {
-			if err := w.hearts(ctx, h.kind, h.hearts, h.count); err != nil {
-				return err
-			}
+		if err := w.ratings(ctx, imp.Ratings, &c.Ratings); err != nil {
+			return err
 		}
-		return w.ratings(ctx, imp.Ratings, &c.Ratings)
+		return w.ratings(ctx, imp.HeartRatings, &c.HeartRatings)
 	})
 	if err != nil {
 		return ImportCounts{}, fmt.Errorf("apply import: %w", err)
@@ -229,58 +210,6 @@ func (w importWriter) plays(ctx context.Context, plays []NewPlay, counts map[str
 	return nil
 }
 
-// hearts inserts hearts of kind, moving an existing heart's time earlier.
-func (w importWriter) hearts(ctx context.Context, kind Kind, hearts []ImportedHeart, c *ImportCount) error {
-	for _, h := range hearts {
-		rowID, err := rowIDOf(ctx, w.q, kind, h.ID)
-		if err != nil {
-			return fmt.Errorf("heart on %s %s: %w", kind, h.ID, err)
-		}
-		n, err := w.heart(ctx, kind, rowID, ms(h.At))
-		if err != nil {
-			return fmt.Errorf("heart on %s %s: %w", kind, h.ID, err)
-		}
-		c.count(n)
-	}
-	return nil
-}
-
-// heart inserts one heart of kind on the row rowID, and returns 1 if it was
-// new. One already there gets the time at if that is earlier.
-func (w importWriter) heart(ctx context.Context, kind Kind, rowID, at int64) (int64, error) {
-	n, err := w.insertHeart(ctx, kind, rowID, at)
-	if err != nil || n > 0 {
-		return n, err
-	}
-	return 0, w.earlierHeart(ctx, kind, rowID, at)
-}
-
-// insertHeart inserts a heart of kind where there is none, and returns 1 if it did.
-func (w importWriter) insertHeart(ctx context.Context, kind Kind, rowID, at int64) (int64, error) {
-	switch kind {
-	case KindTrack:
-		return w.q.InsertTrackHeart(ctx, sqlcdb.InsertTrackHeartParams{UserID: w.user, TrackID: rowID, HeartedAt: at}) //nolint:wrapcheck // Wrapped once, by hearts.
-	case KindAlbum:
-		return w.q.ImportAlbumHeart(ctx, sqlcdb.ImportAlbumHeartParams{UserID: w.user, AlbumID: rowID, HeartedAt: at}) //nolint:wrapcheck // Wrapped once, by hearts.
-	case KindArtist:
-		return w.q.ImportArtistHeart(ctx, sqlcdb.ImportArtistHeartParams{UserID: w.user, ArtistID: rowID, HeartedAt: at}) //nolint:wrapcheck // Wrapped once, by hearts.
-	}
-	return 0, errBadKind
-}
-
-// earlierHeart moves the time of a heart of kind to at, if that is earlier.
-func (w importWriter) earlierHeart(ctx context.Context, kind Kind, rowID, at int64) error {
-	switch kind {
-	case KindTrack:
-		return w.q.EarlierTrackHeart(ctx, sqlcdb.EarlierTrackHeartParams{HeartedAt: at, UserID: w.user, TrackID: rowID}) //nolint:wrapcheck // Wrapped once, by hearts.
-	case KindAlbum:
-		return w.q.EarlierAlbumHeart(ctx, sqlcdb.EarlierAlbumHeartParams{HeartedAt: at, UserID: w.user, AlbumID: rowID}) //nolint:wrapcheck // Wrapped once, by hearts.
-	case KindArtist:
-		return w.q.EarlierArtistHeart(ctx, sqlcdb.EarlierArtistHeartParams{HeartedAt: at, UserID: w.user, ArtistID: rowID}) //nolint:wrapcheck // Wrapped once, by hearts.
-	}
-	return errBadKind
-}
-
 // ratings inserts ratings where the track has none, telling one an earlier
 // run wrote from the person's own.
 func (w importWriter) ratings(ctx context.Context, ratings []ImportedRating, c *ImportCount) error {
@@ -297,7 +226,7 @@ func (w importWriter) ratings(ctx context.Context, ratings []ImportedRating, c *
 			c.Added++
 			continue
 		}
-		halves, err := w.q.TrackRatingHalves(ctx, sqlcdb.TrackRatingHalvesParams{UserID: w.user, TrackID: rowID})
+		halves, err := w.q.GetTrackRating(ctx, sqlcdb.GetTrackRatingParams{UserID: w.user, TrackID: rowID})
 		if err != nil {
 			return fmt.Errorf("rating of track %s: %w", r.TrackID, err)
 		}

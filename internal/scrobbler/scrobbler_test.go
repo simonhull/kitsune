@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/internal/lastfm/lastfmtest"
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/store"
 )
@@ -343,15 +344,15 @@ func TestOldScrobblesAreDropped(t *testing.T) {
 	})
 }
 
-func TestHeartsGoAsLovesInOrder(t *testing.T) {
+func TestRatingsAcrossTheLoveLineGoAsLovesInOrder(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t)
 		f.run(t)
-		if err := f.st.Heart(t.Context(), f.userID, store.KindTrack, trackULID(1)); err != nil {
+		if err := f.st.Rate(t.Context(), f.userID, trackULID(1), rating.Max); err != nil {
 			t.Fatal(err)
 		}
-		if err := f.st.Unheart(t.Context(), f.userID, store.KindTrack, trackULID(1)); err != nil {
+		if err := f.st.Unrate(t.Context(), f.userID, trackULID(1)); err != nil {
 			t.Fatal(err)
 		}
 		f.s.Poke()
@@ -379,7 +380,7 @@ func TestNowPlaying(t *testing.T) {
 		if len(calls) != 1 || calls[0].Params.Get("track") != "Song 2" || calls[0].Params.Get("artist") != annName {
 			t.Fatalf("now playing calls = %+v", calls)
 		}
-		if err := f.st.SetLastfmSwitches(t.Context(), f.userID, store.LastfmSwitches{Scrobble: true, Loves: true}); err != nil {
+		if err := f.st.SetLastfmSwitches(t.Context(), f.userID, store.LastfmSwitches{Scrobble: true, Loves: true, LoveFrom: rating.Max}); err != nil {
 			t.Fatal(err)
 		}
 		f.s.NowPlaying(f.userID, trackULID(2))

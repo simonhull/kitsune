@@ -13,8 +13,6 @@ const (
 	columnsPath = "/me/prefs/library.columns"
 	columnsBody = `{"order":["genre","number","title","artist","plays"],"artistWhenDifferent":false}`
 	themePath   = "/me/prefs/ui.theme"
-	// heartStarsPath is the pref of what an unrated heart counts as.
-	heartStarsPath = "/me/prefs/ratings.heart_stars"
 )
 
 // putPrefCall sets a preference as the holder of token.
@@ -136,38 +134,11 @@ func TestPrefsKeepEachListsSort(t *testing.T) {
 	}
 }
 
-func TestPrefsKeepHeartStars(t *testing.T) {
-	t.Parallel()
-	ts := newTestServer(t)
-	token := ts.tokenFor(t, store.RoleUser)
-	ts.pref(t, token, heartStarsPath).problem(t, http.StatusNotFound)
-	for _, stars := range []string{"4.5", "1", "5", "0"} {
-		wantNoContent(t, ts.send(t, putPrefCall(token, heartStarsPath, stars)))
-		if got := ts.pref(t, token, heartStarsPath); got.Status != http.StatusOK || string(got.Body) != stars {
-			t.Errorf("GET after PUT %s = %d %s", stars, got.Status, got.Body)
-		}
-	}
-	for body, invalid := range map[string]bool{
-		"0.5":  false, // The contract's halves, and still under 1★.
-		"4.25": true,
-		"5.5":  true,
-		"-1":   false, // An untagged gain, so the contract takes it.
-		`"4"`:  true,
-	} {
-		c := putPrefCall(token, heartStarsPath, body)
-		c.invalid = invalid
-		ts.send(t, c).problem(t, http.StatusBadRequest)
-	}
-	if got := ts.pref(t, token, heartStarsPath); string(got.Body) != "0" {
-		t.Errorf("after refusals, GET = %s, want 0", got.Body)
-	}
-}
-
 func TestPrefsRefuseUnknownKeys(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
 	sess := ts.sessionFor(t)
-	for _, key := range []string{"server.roots", "library.Columns", "ui.Theme"} {
+	for _, key := range []string{"server.roots", "library.Columns", "ui.Theme", "ratings.heart_stars"} {
 		ts.pref(t, sess.token, "/me/prefs/"+key).problem(t, http.StatusNotFound)
 		ts.send(t, putPrefCall(sess.token, "/me/prefs/"+key, columnsBody)).problem(t, http.StatusNotFound)
 	}

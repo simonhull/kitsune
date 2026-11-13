@@ -10,15 +10,9 @@ import (
 // multiplies the unit's weight; a client words them, and the server never does.
 type Why struct {
 	// Stars is the rating the unit weighs as, the mean of its rated songs; 0
-	// for unrated. Rating is its factor. HeartStars is how many of those
-	// ratings come from a heart, the person's heart stars standing in for a
-	// rating they never gave.
-	Stars      float64 `json:"stars"`
-	Rating     float64 `json:"rating"`
-	HeartStars int     `json:"heartStars"`
-	// Hearted is whether any song in it is hearted, and Heart its factor.
-	Hearted bool    `json:"hearted"`
-	Heart   float64 `json:"heart"`
+	// for unrated. Rating is its factor.
+	Stars  float64 `json:"stars"`
+	Rating float64 `json:"rating"`
 	// Played is whether it has come up before, SinceDays how many days ago it
 	// last did, and Recency their factor.
 	Played    bool    `json:"played"`
@@ -52,7 +46,7 @@ const hoursPerDay = 24
 // whyOf is r in plain values.
 func whyOf(r *shuffle.Reason, memory bool) Why {
 	w := Why{
-		Stars: r.Stars, Rating: r.Rating, HeartStars: r.ByHeart, Hearted: r.Hearted, Heart: r.Heart,
+		Stars: r.Stars, Rating: r.Rating,
 		Played: r.Played, Recency: r.Recency, Memory: memory,
 		EarlySkips: r.EarlySkips, SkipMemory: r.SkipMemory,
 		Starts: r.Starts, Skips: r.Skips, SkipRate: r.SkipRate,

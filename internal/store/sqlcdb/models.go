@@ -66,6 +66,7 @@ type LastfmAccount struct {
 	State       string
 	ConnectedAt int64
 	LastSentAt  *int64
+	LoveFrom    int64
 }
 
 type LastfmOutbox struct {

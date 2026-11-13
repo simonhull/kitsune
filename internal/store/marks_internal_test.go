@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -44,11 +45,11 @@ func mustRate(t *testing.T, s *Store, userID int64, id string, r rating.Rating) 
 	}
 }
 
-// marksOf returns the user's marks on seedLibrary's album, read the album
+// ratingsOf returns the user's ratings on seedLibrary's album, read the album
 // page's way.
-func marksOf(t *testing.T, s *Store, userID int64) AlbumMarks {
+func ratingsOf(t *testing.T, s *Store, userID int64) map[string]rating.Rating {
 	t.Helper()
-	m, err := s.AlbumMarks(t.Context(), userID, seedAlbum)
+	m, err := s.AlbumRatings(t.Context(), userID, seedAlbum)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,24 +73,6 @@ func TestHeartingAgainKeepsTheFirstTime(t *testing.T) {
 	}
 }
 
-func TestUnheartTakesOnlyThatHeart(t *testing.T) {
-	t.Parallel()
-	s, _ := markedStore(t)
-	second := fmt.Sprintf("T%025d", 2)
-	mustHeart(t, s, 1, KindTrack, firstTrack)
-	mustHeart(t, s, 1, KindTrack, second)
-	mustHeart(t, s, 1, KindAlbum, seedAlbum)
-	for range 2 { // A second unheart has nothing to take, and is no error.
-		if err := s.Unheart(t.Context(), 1, KindTrack, firstTrack); err != nil {
-			t.Fatal(err)
-		}
-	}
-	want := AlbumMarks{Hearted: true, Tracks: map[string]Marks{second: {Hearted: true}}}
-	if got := marksOf(t, s, 1); got.Hearted != want.Hearted || !maps.Equal(got.Tracks, want.Tracks) {
-		t.Errorf("marks = %+v, want %+v", got, want)
-	}
-}
-
 func TestRateReplacesTheRating(t *testing.T) {
 	t.Parallel()
 	s, now := markedStore(t)
@@ -105,8 +88,8 @@ func TestRateReplacesTheRating(t *testing.T) {
 	if err := s.Unrate(t.Context(), 1, firstTrack); err != nil {
 		t.Fatal(err)
 	}
-	if got := marksOf(t, s, 1).Tracks; len(got) != 0 {
-		t.Errorf("marks = %+v, want none", got)
+	if got := ratingsOf(t, s, 1); len(got) != 0 {
+		t.Errorf("ratings = %+v, want none", got)
 	}
 }
 
@@ -127,9 +110,6 @@ func TestMarksOnUnknownItemsAreNotFound(t *testing.T) {
 		if err := s.Heart(t.Context(), 1, kind, "nope"); !errors.Is(err, ErrNotFound) {
 			t.Errorf("Heart(%s) = %v, want ErrNotFound", kind, err)
 		}
-		if err := s.Unheart(t.Context(), 1, kind, "nope"); !errors.Is(err, ErrNotFound) {
-			t.Errorf("Unheart(%s) = %v, want ErrNotFound", kind, err)
-		}
 	}
 	if err := s.Rate(t.Context(), 1, "nope", 3); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Rate = %v, want ErrNotFound", err)
@@ -142,36 +122,31 @@ func TestMarksOnUnknownItemsAreNotFound(t *testing.T) {
 	}
 }
 
-func TestMarksKeepUsersApart(t *testing.T) {
+func TestRatingsKeepUsersApart(t *testing.T) {
 	t.Parallel()
 	s, _ := markedStore(t)
 	other := addUser(t, s)
-	mustHeart(t, s, other, KindTrack, firstTrack)
-	mustHeart(t, s, other, KindAlbum, seedAlbum)
-	mustHeart(t, s, other, KindArtist, seedArtist)
 	mustRate(t, s, other, firstTrack, 8)
 
-	if got := marksOf(t, s, 1); got.Hearted || len(got.Tracks) != 0 {
-		t.Errorf("the first user's marks = %+v, want none", got)
+	if got := ratingsOf(t, s, 1); len(got) != 0 {
+		t.Errorf("the first user's ratings = %+v, want none", got)
 	}
 	index, err := s.LibraryIndex(t.Context(), 1, &IndexOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a := index.Artists[0]; a.Hearted || a.Albums[0].Hearted || a.Albums[0].Tracks[0].Marks != (Marks{}) {
-		t.Errorf("the first user's index = %+v, want no marks", a)
+	if got := index.Artists[0].Albums[0].Tracks[0].Rating; got != rating.None {
+		t.Errorf("the first user's index rates the first track %v, want none", got)
 	}
-	if got := marksOf(t, s, other); !got.Hearted || got.Tracks[firstTrack] != (Marks{Hearted: true, Rating: 8}) {
-		t.Errorf("the second user's marks = %+v", got)
+	if got := ratingsOf(t, s, other); got[firstTrack] != 8 {
+		t.Errorf("the second user's ratings = %+v", got)
 	}
 }
 
-func TestIndexCarriesTheUsersMarks(t *testing.T) {
+func TestIndexCarriesTheUsersRatings(t *testing.T) {
 	t.Parallel()
 	s, _ := markedStore(t)
-	mustHeart(t, s, 1, KindArtist, seedArtist)
-	mustHeart(t, s, 1, KindAlbum, seedAlbum)
-	mustHeart(t, s, 1, KindTrack, firstTrack)
+	mustHeart(t, s, 1, KindTrack, firstTrack) // A heart shows nowhere.
 	second := fmt.Sprintf("T%025d", 2)
 	mustRate(t, s, 1, second, 7)
 
@@ -182,19 +157,14 @@ func TestIndexCarriesTheUsersMarks(t *testing.T) {
 	if len(index.Artists) != 1 || len(index.Artists[0].Albums) != 1 {
 		t.Fatalf("index = %+v, want one artist with one album", index)
 	}
-	artist := index.Artists[0]
-	album := artist.Albums[0]
-	if !artist.Hearted || !album.Hearted {
-		t.Errorf("artist hearted = %t, album hearted = %t, want both", artist.Hearted, album.Hearted)
-	}
-	got := map[string]Marks{}
-	for _, tr := range album.Tracks {
-		if tr.Marks != (Marks{}) {
-			got[tr.ID] = tr.Marks
+	got := map[string]rating.Rating{}
+	for _, tr := range index.Artists[0].Albums[0].Tracks {
+		if tr.Rating != rating.None {
+			got[tr.ID] = tr.Rating
 		}
 	}
-	if want := map[string]Marks{firstTrack: {Hearted: true}, second: {Rating: 7}}; !maps.Equal(got, want) {
-		t.Errorf("track marks = %v, want %v", got, want)
+	if want := map[string]rating.Rating{second: 7}; !maps.Equal(got, want) {
+		t.Errorf("track ratings = %v, want %v", got, want)
 	}
 }
 
@@ -206,7 +176,6 @@ func TestDeletingATrackDeletesItsMarks(t *testing.T) {
 	if _, err := s.w.ExecContext(t.Context(), "UPDATE tracks SET missing_since = 1 WHERE ulid = ?", firstTrack); err != nil {
 		t.Fatal(err)
 	}
-	mustHeart(t, s, 1, KindTrack, firstTrack) // Missing still takes a heart: the file may be back.
 	if n, err := s.DeleteMissingBefore(t.Context(), time.UnixMilli(2)); err != nil || n != 1 {
 		t.Fatalf("DeleteMissingBefore = %d, %v, want 1", n, err)
 	}
@@ -256,8 +225,164 @@ func TestDeletingAUserDeletesTheirMarks(t *testing.T) {
 	}
 }
 
-// BenchmarkHeart times the smallest write: one heart that changes nothing after the first.
-func BenchmarkHeart(b *testing.B) {
+// hearted is a store and the second user in it.
+type hearted struct {
+	s     *Store
+	other int64
+}
+
+// heartedStore is markedStore with user 1's hearts on seedLibrary's first
+// three tracks, the album and the artist, the second track rated 4½★ and the
+// third 2★, and a second user, other, with hearts and ratings of their own.
+func heartedStore(t *testing.T) hearted {
+	t.Helper()
+	s, now := markedStore(t)
+	other := addUser(t, s)
+	for i, id := range []string{trackULID(1), trackULID(2), trackULID(3)} {
+		*now = time.UnixMilli(int64(1000 * (i + 1)))
+		mustHeart(t, s, 1, KindTrack, id)
+	}
+	mustHeart(t, s, 1, KindAlbum, seedAlbum)
+	mustHeart(t, s, 1, KindArtist, seedArtist)
+	mustRate(t, s, 1, trackULID(2), 9)
+	mustRate(t, s, 1, trackULID(3), 4)
+	mustHeart(t, s, other, KindTrack, trackULID(1))
+	mustHeart(t, s, other, KindAlbum, seedAlbum)
+	mustRate(t, s, other, trackULID(4), 6)
+	return hearted{s, other}
+}
+
+func mustSummary(t *testing.T, s *Store, userID int64) HeartsSummary {
+	t.Helper()
+	h, err := s.HeartsSummary(t.Context(), userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+// mustConvert turns user 1's hearts into stars.
+func mustConvert(t *testing.T, s *Store, stars rating.Rating) HeartsConverted {
+	t.Helper()
+	c, err := s.ConvertHearts(t.Context(), 1, stars)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// sameSummary reports whether two summaries count the same.
+func sameSummary(a, b *HeartsSummary) bool {
+	return a.ByStars == b.ByStars && a.Unrated == b.Unrated && a.Albums == b.Albums &&
+		a.Artists == b.Artists && slices.Equal(a.Preview, b.Preview)
+}
+
+// sameConverted reports whether two conversions wrote the same.
+func sameConverted(a, b *HeartsConverted) bool {
+	return slices.Equal(a.Rated, b.Rated) && a.Tracks == b.Tracks && a.Albums == b.Albums && a.Artists == b.Artists
+}
+
+func TestHeartsSummaryCountsByKindAndRating(t *testing.T) {
+	t.Parallel()
+	h := heartedStore(t)
+	s, other := h.s, h.other
+	got := mustSummary(t, s, 1)
+	want := HeartsSummary{
+		ByStars: [5]int{0, 1, 0, 0, 1}, Unrated: 1, Albums: 1, Artists: 1,
+		Preview: []HeartedTrack{{ID: firstTrack, Title: "Hørizøn alpha", Artist: seedBand}},
+	}
+	if !sameSummary(&got, &want) || got.Rated() != 2 {
+		t.Errorf("summary = %+v, want %+v", got, want)
+	}
+	theirs := mustSummary(t, s, other)
+	if theirs.Unrated != 1 || theirs.Rated() != 0 || theirs.Albums != 1 {
+		t.Errorf("the other user's summary = %+v", theirs)
+	}
+}
+
+func TestConvertHeartsRatesTheUnratedAndTakesEveryHeart(t *testing.T) {
+	t.Parallel()
+	s := heartedStore(t).s
+	queued := outbox(t, s)
+	got := mustConvert(t, s, 8)
+	if want := (HeartsConverted{Rated: []string{firstTrack}, Tracks: 3, Albums: 1, Artists: 1}); !sameConverted(&got, &want) {
+		t.Errorf("converted = %+v, want %+v", got, want)
+	}
+	if got, want := ratingsOf(t, s, 1), map[string]rating.Rating{trackULID(1): 8, trackULID(2): 9, trackULID(3): 4}; !maps.Equal(got, want) {
+		t.Errorf("ratings = %v, want %v: only the unrated heart gets stars", got, want)
+	}
+	if got := mustSummary(t, s, 1); !sameSummary(&got, &HeartsSummary{}) {
+		t.Errorf("summary after = %+v, want all zeros", got)
+	}
+	if got := outbox(t, s); !slices.Equal(got, queued) {
+		t.Errorf("outbox = %q, want %q: nothing reaches Last.fm", got, queued)
+	}
+}
+
+func TestConvertHeartsTwiceDoesNothingMore(t *testing.T) {
+	t.Parallel()
+	s := heartedStore(t).s
+	mustConvert(t, s, 8)
+	if again := mustConvert(t, s, 4); !sameConverted(&again, &HeartsConverted{}) {
+		t.Errorf("a second conversion = %+v, want nothing done", again)
+	}
+	if got, want := ratingsOf(t, s, 1), map[string]rating.Rating{trackULID(1): 8, trackULID(2): 9, trackULID(3): 4}; !maps.Equal(got, want) {
+		t.Errorf("ratings = %v, want %v", got, want)
+	}
+}
+
+func TestConvertHeartsLeavesOthersAlone(t *testing.T) {
+	t.Parallel()
+	h := heartedStore(t)
+	s, other := h.s, h.other
+	before := mustSummary(t, s, other)
+	mustConvert(t, s, 8)
+	if got := mustSummary(t, s, other); !sameSummary(&got, &before) {
+		t.Errorf("the other user's hearts = %+v, want %+v", got, before)
+	}
+	if got := rawRows(t, s.w, "SELECT track_id, halves FROM track_ratings WHERE user_id = ?", other); !slices.Equal(got, []string{"4 6"}) {
+		t.Errorf("the other user's ratings = %q, want their one", got)
+	}
+}
+
+func TestConvertHeartsCanLeaveThemUnrated(t *testing.T) {
+	t.Parallel()
+	s := heartedStore(t).s
+	got, err := s.ConvertHearts(t.Context(), 1, rating.None)
+	if err != nil || len(got.Rated) != 0 || got.Tracks != 3 {
+		t.Errorf("converted = %+v, %v, want 3 hearts gone and nothing rated", got, err)
+	}
+	if got, want := ratingsOf(t, s, 1), map[string]rating.Rating{trackULID(2): 9, trackULID(3): 4}; !maps.Equal(got, want) {
+		t.Errorf("ratings = %v, want %v", got, want)
+	}
+}
+
+func TestConvertHeartsQueuesNothingForLastfm(t *testing.T) {
+	t.Parallel()
+	s := heartedStore(t).s
+	if _, err := s.w.ExecContext(t.Context(), "DELETE FROM lastfm_outbox"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ConnectLastfm(t.Context(), 1, "simonhull", "sk-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetLastfmSwitches(t.Context(), 1, LastfmSwitches{Scrobble: true, NowPlaying: true, Loves: true, LoveFrom: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ConvertHearts(t.Context(), 1, rating.Max); err != nil {
+		t.Fatal(err)
+	}
+	if got := outbox(t, s); len(got) != 0 {
+		t.Errorf("outbox = %q, want empty: those songs were loved through their hearts", got)
+	}
+	mustRate(t, s, 1, trackULID(5), rating.Max) // What would queue does, so the check means something.
+	if got := outbox(t, s); len(got) != 1 {
+		t.Errorf("outbox after a rating = %q, want one love", got)
+	}
+}
+
+// BenchmarkRate times the smallest write: one rating that changes nothing after the first.
+func BenchmarkRate(b *testing.B) {
 	ctx := b.Context()
 	s := openBench(b)
 	b.Cleanup(func() { _ = s.Close() })
@@ -273,7 +398,7 @@ func BenchmarkHeart(b *testing.B) {
 		b.Fatal(err)
 	}
 	for b.Loop() {
-		if err := s.Heart(ctx, user, KindTrack, ulid); err != nil {
+		if err := s.Rate(ctx, user, ulid, rating.Max); err != nil {
 			b.Fatal(err)
 		}
 	}

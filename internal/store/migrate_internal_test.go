@@ -953,3 +953,40 @@ func TestHalfStarsDoublesRatings(t *testing.T) {
 		}
 	}
 }
+
+// TestStarsOnlyDropsHeartStarsAndDrawsTheLoveLine runs 0017 over a v16
+// library: every person's ratings.heart_stars goes and nothing else of theirs,
+// hearts stay for the person to turn into stars, and an account's love line
+// starts at 4★.
+func TestStarsOnlyDropsHeartStarsAndDrawsTheLoveLine(t *testing.T) {
+	t.Parallel()
+	steps := shippedSteps(t)
+	at := slices.IndexFunc(steps, func(m migration) bool { return m.name == "0017_stars_only.sql" })
+	if at < 0 {
+		t.Fatal("0017_stars_only.sql is not shipped")
+	}
+	d := newScratchDB(t)
+	d.mustSettle(t, steps[:at])
+	seedLibrary(t, d.w)
+	const prefs = `INSERT INTO user_prefs (user_id, key, value, updated_at) VALUES
+		(1, 'ratings.heart_stars', '4', 1), (1, 'ui.theme', '"dark"', 1)`
+	if _, err := d.w.ExecContext(t.Context(), prefs); err != nil {
+		t.Fatal(err)
+	}
+	facts := libraryFacts(t, d.w)
+
+	d.mustSettle(t, steps[:at+1])
+
+	expectFacts(t, d.w, facts)
+	if got, want := rawRows(t, d.w, "SELECT key, value FROM user_prefs ORDER BY key"), []string{`ui.theme "dark"`}; !slices.Equal(got, want) {
+		t.Errorf("prefs = %q, want %q", got, want)
+	}
+	if got := rawRows(t, d.w, "SELECT user_id, love_from FROM lastfm_accounts"); !slices.Equal(got, []string{"1 8"}) {
+		t.Errorf("love lines = %q, want user 1 at 8 halves", got)
+	}
+	for _, bad := range []int{0, 11} {
+		if _, err := d.w.ExecContext(t.Context(), "UPDATE lastfm_accounts SET love_from = ?", bad); err == nil {
+			t.Errorf("stored a love line of %d halves", bad)
+		}
+	}
+}

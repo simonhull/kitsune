@@ -4,7 +4,7 @@
 
 -- name: GetLastfmAccount :one
 SELECT
-    a.name, a.session_key, a.scrobble, a.now_playing, a.loves, a.state, a.connected_at, a.last_sent_at,
+    a.name, a.session_key, a.scrobble, a.now_playing, a.loves, a.love_from, a.state, a.connected_at, a.last_sent_at,
     (SELECT count(*) FROM lastfm_outbox o WHERE o.user_id = a.user_id AND o.kind = 'scrobble') AS waiting,
     CAST(coalesce((SELECT max(o.attempts) FROM lastfm_outbox o WHERE o.user_id = a.user_id), 0) AS INTEGER) AS attempts,
     CAST(coalesce((SELECT min(o.next_at) FROM lastfm_outbox o WHERE o.user_id = a.user_id), 0) AS INTEGER) AS next_at
@@ -22,8 +22,12 @@ UPDATE lastfm_outbox SET attempts = 0, next_at = ? WHERE user_id = ?;
 
 -- name: UpdateLastfmSwitches :execrows
 UPDATE lastfm_accounts
-SET scrobble = sqlc.arg(scrobble), now_playing = sqlc.arg(now_playing), loves = sqlc.arg(loves)
+SET scrobble = sqlc.arg(scrobble), now_playing = sqlc.arg(now_playing), loves = sqlc.arg(loves),
+    love_from = sqlc.arg(love_from)
 WHERE user_id = sqlc.arg(user_id);
+
+-- name: GetLastfmLoveFrom :one
+SELECT love_from FROM lastfm_accounts WHERE user_id = ?;
 
 -- name: SetLastfmState :exec
 UPDATE lastfm_accounts SET state = ? WHERE user_id = ?;

@@ -53,6 +53,10 @@ func TestColumnsCheck(t *testing.T) {
 			`{"order":["number","title","genre"],"artistWhenDifferent":true,"widths":{"genre":180,"rating":96}}`,
 		},
 		{"no widths", `{"order":[],"artistWhenDifferent":true,"widths":{}}`, `{"order":["number","title"],"artistWhenDifferent":true}`},
+		{
+			"saved with the heart", `{"order":["number","title","heart","rating"],"artistWhenDifferent":true,"widths":{"heart":40,"rating":96}}`,
+			`{"order":["number","title","rating"],"artistWhenDifferent":true,"widths":{"rating":96}}`,
+		},
 		{"width of nothing", `{"order":[],"artistWhenDifferent":true,"widths":{"skips":80}}`, ""},
 		{"width of the title", `{"order":[],"artistWhenDifferent":true,"widths":{"title":300}}`, ""},
 		{"width of the number", `{"order":[],"artistWhenDifferent":true,"widths":{"number":30}}`, ""},
@@ -96,12 +100,12 @@ func TestColumnsListsEachOnce(t *testing.T) {
 		}
 		seen[c] = true
 	}
-	if len(seen) != 14 {
-		t.Errorf("%d columns, want the spec's 14", len(seen))
+	if len(seen) != 13 {
+		t.Errorf("%d columns, want the spec's 13, the heart gone", len(seen))
 	}
 	placed := prefs.Placed()
-	if len(placed) != 16 || placed[0] != prefs.ColumnNumber || placed[1] != prefs.ColumnTitle {
-		t.Errorf("Placed() = %v, want number, title and the 14", placed)
+	if len(placed) != 15 || placed[0] != prefs.ColumnNumber || placed[1] != prefs.ColumnTitle {
+		t.Errorf("Placed() = %v, want number, title and the 13", placed)
 	}
 }
 

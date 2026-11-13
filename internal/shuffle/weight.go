@@ -9,7 +9,7 @@ import (
 
 // Settings are a person's shuffle settings.
 type Settings struct {
-	// Ratings is how much ratings and hearts matter, from 0 (not at all) to 1.
+	// Ratings is how much ratings matter, from 0 (not at all) to 1.
 	Ratings float64
 	// Flow is how much a next unit leans toward one similar to the last, from
 	// 0 (pure spaced, weighted random) to 1.
@@ -54,10 +54,6 @@ const (
 	// unratedStars is what an unrated unit weighs as: the middle of the scale,
 	// so rating nothing changes nothing.
 	unratedStars = 3
-	// heartAtFull is a heart's factor at Ratings 1. It is 1.25 at the default
-	// Ratings of 0.5, as the spec gives it, and scales the same way the
-	// rating curve does: 1.25² = 1.5625.
-	heartAtFull = 1.5625
 
 	// recencyDays is the time after a play by which a song is fully back.
 	recencyDays = 14
@@ -110,10 +106,6 @@ type Reason struct {
 	// Stars is the rating the unit weighs as: the mean of its rated songs, or
 	// 0 for none.
 	Stars float64
-	// ByHeart is how many of the ratings behind Stars come from a heart.
-	ByHeart int
-	// Hearted is whether any song in the unit is hearted.
-	Hearted bool
 	// Played is whether the unit has ever played.
 	Played bool
 	// Since is how long ago the unit last played.
@@ -124,8 +116,8 @@ type Reason struct {
 	// Heard is the share of a song they heard, on average; 0 with none.
 	EarlySkips, Starts, Skips, Listens int
 	Heard                              float64
-	// Rating, Heart, Recency, SkipMemory, SkipRate and Listen are the factors.
-	Rating, Heart, Recency, SkipMemory, SkipRate, Listen float64
+	// Rating, Recency, SkipMemory, SkipRate and Listen are the factors.
+	Rating, Recency, SkipMemory, SkipRate, Listen float64
 	// Flow is the factor flow gave the pick, 1 when it gave none.
 	Flow float64
 	// After is the artist flow leaned from, the last unit's primary artist;
@@ -137,11 +129,11 @@ type Reason struct {
 
 // Weight is the unit's weight: the product of its factors, flow aside.
 func (r *Reason) Weight() float64 {
-	return r.Rating * r.Heart * r.Recency * r.SkipMemory * r.SkipRate * r.Listen
+	return r.Rating * r.Recency * r.SkipMemory * r.SkipRate * r.Listen
 }
 
 // String gives the factors that moved the weight, for logs and the bench,
-// such as "4★ ×1.27, heart ×1.25, played 3d ago ×0.39, flow ×1.12".
+// such as "4★ ×1.27, played 3d ago ×0.39, flow ×1.12".
 func (r *Reason) String() string {
 	var b strings.Builder
 	add := func(format string, args ...any) {
@@ -152,9 +144,6 @@ func (r *Reason) String() string {
 	}
 	if r.Stars > 0 {
 		add("%.3g★ ×%.2f", r.Stars, r.Rating)
-	}
-	if r.Hearted {
-		add("heart ×%.2f", r.Heart)
 	}
 	switch {
 	case !r.Played:
@@ -191,19 +180,15 @@ func Explain(u *Unit, s Settings, now time.Time) Reason {
 	s = s.clamped()
 	f := &u.facts
 	r := Reason{
-		Hearted: f.hearted,
-		Rating:  ratingFactor(f, s.Ratings),
-		Heart:   1, SkipMemory: 1, SkipRate: 1, Listen: 1, Flow: 1,
+		Rating:     ratingFactor(f, s.Ratings),
+		SkipMemory: 1, SkipRate: 1, Listen: 1, Flow: 1,
 		EarlySkips: f.earlySkips, Starts: f.starts, Skips: f.skips, Listens: f.listens,
 	}
 	if f.listens > 0 {
 		r.Heard = f.heard / float64(f.listens)
 	}
 	if f.rated > 0 {
-		r.Stars, r.ByHeart = f.meanStars(), f.byHeart
-	}
-	if f.hearted {
-		r.Heart = math.Pow(heartAtFull, s.Ratings)
+		r.Stars = f.meanStars()
 	}
 	r.Recency = dormantLift
 	if r.Played = f.lastPlayed != 0; r.Played {

@@ -67,19 +67,20 @@ func (ts *testServer) indexWith(t *testing.T, token, query string) response {
 }
 
 // indexBody is the index of fieldsLibrary without fields, as it was before
-// fields existed: byte for byte, so a client that never asks sees no change.
-const indexBody = `{"artists":[{"id":"04J00000000000000000000001","name":"Ann","sortName":"Ann","hearted":false,` +
-	`"albums":[{"id":"02J00000000000000000000001","title":"Glasshouse","artist":"Ann","compilation":false,"hearted":false,"year":2021,` +
-	`"tracks":[{"id":"01J00000000000000000001000","title":"Breakwater","durationMs":60000,"artists":["Ann","Bob"],"trackNo":1,"hearted":true,"stars":4},` +
-	`{"id":"01J00000000000000000001001","title":"Salt in the Lungs","durationMs":60000,"artists":["Ann"],"trackNo":2,"hearted":false},` +
-	`{"id":"01J00000000000000000001002","title":"Kelp Line","durationMs":60000,"artists":["Ann"],"trackNo":3,"hearted":false}]}]}]}`
+// fields existed, less the hearts that went when stars became the only like:
+// byte for byte, so a client that never asks sees no change.
+const indexBody = `{"artists":[{"id":"04J00000000000000000000001","name":"Ann","sortName":"Ann",` +
+	`"albums":[{"id":"02J00000000000000000000001","title":"Glasshouse","artist":"Ann","compilation":false,"year":2021,` +
+	`"tracks":[{"id":"01J00000000000000000001000","title":"Breakwater","durationMs":60000,"artists":["Ann","Bob"],"trackNo":1,"stars":4},` +
+	`{"id":"01J00000000000000000001001","title":"Salt in the Lungs","durationMs":60000,"artists":["Ann"],"trackNo":2},` +
+	`{"id":"01J00000000000000000001002","title":"Kelp Line","durationMs":60000,"artists":["Ann"],"trackNo":3}]}]}]}`
 
 func TestLibraryIndexWithoutFieldsIsUnchanged(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
 	ts.fieldsLibrary(t)
 	sess := ts.sessionFor(t)
-	wantNoContent(t, ts.send(t, heartCall(http.MethodPut, sess.token, kindTracks, fieldsTrack)))
+	ts.heart(t, sess.user.ID, store.KindTrack, fieldsTrack) // A heart shows nowhere.
 	wantNoContent(t, ts.send(t, rateCall(sess.token, fieldsTrack, stars(4))))
 	if err := ts.Store.RecordPlay(t.Context(), &store.NewPlay{
 		UserID: sess.user.ID, TrackID: fieldsTrack, PlayedAt: ts.Clock.Now(), Source: "test", ClientID: "p1",

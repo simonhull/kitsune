@@ -287,21 +287,52 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           $ref: "#/components/responses/Problem"
-  /me/hearts/{kind}/{id}:
-    put:
-      operationId: putHeart
-      summary: Heart a track, album or artist for the caller.
+  /me/hearts/summary:
+    get:
+      operationId: getHeartsSummary
+      summary: Count the hearts the caller kept from before stars were the only like.
       description: >-
-        Hearting what is already hearted changes nothing and answers the same,
-        so a client can retry. A track missing from disk still takes a heart. A
-        heart is the caller's own: nobody else sees it.
+        For the You page's one-time card that turns them into stars. Hearts
+        show and weigh nowhere: they wait for the caller to choose. All zeros
+        once there are none left, and the card isn't drawn.
+      responses:
+        "200":
+          description: The counts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HeartsSummary" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /me/hearts/convert:
+    post:
+      operationId: convertHearts
+      summary: Turn the caller's hearts into stars, once.
+      description: >-
+        In one transaction: every hearted song without stars of its own gets
+        `stars`, or stays unrated for null, and every song, album and artist
+        heart of the caller's goes. Ratings the caller gave stay as they are.
+        Nothing reaches Last.fm, since those songs were loved through their
+        hearts. Each song rated is a `marks` event; a second call finds
+        nothing to do.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
-        - $ref: "#/components/parameters/HeartKind"
-        - $ref: "#/components/parameters/ItemID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HeartsConvert" }
       responses:
-        "204":
-          description: Done.
+        "200":
+          description: What it wrote.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HeartsConverted" }
         "400":
           $ref: "#/components/responses/Problem"
         "401":
@@ -313,35 +344,6 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "403":
-          $ref: "#/components/responses/Problem"
-        "404":
-          $ref: "#/components/responses/Problem"
-    delete:
-      operationId: deleteHeart
-      summary: Take the caller's heart off a track, album or artist.
-      description: >-
-        Answers the same whether or not there was a heart, so a client can
-        retry. Only an item that isn't in the library is a 404.
-      parameters:
-        - $ref: "#/components/parameters/KitsuneRequest"
-        - $ref: "#/components/parameters/HeartKind"
-        - $ref: "#/components/parameters/ItemID"
-      responses:
-        "204":
-          description: Done.
-        "400":
-          $ref: "#/components/responses/Problem"
-        "401":
-          description: Credentials are missing, invalid or expired.
-          headers:
-            WWW-Authenticate:
-              schema: { type: string }
-          content:
-            application/problem+json:
-              schema: { $ref: "#/components/schemas/Problem" }
-        "403":
-          $ref: "#/components/responses/Problem"
-        "404":
           $ref: "#/components/responses/Problem"
   /me/ratings/tracks/{id}:
     put:
@@ -350,7 +352,10 @@ paths:
       description: >-
         Gives the track the caller's stars, ½ to 5 in halves, in place of any it
         had. An album's rating isn't stored: a client works it out from its
-        tracks.
+        tracks. Stars are the only like: with Last.fm loves on, a rating that
+        crosses the caller's `loveFrom` line, from under it (unrated included)
+        to at or over it, loves the song there, and one the other way unloves
+        it. A rating that stays on one side sends nothing.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - $ref: "#/components/parameters/ItemID"
@@ -381,7 +386,8 @@ paths:
       summary: Clear the caller's rating of a track.
       description: >-
         Answers the same whether or not the track was rated, so a client can
-        retry.
+        retry. Clearing a rating at or over the `loveFrom` line unloves the
+        song on Last.fm, with loves on.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - $ref: "#/components/parameters/ItemID"
@@ -426,7 +432,7 @@ paths:
   /me/listening:
     get:
       operationId: getListening
-      summary: Count the caller's plays, hearts and rated tracks.
+      summary: Count the caller's plays and rated tracks.
       responses:
         "200":
           description: The counts.
@@ -1459,7 +1465,7 @@ paths:
         atomic and the edit is not, so a failure partway is reported with
         `changed` and `remaining`: read the albums again and send the same edit
         to finish it. Giving tracks another album or album artist moves them,
-        keeping their IDs, plays, hearts and ratings, and an album they all
+        keeping their IDs, plays and ratings, and an album they all
         leave for one other merges into it. A client that goes away doesn't
         stop the edit. An edit during a scan is a 409.
       parameters:
@@ -1813,8 +1819,8 @@ paths:
         those not under a letter from A to Z first, and each artist's albums
         newest first. An album appears once, under its first owner. An album with
         no owner a reader shows, such as a compilation, groups under the artist
-        it displays, in a group with no `id`. Artists, albums and tracks carry
-        the caller's own hearts, and tracks the caller's stars. The response is
+        it displays, in a group with no `id`. Tracks carry the caller's own
+        stars. The response is
         gzipped when `Accept-Encoding` allows it. `fields` adds to each track
         what song columns show; without it the response is as it has always
         been.
@@ -2055,12 +2061,6 @@ components:
         Must be `1` on cookie-authenticated requests that change state, so a
         cross-site form cannot forge them.
       schema: { type: string, enum: ["1"] }
-    HeartKind:
-      name: kind
-      in: path
-      required: true
-      description: What the heart is on.
-      schema: { type: string, enum: [tracks, albums, artists] }
     PrefKey:
       name: key
       in: path
@@ -2068,8 +2068,8 @@ components:
       description: >-
         The preference: `library.columns`, `ui.theme`, `shuffle.ratings`,
         `shuffle.flow`, `shuffle.memory`, `library.sort`, `albums.sort`,
-        `artists.sort`, `artist.songs`, `playback.untagged_gain` or
-        `ratings.heart_stars`. The server knows which keys there are.
+        `artists.sort`, `artist.songs` or `playback.untagged_gain`. The server
+        knows which keys there are.
       schema: { type: string }
     ItemID:
       name: id
@@ -2242,16 +2242,12 @@ components:
     Listening:
       type: object
       additionalProperties: false
-      required: [plays, hearts, rated]
+      required: [plays, rated]
       properties:
         plays:
           type: integer
           minimum: 0
           description: Plays that counted.
-        hearts:
-          type: integer
-          minimum: 0
-          description: Hearts on tracks, albums and artists.
         rated:
           type: integer
           minimum: 0
@@ -2259,7 +2255,7 @@ components:
     LastfmStatus:
       type: object
       additionalProperties: false
-      required: [configured, connected, scrobble, nowPlaying, loves, state, waiting]
+      required: [configured, connected, scrobble, nowPlaying, loves, loveFrom, state, waiting]
       properties:
         configured:
           type: boolean
@@ -2270,7 +2266,17 @@ components:
           description: The Last.fm user name, when connected.
         scrobble: { type: boolean }
         nowPlaying: { type: boolean }
-        loves: { type: boolean }
+        loves:
+          type: boolean
+          description: Whether ratings crossing `loveFrom` love and unlove songs on Last.fm.
+        loveFrom:
+          type: number
+          minimum: 0
+          maximum: 5
+          multipleOf: 0.5
+          description: >-
+            The love line, ½ to 5 stars in halves; 4 until the person moves it.
+            0 when not connected.
         state:
           type: string
           enum: [ok, waiting, reconnect]
@@ -2290,6 +2296,73 @@ components:
         scrobble: { type: boolean }
         nowPlaying: { type: boolean }
         loves: { type: boolean }
+        loveFrom:
+          type: number
+          minimum: 0.5
+          maximum: 5
+          multipleOf: 0.5
+          description: >-
+            Moves the love line. Moving it sends nothing for songs already
+            rated: only ratings that cross it later do.
+    HeartsSummary:
+      type: object
+      additionalProperties: false
+      description: >-
+        The hearts the caller kept from before stars were the only like, by
+        kind. All zeros when there are none.
+      required: [tracksRated, tracksUnrated, albums, artists, byStars, preview]
+      properties:
+        tracksRated:
+          type: integer
+          minimum: 0
+          description: Hearted songs with stars of their own, which keep them.
+        tracksUnrated:
+          type: integer
+          minimum: 0
+          description: Hearted songs with no stars, which the conversion rates.
+        albums: { type: integer, minimum: 0 }
+        artists: { type: integer, minimum: 0 }
+        byStars:
+          type: array
+          minItems: 5
+          maxItems: 5
+          description: >-
+            The hearted, rated songs at 1★ to 5★, a half rounding up: what the
+            card's default and its line are worked out from.
+          items: { type: integer, minimum: 0 }
+        preview:
+          type: array
+          maxItems: 5
+          description: Up to five of the unrated hearted songs, the latest hearted first.
+          items: { $ref: "#/components/schemas/HeartedSong" }
+    HeartedSong:
+      type: object
+      additionalProperties: false
+      required: [id, title]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string, description: "Its first artist; absent when it has none." }
+    HeartsConvert:
+      type: object
+      additionalProperties: false
+      required: [stars]
+      properties:
+        stars:
+          type: [number, "null"]
+          minimum: 0.5
+          maximum: 5
+          multipleOf: 0.5
+          description: The stars each hearted song with none gets, ½ to 5 in halves; null leaves them unrated.
+    HeartsConverted:
+      type: object
+      additionalProperties: false
+      required: [rated, tracks, albums, artists]
+      properties:
+        rated: { type: integer, minimum: 0, description: "Songs given stars." }
+        tracks: { type: integer, minimum: 0, description: "Song hearts taken off." }
+        albums: { type: integer, minimum: 0, description: "Album hearts taken off." }
+        artists: { type: integer, minimum: 0, description: "Artist hearts taken off." }
     LastfmConnect:
       type: object
       additionalProperties: false
@@ -2326,13 +2399,12 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        A heart or a rating the person changed on any device. `hearted` comes
-        with a heart; `stars` with a rating, 0 for none.
-      required: [kind, id]
+        A rating the person changed on any device, or one their hearts became
+        when they turned them into stars.
+      required: [kind, id, stars]
       properties:
-        kind: { type: string, enum: [tracks, albums, artists] }
+        kind: { type: string, enum: [tracks] }
         id: { type: string }
-        hearted: { type: boolean }
         stars: { type: number, minimum: 0, maximum: 5, multipleOf: 0.5, description: "The rating in stars, ½ to 5 in halves; 0 for none." }
     EventPrefs:
       type: object
@@ -2529,7 +2601,7 @@ components:
     Track:
       type: object
       additionalProperties: false
-      required: [id, title, artists, durationMs, format, genres, etag, hearted]
+      required: [id, title, artists, durationMs, format, genres, etag]
       properties:
         id: { type: string }
         title: { type: string }
@@ -2555,9 +2627,6 @@ components:
         etag:
           type: string
           description: Changes when the file does. Not the stream's ETag.
-        hearted:
-          type: boolean
-          description: Whether the caller has hearted it.
         stars:
           type: number
           minimum: 0.5
@@ -2568,7 +2637,7 @@ components:
       description: A track's properties, repeated (allOf does not mix with additionalProperties false), plus its album.
       type: object
       additionalProperties: false
-      required: [id, title, artists, durationMs, format, genres, etag, hearted, albumId, albumEtag]
+      required: [id, title, artists, durationMs, format, genres, etag, albumId, albumEtag]
       properties:
         id: { type: string }
         title: { type: string }
@@ -2594,9 +2663,6 @@ components:
         etag:
           type: string
           description: Changes when the file does. Not the stream's ETag.
-        hearted:
-          type: boolean
-          description: Whether the caller has hearted it.
         stars:
           type: number
           minimum: 0.5
@@ -2783,13 +2849,14 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        What a shuffle draws from. `library` is every song; `hearted` and
-        `rated` are the Library list's Hearted and 4★-and-up filters; `album`
-        and `artist` take `id`; `tracks` names from 1 to 10,000 songs, such as
-        a selection. Nothing else may be given.
+        What a shuffle draws from. `library` is every song; `rated` is the
+        Library list's 4★-and-up filter; `album` and `artist` take `id`;
+        `tracks` names from 1 to 10,000 songs, such as a selection. Nothing
+        else may be given. A session or playback record saved with the
+        `hearted` scope, gone with hearts, goes on as `rated`.
       required: [kind]
       properties:
-        kind: { type: string, enum: [library, hearted, rated, album, artist, tracks] }
+        kind: { type: string, enum: [library, rated, album, artist, tracks] }
         id: { type: string, minLength: 1 }
         tracks:
           type: array
@@ -2837,19 +2904,10 @@ components:
         Why a pick came up: its weight's factors, each a multiplier, and what
         they come from. The client words them. With `memory` off, skips and
         listen time count for nothing and their factors are 1.
-      required: [stars, rating, heartStars, hearted, heart, played, sinceDays, recency, memory, earlySkips, skipMemory, starts, skips, skipRate, listens, heard, listen, flow]
+      required: [stars, rating, played, sinceDays, recency, memory, earlySkips, skipMemory, starts, skips, skipRate, listens, heard, listen, flow]
       properties:
         stars: { type: number, minimum: 0, maximum: 5, description: "The mean of its rated songs; 0 unrated." }
         rating: { type: number }
-        heartStars:
-          type: integer
-          minimum: 0
-          description: >-
-            How many of the ratings behind `stars` come from a heart: songs the
-            person hearted and never rated, counted as `ratings.heart_stars`.
-            0 for none.
-        hearted: { type: boolean }
-        heart: { type: number }
         played: { type: boolean, description: "Whether it has come up before, played or skipped." }
         sinceDays: { type: integer, minimum: 0, description: "Days since it last came up." }
         recency: { type: number }
@@ -3222,7 +3280,7 @@ components:
       description: An album entry's properties, repeated (allOf does not mix with additionalProperties false), plus its tracks.
       type: object
       additionalProperties: false
-      required: [id, title, sortName, artist, artists, trackCount, compilation, tracks, discs, durationMs, formats, addedAt, genres, displayGenres, etag, hearted]
+      required: [id, title, sortName, artist, artists, trackCount, compilation, tracks, discs, durationMs, formats, addedAt, genres, displayGenres, etag]
       properties:
         id: { type: string }
         title: { type: string }
@@ -3262,9 +3320,6 @@ components:
         etag:
           type: string
           description: The `If-Match` value for `POST /albums/{id}/edits`.
-        hearted:
-          type: boolean
-          description: Whether the caller has hearted it.
     ArtistEntry:
       type: object
       additionalProperties: false
@@ -3340,7 +3395,6 @@ components:
         - $ref: "#/components/schemas/ShuffleAmount"
         - $ref: "#/components/schemas/ShuffleMemory"
         - $ref: "#/components/schemas/UntaggedGain"
-        - $ref: "#/components/schemas/HeartStars"
         - $ref: "#/components/schemas/LibrarySort"
         - $ref: "#/components/schemas/ListSort"
         - $ref: "#/components/schemas/ArtistSongs"
@@ -3414,7 +3468,7 @@ components:
       minimum: 0
       maximum: 1
       description: >-
-        `shuffle.ratings`: how much ratings and hearts matter to shuffle, from
+        `shuffle.ratings`: how much ratings matter to shuffle, from
         0 (not at all) to 1; 0.5 when never set. `shuffle.flow`: how much the
         next song leans toward one that suits the last, from 0 (anything next)
         to 1; 0.3 when never set.
@@ -3425,17 +3479,6 @@ components:
       description: >-
         `playback.untagged_gain`: the gain in dB a song plays at while it has no
         ReplayGain, neither tagged nor measured yet; -8 when never set.
-    HeartStars:
-      type: number
-      minimum: 0
-      maximum: 5
-      multipleOf: 0.5
-      description: >-
-        `ratings.heart_stars`: what a hearted song with no stars of its own
-        counts as wherever stars matter (the 4★-and-up filter and shuffle
-        scope, shuffle's weights, Top songs, rating sorts and album averages),
-        from 1 to 5 in halves; 0 for nothing. 0.5 is refused. Nothing is
-        written: a song's `stars` stay the person's own. 0 when never set.
     ShuffleMemory:
       type: boolean
       description: >-
@@ -3477,7 +3520,6 @@ components:
             genre: { $ref: "#/components/schemas/ColumnWidth" }
             year: { $ref: "#/components/schemas/ColumnWidth" }
             rating: { $ref: "#/components/schemas/ColumnWidth" }
-            heart: { $ref: "#/components/schemas/ColumnWidth" }
             plays: { $ref: "#/components/schemas/ColumnWidth" }
             lastPlayed: { $ref: "#/components/schemas/ColumnWidth" }
             added: { $ref: "#/components/schemas/ColumnWidth" }
@@ -3498,7 +3540,7 @@ components:
     SongColumn:
       type: string
       description: A song column a person may choose to show or hide.
-      enum: [artist, albumArtist, album, genre, year, rating, heart, plays, lastPlayed, added, composer, format, bitrate, gain]
+      enum: [artist, albumArtist, album, genre, year, rating, plays, lastPlayed, added, composer, format, bitrate, gain]
     LibraryIndex:
       type: object
       additionalProperties: false
@@ -3510,14 +3552,11 @@ components:
     LibraryArtist:
       type: object
       additionalProperties: false
-      required: [name, sortName, hearted, albums]
+      required: [name, sortName, albums]
       properties:
         id:
           type: string
           description: Absent for a group with no owner a reader shows, such as Various Artists.
-        hearted:
-          type: boolean
-          description: Whether the caller has hearted the artist. Always false for a group with no `id`.
         name: { type: string }
         sortName:
           type: string
@@ -3528,15 +3567,12 @@ components:
     LibraryAlbum:
       type: object
       additionalProperties: false
-      required: [id, title, artist, compilation, hearted, tracks]
+      required: [id, title, artist, compilation, tracks]
       properties:
         id: { type: string }
         title: { type: string }
         artist: { type: string }
         compilation: { type: boolean }
-        hearted:
-          type: boolean
-          description: Whether the caller has hearted it.
         year: { type: integer }
         artwork: { $ref: "#/components/schemas/Artwork" }
         tracks:
@@ -3583,7 +3619,7 @@ components:
     LibraryTrack:
       type: object
       additionalProperties: false
-      required: [id, title, durationMs, artists, hearted]
+      required: [id, title, durationMs, artists]
       properties:
         id: { type: string }
         title: { type: string }
@@ -3593,9 +3629,6 @@ components:
           items: { type: string }
         discNo: { type: integer }
         trackNo: { type: integer }
-        hearted:
-          type: boolean
-          description: Whether the caller has hearted it.
         stars:
           type: number
           minimum: 0.5
