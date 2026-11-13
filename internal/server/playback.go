@@ -66,11 +66,7 @@ func (s *Server) resolvePlayback(r *http.Request, userID int64, rec *playback.Re
 	if !ok {
 		return api.Playback{}, store.ErrNotFound
 	}
-	out := api.Playback{
-		Kind: string(rec.Kind), Tracks: toAPIPlaybackSongs(resolved.Tracks), Later: toAPIPlaybackSongs(resolved.Later),
-		Index: resolved.Index, PositionMs: resolved.PositionMs, Ordered: rec.Ordered, Moved: resolved.Moved,
-		ClientID: rec.ClientID, Device: string(rec.Device),
-	}
+	out := toAPIPlayback(rec, &resolved)
 	if rec.Continues != "" {
 		switch _, err = s.library.AlbumRow(r.Context(), rec.Continues); {
 		case err == nil:
@@ -114,6 +110,21 @@ func (s *Server) playbackShuffle(r *http.Request, userID int64, at *playback.Shu
 		Scope: api.ShuffleScope{Kind: string(scope.Kind), ID: scope.ID, Tracks: scope.Tracks},
 	}
 	return out, nil
+}
+
+// toAPIPlayback returns what rec, resolved, says of itself: all but its
+// continues and its session, which need the store. A shuffle whose order is
+// gone has nothing to go back to, and comes back off.
+func toAPIPlayback(rec *playback.Record, resolved *playback.Resolved) api.Playback {
+	out := api.Playback{
+		Kind: string(rec.Kind), Tracks: toAPIPlaybackSongs(resolved.Tracks), Later: toAPIPlaybackSongs(resolved.Later),
+		Index: resolved.Index, PositionMs: resolved.PositionMs, Ordered: rec.Ordered, Moved: resolved.Moved,
+		Repeat: string(rec.Repeat), ClientID: rec.ClientID, Device: string(rec.Device),
+	}
+	if rec.Shuffled != nil && len(resolved.Order) > 0 {
+		out.Shuffled = &api.PlaybackShuffled{Seed: rec.Shuffled.Seed, Order: toAPIPlaybackSongs(resolved.Order)}
+	}
+	return out
 }
 
 func toAPIPlaybackSongs(songs []playback.Song) []api.PlaybackSong {
@@ -166,11 +177,17 @@ func readPlayback(w http.ResponseWriter, r *http.Request) (playback.Record, erro
 	}
 	rec := playback.Record{
 		Kind: playback.Kind(req.Kind), Tracks: req.Tracks, Later: req.Later, Continues: req.Continues,
-		Index: req.Index, PositionMs: req.PositionMs, Ordered: req.Ordered,
+		Index: req.Index, PositionMs: req.PositionMs, Ordered: req.Ordered, Repeat: playback.Repeat(req.Repeat),
 		ClientID: req.ClientID, Device: playback.Device(req.Device),
+	}
+	if rec.Repeat == "" {
+		rec.Repeat = playback.RepeatOff
 	}
 	if req.Shuffle != nil {
 		rec.Shuffle = &playback.ShuffleAt{ID: req.Shuffle.ID, After: req.Shuffle.After}
+	}
+	if req.Shuffled != nil {
+		rec.Shuffled = &playback.Shuffled{Seed: req.Shuffled.Seed, Order: req.Shuffled.Order}
 	}
 	err = playback.Check(&rec)
 	return rec, err //nolint:wrapcheck // As above.
