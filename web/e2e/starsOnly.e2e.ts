@@ -48,6 +48,8 @@ test('a song is rated from the island, and its row says so', async ({ page }) =>
 		.getByRole('complementary', { name: 'Player' })
 		.getByRole('slider', { name: `Rating of ${title}` });
 	await expect(stars).toBeVisible();
+	// The island has landed: measured while it rises, the stars aren't where the click goes.
+	await expect(page.getByRole('complementary', { name: 'Player' })).not.toHaveClass(/arrive/);
 	// A star it doesn't have yet: the right half of the fourth is 4, of the third 3.
 	const want = (await stars.getAttribute('aria-valuenow')) === '4' ? 3 : 4;
 	const box = await stars.boundingBox();
