@@ -30,7 +30,9 @@ export interface ResumeParts {
 const dueAfter: Record<Heard, number> = {
 	sounded: soundedSaveMs,
 	paused: pausedSaveMs,
-	seeked: seekedSaveMs
+	seeked: seekedSaveMs,
+	// Shuffle or Repeat pressed: a few presses in a row settle into one save, as seeks do.
+	changed: seekedSaveMs
 };
 
 /**
@@ -133,7 +135,7 @@ export class Resume {
 		}
 		const current = this.#parts.shuffles.current;
 		const at = current !== null && current.ref === queue.shuffle ? current.resumePoint() : null;
-		const save = recordOf(queue, player.position, at, this.#parts.client());
+		const save = recordOf(queue, player.position, at, this.#parts.client(), player.repeat);
 		this.dirty = false;
 		const sent = this.#parts.library
 			.savePlayback(save, { keepalive })
@@ -208,7 +210,7 @@ export class Resume {
 		if (arrival !== null) {
 			this.arrival = arrival;
 		}
-		player.restore(queue, record.positionMs / 1000);
+		player.restore(queue, record.positionMs / 1000, record.repeat ?? 'off');
 		if (queue.shuffle !== undefined && record.shuffle !== undefined) {
 			const { scope, mode, after } = record.shuffle;
 			this.#parts.shuffles.resume(queue.shuffle, sourceOf(scope, mode), after);

@@ -1230,3 +1230,173 @@ describe('a list queue', () => {
 		}
 	});
 });
+
+describe('repeat', () => {
+	it('cycles off, all, this song, off, and skips all in an endless shuffle', () => {
+		const { player } = setup();
+		expect(player.repeat).toBe('off');
+		player.cycleRepeat();
+		expect(player.repeat).toBe('all');
+		player.cycleRepeat();
+		expect(player.repeat).toBe('one');
+		player.cycleRepeat();
+		expect(player.repeat).toBe('off');
+		player.playSongs(
+			album(2).tracks.map((each) => ({ album: album(2), track: each })),
+			{ id: 's', endless: true }
+		);
+		player.cycleRepeat();
+		expect(player.repeat).toBe('one');
+		player.cycleRepeat();
+		expect(player.repeat).toBe('off');
+		// All set before an endless shuffle is off in it: the setting stays for the queue after.
+		player.repeat = 'all';
+		expect(player.repeating).toBe('off');
+		player.play(album(2));
+		expect(player.repeating).toBe('all');
+	});
+
+	it('plays this song again from the start at its end, as a new listen and a play', async () => {
+		const { player, output, library, reported } = setup();
+		const listens = vi.spyOn(library, 'reportListen').mockImplementation(() => undefined);
+		player.repeat = 'one';
+		player.play(album(3), 1);
+		await settle();
+		output.elapse(100);
+		await settle();
+		expect(player.current?.id).toBe('t1');
+		expect(player.position).toBe(0);
+		expect(player.status).toBe('playing');
+		expect(reported).toHaveBeenCalledOnce();
+		expect(
+			listens.mock.calls.map(([report]) => `${report.trackId} ${report.ended ?? 'start'}`)
+		).toEqual(['t1 start', 't1 completed', 't1 start']);
+		output.elapse(100);
+		await settle();
+		expect(reported).toHaveBeenCalledTimes(2);
+	});
+
+	it('leaves Next and Previous moving, and stays on this song for the next', async () => {
+		const { player, output } = setup();
+		player.repeat = 'one';
+		player.play(album(3), 1);
+		await settle();
+		player.next();
+		expect(player.current?.id).toBe('t2');
+		player.previous();
+		expect(player.current?.id).toBe('t1');
+		output.elapse(100);
+		await settle();
+		expect(player.current?.id).toBe('t1');
+		expect(player.repeat).toBe('one');
+	});
+
+	it('preloads nothing on this song, and the first song again at the end of all', async () => {
+		const { player, output } = setup();
+		const preload = vi.spyOn(output, 'preload');
+		player.repeat = 'one';
+		player.play(album(2), 1);
+		await settle();
+		output.elapse(90);
+		expect(preload).not.toHaveBeenCalled();
+		player.cycleRepeat();
+		expect(player.repeat).toBe('off');
+		player.repeat = 'all';
+		output.elapse(1);
+		expect(output.preloaded).toBe('t0');
+	});
+
+	it('goes round again from the first song at the end of the queue on all', async () => {
+		const { player, output } = setup();
+		player.repeat = 'all';
+		player.play(album(2), 1);
+		await settle();
+		output.elapse(100);
+		await settle();
+		expect(player.current?.id).toBe('t0');
+		expect(player.status).toBe('playing');
+		expect(player.finished).toBe(false);
+		player.next();
+		player.next();
+		expect(player.current?.id).toBe('t0');
+	});
+
+	it('goes round in the shuffled order when shuffled', async () => {
+		const { player, output } = setup();
+		player.repeat = 'all';
+		player.play(album(4));
+		await settle();
+		player.toggleShuffle(11);
+		const order = player.queue?.tracks.map(({ id }) => id) ?? [];
+		for (let step = 0; step < 4; step += 1) {
+			output.elapse(100);
+			await settle();
+		}
+		expect(player.current?.id).toBe(order[0]);
+		expect(player.queue?.tracks.map(({ id }) => id)).toEqual(order);
+		expect(player.shuffling).toBe(true);
+	});
+});
+
+describe('Shuffle in the player', () => {
+	it('reorders what comes after the song playing, which plays on, and saves after', async () => {
+		const { player, output } = setup();
+		const heard = vi.fn();
+		player.play(album(6), 1);
+		await settle();
+		output.elapse(30);
+		player.heard = heard;
+		player.toggleShuffle(5);
+		expect(player.shuffling).toBe(true);
+		expect(player.current?.id).toBe('t1');
+		expect(player.position).toBe(30);
+		expect(output.url).toBe('t1');
+		expect(player.status).toBe('playing');
+		expect(heard).toHaveBeenCalledWith('changed');
+		const ahead = player.queue?.tracks.slice(2).map(({ id }) => id) ?? [];
+		expect(ahead.toSorted()).toEqual(['t2', 't3', 't4', 't5']);
+		player.next();
+		expect(player.current?.id).toBe(ahead[0]);
+		player.toggleShuffle();
+		expect(player.shuffling).toBe(false);
+		const played = new Set(['t1', ahead[0]]);
+		const from = Number(ahead[0]?.slice(1));
+		expect(player.queue?.tracks.slice(3).map(({ id }) => id)).toEqual(
+			['t2', 't3', 't4', 't5'].filter((id) => Number(id.slice(1)) > from && !played.has(id))
+		);
+	});
+
+	it('preloads the song that comes next in the new order', async () => {
+		const { player, output } = setup();
+		player.play(album(6));
+		await settle();
+		output.elapse(90);
+		expect(output.preloaded).toBe('t1');
+		player.toggleShuffle(5);
+		output.elapse(1);
+		expect(output.preloaded).toBe(player.queue?.tracks.at(1)?.id);
+	});
+
+	it("leaves a session's shuffle to the shuffler, and goes on in a scope's order when it leaves", async () => {
+		const { player, library } = setup();
+		const a = album(3);
+		await library.loadAlbum('a').catch(() => undefined);
+		player.playSongs([{ album: a, track: a.tracks[2] as Track }], { id: 's', endless: true });
+		player.toggleShuffle();
+		expect(player.queue?.shuffle?.id).toBe('s');
+		player.leaveShuffle();
+		expect(player.queue?.shuffle).toBeUndefined();
+		expect(player.shuffling).toBe(false);
+		expect(player.current?.id).toBe('t2');
+		player.leaveShuffle([{ trackId: 'zz', albumId: 'nowhere' }]);
+		expect(player.queue?.later).toEqual([{ trackId: 'zz', albumId: 'nowhere' }]);
+	});
+
+	it('does nothing with nothing loaded', () => {
+		const { player } = setup();
+		player.toggleShuffle();
+		player.cycleRepeat();
+		expect(player.queue).toBeNull();
+		expect(player.shuffling).toBe(false);
+	});
+});

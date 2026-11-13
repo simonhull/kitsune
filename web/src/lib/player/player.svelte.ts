@@ -13,6 +13,7 @@ import {
 	currentOf,
 	holds,
 	inOrder,
+	isShuffling,
 	listed,
 	next,
 	onDisc,
@@ -25,6 +26,8 @@ import {
 	retagged,
 	rewound,
 	shuffled,
+	shuffledOff,
+	shuffledOn,
 	takenIn,
 	without,
 	reordered,
@@ -40,11 +43,20 @@ import {
 	type ShuffleRef,
 	type StartedFrom
 } from './queue.ts';
+import { cycled, repeatIn, type Repeat } from './repeat.ts';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused';
 
-/** What the player tells whoever remembers where it is: a song first sounding, a pause, a seek. */
-export type Heard = 'sounded' | 'paused' | 'seeked';
+/**
+ * What the player tells whoever remembers where it is: a song first sounding, a pause, a seek, or
+ * a change of how it goes on (Shuffle or Repeat).
+ */
+export type Heard = 'sounded' | 'paused' | 'seeked' | 'changed';
+
+/** A fresh seed for the player's own shuffle: 32 bits, what the generator takes. */
+export function newSeed(): number {
+	return Math.floor(Math.random() * 2 ** 32);
+}
 
 /** How many tracks may fail in a row before the player stops trying. */
 const mostFailures = 3;
@@ -71,6 +83,11 @@ export class Player implements PlayerView {
 	failure = $state(false);
 	/** Set when it came to rest at the end of the queue. */
 	finished = $state(false);
+	/**
+	 * Repeat as set: it outlives a queue, as a mode of the player. What it does now is
+	 * {@link Player.repeating}.
+	 */
+	repeat = $state<Repeat>('off');
 	/**
 	 * Shows a track change on the page, when the page is ready. The sound doesn't wait for this. Set
 	 * by the shell, which knows what's in the air.
@@ -133,6 +150,89 @@ export class Player implements PlayerView {
 		return this.queue !== null;
 	}
 
+	/** Whether the queue plays an endless shuffle, which never comes to an end. */
+	get endless(): boolean {
+		return this.queue?.shuffle?.endless === true;
+	}
+
+	/** What Repeat does now: `all` is off in an endless shuffle. */
+	get repeating(): Repeat {
+		return repeatIn(this.repeat, this.endless);
+	}
+
+	/** Whether Shuffle is lit: the player's own shuffle, or a shuffle session's queue. */
+	get shuffling(): boolean {
+		return this.queue !== null && isShuffling(this.queue);
+	}
+
+	/** Moves Repeat on: off, all, this song, off. An endless shuffle skips all. */
+	cycleRepeat(): void {
+		this.repeat = cycled(this.repeat, this.endless);
+		// The song preloaded may no longer be the one that comes next.
+		this.#ahead = null;
+		const { queue } = this;
+		if (queue !== null) {
+			// A list may go round now, or no longer: it looks again at what comes after.
+			this.onward[onwardOf(queue)]?.(queue);
+			this.heard('changed');
+		}
+	}
+
+	/**
+	 * Turns the player's own Shuffle on or off. On, the songs after the one playing take an order
+	 * from `seed`; off, they go back to the queue's own order from the song playing. The song
+	 * playing never stops, and nothing waits: the save follows. A shuffle session's queue is the
+	 * shuffler's to leave ({@link Player.leaveShuffle}).
+	 */
+	toggleShuffle(seed: number = newSeed()): void {
+		const { queue } = this;
+		if (queue === null || queue.shuffle !== undefined) {
+			return;
+		}
+		this.queue =
+			queue.shuffled === undefined
+				? shuffledOn(queue, seed)
+				: takenIn(shuffledOff(queue), this.#lookup);
+		this.#reordered();
+	}
+
+	/**
+	 * Leaves a shuffle session: the song playing plays on, and `later` comes after it, as a list's
+	 * songs do. Without `later`, which the scope's order may not have yet, the songs already queued
+	 * stay until it comes.
+	 */
+	leaveShuffle(later?: readonly ListEntry[]): void {
+		const { queue } = this;
+		// The player's own shuffle isn't a session's; with neither and no order, nothing changes.
+		if (
+			queue === null ||
+			queue.shuffled !== undefined ||
+			(queue.shuffle === undefined && later === undefined)
+		) {
+			return;
+		}
+		const left: Queue = { ...queue, shuffle: undefined };
+		this.queue =
+			later === undefined
+				? left
+				: takenIn(
+						{
+							...left,
+							tracks: queue.tracks.slice(0, queue.index + 1),
+							later: later.length > 0 ? later : undefined
+						},
+						this.#lookup
+					);
+		this.#reordered();
+	}
+
+	/** The songs to come have changed under the one playing: show it, preload again, save it later. */
+	#reordered(): void {
+		this.#ahead = null;
+		this.#show();
+		this.heard('changed');
+	}
+
 	/** What the island and Now playing should name: the player owns the order. */
 	get cue(): NowPlaying | null {
 		const { queue } = this;
@@ -173,7 +273,7 @@ export class Player implements PlayerView {
 					this.#stopped();
 				},
 				ended: () => {
-					this.#advance('completed');
+					this.#ended();
 				},
 				failed: () => void this.#mediaFailed(this.#run)
 			});
@@ -392,11 +492,12 @@ export class Player implements PlayerView {
 	 * Comes back to where someone left off, paused: the queue, the song and how far in, with no
 	 * sound, no listen and nothing loaded. Play loads the song there and sounds, as after a reload.
 	 */
-	restore(queue: Queue, seconds: number): void {
+	restore(queue: Queue, seconds: number, repeat: Repeat = 'off'): void {
 		this.#endListen('stopped');
 		this.#fresh();
 		this.#run += 1;
 		this.queue = queue;
+		this.repeat = repeat;
 		const current = currentOf(queue);
 		this.position = Math.min(Math.max(seconds, 0), (current?.durationMs ?? 0) / 1000);
 		this.status = 'paused';
@@ -495,6 +596,7 @@ export class Player implements PlayerView {
 		this.queue = null;
 		this.status = 'idle';
 		this.position = 0;
+		this.repeat = 'off';
 		this.#fresh();
 		this.#stale = false;
 		this.#ahead = null;
@@ -665,7 +767,9 @@ export class Player implements PlayerView {
 			this.#library.reportPlay(this.#listen.trackId, this.#listen.startedAt);
 		}
 		const { queue, current } = this;
-		const following = queue === null ? undefined : upcoming(queue);
+		// The same song again is already here: nothing to preload.
+		const following =
+			queue === null || this.repeating === 'one' ? undefined : this.#following(queue);
 		if (
 			current !== null &&
 			following !== undefined &&
@@ -676,6 +780,24 @@ export class Player implements PlayerView {
 			this.#ahead = following.id;
 			this.#output.preload(this.#source(following));
 		}
+	}
+
+	/** A song played to its end: with Repeat on this song it plays again from the start, as a new listen. */
+	#ended(): void {
+		const { queue } = this;
+		if (queue !== null && this.repeating === 'one') {
+			this.#begin({ ...queue }, 'completed');
+			return;
+		}
+		this.#advance('completed');
+	}
+
+	/** The song that plays after this one: the next, or with Repeat on all, the first again. */
+	#following(queue: Queue): Track | undefined {
+		const after = upcoming(queue);
+		const goesRound =
+			this.repeating === 'all' && queue.later === undefined && queue.continues === undefined;
+		return after ?? (goesRound ? queue.tracks.at(0) : undefined);
 	}
 
 	#advance(ending: ListenEnding): void {
@@ -692,6 +814,9 @@ export class Player implements PlayerView {
 		const after = next(grown);
 		if (after !== null) {
 			this.#begin(after, ending);
+		} else if (grown.later === undefined && this.repeating === 'all') {
+			// Round again from the first song, in the order it plays: nothing past it comes back.
+			this.#begin(rewound(grown), ending);
 		} else if (grown.later === undefined) {
 			this.#finish(grown, ending);
 		} else {

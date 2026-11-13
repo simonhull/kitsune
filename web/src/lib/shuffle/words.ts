@@ -1,3 +1,4 @@
+import type { Repeat } from '#lib/library/source.ts';
 import type { LibraryFilter } from '#lib/pages/libraryRows.ts';
 
 /** A person's shuffle settings, as the `shuffle.*` preferences hold them. */
@@ -74,6 +75,24 @@ export function fabWords(filter: LibraryFilter): FabWords {
 		what: `${words.charAt(0).toUpperCase()}${words.slice(1)}`,
 		tag: tags[filter]
 	};
+}
+
+/**
+ * Now playing's line under the controls, in the island's capitals: what's next and how it goes on.
+ * `shuffled` is the album the player's own shuffle is of, `true` for songs from several, or
+ * `false` when it's off: "UP NEXT · SHUFFLED FROM DEMON DAYS · THEN AGAIN", "REPEATING THIS SONG".
+ */
+export function upNextLine(shuffled: string | boolean, repeat: Repeat): string {
+	if (repeat === 'one') {
+		return 'REPEATING THIS SONG';
+	}
+	const from =
+		typeof shuffled === 'string' ? `SHUFFLED FROM ${shuffled.toUpperCase()}` : 'SHUFFLED';
+	return [
+		'UP NEXT',
+		...(shuffled === false ? [] : [from]),
+		...(repeat === 'all' ? ['THEN AGAIN'] : [])
+	].join(' · ');
 }
 
 /** How many songs an endless shuffle draws from, on one line. */

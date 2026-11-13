@@ -392,6 +392,9 @@ export type DeviceForm = 'phone' | 'tablet' | 'computer';
  */
 export type PlaybackKind = 'album' | 'songs' | 'list' | 'shuffle';
 
+/** What the player does at the end of the queue (`all` goes round again), or of a song (`one`). */
+export type Repeat = 'off' | 'all' | 'one';
+
 /** Where this browser is, as `PUT /me/playback` takes it: track IDs only. */
 export interface PlaybackSave {
 	kind: PlaybackKind;
@@ -407,6 +410,10 @@ export interface PlaybackSave {
 	continues?: string;
 	/** For a shuffle: its session, and the position right after the songs saved. */
 	shuffle?: { id: string; after: number };
+	/** Absent is off. */
+	repeat?: Repeat;
+	/** The player's own shuffle: its seed, and the queue's own order from the current song on. */
+	shuffled?: { seed: number; order: string[] };
 	clientId: string;
 	device: DeviceForm;
 }
@@ -429,6 +436,10 @@ export interface PlaybackRecord {
 	moved: boolean;
 	continues?: string;
 	shuffle?: { id: string; after: number; scope: ShuffleScope; mode: ShuffleMode };
+	/** The server always says; a record from before it is off. */
+	repeat?: Repeat;
+	/** The player's own shuffle, its order as the library has it now. */
+	shuffled?: { seed: number; order: PlaybackSong[] };
 	clientId: string;
 	device: DeviceForm;
 	/** When it was saved, Unix ms. */

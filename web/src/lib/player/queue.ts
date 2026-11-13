@@ -15,7 +15,9 @@ export interface Queue {
 	/** For songs from more than one album, each song's, by track ID. Absent for one album. */
 	albums?: ReadonlyMap<string, Album>;
 	/** The shuffle it plays, which goes on adding to it. */
-	shuffle?: ShuffleRef;
+	shuffle?: ShuffleRef | undefined;
+	/** Set while the player's own Shuffle is on: never with {@link Queue.shuffle}. */
+	shuffled?: Shuffled | undefined;
 	/** Set when it goes on through a list, album by album, past its last song. */
 	continues?: Continues;
 	/**
@@ -135,16 +137,35 @@ export function pendingAlbum(queue: Queue): Ahead | undefined {
 export function continued(queue: Queue, album: Album): Queue {
 	const after = queue.continues?.album ?? queue.album.id;
 	const at = queue.tracks.length;
-	const { ordered } = queue;
+	const { ordered, shuffled: own } = queue;
+	const songs = album.tracks.map((track) => ({ album, track }));
+	// Shuffled, the album comes in an order of its own, from the seed and how far the order has got.
+	const coming = own === undefined ? songs : mixed(songs, generator(own.seed + own.order.length));
 	return {
-		...spliced(
-			queue,
-			at,
-			album.tracks.map((track) => ({ album, track }))
-		),
+		...spliced(queue, at, coming),
 		ordered,
-		continues: { album: album.id, ahead: { at, count: album.tracks.length, after } }
+		continues: { album: album.id, ahead: { at, count: album.tracks.length, after } },
+		shuffled: inOrderToo(own, songs, own?.order.length ?? 0)
 	};
+}
+
+/** A shuffle's own order with songs put in it at `at`: where they'd be had it been off. */
+function inOrderToo(
+	own: Shuffled | undefined,
+	songs: readonly Queued[],
+	at: number
+): Shuffled | undefined {
+	if (own === undefined || songs.length === 0) {
+		return own;
+	}
+	const entries = songs.map(({ album, track }) => ({ trackId: track.id, albumId: album.id }));
+	return { ...own, order: own.order.toSpliced(at, 0, ...entries) };
+}
+
+/** Where songs queued right after the one playing go in a shuffle's own order: after it too. */
+function afterCurrent(queue: Queue): number {
+	const at = queue.shuffled?.order.findIndex(({ trackId }) => trackId === currentOf(queue)?.id);
+	return at === undefined ? 0 : at + 1;
 }
 
 /**
@@ -158,7 +179,13 @@ export function withdrawn(queue: Queue): Queue {
 	}
 	const tracks = queue.tracks.toSpliced(ahead.at, ahead.count);
 	const albums = new Map(tracks.map((track) => [track.id, albumOf(queue, track)]));
-	return { ...queue, tracks, albums, continues: { album: ahead.after } };
+	const gone = new Set(queue.tracks.slice(ahead.at, ahead.at + ahead.count).map(({ id }) => id));
+	const own = queue.shuffled;
+	const shuffled =
+		own === undefined
+			? undefined
+			: { ...own, order: own.order.filter(({ trackId }) => !gone.has(trackId)) };
+	return { ...queue, tracks, albums, continues: { album: ahead.after }, shuffled };
 }
 
 /**
@@ -167,6 +194,23 @@ export function withdrawn(queue: Queue): Queue {
  */
 export interface ShuffleRef {
 	id: string;
+	/** An endless shuffle never comes to an end, so it never goes round again. */
+	endless?: boolean;
+}
+
+/**
+ * The player's own shuffle of a queue, with no session: the seed it drew the order from, and what
+ * turning it off goes back to.
+ */
+export interface Shuffled {
+	seed: number;
+	/**
+	 * The queue's own order, from the song playing when it went on, with what a list only named:
+	 * songs as track and album IDs. Songs queued since go in it where they were queued.
+	 */
+	order: readonly ListEntry[];
+	/** Whether the queue plays album gain again once it's off. */
+	ordered: boolean;
 }
 
 /** A song to queue, with the album it's on. */
@@ -247,7 +291,14 @@ function albumsOf(queue: Queue): Map<string, Album> {
 
 /** Puts songs right after the one playing. The queue's own order is no longer the album's. */
 export function playingNext(queue: Queue, songs: readonly Queued[]): Queue {
-	return spliced(queue, queue.index + 1, songs);
+	return withOwnOrder(queue, spliced(queue, queue.index + 1, songs), songs, afterCurrent(queue));
+}
+
+/** A queue with songs just put in it, and its shuffle's own order with them too, at `at`. */
+function withOwnOrder(was: Queue, grown: Queue, songs: readonly Queued[], at: number): Queue {
+	return grown === was || was.shuffled === undefined
+		? grown
+		: { ...grown, shuffled: inOrderToo(was.shuffled, songs, at) };
 }
 
 /** Puts a shuffle's next songs at the end of its queue. The order is the shuffle's, as it was. */
@@ -261,7 +312,8 @@ export function extended(queue: Queue, songs: readonly Queued[]): Queue {
  * since what someone queues plays before the list goes on.
  */
 export function appended(queue: Queue, songs: readonly Queued[]): Queue {
-	return spliced(queue, pendingAlbum(queue)?.at ?? queue.tracks.length, songs);
+	const at = pendingAlbum(queue)?.at ?? queue.tracks.length;
+	return withOwnOrder(queue, spliced(queue, at, songs), songs, queue.shuffled?.order.length ?? 0);
 }
 
 function spliced(queue: Queue, at: number, songs: readonly Queued[]): Queue {
@@ -397,18 +449,119 @@ function generator(seed: number): () => number {
 	};
 }
 
+/** Puts items in an order drawn by `random`, by Fisher-Yates: each struck out of what's left. */
+function mixed<T>(items: readonly T[], random: () => number): T[] {
+	const left = [...items];
+	const out: T[] = [];
+	while (left.length > 0) {
+		out.push(...left.splice(Math.floor(random() * left.length), 1));
+	}
+	return out;
+}
+
 /**
  * Queues an album by Fisher-Yates, striking each track out of what's left. `chosen` plays first:
- * a track the seed picks, unless someone asked for one.
+ * a track the seed picks, unless someone asked for one. Its Shuffle is on, and turning it off goes
+ * on through the album in order from the song playing.
  */
 export function shuffled(album: Album, seed: number, chosen?: number): Queue {
 	const random = generator(seed);
 	const left = [...album.tracks];
 	const tracks = left.splice(chosen ?? Math.floor(random() * left.length), 1);
-	while (left.length > 0) {
-		tracks.push(...left.splice(Math.floor(random() * left.length), 1));
+	tracks.push(...mixed(left, random));
+	const order = album.tracks.map(({ id }) => ({ trackId: id, albumId: album.id }));
+	return { album, tracks, index: 0, ordered: false, shuffled: { seed, order, ordered: true } };
+}
+
+/** Whether a queue's Shuffle is lit: the player's own shuffle, or a shuffle session's queue. */
+export function isShuffling({ shuffle, shuffled: own }: Queue): boolean {
+	return shuffle !== undefined || own !== undefined;
+}
+
+/** The songs from the one playing on, and those a list only names, as list entries. */
+function fromHere(queue: Queue): ListEntry[] {
+	return [
+		...queue.tracks
+			.slice(queue.index)
+			.map((track) => ({ trackId: track.id, albumId: albumOf(queue, track).id })),
+		...(queue.later ?? [])
+	];
+}
+
+/**
+ * Turns the player's own Shuffle on: the songs after the one playing go in an order drawn from
+ * `seed`, and so do the songs a list only names, among themselves, so nothing waits for an album
+ * that isn't here. The song playing plays on. What it was is kept, to go back to.
+ */
+export function shuffledOn(queue: Queue, seed: number): Queue {
+	if (isShuffling(queue)) {
+		return queue;
 	}
-	return { album, tracks, index: 0, ordered: false };
+	const random = generator(seed);
+	const places = mixed(aheadPlaces(queue), random);
+	const later = queue.later === undefined ? undefined : mixed(queue.later, random);
+	return {
+		...rearranged(queue, places),
+		albums: queue.albums,
+		...(later === undefined ? {} : { later }),
+		shuffled: { seed, order: fromHere(queue), ordered: queue.ordered }
+	};
+}
+
+/**
+ * Turns the player's own Shuffle off: from the song playing, the songs after it in the queue's own
+ * order that are still to come, then any queued since that its order never named. The first whose
+ * song isn't held goes on as a list's does, by name, with everything after it.
+ */
+export function shuffledOff(queue: Queue): Queue {
+	const own = queue.shuffled;
+	if (own === undefined) {
+		return queue;
+	}
+	const current = currentOf(queue);
+	const held = new Map<string, Track[]>();
+	for (const track of queue.tracks.slice(queue.index + 1)) {
+		held.set(track.id, [...(held.get(track.id) ?? []), track]);
+	}
+	const toCome = [
+		...queue.tracks.slice(queue.index + 1).map(({ id }) => id),
+		...(queue.later ?? []).map(({ trackId }) => trackId)
+	];
+	const left = new Map<string, number>();
+	for (const id of toCome) {
+		left.set(id, (left.get(id) ?? 0) + 1);
+	}
+	const take = (entry: ListEntry): boolean => {
+		const count = left.get(entry.trackId) ?? 0;
+		left.set(entry.trackId, count - 1);
+		return count > 0;
+	};
+	const at = own.order.findIndex(({ trackId }) => trackId === current?.id);
+	const named = own.order.slice(at + 1).filter(take);
+	// The songs the order names before the one playing are behind it now, and stay behind.
+	const known = new Set(own.order.map(({ trackId }) => trackId));
+	const since = fromHere(queue)
+		.slice(1)
+		.filter((entry) => !known.has(entry.trackId) && take(entry));
+	const tracks = [...queue.tracks.slice(0, queue.index + 1)];
+	const later: ListEntry[] = [];
+	for (const entry of [...named, ...since]) {
+		const track = later.length === 0 ? held.get(entry.trackId)?.shift() : undefined;
+		if (track === undefined) {
+			later.push(entry);
+		} else {
+			tracks.push(track);
+		}
+	}
+	return {
+		...queue,
+		tracks,
+		ordered: own.ordered,
+		// An album a list put after the queue is in its place again, and is the list's to go on from.
+		continues: queue.continues === undefined ? undefined : { album: queue.continues.album },
+		later: later.length > 0 ? later : undefined,
+		shuffled: undefined
+	};
 }
 
 /** Returns the track the queue is on. */

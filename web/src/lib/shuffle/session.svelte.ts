@@ -11,8 +11,15 @@ import type {
 	TrackHit
 } from '#lib/library/source.ts';
 import { player, type Player } from '#lib/player/player.svelte.ts';
-import { albumOf, type Queued, type ShuffleRef } from '#lib/player/queue.ts';
+import {
+	albumOf,
+	currentOf,
+	isShuffling,
+	type Queued,
+	type ShuffleRef
+} from '#lib/player/queue.ts';
 import { pickUnit, type Unit } from './pick.ts';
+import { entriesAfter, scopeOrder, type ScopeHolds } from './scopeOrder.ts';
 import { shuffleSettings } from './settings.svelte.ts';
 
 /** How many songs the player always has queued past the one playing, so Next never waits. */
@@ -143,7 +150,10 @@ export class Shuffle {
 		this.#host = host;
 		this.#player = playing;
 		this.source = source;
-		this.ref = resumed?.ref ?? { id: `pending-${newClientId()}` };
+		this.ref = resumed?.ref ?? {
+			id: `pending-${newClientId()}`,
+			endless: source.mode === 'endless'
+		};
 		this.#to = resumed?.after ?? null;
 		this.#first = first.songs[0]?.id ?? '';
 		for (const { id } of first.songs) {
@@ -444,6 +454,8 @@ export class Shuffles {
 	readonly #host: Library;
 	readonly #player: Player;
 	#primed: { key: string; unit: Unit | undefined } | null = null;
+	/** Moves on with every press of Shuffle and every new shuffle: a late order for one before is dropped. */
+	#leaving = 0;
 
 	constructor(host: Library, playing: Player) {
 		this.#host = host;
@@ -499,6 +511,7 @@ export class Shuffles {
 		if (unit === undefined) {
 			return;
 		}
+		this.#leaving += 1;
 		const shuffle = new Shuffle(this.#host, this.#player, source, unit);
 		this.current = shuffle;
 		const now = queuedNow(this.#host, unit);
@@ -536,6 +549,68 @@ export class Shuffles {
 	reset(): void {
 		this.current = null;
 		this.#primed = null;
+		this.#leaving += 1;
+	}
+
+	/**
+	 * The player's Shuffle button, and `S`: the player's own shuffle on or off, or, in a shuffle
+	 * session's queue, off by leaving the session for its scope's own order from the song playing.
+	 * The song playing never stops, and nothing waits on the server.
+	 */
+	toggle(): void {
+		const queue = this.#player.queue;
+		if (queue === null) {
+			return;
+		}
+		this.#leaving += 1;
+		if (queue.shuffle === undefined) {
+			this.#player.toggleShuffle();
+			return;
+		}
+		const shuffle = this.current;
+		const scope = shuffle?.ref === queue.shuffle ? shuffle.source.scope : undefined;
+		const order = scope === undefined ? null : scopeOrder(scope, this.#holds());
+		this.#player.leaveShuffle(
+			order === null ? undefined : entriesAfter(order, currentOf(queue)?.id)
+		);
+		if (scope !== undefined && order === null) {
+			void this.#leaveLater(scope, this.#leaving);
+		}
+	}
+
+	/** What the scope's orders are read from, as far as it's here now. */
+	#holds(): ScopeHolds {
+		const host = this.#host;
+		return {
+			index: host.index.kind === 'ready' ? host.index.value : null,
+			album: (id) => host.album(id),
+			artistSongs: (id) => {
+				const songs = host.artistSongs(id);
+				return songs.kind === 'ready' ? songs.value : null;
+			},
+			marks: host.marks
+		};
+	}
+
+	/**
+	 * Fetches what holds a scope's order, and goes on in it from the song playing then, unless
+	 * anything has changed the queue's order since: until it comes, the songs queued stay.
+	 */
+	async #leaveLater(scope: ShuffleScope, leaving: number): Promise<void> {
+		const host = this.#host;
+		if (scope.kind === 'album') {
+			await host.loadAlbum(scope.id);
+		} else if (scope.kind === 'artist') {
+			await host.loadArtistSongs(scope.id, []);
+		} else if (host.index.kind !== 'ready') {
+			await host.loadIndex();
+		}
+		const order = scopeOrder(scope, this.#holds());
+		const queue = this.#player.queue;
+		if (order === null || leaving !== this.#leaving || queue === null || isShuffling(queue)) {
+			return;
+		}
+		this.#player.leaveShuffle(entriesAfter(order, currentOf(queue)?.id));
 	}
 }
 

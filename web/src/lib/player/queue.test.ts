@@ -10,6 +10,7 @@ import {
 	currentOf,
 	holds,
 	inOrder,
+	isShuffling,
 	listed,
 	next,
 	onDisc,
@@ -22,12 +23,17 @@ import {
 	retagged,
 	rewound,
 	shuffled,
+	shuffledOff,
+	shuffledOn,
 	takenIn,
 	throughList,
 	reordered,
 	upcoming,
 	withdrawn,
-	without
+	without,
+	type ListEntry,
+	type Queue,
+	type Queued
 } from './queue';
 
 function album(count: number): Album {
@@ -384,5 +390,115 @@ describe('a list queue', () => {
 	it('changes nothing while the next album has not come', () => {
 		const queue = listed(first, entries, (id) => (id === 'a' ? own : undefined));
 		expect(takenIn(queue, () => undefined)).toBe(queue);
+	});
+});
+
+describe("the player's own shuffle", () => {
+	const own = album(8);
+	const other: Album = {
+		...album(3),
+		id: 'b',
+		tracks: album(3).tracks.map((track) => ({ ...track, id: `b${track.id}` }))
+	};
+	const songsOf = (from: Album): Queued[] => from.tracks.map((track) => ({ album: from, track }));
+	const ahead = (queue: Queue): string[] => ids(queue.tracks.slice(queue.index + 1));
+
+	it('shuffles an album after the song playing, which plays on, and lights the button', () => {
+		const queue = inOrder(own, 2);
+		const on = shuffledOn(queue, 42);
+		expect(currentOf(on)?.id).toBe('t2');
+		expect(ids(on.tracks.slice(0, 3))).toEqual(['t0', 't1', 't2']);
+		expect(ahead(on).toSorted()).toEqual(['t3', 't4', 't5', 't6', 't7']);
+		expect(ahead(on)).not.toEqual(['t3', 't4', 't5', 't6', 't7']);
+		expect(on.ordered).toBe(false);
+		expect(on.albums).toBeUndefined();
+		expect(isShuffling(on)).toBe(true);
+		expect(isShuffling(queue)).toBe(false);
+		// The same seed draws the same order: it can be repeated.
+		expect(ahead(shuffledOn(queue, 42))).toEqual(ahead(on));
+		expect(shuffledOn(on, 7)).toBe(on);
+	});
+
+	it('goes back to the album from the song playing, leaving out what has played', () => {
+		const on = shuffledOn(inOrder(own, 2), 42);
+		// Two songs on, whichever they are.
+		const later = { ...on, index: on.index + 2 };
+		const current = currentOf(later)?.id ?? '';
+		const off = shuffledOff(later);
+		expect(currentOf(off)?.id).toBe(current);
+		expect(off.index).toBe(later.index);
+		const played = new Set(ids(later.tracks.slice(0, later.index + 1)));
+		const expected = own.tracks
+			.slice(Number(current.slice(1)) + 1)
+			.map(({ id }) => id)
+			.filter((id) => !played.has(id));
+		expect(ahead(off)).toEqual(expected);
+		expect(off.ordered).toBe(true);
+		expect(isShuffling(off)).toBe(false);
+		expect(shuffledOff(off)).toBe(off);
+	});
+
+	it('shuffles picked songs in place, and gives them back in the order picked', () => {
+		const queue = picked([...songsOf(own).slice(0, 3), ...songsOf(other)]);
+		if (queue === null) {
+			throw new Error('no queue');
+		}
+		const on = shuffledOn(queue, 3);
+		expect(ahead(on).toSorted()).toEqual(['bt0', 'bt1', 'bt2', 't1', 't2']);
+		expect(albumOf(on, on.tracks.find(({ id }) => id === 'bt1') as Track).id).toBe('b');
+		expect(ahead(shuffledOff(on))).toEqual(['t1', 't2', 'bt0', 'bt1', 'bt2']);
+	});
+
+	it("shuffles a list's songs held and named, each among their own, and takes them back by name", () => {
+		const named: ListEntry[] = other.tracks.map(({ id }) => ({ trackId: id, albumId: 'b' }));
+		const queue = listed({ album: own, track: own.tracks[0] as Track }, named, () => undefined);
+		const held = takenIn({ ...queue, later: [{ trackId: 't1', albumId: 'a' }, ...named] }, (id) =>
+			id === 'a' ? own : undefined
+		);
+		expect(ids(held.tracks)).toEqual(['t0', 't1']);
+		const on = shuffledOn(held, 9);
+		// Nothing named jumps the queue: what's held still comes first, so nothing waits.
+		expect(ahead(on)).toEqual(['t1']);
+		expect(on.later?.map(({ trackId }) => trackId).toSorted()).toEqual(['bt0', 'bt1', 'bt2']);
+		const off = shuffledOff(on);
+		expect(ahead(off)).toEqual(['t1']);
+		expect(off.later).toEqual(named);
+	});
+
+	it('shuffles a queue going on through a list, and each album the list puts after it', () => {
+		const on = shuffledOn(throughList(inOrder(own, 0)), 5);
+		expect(onwardOf(on)).toBe('list');
+		const grown = continued(on, other);
+		expect(ids(grown.tracks.slice(8)).toSorted()).toEqual(['bt0', 'bt1', 'bt2']);
+		expect(grown.continues?.ahead).toEqual({ at: 8, count: 3, after: 'a' });
+		expect(ids(withdrawn(grown).tracks)).toEqual(ids(on.tracks));
+		expect(withdrawn(grown).shuffled?.order.map(({ trackId }) => trackId)).toEqual(
+			own.tracks.map(({ id }) => id)
+		);
+		const off = shuffledOff(grown);
+		expect(ahead(off)).toEqual([...ids(own.tracks.slice(1)), 'bt0', 'bt1', 'bt2']);
+		expect(off.continues).toEqual({ album: 'b' });
+	});
+
+	it('keeps songs queued while shuffled where they were queued when it goes off', () => {
+		const on = shuffledOn(inOrder(own, 5), 1);
+		const soon = playingNext(on, [{ album: other, track: other.tracks[0] as Track }]);
+		const end = appended(soon, [{ album: other, track: other.tracks[1] as Track }]);
+		expect(ahead(shuffledOff(end))).toEqual(['bt0', 't6', 't7', 'bt1']);
+		expect(ahead(shuffledOff(without(end, ['t6'])))).toEqual(['bt0', 't7', 'bt1']);
+	});
+
+	it('marks an album shuffled from its Shuffle as lit, going back to the album in order', () => {
+		const queue = shuffled(own, 3);
+		expect(isShuffling(queue)).toBe(true);
+		const current = Number(currentOf(queue)?.id.slice(1));
+		expect(ahead(shuffledOff(queue))).toEqual(ids(own.tracks.slice(current + 1)));
+	});
+
+	it("lights the button for a shuffle session's queue, which isn't the player's to undo", () => {
+		const queue = { ...inOrder(own), shuffle: { id: 's', endless: true } };
+		expect(isShuffling(queue)).toBe(true);
+		expect(shuffledOn(queue, 1)).toBe(queue);
+		expect(shuffledOff(queue)).toBe(queue);
 	});
 });

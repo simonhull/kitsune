@@ -5,6 +5,7 @@ import type {
 	PlaybackKind,
 	PlaybackRecord,
 	PlaybackSave,
+	Repeat,
 	Track
 } from '#lib/library/source.ts';
 import type { AlbumLookup, ListEntry, Queue } from './queue.ts';
@@ -50,10 +51,17 @@ export function recordOf(
 	queue: Queue,
 	seconds: number,
 	shuffle: ShuffleAt | null,
-	client: Client
+	client: Client,
+	repeat: Repeat = 'off'
 ): PlaybackSave {
 	const positionMs = Math.min(Math.max(Math.round(seconds * 1000), 0), mostPositionMs);
-	const common = { positionMs, ordered: queue.ordered, clientId: client.id, device: client.device };
+	const common = {
+		positionMs,
+		ordered: queue.ordered,
+		...(repeat === 'off' ? {} : { repeat }),
+		clientId: client.id,
+		device: client.device
+	};
 	const kind = kindOf(queue);
 	if (kind === 'shuffle' && queue.shuffle !== undefined && shuffle !== null) {
 		return {
@@ -66,23 +74,43 @@ export function recordOf(
 	}
 	const ids = queue.tracks.map(({ id }) => id);
 	const named = queue.later?.map(({ trackId }) => trackId) ?? [];
+	const order = ownOrder(queue);
+	// A shuffle's own order shares the cap: half of it, or more where the queue needs less.
+	const kept = Math.min(
+		order.length,
+		Math.max(mostRemembered / 2, mostRemembered - ids.length - named.length)
+	);
+	const cap = mostRemembered - kept;
 	// Ahead first: what's behind keeps 100, and more only where there's too little ahead to fill.
 	const ahead = ids.length - queue.index - 1 + named.length;
-	const behind = Math.max(behindRemembered, mostRemembered - 1 - ahead);
+	const behind = Math.min(Math.max(behindRemembered, cap - 1 - ahead), cap - 1);
 	const from = Math.max(0, queue.index - behind);
-	const tracks = ids.slice(from, from + mostRemembered);
-	const later = named.slice(0, mostRemembered - tracks.length);
+	const tracks = ids.slice(from, from + cap);
+	const later = named.slice(0, cap - tracks.length);
 	const saved = kind === 'shuffle' ? 'songs' : kind;
+	const seed = queue.shuffled?.seed;
 	return {
 		...common,
 		kind: saved,
 		tracks,
 		index: queue.index - from,
 		...(saved === 'list' && later.length > 0 ? { later } : {}),
+		...(seed !== undefined && kept > 0 ? { shuffled: { seed, order: order.slice(0, kept) } } : {}),
 		...(queue.continues !== undefined && (saved === 'album' || saved === 'songs')
 			? { continues: queue.continues.album }
 			: {})
 	};
+}
+
+/**
+ * The player's own shuffle's order from the song playing on, as track IDs: what turning it off
+ * needs, since the songs before it never come back. None for a queue that isn't shuffled.
+ */
+function ownOrder(queue: Queue): string[] {
+	const order = queue.shuffled?.order ?? [];
+	const current = queue.tracks.at(queue.index)?.id;
+	const at = order.findIndex(({ trackId }) => trackId === current);
+	return order.slice(Math.max(0, at)).map(({ trackId }) => trackId);
 }
 
 /**
@@ -133,7 +161,19 @@ export function restored(record: PlaybackRecord, lookup: AlbumLookup): Queue | n
 			: { albums: new Map(songs.map(({ album, track }) => [track.id, album])) }),
 		...(waiting.length > 0 ? { later: waiting } : {}),
 		...(record.continues === undefined ? {} : { continues: { album: record.continues } }),
-		...(record.shuffle === undefined ? {} : { shuffle: { id: record.shuffle.id } })
+		...(record.shuffle === undefined
+			? {}
+			: { shuffle: { id: record.shuffle.id, endless: record.shuffle.mode === 'endless' } }),
+		...(record.shuffled === undefined
+			? {}
+			: {
+					shuffled: {
+						seed: record.shuffled.seed,
+						order: record.shuffled.order.map(({ id, albumId }) => ({ trackId: id, albumId })),
+						// Album gain comes back with the album's order, for one album.
+						ordered: record.kind === 'album' && oneAlbum
+					}
+				})
 	};
 	return queue;
 }
