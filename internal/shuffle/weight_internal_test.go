@@ -131,38 +131,6 @@ func TestHalfRatings(t *testing.T) {
 	}
 }
 
-func TestHeart(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		ratings, want float64
-	}{{0, 1}, {0.5, 1.25}, {1, 1.5625}}
-	for _, tt := range tests {
-		u := unitOf(t, Track{ID: 1}, Track{ID: 2, Hearted: true})
-		if got := Explain(u, Settings{Ratings: tt.ratings}, now).Heart; !near(got, tt.want) {
-			t.Errorf("Ratings %v: got %v, want %v", tt.ratings, got, tt.want)
-		}
-	}
-}
-
-func TestStarsByHeartWeighAsStars(t *testing.T) {
-	t.Parallel()
-	s := Settings{Ratings: 1}
-	for _, halves := range []Stars{2, 7, 8, 9, 10} {
-		own := Explain(unitOf(t, Track{ID: 1, Stars: halves, Hearted: true}), s, now)
-		by := Explain(unitOf(t, Track{ID: 1, Stars: halves, Hearted: true, ByHeart: true}), s, now)
-		if by.Rating != own.Rating || by.Stars != own.Stars || by.Heart != own.Heart || by.Weight() != own.Weight() {
-			t.Errorf("%d halves: by heart %+v, rated %+v: want the same weight, the heart's factor stacking", halves, by, own)
-		}
-		if by.ByHeart != 1 || own.ByHeart != 0 {
-			t.Errorf("%d halves: ByHeart = %d by heart and %d rated, want 1 and 0", halves, by.ByHeart, own.ByHeart)
-		}
-	}
-	run := Explain(unitOf(t, Track{ID: 1, Stars: 9, Hearted: true, ByHeart: true}, Track{ID: 2, Stars: 10}, Track{ID: 3}), s, now)
-	if run.Stars != 4.75 || run.ByHeart != 1 {
-		t.Errorf("a run of 4½ by heart, 5 and unrated: %v★, %d by heart, want 4.75★, 1", run.Stars, run.ByHeart)
-	}
-}
-
 func TestRecency(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -248,16 +216,16 @@ func TestMemory(t *testing.T) {
 func TestWeightIsTheProduct(t *testing.T) {
 	t.Parallel()
 	u := unitOf(t, Track{
-		ID: 1, Stars: MaxStars, Hearted: true,
+		ID: 1, Stars: MaxStars,
 		History: History{LastPlayed: now.Add(-7 * day), EarlySkips: 1, ShuffleStarts: 2, ShuffleSkips: 1, Listens: 2, Heard: 1.5},
 	})
 	s := Settings{Ratings: 1, Memory: true}
 	r := Explain(u, s, now)
-	want := 2.4 * 1.5625 * math.Pow(0.5, 0.7) * 0.5 * (1 - 0.6/4) * (0.6 + 0.4*3.5/4)
+	want := 2.4 * math.Pow(0.5, 0.7) * 0.5 * (1 - 0.6/4) * (0.6 + 0.4*3.5/4)
 	if got := Weight(u, s, now); !near(got, want) || !near(r.Weight(), want) {
 		t.Fatalf("Weight: got %v, want %v", got, want)
 	}
-	if got, want := r.String(), "5★ ×2.40, heart ×1.56, played 7d ago ×0.62, early skips ×0.50, skip rate ×0.85, listen time ×0.95"; got != want {
+	if got, want := r.String(), "5★ ×2.40, played 7d ago ×0.62, early skips ×0.50, skip rate ×0.85, listen time ×0.95"; got != want {
 		t.Errorf("String:\n got %q\nwant %q", got, want)
 	}
 }

@@ -32,7 +32,6 @@ function album(id: string, count = 2, albumGain = -1): Album {
 		format: 'FLAC',
 		genres: [],
 		etag: '',
-		hearted: false,
 		replayGain: { albumGain, trackGain: -9, source: 'tags' }
 	}));
 	return {
@@ -48,8 +47,7 @@ function album(id: string, count = 2, albumGain = -1): Album {
 		formats: ['FLAC'],
 		addedAt: '2026-10-12T18:00:00Z',
 		genres: [],
-		etag: '',
-		hearted: false
+		etag: ''
 	};
 }
 
@@ -68,13 +66,11 @@ function listed({ id, title, tracks }: Album): LibraryAlbum {
 		artist: 'B',
 		compilation: false,
 		year: years.get(id),
-		hearted: false,
 		tracks: tracks.map(({ id: track, title: name, durationMs }) => ({
 			id: track,
 			title: name,
 			durationMs,
-			artists: [],
-			hearted: false
+			artists: []
 		}))
 	};
 }
@@ -100,7 +96,8 @@ function setup() {
 	const list = {
 		order: ['a', 'b', 'c', 'd'],
 		filter: 'everything' as LibraryFilter,
-		hearted: new Set<string>(),
+		/** The albums whose songs are rated 5: what 4 and up keeps. */
+		rated: new Set<string>(),
 		sort: defaultLibrarySort as LibrarySort,
 		together: false
 	};
@@ -113,22 +110,18 @@ function setup() {
 		sortIndex(
 			{
 				artists: list.together
-					? [{ id: 'x', name: 'x', sortName: 'x', hearted: false, albums: albums() }]
+					? [{ id: 'x', name: 'x', sortName: 'x', albums: albums() }]
 					: albums().map((record) => ({
 							id: record.id,
 							name: record.id,
 							sortName: record.id,
-							hearted: false,
 							albums: [record]
 						}))
 			},
 			list.sort
 		);
 	const marks = {
-		hearted: (kind: string, id: string) => kind === 'albums' && list.hearted.has(id),
-		stars: () => null,
-		heartStars: 0,
-		counted: () => null
+		stars: (trackId: string) => (list.rated.has(trackId.slice(0, 1)) ? 5 : null)
 	};
 	const reports = vi.spyOn(library, 'reportListen').mockImplementation(() => undefined);
 	const load = (id: string): Promise<void> => {
@@ -179,8 +172,8 @@ describe('albumAfter', () => {
 		const albums = layOut(
 			{
 				artists: [
-					{ name: 'x', sortName: 'x', hearted: false, albums: [listed(album('a'))] },
-					{ name: 'y', sortName: 'y', hearted: false, albums: [listed(album('b'))] }
+					{ name: 'x', sortName: 'x', albums: [listed(album('a'))] },
+					{ name: 'y', sortName: 'y', albums: [listed(album('b'))] }
 				]
 			},
 			metrics
@@ -244,8 +237,8 @@ describe('LibraryContinues', () => {
 
 	it('follows the filter the list shows', async () => {
 		const { player, list, play, finish } = setup();
-		list.filter = 'hearted';
-		list.hearted = new Set(['a', 'c']);
+		list.filter = 'rated';
+		list.rated = new Set(['a', 'c']);
 		play('a');
 		await settle();
 		await finish();

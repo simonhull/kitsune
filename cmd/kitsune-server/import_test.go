@@ -22,7 +22,8 @@ const (
 )
 
 // navidromeFixture is a Navidrome library of three songs, the second moved
-// since, the third never played: Simon played and marked the first two.
+// since, the third never played: Simon played and rated the first two, and
+// starred the first and the third.
 var navidromeFixture = []string{ //nolint:gochecknoglobals // Read-only fixture shared by the tests below.
 	`INSERT INTO library (id, path) VALUES (1, '/music')`,
 	`INSERT INTO "user" (id, user_name) VALUES ('u1', 'Simon'), ('u2', 'Guest')`,
@@ -30,6 +31,7 @@ var navidromeFixture = []string{ //nolint:gochecknoglobals // Read-only fixture 
 	`INSERT INTO annotation (user_id, item_id, item_type, play_count, play_date, rating, starred, starred_at) VALUES
 		('u1', 'm1', 'media_file', 3, '2026-01-02 03:04:05.5+00:00', 4, true, '2025-03-09 01:50:33+00:00'),
 		('u1', 'm2', 'media_file', 2, '2025-11-01 00:00:00+00:00', 5, false, NULL),
+		('u1', 'm3', 'media_file', 0, NULL, 0, true, '2025-04-01 00:00:00+00:00'),
 		('u1', 'al1', 'album', 0, NULL, 0, true, '2025-03-09 01:36:00+00:00')`,
 	`INSERT INTO scrobbles (id, media_file_id, user_id, submission_time) VALUES (1, 'm1', 'u1', 1767323045)`,
 }
@@ -80,7 +82,7 @@ type imported struct {
 	queued int
 }
 
-// listening counts simon's plays, hearts and ratings, and the Last.fm queue.
+// listening counts simon's plays and ratings, and the Last.fm queue.
 func (e userEnv) listening(t *testing.T) imported {
 	t.Helper()
 	st := e.openStore(t)
@@ -131,15 +133,18 @@ func TestImportNavidrome(t *testing.T) { //nolint:paralleltest // overrides auth
 		}
 		checkNoSecrets(t, r)
 	}
-	// 3 plays of one.flac (1 scrobble, 2 before it) and 2 of two.flac; one
-	// song heart, one album heart; two ratings.
-	want := imported{Plays: 5, Hearts: 2, Rated: 2}
+	// 3 plays of one.flac (1 scrobble, 2 before it) and 2 of two.flac; two
+	// ratings, and the starred three.flac rated 4★ for its heart. The album's
+	// star and one.flac's are counted, not imported.
+	want := imported{Plays: 5, Rated: 3}
 	if got := e.listening(t); got != want {
 		t.Errorf("after two runs: %+v; want %+v, none queued for Last.fm", got, want)
 	}
 	for _, line := range []string{
 		"Navidrome user Simon → Kitsune user simon\n",
 		"  plays                 5        5        5        0          0      5              0     -\n",
+		"  unrated hearts        1        1        1        0          0      1              0     0\n",
+		"Starred songs with no rating are rated 4★ (-heart-stars 8)\n",
 		"Navidrome users with no Kitsune account: Guest",
 		afterImport,
 	} {
@@ -149,6 +154,18 @@ func TestImportNavidrome(t *testing.T) { //nolint:paralleltest // overrides auth
 	}
 	if !strings.Contains(second.stdout, "  plays                 5        5        5        0          0      0              5     -\n") {
 		t.Errorf("second run's report says it added plays:\n%s", second.stdout)
+	}
+}
+
+func TestImportNavidromeHeartStarsZeroLeavesStarsAlone(t *testing.T) { //nolint:paralleltest // overrides authParams.
+	e := newImportEnv(t)
+	src := navidromedbtest.New(t, navidromeFixture...)
+	r := e.importNavidrome("-map", mapMoved, "-heart-stars", "0", src)
+	if r.code != exitOK || !strings.Contains(r.stdout, "Starred songs with no rating stay unrated (-heart-stars 0)\n") {
+		t.Fatalf("import: %+v", r)
+	}
+	if got, want := e.listening(t), (imported{Plays: 5, Rated: 2}); got != want {
+		t.Errorf("after the import: %+v; want %+v, three.flac unrated", got, want)
 	}
 }
 
@@ -185,6 +202,10 @@ func TestImportNavidromeRefuses(t *testing.T) { //nolint:paralleltest // overrid
 			args: func(src string) []string { return []string{"-map", "A/one.flac", src} },
 		},
 		{name: "no FILE", wantCode: exitUsage, wantStderr: "exactly one FILE", args: func(string) []string { return nil }},
+		{
+			name: "-heart-stars out of range", wantCode: exitUsage, wantStderr: "-heart-stars wants halves",
+			args: func(src string) []string { return []string{"-heart-stars", "11", src} },
+		},
 	}
 	for _, tt := range tests { //nolint:paralleltest // overrides authParams.
 		t.Run(tt.name, func(t *testing.T) {

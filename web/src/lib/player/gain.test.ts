@@ -13,7 +13,6 @@ function track(gains?: Omit<ReplayGain, 'source'>): Track {
 		format: 'FLAC',
 		genres: [],
 		etag: '',
-		hearted: false,
 		...(replayGain === undefined ? {} : { replayGain })
 	};
 }

@@ -4,7 +4,7 @@
  * a finger can make at a time, which lives here once for every row.
  */
 import { keyed, pressed } from '#lib/library/stars.ts';
-import { dropPreview, halfUnder, ownOf, showPreview, valueOf } from '#lib/shell/starsPreview.ts';
+import { dropPreview, halfUnder, showPreview, valueOf } from '#lib/shell/starsPreview.ts';
 import type { Selection } from './selection.svelte.ts';
 
 /** How long a finger holds a row to start picking songs. */
@@ -197,7 +197,7 @@ export type ClickIntent =
 	| { kind: 'more' }
 	/** The stars: the rating slider, which the pointer's x reads. */
 	| { kind: 'rate' }
-	/** Something with its own click: a link, the heart, the handle, a column divider. */
+	/** Something with its own click: a link, the handle, a column divider. */
 	| { kind: 'own' };
 
 /** As much of an element as {@link clickIntent} reads. */
@@ -207,7 +207,7 @@ export interface Clicked {
 
 /**
  * What a click on `target`, inside a row, does. Anywhere on a row plays it, except what has a click
- * of its own: the box, ⋯, the stars, and anything else that takes a press (a link's text, the heart,
+ * of its own: the box, ⋯, the stars, and anything else that takes a press (a link's text,
  * the drag handle), which keeps it.
  */
 export function clickIntent(target: Clicked): ClickIntent {
@@ -301,7 +301,7 @@ export function rowEvents(handlers: RowHandlers): {
 				case 'rate': {
 					const slider = at.target.closest(ratingSlider);
 					if (slider !== null) {
-						handlers.rate(at.trackId, pressed(ownOf(slider), halfUnder(slider, event.clientX)));
+						handlers.rate(at.trackId, pressed(valueOf(slider), halfUnder(slider, event.clientX)));
 					}
 					return;
 				}

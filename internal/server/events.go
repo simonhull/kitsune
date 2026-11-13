@@ -105,7 +105,7 @@ func publishJSON(hub *events.Hub, kind events.Kind, to events.Audience, v, admin
 	hub.Publish(kind, to, data, adminData)
 }
 
-// publishMarks tells the person's devices a heart or a rating changed.
+// publishMarks tells the person's devices a rating changed.
 func (s *Server) publishMarks(userID int64, change *api.EventMarks) {
 	s.publish(events.Marks, events.User(userID), change)
 }

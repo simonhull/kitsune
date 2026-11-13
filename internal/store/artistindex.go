@@ -26,7 +26,7 @@ func (s *Store) artistIndex(ctx context.Context, userID int64, opts *IndexOption
 		return LibraryIndex{}, fmt.Errorf("artist index %s: %w", opts.Artist, err)
 	}
 	var rows indexRows
-	if rows.marks, err = readLibraryMarks(ctx, q, userID); err != nil {
+	if rows.ratings, err = readRatings(ctx, q, userID); err != nil {
 		return LibraryIndex{}, fmt.Errorf("artist index: %w", err)
 	}
 	albums, err := q.ListArtistAlbums(ctx, artist.ID)
@@ -45,7 +45,7 @@ func artistHeading(artist *sqlcdb.GetArtistRow, albums []sqlcdb.ListArtistAlbums
 	tracks := indexTracks(rows)
 	discs := indexDiscs(rows.tracks)
 	head := IndexArtist{
-		ID: artist.Ulid, Name: artist.Name, SortName: artist.SortName, Hearted: rows.marks.artists[artist.Ulid],
+		ID: artist.Ulid, Name: artist.Name, SortName: artist.SortName,
 		Albums: make([]IndexAlbum, 0, len(albums)),
 	}
 	for _, owned := range []bool{true, false} {
@@ -56,7 +56,7 @@ func artistHeading(artist *sqlcdb.GetArtistRow, albums []sqlcdb.ListArtistAlbums
 			}
 			head.Albums = append(head.Albums, IndexAlbum{
 				ID: r.Ulid, Title: r.Name, SortName: r.SortName, Artist: r.Artist, Year: intOr0(r.Year),
-				Compilation: r.Compilation != 0, Hearted: rows.marks.albums[r.Ulid], Tracks: tracks[r.ID], Discs: discs[r.ID],
+				Compilation: r.Compilation != 0, Tracks: tracks[r.ID], Discs: discs[r.ID],
 				Cover: cover(r.ArtworkHash, r.ArtworkWidth, r.ArtworkHeight, r.ArtworkAccent, r.ArtworkGround),
 			})
 		}

@@ -79,8 +79,6 @@ export interface Track {
 	genres: string[];
 	/** Changes when the file does. It isn't the stream's ETag. */
 	etag: string;
-	/** Whether the caller has hearted it. {@link Library.marks} holds what's current. */
-	hearted: boolean;
 	/** The caller's rating, ½ to 5 in halves. Absent when unrated. */
 	stars?: number;
 }
@@ -97,8 +95,6 @@ export interface Album extends AlbumEntry {
 	genres: string[];
 	/** Sent back as `If-Match` to edit this album. */
 	etag: string;
-	/** Whether the caller has hearted it. {@link Library.marks} holds what's current. */
-	hearted: boolean;
 	/** In disc order, the songs with no disc number last: one for an album on one disc. */
 	discs: Disc[];
 }
@@ -272,8 +268,6 @@ export interface LibraryTrack {
 	artists: string[];
 	discNo?: number;
 	trackNo?: number;
-	/** Whether the caller has hearted it. {@link Library.marks} holds what's current. */
-	hearted: boolean;
 	/** The caller's rating, ½ to 5 in halves. Absent when unrated. */
 	stars?: number;
 	/** Everything below comes only when {@link IndexField}s ask for it, and is absent with nothing to say. */
@@ -327,7 +321,7 @@ export interface ShuffleRules {
 
 /** What a shuffle draws from: the library, a Library filter, an album, an artist, or songs named. */
 export type ShuffleScope =
-	| { kind: 'library' | 'hearted' | 'rated' }
+	| { kind: 'library' | 'rated' }
 	| { kind: 'album' | 'artist'; id: string }
 	| { kind: 'tracks'; tracks: string[] };
 
@@ -348,10 +342,6 @@ export interface ShuffleWhy {
 	/** The mean of its rated songs; 0 unrated. */
 	stars: number;
 	rating: number;
-	/** How many of the ratings behind `stars` come from a heart: songs hearted and never rated. */
-	heartStars: number;
-	hearted: boolean;
-	heart: number;
 	/** Whether it has come up before. */
 	played: boolean;
 	sinceDays: number;
@@ -463,7 +453,7 @@ export type IndexField =
 export interface Prefs {
 	'library.columns': ColumnsPref;
 	'ui.theme': ThemeChoice;
-	/** How much ratings and hearts matter to shuffle, from 0 to 1. */
+	/** How much ratings matter to shuffle, from 0 to 1. */
 	'shuffle.ratings': number;
 	/** How much the next song leans toward one that suits the last, from 0 to 1. */
 	'shuffle.flow': number;
@@ -477,8 +467,6 @@ export interface Prefs {
 	'artist.songs': ArtistSongs;
 	/** The gain in dB, from -20 to 0, a song plays at while it has no ReplayGain. */
 	'playback.untagged_gain': number;
-	/** What a hearted song with no stars of its own counts as: 0 for Off, or 1 to 5 in halves. */
-	'ratings.heart_stars': number;
 }
 
 export type PrefKey = keyof Prefs;
@@ -494,7 +482,6 @@ export type ColumnId =
 	| 'genre'
 	| 'year'
 	| 'rating'
-	| 'heart'
 	| 'plays'
 	| 'lastPlayed'
 	| 'added'
@@ -526,8 +513,6 @@ export interface LibraryAlbum {
 	compilation: boolean;
 	year?: number;
 	artwork?: Artwork;
-	/** Whether the caller has hearted it. */
-	hearted: boolean;
 	tracks: LibraryTrack[];
 	/** Only when they say what the songs don't: more than one disc, or one with a name. */
 	discs?: Disc[];
@@ -541,8 +526,6 @@ export interface LibraryArtist {
 	name: string;
 	/** Who it files under, which decides its letter. */
 	sortName: string;
-	/** Whether the caller has hearted it. Always false without an `id`. */
-	hearted: boolean;
 	albums: LibraryAlbum[];
 }
 
@@ -654,12 +637,11 @@ export interface LibraryEvent {
 	all: boolean;
 }
 
-/** `marks` on `GET /events`: a heart, with `hearted`, or a rating, with `stars` (½ to 5 in halves, 0 for none). */
+/** `marks` on `GET /events`: a song's rating, `stars` ½ to 5 in halves, 0 for none. */
 export interface MarksEvent {
-	kind: MarkKind;
+	kind: 'tracks';
 	id: string;
-	hearted?: boolean;
-	stars?: number;
+	stars: number;
 }
 
 /** What `GET /events` carries, by event name. Each says what changed, never the thing itself. */
@@ -792,9 +774,6 @@ export interface ScanResult {
 
 export type AlbumSort = 'added' | 'name';
 
-/** What a heart can be on, as the API names it. */
-export type MarkKind = 'tracks' | 'albums' | 'artists';
-
 /** One listen that counted, as `POST /me/plays` takes it. */
 export interface PlayReport {
 	trackId: string;
@@ -838,8 +817,6 @@ export interface History {
 export interface Listening {
 	/** Plays that counted. */
 	plays: number;
-	/** Hearts on tracks, albums and artists. */
-	hearts: number;
 	/** Tracks with stars. */
 	rated: number;
 }
@@ -859,7 +836,13 @@ export interface LastfmStatus {
 	name?: string;
 	scrobble: boolean;
 	nowPlaying: boolean;
+	/** Whether ratings crossing `loveFrom` love and unlove songs on Last.fm. */
 	loves: boolean;
+	/**
+	 * The love line, ½ to 5 in halves: a song rated at or over it is loved, one that falls under it
+	 * unloved. 0 when not connected.
+	 */
+	loveFrom: number;
 	state: LastfmState;
 	/** Plays the server holds for Last.fm. */
 	waiting: number;
@@ -868,8 +851,35 @@ export interface LastfmStatus {
 	retryAt?: string;
 }
 
-/** The three switches. One left out stays as it is. */
-export type LastfmSwitches = Partial<Pick<LastfmStatus, 'scrobble' | 'nowPlaying' | 'loves'>>;
+/** The three switches and the love line. One left out stays as it is. */
+export type LastfmSwitches = Partial<
+	Pick<LastfmStatus, 'scrobble' | 'nowPlaying' | 'loves' | 'loveFrom'>
+>;
+
+/**
+ * The hearts someone kept from before stars were the only like, for the You page's one-time card.
+ * All zeros once there are none: then the card isn't drawn.
+ */
+export interface HeartsSummary {
+	/** Hearted songs with stars of their own, which keep them. */
+	tracksRated: number;
+	/** Hearted songs with no stars, which the change rates. */
+	tracksUnrated: number;
+	albums: number;
+	artists: number;
+	/** The hearted, rated songs at 1★ to 5★, a half rounding up. */
+	byStars: number[];
+	/** Up to five of the unrated hearted songs, the latest hearted first. */
+	preview: { id: string; title: string; artist?: string }[];
+}
+
+/** What turning hearts into stars wrote: songs rated, and hearts taken off by kind. */
+export interface HeartsConverted {
+	rated: number;
+	tracks: number;
+	albums: number;
+	artists: number;
+}
 
 /** Where every page gets its data: the real API, or the fixtures for tests and clips. */
 export interface LibrarySource {
@@ -881,10 +891,12 @@ export interface LibrarySource {
 	reportPlay(play: PlayReport): Promise<void>;
 	/** A listen's start or end, for shuffle to learn from. Rejects as {@link LibrarySource.reportPlay} does. */
 	reportListen(listen: ListenReport): Promise<void>;
-	/** Hearts an item, or takes the heart off. Rejects with {@link ServerError}: 404 for an unknown ID. */
-	setHeart(kind: MarkKind, id: string, on: boolean): Promise<void>;
-	/** Rates a track 1 to 5, or clears it with null. Rejects as {@link LibrarySource.setHeart} does. */
+	/** Rates a track ½ to 5, or clears it with null. Rejects with {@link ServerError}: 404 for an unknown ID. */
 	setStars(trackId: string, stars: number | null): Promise<void>;
+	/** The hearts the caller kept, for the one-time card. */
+	heartsSummary(): Promise<HeartsSummary>;
+	/** Turns the caller's hearts into stars, once: unrated hearted songs get `stars`, or none for null. */
+	convertHearts(stars: number | null): Promise<HeartsConverted>;
 	/** Rejects with {@link LoginError} when the session wasn't granted. */
 	login(name: string, password: string): Promise<User>;
 	/** Whether the first account is still to be made. Asks nobody to sign in. */
@@ -915,7 +927,7 @@ export interface LibrarySource {
 	setPassword(userId: number, password: string): Promise<void>;
 	/** Ends the session. */
 	logout(): Promise<void>;
-	/** Counts the caller's plays, hearts and rated tracks. */
+	/** Counts the caller's plays and rated tracks. */
 	listening(): Promise<Listening>;
 	/** The albums the caller played last, and has on repeat. */
 	history(): Promise<History>;

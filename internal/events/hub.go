@@ -29,7 +29,7 @@ const (
 	Scan         Kind = "scan"          // A scan's progress: everyone, the failure for admins.
 	Fingerprints Kind = "fingerprints"  // The fingerprint pass's progress: admins.
 	Loudness     Kind = "loudness"      // The loudness pass's progress: admins.
-	Marks        Kind = "marks"         // A person's hearts and stars.
+	Marks        Kind = "marks"         // A person's stars.
 	Prefs        Kind = "prefs"         // A person's preference changed.
 	ShuffleRules Kind = "shuffle-rules" // A person's shuffle rules changed.
 	Shuffle      Kind = "shuffle"       // One of a person's shuffles moved on.

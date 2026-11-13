@@ -34,7 +34,7 @@
 	/* The fox as a line: focus rings, a chosen tile's ring, an underline being typed on. */
 	--fox-line: #f28c28;
 
-	/* Marks: stars and hearts that are on, and the empty ones in a list and on art. */
+	/* Marks: stars that are on, and the empty ones in a list and on art. */
 	--star: #f28c28;
 	--star-off: rgb(255 255 255 / 16%);
 	--star-empty: rgb(255 255 255 / 28%);

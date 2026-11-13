@@ -95,7 +95,7 @@ func (q *Queries) EnqueueLastfm(ctx context.Context, arg EnqueueLastfmParams) er
 const getLastfmAccount = `-- name: GetLastfmAccount :one
 
 SELECT
-    a.name, a.session_key, a.scrobble, a.now_playing, a.loves, a.state, a.connected_at, a.last_sent_at,
+    a.name, a.session_key, a.scrobble, a.now_playing, a.loves, a.love_from, a.state, a.connected_at, a.last_sent_at,
     (SELECT count(*) FROM lastfm_outbox o WHERE o.user_id = a.user_id AND o.kind = 'scrobble') AS waiting,
     CAST(coalesce((SELECT max(o.attempts) FROM lastfm_outbox o WHERE o.user_id = a.user_id), 0) AS INTEGER) AS attempts,
     CAST(coalesce((SELECT min(o.next_at) FROM lastfm_outbox o WHERE o.user_id = a.user_id), 0) AS INTEGER) AS next_at
@@ -109,6 +109,7 @@ type GetLastfmAccountRow struct {
 	Scrobble    int64
 	NowPlaying  int64
 	Loves       int64
+	LoveFrom    int64
 	State       string
 	ConnectedAt int64
 	LastSentAt  *int64
@@ -129,6 +130,7 @@ func (q *Queries) GetLastfmAccount(ctx context.Context, userID int64) (GetLastfm
 		&i.Scrobble,
 		&i.NowPlaying,
 		&i.Loves,
+		&i.LoveFrom,
 		&i.State,
 		&i.ConnectedAt,
 		&i.LastSentAt,
@@ -137,6 +139,17 @@ func (q *Queries) GetLastfmAccount(ctx context.Context, userID int64) (GetLastfm
 		&i.NextAt,
 	)
 	return i, err
+}
+
+const getLastfmLoveFrom = `-- name: GetLastfmLoveFrom :one
+SELECT love_from FROM lastfm_accounts WHERE user_id = ?
+`
+
+func (q *Queries) GetLastfmLoveFrom(ctx context.Context, userID int64) (int64, error) {
+	row := q.queryRow(ctx, q.getLastfmLoveFromStmt, getLastfmLoveFrom, userID)
+	var love_from int64
+	err := row.Scan(&love_from)
+	return love_from, err
 }
 
 const getLastfmTrack = `-- name: GetLastfmTrack :one
@@ -410,14 +423,16 @@ func (q *Queries) SetLastfmState(ctx context.Context, arg SetLastfmStateParams) 
 
 const updateLastfmSwitches = `-- name: UpdateLastfmSwitches :execrows
 UPDATE lastfm_accounts
-SET scrobble = ?1, now_playing = ?2, loves = ?3
-WHERE user_id = ?4
+SET scrobble = ?1, now_playing = ?2, loves = ?3,
+    love_from = ?4
+WHERE user_id = ?5
 `
 
 type UpdateLastfmSwitchesParams struct {
 	Scrobble   int64
 	NowPlaying int64
 	Loves      int64
+	LoveFrom   int64
 	UserID     int64
 }
 
@@ -426,6 +441,7 @@ func (q *Queries) UpdateLastfmSwitches(ctx context.Context, arg UpdateLastfmSwit
 		arg.Scrobble,
 		arg.NowPlaying,
 		arg.Loves,
+		arg.LoveFrom,
 		arg.UserID,
 	)
 	if err != nil {

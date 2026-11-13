@@ -2,7 +2,6 @@ package store
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 	"slices"
 	"testing"
@@ -22,8 +21,8 @@ const (
 
 func at(sec int64) time.Time { return time.Unix(sec, 0).UTC() }
 
-// sampleImport is an import for user 1 with a play of each source, a heart of
-// each kind and two ratings.
+// sampleImport is an import for user 1 with a play of each source, two
+// ratings and one rating given for a heart.
 func sampleImport() *Import {
 	return &Import{
 		UserID: 1,
@@ -32,13 +31,11 @@ func sampleImport() *Import {
 			{TrackID: trackULID(1), PlayedAt: at(99), Source: srcUndated, ClientID: "navidrome:u:m1:1"},
 			{TrackID: trackULID(2), PlayedAt: at(50), Source: srcDated, ClientID: "navidrome:d:m2"},
 		},
-		TrackHearts:  []ImportedHeart{{ID: trackULID(1), At: at(10)}},
-		AlbumHearts:  []ImportedHeart{{ID: seedAlbum, At: at(11)}},
-		ArtistHearts: []ImportedHeart{{ID: seedArtist, At: at(12)}},
 		Ratings: []ImportedRating{
 			{TrackID: trackULID(1), Rating: 8, At: at(13)},
 			{TrackID: trackULID(2), Rating: 10, At: at(14)},
 		},
+		HeartRatings: []ImportedRating{{TrackID: trackULID(3), Rating: 8, At: at(10)}},
 	}
 }
 
@@ -75,27 +72,23 @@ func TestApplyImportWritesEveryKindOnce(t *testing.T) {
 		"play " + trackULID(2) + " 50000 navidrome navidrome:d:m2",
 		"play " + trackULID(1) + " 100000 navidrome navidrome:s:1",
 		"play " + trackULID(1) + " 99000 navidrome-undated navidrome:u:m1:1",
-		"track heart " + trackULID(1) + " 10000",
-		"album heart " + seedAlbum + " 11000",
-		"artist heart " + seedArtist + " 12000",
 		"rating " + trackULID(1) + " 8 13000",
 		"rating " + trackULID(2) + " 10 14000",
+		"rating " + trackULID(3) + " 8 10000",
 	}
 	if !slices.Equal(rows, want) {
-		t.Errorf("rows =\n%v\nwant\n%v", rows, want)
+		t.Errorf("rows =\n%v\nwant\n%v: no hearts, ever", rows, want)
 	}
 	wantFirst := ImportCounts{
-		Plays:       map[string]ImportCount{srcDated: {Added: 2}, srcUndated: {Added: 1}},
-		TrackHearts: ImportCount{Added: 1}, AlbumHearts: ImportCount{Added: 1}, ArtistHearts: ImportCount{Added: 1},
-		Ratings: ImportCount{Added: 2},
+		Plays:   map[string]ImportCount{srcDated: {Added: 2}, srcUndated: {Added: 1}},
+		Ratings: ImportCount{Added: 2}, HeartRatings: ImportCount{Added: 1},
 	}
 	if !reflect.DeepEqual(first, wantFirst) {
 		t.Errorf("first run = %+v, want %+v", first, wantFirst)
 	}
 	wantSecond := ImportCounts{
-		Plays:       map[string]ImportCount{srcDated: {There: 2}, srcUndated: {There: 1}},
-		TrackHearts: ImportCount{There: 1}, AlbumHearts: ImportCount{There: 1}, ArtistHearts: ImportCount{There: 1},
-		Ratings: ImportCount{There: 2},
+		Plays:   map[string]ImportCount{srcDated: {There: 2}, srcUndated: {There: 1}},
+		Ratings: ImportCount{There: 2}, HeartRatings: ImportCount{There: 1},
 	}
 	if !reflect.DeepEqual(second, wantSecond) {
 		t.Errorf("second run = %+v, want %+v", second, wantSecond)
@@ -105,42 +98,27 @@ func TestApplyImportWritesEveryKindOnce(t *testing.T) {
 	}
 }
 
-func TestApplyImportKeepsTheirRatingAndTheFirstHeart(t *testing.T) {
+func TestApplyImportKeepsTheirRating(t *testing.T) {
 	t.Parallel()
 	s, now := markedStore(t)
-	*now = at(5) // Before the import's hearts: they stay as they are.
-	mustHeart(t, s, 1, KindTrack, trackULID(1))
-	*now = at(20) // After them: the import's earlier time wins.
-	mustHeart(t, s, 1, KindAlbum, seedAlbum)
+	*now = at(20)
 	mustRate(t, s, 1, trackULID(1), 3)
+	mustRate(t, s, 1, trackULID(3), 2)
 
 	c := mustApply(t, s, sampleImport())
 
 	rows := importedRows(t, s)
 	for _, want := range []string{
-		"track heart " + trackULID(1) + " 5000",
-		"album heart " + seedAlbum + " 11000",
 		"rating " + trackULID(1) + " 3 20000",
 		"rating " + trackULID(2) + " 10 14000",
+		"rating " + trackULID(3) + " 2 20000",
 	} {
 		if !slices.Contains(rows, want) {
 			t.Errorf("rows lack %q:\n%v", want, rows)
 		}
 	}
-	if c.TrackHearts != (ImportCount{There: 1}) || c.AlbumHearts != (ImportCount{There: 1}) || c.Ratings != (ImportCount{Added: 1, Kept: 1}) {
+	if c.Ratings != (ImportCount{Added: 1, Kept: 1}) || c.HeartRatings != (ImportCount{Kept: 1}) {
 		t.Errorf("counts = %+v", c)
-	}
-}
-
-func TestApplyImportBringsBackAHeartTakenOff(t *testing.T) {
-	t.Parallel()
-	s, _ := markedStore(t)
-	mustHeart(t, s, 1, KindTrack, trackULID(1))
-	if err := s.Unheart(t.Context(), 1, KindTrack, trackULID(1)); err != nil {
-		t.Fatal(err)
-	}
-	if c := mustApply(t, s, sampleImport()); c.TrackHearts != (ImportCount{Added: 1}) {
-		t.Errorf("track hearts = %+v, want one added", c.TrackHearts)
 	}
 }
 
@@ -152,9 +130,9 @@ func TestApplyImportQueuesNothingForLastfm(t *testing.T) {
 		t.Errorf("lastfm_outbox = %v, want empty", got)
 	}
 	// What would queue does still queue, so the check above means something.
-	mustHeart(t, s, 1, KindTrack, trackULID(3))
+	mustRate(t, s, 1, trackULID(4), loveLine)
 	if got := outbox(t, s); len(got) != 1 {
-		t.Errorf("lastfm_outbox after a heart = %v, want one love", got)
+		t.Errorf("lastfm_outbox after a rating = %v, want one love", got)
 	}
 }
 
@@ -166,7 +144,7 @@ func TestApplyImportIsAllOrNothing(t *testing.T) {
 		wantErr error
 	}{
 		{"a track gone", func(imp *Import) { imp.Ratings[1].TrackID = trackULID(99) }, ErrNotFound},
-		{"an album gone", func(imp *Import) { imp.AlbumHearts[0].ID = fmt.Sprintf("B%025d", 99) }, ErrNotFound},
+		{"a heart's track gone", func(imp *Import) { imp.HeartRatings[0].TrackID = trackULID(98) }, ErrNotFound},
 		{"no rating", func(imp *Import) { imp.Ratings[1].Rating = rating.None }, rating.ErrBad},
 	}
 	for _, tt := range tests {

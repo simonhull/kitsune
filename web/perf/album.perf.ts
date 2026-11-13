@@ -1,10 +1,10 @@
 import { runs, test } from './fixture.ts';
 import { albumPage, albumTracks, atRest, nextLoudAlbum, openLibrary, playing } from './pages.ts';
 
-test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
-	// Hearts and stars on a song are its Heart and Rating columns: the person's, here with Heart on.
+test('Album: open it, play, skip, and star from the island and the row', async ({ page, perf }) => {
+	// A song's stars are its Rating column: the person's.
 	const columns = {
-		order: ['artist', 'genre', 'rating', 'plays', 'lastPlayed', 'format', 'heart'],
+		order: ['artist', 'genre', 'rating', 'plays', 'lastPlayed', 'format'],
 		artistWhenDifferent: true
 	};
 	await page.request.put('/api/v1/me/prefs/library.columns', {
@@ -16,8 +16,7 @@ test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
 	const play = perf.samples('play-album');
 	const next = perf.samples('next');
 	const previous = perf.samples('previous');
-	const heart = perf.samples('heart');
-	const heartServer = perf.samples('heart-server');
+	const islandStar = perf.samples('island-star');
 	const star = perf.samples('star');
 	const used = new Set<string>();
 	const island = page.locator('aside[aria-label="Player"]');
@@ -46,34 +45,27 @@ test('Album: open it, play, skip, heart and star', async ({ page, perf }) => {
 		);
 		await island.locator('button.pause').click();
 
-		const row = page.locator(thirdRow);
-		const heartButton = row.locator('button.heart');
-		await row.hover();
+		// The island's stars, where the heart was, rate the song playing: the right half of the
+		// fourth sets 4.
+		const islandStars = island.locator('.rating[role="slider"]');
+		const islandBox = await islandStars.boundingBox();
+		if (islandBox === null) {
+			throw new Error(`no rating on the island for ${first}`);
+		}
 		await perf.time(
-			heart,
+			islandStar,
 			'click',
 			{
 				kind: 'attribute',
-				selector: `${thirdRow} button.heart`,
-				name: 'aria-pressed',
-				value: 'true'
+				selector: 'aside[aria-label="Player"] .rating[role="slider"]',
+				name: 'aria-valuenow',
+				value: '4'
 			},
-			() => heartButton.click()
+			() => islandStars.click({ position: { x: islandBox.width * 0.75, y: islandBox.height / 2 } })
 		);
-		heartServer.add(
-			await page.evaluate(async (id) => {
-				for (let tries = 0; tries < 500; tries++) {
-					const entry = performance
-						.getEntriesByType('resource')
-						.find((each) => each.name.includes(`/me/hearts/tracks/${id}`));
-					if (entry instanceof PerformanceResourceTiming && entry.responseEnd > 0) {
-						return entry.responseEnd - entry.startTime;
-					}
-					await new Promise((done) => setTimeout(done, 20));
-				}
-				throw new Error(`no request hearted ${id}`);
-			}, third)
-		);
+
+		const row = page.locator(thirdRow);
+		await row.hover();
 		// The rating is one slider: the right half of its fourth star sets 4.
 		const rating = row.locator('.rate[role="slider"]');
 		const box = await rating.boundingBox();

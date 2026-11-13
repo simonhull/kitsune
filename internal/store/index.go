@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
 
@@ -29,7 +30,6 @@ type IndexArtist struct {
 	ID       string // The artist's ULID.
 	Name     string
 	SortName string
-	Hearted  bool // By the person the index was read for. Never on a group with no ID.
 	Albums   []IndexAlbum
 }
 
@@ -41,7 +41,6 @@ type IndexAlbum struct {
 	Artist      string
 	Year        int // 0 is unknown.
 	Compilation bool
-	Hearted     bool   // By the person the index was read for.
 	Cover       *Cover // Nil when the album has no cover.
 	Tracks      []IndexTrack
 	// Discs are those of Tracks, in disc order, and nil unless they say what the
@@ -59,7 +58,7 @@ type IndexTrack struct {
 	Artists         []string
 	DiscNo, TrackNo int // 0 is unknown.
 	Duration        time.Duration
-	Marks           Marks // The marks of the person the index was read for.
+	Rating          rating.Rating // The rating of the person the index was read for.
 	// Extra holds what [IndexOptions] asked for, and is nil when it asked for
 	// nothing. It is a pointer so an index without it costs what it did.
 	Extra *IndexExtra
@@ -118,7 +117,7 @@ type indexRows struct {
 	albums       []sqlcdb.ListIndexAlbumsRow
 	tracks       []sqlcdb.ListIndexTracksRow
 	artists      []sqlcdb.ListIndexTrackArtistsRow
-	marks        libraryMarks
+	ratings      map[string]rating.Rating
 	extra        bool // Whether IndexOptions asked for anything.
 	details      []sqlcdb.ListIndexTrackDetailsRow
 	albumArtists []sqlcdb.ListIndexTrackAlbumArtistsRow
@@ -129,9 +128,9 @@ type indexRows struct {
 }
 
 // LibraryIndex returns every album with a live track, once, under its first
-// owner, with those tracks and the user's marks on all three, and whatever opts
+// owner, with those tracks and the user's ratings of them, and whatever opts
 // asks for. An album with no owner a reader shows sits under the artist it
-// displays. One read transaction covers it, so a scan or a heart can't split it.
+// displays. One read transaction covers it, so a scan or a rating can't split it.
 //
 // With [IndexOptions.Artist] it returns that artist's songs instead, under one
 // heading of that artist: the albums it owns, then those it appears on, each in
@@ -154,7 +153,7 @@ func (s *Store) LibraryIndex(ctx context.Context, userID int64, opts *IndexOptio
 	return LibraryIndex{Artists: onlyAlbums(artists, opts.Albums), Partial: true}, nil
 }
 
-// indexRows runs the index's queries, the user's marks included, on one read
+// indexRows runs the index's queries, the user's ratings included, on one read
 // connection. What they read of the library comes from what is kept, when that
 // is what the transaction sees.
 func (s *Store) indexRows(ctx context.Context, userID int64, opts *IndexOptions) (indexRows, error) {
@@ -167,7 +166,7 @@ func (s *Store) indexRows(ctx context.Context, userID int64, opts *IndexOptions)
 	q := s.rq.WithTx(tx)
 	var rows indexRows
 	// The first read takes the snapshot, which the kept rows must come after.
-	if rows.marks, err = readLibraryMarks(ctx, q, userID); err != nil {
+	if rows.ratings, err = readRatings(ctx, q, userID); err != nil {
 		return indexRows{}, err
 	}
 	l := &s.library
@@ -266,7 +265,7 @@ func indexTracks(rows *indexRows) map[int64][]IndexTrack {
 		tracks[t.AlbumID] = append(tracks[t.AlbumID], IndexTrack{
 			ID: t.Ulid, Title: t.Title, Artists: names[t.ID], DiscNo: intOr0(t.DiscNo), TrackNo: intOr0(t.TrackNo),
 			Duration: time.Duration(t.DurationMs) * time.Millisecond,
-			Marks:    Marks{Hearted: rows.marks.tracks[t.Ulid], Rating: rows.marks.ratings[t.Ulid]},
+			Rating:   rows.ratings[t.Ulid],
 			Extra:    extras[t.ID],
 		})
 	}
@@ -283,7 +282,6 @@ func indexGroups(rows *indexRows) []IndexArtist {
 	for i := range rows.albums {
 		r := &rows.albums[i]
 		head := indexHeading(r)
-		head.Hearted = head.ID != "" && rows.marks.artists[head.ID]
 		key := cmp.Or(head.ID, "name:"+head.Name)
 		at, ok := byKey[key]
 		if !ok {
@@ -293,7 +291,7 @@ func indexGroups(rows *indexRows) []IndexArtist {
 		}
 		groups[at].Albums = append(groups[at].Albums, IndexAlbum{
 			ID: r.Ulid, Title: r.Name, SortName: r.SortName, Artist: r.Artist, Year: intOr0(r.Year),
-			Compilation: r.Compilation != 0, Hearted: rows.marks.albums[r.Ulid], Tracks: tracks[r.ID], Discs: albumDiscs[r.ID],
+			Compilation: r.Compilation != 0, Tracks: tracks[r.ID], Discs: albumDiscs[r.ID],
 			Cover: cover(r.ArtworkHash, r.ArtworkWidth, r.ArtworkHeight, r.ArtworkAccent, r.ArtworkGround),
 		})
 	}

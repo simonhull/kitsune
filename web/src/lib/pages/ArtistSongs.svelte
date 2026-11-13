@@ -1126,8 +1126,7 @@
 				top={at * flatRow}
 				height={flatRow}
 				{now}
-				rating={library.marks.counted(song.track.id)}
-				hearted={library.marks.hearted('tracks', song.track.id)}
+				stars={library.marks.stars(song.track.id)}
 				cued={song.track.id === cuedId}
 				sounding={player.sounding}
 				picked={selection.has(song.track.id)}
@@ -1220,7 +1219,6 @@
 		hidden={selection.size - picked.length}
 		albums={facts.albums}
 		durationMs={facts.durationMs}
-		hearted={picked.every((trackId) => library.marks.hearted('tracks', trackId))}
 		actions={pickedActions}
 		compact={phone}
 		edit={editPicked}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
 
@@ -76,11 +77,14 @@ func parseOutboxKind(s string) OutboxKind {
 }
 
 // LastfmSwitches are what a person lets Kitsune send to Last.fm. All three
-// start on.
+// start on, and LoveFrom at 4★.
 type LastfmSwitches struct {
 	Scrobble   bool // Plays that count.
 	NowPlaying bool // The song as it starts.
-	Loves      bool // Hearts on tracks, as loves.
+	Loves      bool // Ratings crossing LoveFrom, as loves and unloves.
+	// LoveFrom is the love line: a song the person rates at or over it is
+	// loved, and one that falls under it, or loses its rating, is unloved.
+	LoveFrom rating.Rating
 }
 
 // LastfmAccount is a person's connected Last.fm account and what waits for it.
@@ -113,7 +117,7 @@ type LastfmTrack struct {
 type LastfmItem struct {
 	ID       int64
 	Kind     OutboxKind
-	At       time.Time // When the play started, or the heart changed.
+	At       time.Time // When the play started, or the rating crossed the love line.
 	Attempts int
 	Track    LastfmTrack
 }
@@ -129,9 +133,11 @@ func (s *Store) LastfmAccount(ctx context.Context, userID int64) (LastfmAccount,
 		return LastfmAccount{}, fmt.Errorf("last.fm account: %w", err)
 	}
 	acct := LastfmAccount{
-		Name:        row.Name,
-		SessionKey:  row.SessionKey,
-		Switches:    LastfmSwitches{Scrobble: row.Scrobble == 1, NowPlaying: row.NowPlaying == 1, Loves: row.Loves == 1},
+		Name:       row.Name,
+		SessionKey: row.SessionKey,
+		Switches: LastfmSwitches{
+			Scrobble: row.Scrobble == 1, NowPlaying: row.NowPlaying == 1, Loves: row.Loves == 1, LoveFrom: ratingOf(row.LoveFrom),
+		},
 		State:       parseLastfmState(row.State),
 		ConnectedAt: fromMS(row.ConnectedAt),
 		Waiting:     int(row.Waiting),
@@ -167,11 +173,17 @@ func (s *Store) ConnectLastfm(ctx context.Context, userID int64, name, sessionKe
 }
 
 // SetLastfmSwitches sets what the user lets Kitsune send. Turning a switch
-// off sends nothing new of its kind; what already waits still goes. It
-// returns an error wrapping [ErrNotFound] when the user has no account.
+// off sends nothing new of its kind; what already waits still goes. Moving the
+// love line sends nothing either: only later ratings that cross it do. It
+// returns an error wrapping [rating.ErrBad] for a LoveFrom that isn't a
+// rating, and [ErrNotFound] when the user has no account.
 func (s *Store) SetLastfmSwitches(ctx context.Context, userID int64, sw LastfmSwitches) error {
+	if !sw.LoveFrom.Valid() {
+		return fmt.Errorf("set last.fm switches: love from: %w", rating.ErrBad)
+	}
 	n, err := s.wq.UpdateLastfmSwitches(ctx, sqlcdb.UpdateLastfmSwitchesParams{
-		Scrobble: flag(sw.Scrobble), NowPlaying: flag(sw.NowPlaying), Loves: flag(sw.Loves), UserID: userID,
+		Scrobble: flag(sw.Scrobble), NowPlaying: flag(sw.NowPlaying), Loves: flag(sw.Loves),
+		LoveFrom: sw.LoveFrom.Halves(), UserID: userID,
 	})
 	switch {
 	case err != nil:

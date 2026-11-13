@@ -18,7 +18,6 @@ describe('rowMenuItems', () => {
 		expect(rowMenuItems(song, everywhere)).toEqual([
 			'playNext',
 			'addToQueue',
-			'heart',
 			'rating',
 			'editTags',
 			'goToAlbum',
@@ -32,7 +31,6 @@ describe('rowMenuItems', () => {
 			'play',
 			'playNext',
 			'addToQueue',
-			'heart',
 			'rating',
 			'editTags'
 		]);

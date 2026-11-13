@@ -94,9 +94,24 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   count `plays` (imports included, but undated ones never on repeat, `store.SourceUndated`), never
   listens, and only live tracks. Recent reads plays newest first and stops at 25 albums
   (`recentAlbumsSQL`, hand-written since sqlc reads every row); `home-history` is its budget.
-- `ratings.heart_stars` is what a hearted song with no stars of its own counts as wherever stars are
-  read (0 for nothing, else 1★ to 5★ in halves). It is worked out where it's read
-  (`prefs.HeartStars.Of`, `marks.counted`), and never written or sent as a song's `stars`.
+- Stars are the only like: a song's own rating, ½★ to 5★ in halves, is what every list, filter, sort,
+  album average and shuffle weight reads. Nothing is hearted any more. The hearts people kept from
+  before (`track_hearts`, `album_hearts`, `artist_hearts`) show and weigh nowhere; they wait for
+  `POST /me/hearts/convert`, the You page's one-time card, which in one transaction rates every
+  hearted song without stars as the person chose (or leaves them unrated for `null`) and deletes all
+  of that person's hearts. `GET /me/hearts/summary` says whether the card is drawn (all zeros: not).
+  The conversion reaches no Last.fm outbox: those songs were loved through their hearts. Each song it
+  rates is a `marks` event. The tables stay until a later plan drops them, after everyone converted;
+  `Store.Heart` stays only so tests can stand in for kept hearts. A `library.columns` value naming the
+  old `heart` column comes back without it.
+- Last.fm loves follow stars: `lastfm_accounts.love_from` (halves, 4★ until moved) is the love line,
+  and `loves` its switch. `Store.Rate` and `Unrate` queue a love when a song's own rating crosses the
+  line upward (unrated counts as under it) and an unlove for the reverse, in the rating's own
+  transaction (`loveCrossed`); a change that stays on one side, and moving the line itself, send
+  nothing.
+- When an OpenSubsonic layer lands, its `star`/`unstar` map to the love line: `star` raises a song
+  rated under `love_from` (or unrated) to `love_from`, and `unstar` drops one at or over it to half a
+  star under the line.
 - Every song a client starts is a listen (`POST /me/listens`), whether or not it counts as a play:
   its start and its end share a client ID and are one `listens` row, and once ended it never
   changes. Only `skipped`, moving on while it sounds, counts against a song; pausing, a restart,
@@ -194,7 +209,7 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Tests use `internal/matching/musicbrainztest`; nothing ever talks to the real MusicBrainz.
 
 ## Import
-- `kitsune-server import navidrome FILE` brings plays, hearts and ratings over from a copy of a
+- `kitsune-server import navidrome FILE` brings plays and ratings over from a copy of a
   Navidrome database, once, while a server runs. `internal/store/navidromedb` reads it read-only and
   immutable, so nothing is created beside it, and refuses a non-empty `-wal`. It selects only the
   columns in its `schema.sql`, which sqlc generates from and `Open` checks: the file also holds
@@ -204,14 +219,17 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - It never creates tracks or accounts, and like `users add` refuses a database with migrations
   pending. Songs match by path under the paired root (`-root`, and `-map OLD=NEW` for a moved file),
   then by a release-track or recording MBID exactly one song on each side has; people by name,
-  ignoring ASCII case (`-user`). Albums are hearted through their songs, artists by match key then
-  MBID, and a rated artist is hearted. An option that names nothing is an error, not a skip.
+  ignoring ASCII case (`-user`). A starred song with a rating keeps just the rating; one without is
+  rated `-heart-stars HALVES` (default 8, 4★; 0 leaves it unrated), as `HeartRatings`, which never
+  outrank a rating another Navidrome song gives the same track. Starred albums (matched through their
+  songs) and starred or rated artists (by match key, then MBID) are counted in the report and not
+  imported. An option that names nothing is an error, not a skip.
 - Plays are `plays` rows, never `listens`, which say how much played. Client IDs
   (`navidrome:s:<scrobble>`, `navidrome:d:<song>`, `navidrome:u:<song>:<k>`) make a re-run add
   nothing. A play Navidrome kept only as a count has source `navidrome-undated` and the latest time it
   can have happened, so each song's latest play is its `play_date`; a history view leaves them out.
-  Ratings arrive as `halves = 2r` and never replace one Kitsune has; a heart keeps the earlier time.
-- Nothing an import writes reaches Last.fm: it never goes through `RecordPlay` or `Heart`, and
+  Ratings arrive as `halves = 2r` and never replace one Kitsune has.
+- Nothing an import writes reaches Last.fm: it never goes through `RecordPlay` or `Rate`, and
   `TestApplyImportQueuesNothingForLastfm` holds `lastfm_outbox` empty.
 - Below half the played or marked songs matching by path, it writes nothing (the gate); `-dry-run`
   prints the same table and writes nothing either. Playlists and bookmarks are only counted. Tests
@@ -350,10 +368,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   genre overlap and co-listening from listens outside shuffle only, so flow never learns from itself;
   with nothing known it is off.
 - A pick's `why` is structured factors, never prose: the client words them.
-- The `rated` scope and the weights take counted stars: a song's own, else `ratings.heart_stars` for
-  an unrated heart (`prefs.HeartStars.Of`, in `keeper` and `build` both). The shuffler reads the pref
-  itself; the engine only sees stars, with `ByHeart` so `why.heartStars` can say so. The heart's own
-  factor still applies on top.
+- Weights come from stars alone: the engine has no heart factor. The `rated` scope is songs whose own
+  stars are 4★ or more. A session or playback record saved with the old `hearted` scope goes on as
+  `rated` (`shuffler.ParseScope`, which both read it through).
 - The web client starts every shuffle without waiting: it picks the first song from what it holds
   and plays it, and asks `POST /me/shuffles` with it as `first` at the same time.
 

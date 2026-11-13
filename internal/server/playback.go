@@ -9,6 +9,7 @@ import (
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/playback"
+	"github.com/simonhull/kitsune/internal/shuffler"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -104,9 +105,13 @@ func (s *Server) playbackShuffle(r *http.Request, userID int64, at *playback.Shu
 	if err != nil {
 		return nil, err //nolint:wrapcheck // The store's error names what failed.
 	}
-	out := &api.PlaybackShuffle{ID: at.ID, After: at.After, Mode: sess.Mode}
-	if err = json.Unmarshal([]byte(sess.Scope), &out.Scope); err != nil {
-		return nil, fmt.Errorf("%w: scope: %w", errSessionGone, err)
+	scope, err := shuffler.ParseScope(sess.Scope)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errSessionGone, err)
+	}
+	out := &api.PlaybackShuffle{
+		ID: at.ID, After: at.After, Mode: sess.Mode,
+		Scope: api.ShuffleScope{Kind: string(scope.Kind), ID: scope.ID, Tracks: scope.Tracks},
 	}
 	return out, nil
 }

@@ -1,9 +1,8 @@
-import { starsText } from '#lib/library/stars.ts';
 import type { LibraryFilter } from '#lib/pages/libraryRows.ts';
 
 /** A person's shuffle settings, as the `shuffle.*` preferences hold them. */
 export interface ShuffleSettings {
-	/** How much ratings and hearts matter, from 0 to 1. */
+	/** How much ratings matter, from 0 to 1. */
 	ratings: number;
 	/** How much the next song leans toward one that suits the last, from 0 to 1. */
 	flow: number;
@@ -53,7 +52,6 @@ export function settingsLine({ ratings, flow, memory }: ShuffleSettings): string
 /** What each Library filter shuffles, in the island's capitals: a shuffle source's label. */
 export const libraryLabels: Readonly<Record<LibraryFilter, string>> = {
 	everything: 'THE LIBRARY',
-	hearted: 'WHAT YOU HEARTED',
 	rated: '4★ AND UP'
 };
 
@@ -61,7 +59,7 @@ export const libraryLabels: Readonly<Record<LibraryFilter, string>> = {
 export interface FabWords {
 	/** "Shuffle the library", or "Shuffle these: …" under a filter. */
 	name: string;
-	/** What the card says it shuffles: "The library", "What you hearted". */
+	/** What the card says it shuffles: "The library", "4★ and up". */
 	what: string;
 	/** The filter chip's mark, stamped on the disc; empty for the whole library. */
 	tag: string;
@@ -70,7 +68,7 @@ export interface FabWords {
 /** What the Library's Shuffle says under `filter`. */
 export function fabWords(filter: LibraryFilter): FabWords {
 	const words = libraryLabels[filter].toLowerCase();
-	const tags = { everything: '', hearted: '♥', rated: '4★' };
+	const tags = { everything: '', rated: '4★' };
 	return {
 		name: filter === 'everything' ? `Shuffle ${words}` : `Shuffle these: ${words}`,
 		what: `${words.charAt(0).toUpperCase()}${words.slice(1)}`,
@@ -100,17 +98,13 @@ function share(part: number): string {
 	return words;
 }
 
-/**
- * What "how much ratings matter" does, at its value, in a sentence; with `heartStars` above 0, what
- * an unrated heart counts as too.
- */
-export function ratingsSentence(ratings: number, heartStars = 0): string {
+/** What "how much ratings matter" does, at its value, in a sentence. */
+export function ratingsSentence(ratings: number): string {
 	if (ratings <= 0) {
-		return 'Ratings and hearts change nothing: every song comes up as often as any other.';
+		return 'Ratings change nothing: every song comes up as often as any other.';
 	}
 	const five = fiveStar ** ratings;
 	const one = oneStar ** ratings;
 	const times = five.toFixed(1).replace(/\.0$/, '');
-	const hearts = heartStars > 0 ? ` An unrated heart counts as ${starsText(heartStars)}★.` : '';
-	return `A 5★ song comes up about ${times} times as often as an unrated one, and a 1★ about ${share(one)}. Hearts give a small lift.${hearts}`;
+	return `A 5★ song comes up about ${times} times as often as an unrated one, and a 1★ about ${share(one)}.`;
 }

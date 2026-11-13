@@ -8,10 +8,11 @@
 	import { player } from '#lib/player/player.svelte.ts';
 	import { leftSpoken, tagWords, type Left } from '#lib/player/remember.ts';
 	import type { Arrival } from '#lib/player/resume.svelte.ts';
-	import HeartButton from './HeartButton.svelte';
+	import { library } from '#lib/library/library.svelte.ts';
 	import Icon from './Icon.svelte';
 	import { floor } from './floor.svelte.ts';
 	import Scrubber from './Scrubber.svelte';
+	import StarsInput from './StarsInput.svelte';
 	import { islandSlot } from './slot.svelte.ts';
 
 	interface Props {
@@ -208,14 +209,6 @@
 					player.seek(to);
 				}}
 			/>
-			<span class="favorite on-art"
-				><HeartButton
-					kind="tracks"
-					id={playing.track.id}
-					name={playing.track.title}
-					size={20}
-				/></span
-			>
 		{:else}
 			<a class="now" href={resolve('/now-playing')}>
 				<!-- Keyed apart: a change of track mustn't remount the cover it shares. -->
@@ -236,14 +229,16 @@
 				{/key}
 			</a>
 			<span class="time compact">{clock(wound ?? position)} / {clock(seconds)}</span>
-			<span class="favorite"
-				><HeartButton
-					kind="tracks"
-					id={playing.track.id}
-					name={playing.track.title}
-					size={18}
-				/></span
-			>
+			<!-- Where the heart was: the song's stars, the same control Now playing has. -->
+			<StarsInput
+				class="rating"
+				size="island"
+				value={library.marks.stars(playing.track.id)}
+				label={`Rating of ${playing.track.title}`}
+				onchange={(stars) => {
+					library.marks.rate(playing.track.id, stars);
+				}}
+			/>
 			{@render transport('island', undefined, 20)}
 		{/if}
 	</div>
@@ -443,19 +438,6 @@
 		height: 56px;
 	}
 
-	/* The shell's, so amber; on Now playing it stands on the art, and wears the accent. */
-	.favorite {
-		--heart-on: var(--star);
-		--heart-off: var(--text-secondary);
-
-		display: flex;
-	}
-
-	.favorite.on-art {
-		--heart-on: var(--accent);
-		--heart-off: var(--text);
-	}
-
 	.progress {
 		position: absolute;
 		left: 0;
@@ -635,6 +617,11 @@
 		}
 
 		.compact {
+			display: none;
+		}
+
+		/* A phone's island has no room to rate in: Now playing does it, at a finger's size. */
+		.content :global(.rating) {
 			display: none;
 		}
 

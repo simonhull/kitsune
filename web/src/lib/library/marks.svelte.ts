@@ -1,20 +1,17 @@
 import { SvelteMap } from 'svelte/reactivity';
-import { counted, heartStarsOff, type Counted } from './heartStars.ts';
 import {
 	UnauthorizedError,
 	type Album,
 	type LibraryIndex,
 	type LibrarySource,
-	type MarkKind,
 	type MarksEvent
 } from './source.ts';
 
 /** What the marks need of the server. */
-export type MarkServer = Pick<LibrarySource, 'setHeart' | 'setStars'>;
+export type MarkServer = Pick<LibrarySource, 'setStars'>;
 
-/** A change the server didn't take, which has been put back: a heart on a kind, or stars. */
+/** A rating the server didn't take, which has been put back. */
 export interface MarkFailure {
-	kind: MarkKind | 'stars';
 	id: string;
 }
 
@@ -47,6 +44,11 @@ class Lane<T> {
 
 	get(id: string): T {
 		return this.#shown.has(id) ? (this.#shown.get(id) as T) : this.#none;
+	}
+
+	/** Every value shown that isn't `none`. */
+	shown(): IterableIterator<T> {
+		return this.#shown.values();
 	}
 
 	/** Takes what the server said. An item with a change out keeps it: the answer will speak for it. */
@@ -121,70 +123,42 @@ class Lane<T> {
 }
 
 /**
- * The signed-in person's hearts and stars, by ULID: the one place every page reads them from, so a
- * heart pressed in one place shows everywhere at once. The index and album pages seed it.
+ * The signed-in person's stars, by track ULID: the one place every page reads them from, so a song
+ * rated in one place shows everywhere at once. The index and album pages seed it.
  */
 export class Marks {
-	/** The last change the server didn't take. Cleared by the next press. */
+	/** The last rating the server didn't take. Cleared by the next press. */
 	failure = $state.raw<MarkFailure | null>(null);
-	/**
-	 * What a hearted song with no stars counts as, the person's `ratings.heart_stars`: Off (0), or 1
-	 * to 5 in halves. Read from the server at sign-in; until then, and after sign-out, Off.
-	 */
-	heartStars = $state(heartStarsOff);
 
-	readonly #hearts: Record<MarkKind, Lane<boolean>>;
 	readonly #stars: Lane<number | null>;
 
 	constructor(server: MarkServer) {
-		const failed =
-			(kind: MarkFailure['kind']) =>
-			(id: string, error: unknown): void => {
-				// A lost session has gone to the door: there's nobody to tell.
-				if (!(error instanceof UnauthorizedError)) {
-					this.failure = { kind, id };
-				}
-			};
-		const hearts = (kind: MarkKind): Lane<boolean> =>
-			new Lane(false, (id, on) => server.setHeart(kind, id, on), failed(kind));
-		this.#hearts = {
-			tracks: hearts('tracks'),
-			albums: hearts('albums'),
-			artists: hearts('artists')
-		};
 		this.#stars = new Lane<number | null>(
 			null,
 			(id, stars) => server.setStars(id, stars),
-			failed('stars')
+			(id, error) => {
+				// A lost session has gone to the door: there's nobody to tell.
+				if (!(error instanceof UnauthorizedError)) {
+					this.failure = { id };
+				}
+			}
 		);
 	}
 
-	hearted(kind: MarkKind, id: string): boolean {
-		return this.#hearts[kind].get(id);
-	}
-
-	/** A track's own stars, ½ to 5 in halves, or null when it's unrated: what a press compares with. */
+	/** A track's stars, ½ to 5 in halves, or null when it's unrated. */
 	stars(trackId: string): number | null {
 		return this.#stars.get(trackId);
 	}
 
-	/**
-	 * The stars a track counts as wherever ratings matter: its own, else its heart's, else null. A
-	 * heart on its album or artist gives it none.
-	 */
-	counted(trackId: string): Counted | null {
-		return counted(this.#stars.get(trackId), this.#hearts.tracks.get(trackId), this.heartStars);
-	}
-
-	toggle(kind: MarkKind, id: string): void {
-		this.failure = null;
-		this.#hearts[kind].want(id, !this.hearted(kind, id));
-	}
-
-	/** Hearts or unhearts, whatever it was: what a selection's heart does to each of its songs. */
-	setHeart(kind: MarkKind, id: string, on: boolean): void {
-		this.failure = null;
-		this.#hearts[kind].want(id, on);
+	/** How many songs are rated `stars` or more: those over the Last.fm love line, say. */
+	ratedAtLeast(stars: number): number {
+		let n = 0;
+		for (const rated of this.#stars.shown()) {
+			if (rated !== null && rated >= stars) {
+				n += 1;
+			}
+		}
+		return n;
 	}
 
 	rate(trackId: string, stars: number | null): void {
@@ -193,50 +167,31 @@ export class Marks {
 	}
 
 	/**
-	 * Takes in a change the person made on another device, as the server reports it. A press of this
-	 * one's still out keeps what it shows: its answer speaks for it.
+	 * Takes in a rating the person gave on another device, or their hearts became, as the server
+	 * reports it. A press of this one's still out keeps what it shows: its answer speaks for it.
 	 */
-	heard({ kind, id, hearted, stars }: MarksEvent): void {
-		if (hearted !== undefined) {
-			this.#hearts[kind].seed(id, hearted);
-		}
-		if (stars !== undefined) {
-			this.#stars.seed(id, stars === 0 ? null : stars);
-		}
+	heard({ id, stars }: MarksEvent): void {
+		this.#stars.seed(id, stars === 0 ? null : stars);
 	}
 
 	seedIndex({ artists }: LibraryIndex): void {
 		for (const artist of artists) {
-			if (artist.id !== undefined) {
-				this.#hearts.artists.seed(artist.id, artist.hearted);
-			}
 			for (const album of artist.albums) {
-				this.#hearts.albums.seed(album.id, album.hearted);
 				for (const track of album.tracks) {
-					this.#seedTrack(track);
+					this.#stars.seed(track.id, track.stars ?? null);
 				}
 			}
 		}
 	}
 
 	seedAlbum(album: Album): void {
-		this.#hearts.albums.seed(album.id, album.hearted);
 		for (const track of album.tracks) {
-			this.#seedTrack(track);
+			this.#stars.seed(track.id, track.stars ?? null);
 		}
 	}
 
 	reset(): void {
 		this.failure = null;
-		this.heartStars = heartStarsOff;
-		for (const lane of Object.values(this.#hearts)) {
-			lane.reset();
-		}
 		this.#stars.reset();
-	}
-
-	#seedTrack({ id, hearted, stars }: { id: string; hearted: boolean; stars?: number }): void {
-		this.#hearts.tracks.seed(id, hearted);
-		this.#stars.seed(id, stars ?? null);
 	}
 }

@@ -9,35 +9,14 @@ import (
 	"context"
 )
 
-const albumHearted = `-- name: AlbumHearted :one
-
-SELECT EXISTS (
-    SELECT 1 FROM album_hearts h JOIN albums a ON a.id = h.album_id
-    WHERE h.user_id = ?1 AND a.ulid = ?2
-)
-`
-
-type AlbumHeartedParams struct {
-	UserID int64
-	Album  string
-}
-
-// One album's marks, for its page.
-func (q *Queries) AlbumHearted(ctx context.Context, arg AlbumHeartedParams) (bool, error) {
-	row := q.queryRow(ctx, q.albumHeartedStmt, albumHearted, arg.UserID, arg.Album)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const albumRowID = `-- name: AlbumRowID :one
 
 SELECT id FROM albums WHERE ulid = ?
 `
 
-// A person's hearts and stars. A write finds its item by row ID, which the caller
-// looked up by ULID in the same transaction, so an unknown ULID is known apart from
-// a heart that was already there.
+// A person's stars, and the hearts they kept from before stars were the only like.
+// A write finds its item by row ID, which the caller looked up by ULID in the same
+// transaction, so an unknown ULID is known apart from a mark that was already there.
 func (q *Queries) AlbumRowID(ctx context.Context, ulid string) (int64, error) {
 	row := q.queryRow(ctx, q.albumRowIDStmt, albumRowID, ulid)
 	var id int64
@@ -56,45 +35,97 @@ func (q *Queries) ArtistRowID(ctx context.Context, ulid string) (int64, error) {
 	return id, err
 }
 
-const deleteAlbumHeart = `-- name: DeleteAlbumHeart :exec
-DELETE FROM album_hearts WHERE user_id = ? AND album_id = ?
+const countAlbumHearts = `-- name: CountAlbumHearts :one
+SELECT count(*) FROM album_hearts WHERE user_id = ?
 `
 
-type DeleteAlbumHeartParams struct {
-	UserID  int64
-	AlbumID int64
+func (q *Queries) CountAlbumHearts(ctx context.Context, userID int64) (int64, error) {
+	row := q.queryRow(ctx, q.countAlbumHeartsStmt, countAlbumHearts, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
-func (q *Queries) DeleteAlbumHeart(ctx context.Context, arg DeleteAlbumHeartParams) error {
-	_, err := q.exec(ctx, q.deleteAlbumHeartStmt, deleteAlbumHeart, arg.UserID, arg.AlbumID)
-	return err
-}
-
-const deleteArtistHeart = `-- name: DeleteArtistHeart :exec
-DELETE FROM artist_hearts WHERE user_id = ? AND artist_id = ?
+const countArtistHearts = `-- name: CountArtistHearts :one
+SELECT count(*) FROM artist_hearts WHERE user_id = ?
 `
 
-type DeleteArtistHeartParams struct {
-	UserID   int64
-	ArtistID int64
+func (q *Queries) CountArtistHearts(ctx context.Context, userID int64) (int64, error) {
+	row := q.queryRow(ctx, q.countArtistHeartsStmt, countArtistHearts, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
-func (q *Queries) DeleteArtistHeart(ctx context.Context, arg DeleteArtistHeartParams) error {
-	_, err := q.exec(ctx, q.deleteArtistHeartStmt, deleteArtistHeart, arg.UserID, arg.ArtistID)
-	return err
-}
+const countHeartedTracksByRating = `-- name: CountHeartedTracksByRating :many
 
-const deleteTrackHeart = `-- name: DeleteTrackHeart :execrows
-DELETE FROM track_hearts WHERE user_id = ? AND track_id = ?
+SELECT CAST(coalesce(r.halves, 0) AS INTEGER) AS halves, count(*) AS songs
+FROM track_hearts h
+LEFT JOIN track_ratings r ON r.user_id = h.user_id AND r.track_id = h.track_id
+WHERE h.user_id = ?
+GROUP BY 1
+ORDER BY 1
 `
 
-type DeleteTrackHeartParams struct {
-	UserID  int64
-	TrackID int64
+type CountHeartedTracksByRatingRow struct {
+	Halves int64
+	Songs  int64
 }
 
-func (q *Queries) DeleteTrackHeart(ctx context.Context, arg DeleteTrackHeartParams) (int64, error) {
-	result, err := q.exec(ctx, q.deleteTrackHeartStmt, deleteTrackHeart, arg.UserID, arg.TrackID)
+// The hearts a person kept, for the one-time change that turns them into stars.
+func (q *Queries) CountHeartedTracksByRating(ctx context.Context, userID int64) ([]CountHeartedTracksByRatingRow, error) {
+	rows, err := q.query(ctx, q.countHeartedTracksByRatingStmt, countHeartedTracksByRating, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountHeartedTracksByRatingRow
+	for rows.Next() {
+		var i CountHeartedTracksByRatingRow
+		if err := rows.Scan(&i.Halves, &i.Songs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteAlbumHearts = `-- name: DeleteAlbumHearts :execrows
+DELETE FROM album_hearts WHERE user_id = ?
+`
+
+func (q *Queries) DeleteAlbumHearts(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.exec(ctx, q.deleteAlbumHeartsStmt, deleteAlbumHearts, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteArtistHearts = `-- name: DeleteArtistHearts :execrows
+DELETE FROM artist_hearts WHERE user_id = ?
+`
+
+func (q *Queries) DeleteArtistHearts(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.exec(ctx, q.deleteArtistHeartsStmt, deleteArtistHearts, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteTrackHearts = `-- name: DeleteTrackHearts :execrows
+DELETE FROM track_hearts WHERE user_id = ?
+`
+
+func (q *Queries) DeleteTrackHearts(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.exec(ctx, q.deleteTrackHeartsStmt, deleteTrackHearts, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -113,6 +144,22 @@ type DeleteTrackRatingParams struct {
 func (q *Queries) DeleteTrackRating(ctx context.Context, arg DeleteTrackRatingParams) error {
 	_, err := q.exec(ctx, q.deleteTrackRatingStmt, deleteTrackRating, arg.UserID, arg.TrackID)
 	return err
+}
+
+const getTrackRating = `-- name: GetTrackRating :one
+SELECT halves FROM track_ratings WHERE user_id = ? AND track_id = ?
+`
+
+type GetTrackRatingParams struct {
+	UserID  int64
+	TrackID int64
+}
+
+func (q *Queries) GetTrackRating(ctx context.Context, arg GetTrackRatingParams) (int64, error) {
+	row := q.queryRow(ctx, q.getTrackRatingStmt, getTrackRating, arg.UserID, arg.TrackID)
+	var halves int64
+	err := row.Scan(&halves)
+	return halves, err
 }
 
 const insertAlbumHeart = `-- name: InsertAlbumHeart :exec
@@ -147,7 +194,7 @@ func (q *Queries) InsertArtistHeart(ctx context.Context, arg InsertArtistHeartPa
 	return err
 }
 
-const insertTrackHeart = `-- name: InsertTrackHeart :execrows
+const insertTrackHeart = `-- name: InsertTrackHeart :exec
 INSERT INTO track_hearts (user_id, track_id, hearted_at) VALUES (?, ?, ?)
 ON CONFLICT (user_id, track_id) DO NOTHING
 `
@@ -158,51 +205,13 @@ type InsertTrackHeartParams struct {
 	HeartedAt int64
 }
 
-func (q *Queries) InsertTrackHeart(ctx context.Context, arg InsertTrackHeartParams) (int64, error) {
-	result, err := q.exec(ctx, q.insertTrackHeartStmt, insertTrackHeart, arg.UserID, arg.TrackID, arg.HeartedAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const listAlbumHeartedTracks = `-- name: ListAlbumHeartedTracks :many
-SELECT t.ulid
-FROM track_hearts h
-JOIN tracks t ON t.id = h.track_id
-JOIN albums a ON a.id = t.album_id
-WHERE h.user_id = ?1 AND a.ulid = ?2
-`
-
-type ListAlbumHeartedTracksParams struct {
-	UserID int64
-	Album  string
-}
-
-func (q *Queries) ListAlbumHeartedTracks(ctx context.Context, arg ListAlbumHeartedTracksParams) ([]string, error) {
-	rows, err := q.query(ctx, q.listAlbumHeartedTracksStmt, listAlbumHeartedTracks, arg.UserID, arg.Album)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var ulid string
-		if err := rows.Scan(&ulid); err != nil {
-			return nil, err
-		}
-		items = append(items, ulid)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) InsertTrackHeart(ctx context.Context, arg InsertTrackHeartParams) error {
+	_, err := q.exec(ctx, q.insertTrackHeartStmt, insertTrackHeart, arg.UserID, arg.TrackID, arg.HeartedAt)
+	return err
 }
 
 const listAlbumTrackRatings = `-- name: ListAlbumTrackRatings :many
+
 SELECT t.ulid, r.halves
 FROM track_ratings r
 JOIN tracks t ON t.id = r.track_id
@@ -220,6 +229,7 @@ type ListAlbumTrackRatingsRow struct {
 	Halves int64
 }
 
+// One album's ratings, for its page.
 func (q *Queries) ListAlbumTrackRatings(ctx context.Context, arg ListAlbumTrackRatingsParams) ([]ListAlbumTrackRatingsRow, error) {
 	rows, err := q.query(ctx, q.listAlbumTrackRatingsStmt, listAlbumTrackRatings, arg.UserID, arg.Album)
 	if err != nil {
@@ -243,90 +253,8 @@ func (q *Queries) ListAlbumTrackRatings(ctx context.Context, arg ListAlbumTrackR
 	return items, nil
 }
 
-const listHeartedAlbums = `-- name: ListHeartedAlbums :many
-SELECT a.ulid FROM album_hearts h JOIN albums a ON a.id = h.album_id WHERE h.user_id = ?
-`
-
-func (q *Queries) ListHeartedAlbums(ctx context.Context, userID int64) ([]string, error) {
-	rows, err := q.query(ctx, q.listHeartedAlbumsStmt, listHeartedAlbums, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var ulid string
-		if err := rows.Scan(&ulid); err != nil {
-			return nil, err
-		}
-		items = append(items, ulid)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listHeartedArtists = `-- name: ListHeartedArtists :many
-SELECT a.ulid FROM artist_hearts h JOIN artists a ON a.id = h.artist_id WHERE h.user_id = ?
-`
-
-func (q *Queries) ListHeartedArtists(ctx context.Context, userID int64) ([]string, error) {
-	rows, err := q.query(ctx, q.listHeartedArtistsStmt, listHeartedArtists, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var ulid string
-		if err := rows.Scan(&ulid); err != nil {
-			return nil, err
-		}
-		items = append(items, ulid)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listHeartedTracks = `-- name: ListHeartedTracks :many
-
-SELECT t.ulid FROM track_hearts h JOIN tracks t ON t.id = h.track_id WHERE h.user_id = ?
-`
-
-// Everything a person has marked, by ULID, for the library index.
-func (q *Queries) ListHeartedTracks(ctx context.Context, userID int64) ([]string, error) {
-	rows, err := q.query(ctx, q.listHeartedTracksStmt, listHeartedTracks, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var ulid string
-		if err := rows.Scan(&ulid); err != nil {
-			return nil, err
-		}
-		items = append(items, ulid)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listTrackRatings = `-- name: ListTrackRatings :many
+
 SELECT t.ulid, r.halves FROM track_ratings r JOIN tracks t ON t.id = r.track_id WHERE r.user_id = ?
 `
 
@@ -335,6 +263,7 @@ type ListTrackRatingsRow struct {
 	Halves int64
 }
 
+// Every rating a person has, by ULID, for the library index.
 func (q *Queries) ListTrackRatings(ctx context.Context, userID int64) ([]ListTrackRatingsRow, error) {
 	rows, err := q.query(ctx, q.listTrackRatingsStmt, listTrackRatings, userID)
 	if err != nil {
@@ -345,6 +274,60 @@ func (q *Queries) ListTrackRatings(ctx context.Context, userID int64) ([]ListTra
 	for rows.Next() {
 		var i ListTrackRatingsRow
 		if err := rows.Scan(&i.Ulid, &i.Halves); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnratedHeartedTracks = `-- name: ListUnratedHeartedTracks :many
+SELECT t.id, t.ulid, t.title,
+    CAST(coalesce((
+        SELECT ar.name FROM track_artists ta JOIN artists ar ON ar.id = ta.artist_id
+        WHERE ta.track_id = t.id AND ta.role = 'artist' ORDER BY ta.ord LIMIT 1
+    ), '') AS TEXT) AS artist
+FROM track_hearts h
+JOIN tracks t ON t.id = h.track_id
+WHERE h.user_id = ?1
+  AND NOT EXISTS (SELECT 1 FROM track_ratings r WHERE r.user_id = h.user_id AND r.track_id = h.track_id)
+ORDER BY h.hearted_at DESC, t.id
+LIMIT ?2
+`
+
+type ListUnratedHeartedTracksParams struct {
+	UserID int64
+	Limit  int64
+}
+
+type ListUnratedHeartedTracksRow struct {
+	ID     int64
+	Ulid   string
+	Title  string
+	Artist string
+}
+
+func (q *Queries) ListUnratedHeartedTracks(ctx context.Context, arg ListUnratedHeartedTracksParams) ([]ListUnratedHeartedTracksRow, error) {
+	rows, err := q.query(ctx, q.listUnratedHeartedTracksStmt, listUnratedHeartedTracks, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUnratedHeartedTracksRow
+	for rows.Next() {
+		var i ListUnratedHeartedTracksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ulid,
+			&i.Title,
+			&i.Artist,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

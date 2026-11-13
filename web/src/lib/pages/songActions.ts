@@ -109,7 +109,6 @@ export type RowMenuItem =
 	| 'play'
 	| 'playNext'
 	| 'addToQueue'
-	| 'heart'
 	| 'rating'
 	| 'editTags'
 	| 'remove'
@@ -130,7 +129,7 @@ export function rowMenuItems(
 	if (target.kind === 'picked') {
 		items.push('play');
 	}
-	items.push('playNext', 'addToQueue', 'heart', 'rating');
+	items.push('playNext', 'addToQueue', 'rating');
 	if (context.editable) {
 		items.push('editTags');
 	}
@@ -156,8 +155,6 @@ export interface SongActions {
 	shuffle(): void;
 	playNext(): void;
 	addToQueue(): void;
-	/** Hearts them all, unless every one is hearted already: then the hearts come off. */
-	heart(): void;
 	rate(stars: number | null): void;
 	/** Set when they're all on one album the person may edit. */
 	editTags: (() => void) | undefined;
@@ -193,12 +190,6 @@ export function actionsFor(
 		addToQueue: queued((songs) => {
 			player.addToQueue(songs);
 		}),
-		heart() {
-			const on = !trackIds.every((id) => library.marks.hearted('tracks', id));
-			for (const id of trackIds) {
-				library.marks.setHeart('tracks', id, on);
-			}
-		},
 		rate(stars) {
 			for (const id of trackIds) {
 				library.marks.rate(id, stars);

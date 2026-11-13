@@ -3,16 +3,16 @@ import { partOf, patchIndex } from './indexPatch';
 import type { LibraryAlbum, LibraryArtist, LibraryIndex } from './source';
 
 function album(id: string): LibraryAlbum {
-	return { id, title: id, artist: '', compilation: false, hearted: false, tracks: [] };
+	return { id, title: id, artist: '', compilation: false, tracks: [] };
 }
 
 function artist(name: string, ...albums: string[]): LibraryArtist {
-	return { id: `ar-${name}`, name, sortName: name, hearted: false, albums: albums.map(album) };
+	return { id: `ar-${name}`, name, sortName: name, albums: albums.map(album) };
 }
 
 /** A heading with nobody to link to, as a compilation's. */
 function nobody(name: string, ...albums: string[]): LibraryArtist {
-	return { name, sortName: name, hearted: false, albums: albums.map(album) };
+	return { name, sortName: name, albums: albums.map(album) };
 }
 
 const before: LibraryIndex = {

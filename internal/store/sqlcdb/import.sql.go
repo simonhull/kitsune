@@ -10,94 +10,6 @@ import (
 	"strings"
 )
 
-const earlierAlbumHeart = `-- name: EarlierAlbumHeart :exec
-UPDATE album_hearts SET hearted_at = ?1
-WHERE user_id = ?2 AND album_id = ?3 AND hearted_at > ?1
-`
-
-type EarlierAlbumHeartParams struct {
-	HeartedAt int64
-	UserID    int64
-	AlbumID   int64
-}
-
-func (q *Queries) EarlierAlbumHeart(ctx context.Context, arg EarlierAlbumHeartParams) error {
-	_, err := q.exec(ctx, q.earlierAlbumHeartStmt, earlierAlbumHeart, arg.HeartedAt, arg.UserID, arg.AlbumID)
-	return err
-}
-
-const earlierArtistHeart = `-- name: EarlierArtistHeart :exec
-UPDATE artist_hearts SET hearted_at = ?1
-WHERE user_id = ?2 AND artist_id = ?3 AND hearted_at > ?1
-`
-
-type EarlierArtistHeartParams struct {
-	HeartedAt int64
-	UserID    int64
-	ArtistID  int64
-}
-
-func (q *Queries) EarlierArtistHeart(ctx context.Context, arg EarlierArtistHeartParams) error {
-	_, err := q.exec(ctx, q.earlierArtistHeartStmt, earlierArtistHeart, arg.HeartedAt, arg.UserID, arg.ArtistID)
-	return err
-}
-
-const earlierTrackHeart = `-- name: EarlierTrackHeart :exec
-
-UPDATE track_hearts SET hearted_at = ?1
-WHERE user_id = ?2 AND track_id = ?3 AND hearted_at > ?1
-`
-
-type EarlierTrackHeartParams struct {
-	HeartedAt int64
-	UserID    int64
-	TrackID   int64
-}
-
-// A heart that was there keeps the earlier time: hearted_at is the first heart.
-func (q *Queries) EarlierTrackHeart(ctx context.Context, arg EarlierTrackHeartParams) error {
-	_, err := q.exec(ctx, q.earlierTrackHeartStmt, earlierTrackHeart, arg.HeartedAt, arg.UserID, arg.TrackID)
-	return err
-}
-
-const importAlbumHeart = `-- name: ImportAlbumHeart :execrows
-INSERT INTO album_hearts (user_id, album_id, hearted_at) VALUES (?, ?, ?)
-ON CONFLICT (user_id, album_id) DO NOTHING
-`
-
-type ImportAlbumHeartParams struct {
-	UserID    int64
-	AlbumID   int64
-	HeartedAt int64
-}
-
-func (q *Queries) ImportAlbumHeart(ctx context.Context, arg ImportAlbumHeartParams) (int64, error) {
-	result, err := q.exec(ctx, q.importAlbumHeartStmt, importAlbumHeart, arg.UserID, arg.AlbumID, arg.HeartedAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const importArtistHeart = `-- name: ImportArtistHeart :execrows
-INSERT INTO artist_hearts (user_id, artist_id, hearted_at) VALUES (?, ?, ?)
-ON CONFLICT (user_id, artist_id) DO NOTHING
-`
-
-type ImportArtistHeartParams struct {
-	UserID    int64
-	ArtistID  int64
-	HeartedAt int64
-}
-
-func (q *Queries) ImportArtistHeart(ctx context.Context, arg ImportArtistHeartParams) (int64, error) {
-	result, err := q.exec(ctx, q.importArtistHeartStmt, importArtistHeart, arg.UserID, arg.ArtistID, arg.HeartedAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const importArtists = `-- name: ImportArtists :many
 SELECT ulid, match_key, mbid FROM artists ORDER BY id
 `
@@ -248,20 +160,4 @@ func (q *Queries) ImportTracks(ctx context.Context) ([]ImportTracksRow, error) {
 		return nil, err
 	}
 	return items, nil
-}
-
-const trackRatingHalves = `-- name: TrackRatingHalves :one
-SELECT halves FROM track_ratings WHERE user_id = ? AND track_id = ?
-`
-
-type TrackRatingHalvesParams struct {
-	UserID  int64
-	TrackID int64
-}
-
-func (q *Queries) TrackRatingHalves(ctx context.Context, arg TrackRatingHalvesParams) (int64, error) {
-	row := q.queryRow(ctx, q.trackRatingHalvesStmt, trackRatingHalves, arg.UserID, arg.TrackID)
-	var halves int64
-	err := row.Scan(&halves)
-	return halves, err
 }

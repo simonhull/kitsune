@@ -22,9 +22,10 @@ Commands:
   users passwd NAME   set a user's password and sign them out everywhere
                    (-password-stdin, -keep-sessions, -config FILE)
   users list       print every user's name and role (-config FILE)
-  import navidrome FILE   bring plays, hearts and ratings over from a copy of
-                   a Navidrome database (-dry-run, -v, -user ND=KITSUNE,
-                   -root ND=KITSUNE, -map OLD=NEW, -config FILE)
+  import navidrome FILE   bring plays and ratings over from a copy of a
+                   Navidrome database, rating starred songs with none
+                   (-dry-run, -v, -user ND=KITSUNE, -root ND=KITSUNE,
+                   -map OLD=NEW, -heart-stars HALVES, -config FILE)
   version   print the version and exit
   help      print this help and exit
 

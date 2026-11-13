@@ -31,8 +31,8 @@ describe('the live connection', () => {
 		expect(streams).toHaveLength(1);
 		streams[0]?.open();
 		streams[0]?.send('ready', {});
-		streams[0]?.send('marks', { kind: 'tracks', id: 't1', hearted: true });
-		expect(marks).toHaveBeenCalledWith({ kind: 'tracks', id: 't1', hearted: true });
+		streams[0]?.send('marks', { kind: 'tracks', id: 't1' });
+		expect(marks).toHaveBeenCalledWith({ kind: 'tracks', id: 't1' });
 		expect(live.connected).toBe(true);
 	});
 

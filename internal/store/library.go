@@ -203,7 +203,7 @@ func nullStr(v string) *string {
 }
 
 // inTx runs fn in a writer transaction. Its queries are prepared as they run, which is the cheap way
-// for a write of a statement or two: a heart, a listen, a setting. A write that runs statements many
+// for a write of a statement or two: a rating, a listen, a setting. A write that runs statements many
 // times goes through [Store.inPreparedTx]. It commits if fn returns nil, as [inTransaction] does.
 func (s *Store) inTx(ctx context.Context, fn func(q *sqlcdb.Queries, tx *sql.Tx) error) (err error) {
 	conn, err := s.w.Conn(ctx)

@@ -82,25 +82,38 @@ func generate(sh shape) library {
 	return lib
 }
 
-// add appends a song by artists on album, with a rating, heart and history
-// drawn the way a real library's fall: most unrated or middling, rated near
-// what the person thinks of the artist, a few hearted, most played at some
-// point in the last year.
+// add appends a song by artists on album, with a rating and history drawn the
+// way a real library's fall: most unrated or middling, rated near what the
+// person thinks of the artist, a few once hearted, most played at some point in
+// the last year.
+//
+// A song once hearted and never rated has heartStars, as a person who turns
+// their hearts into stars gives it; one they rated keeps its rating. The heart
+// is drawn where it always was, so every other draw, and the library, stays as
+// it was before stars were the only like.
 func (l *library) add(r *rand.Rand, artists []shuffle.ArtistID, album shuffle.AlbumID) {
 	t := shuffle.Track{
 		ID:      shuffle.TrackID(len(l.tracks) + 1),
 		Artists: artists,
 		Album:   album,
-		Hearted: r.Float64() < 0.06,
 	}
+	hearted := r.Float64() < 0.06
 	if r.Float64() < 0.6 {
 		t.Stars = 2 * shuffle.Stars(min(wholeStars, max(1, math.Round(l.taste[artists[0]]+0.8*r.NormFloat64()))))
+	}
+	if hearted && t.Stars == shuffle.Unrated {
+		t.Stars = heartStars
 	}
 	if r.Float64() < 0.6 {
 		t.History.LastPlayed = now.Add(-time.Duration(r.Float64() * 400 * float64(day)))
 	}
 	l.tracks = append(l.tracks, t)
 }
+
+// heartStars is what a heart stood for in the bench, 4★: at the default
+// settings the engine's heart factor was ×1.25 over an unrated song's ×1, and
+// 4★ weighs ×1.26.
+const heartStars shuffle.Stars = 8
 
 // wholeStars is the highest rating in whole stars, 5. The bench reports by
 // whole stars, a half rounded up.

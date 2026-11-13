@@ -19,6 +19,7 @@ const (
 	kindSongs    = "songs"
 	kindList     = "list"
 	kindShuffle  = "shuffle"
+	deviceTablet = "tablet"
 )
 
 // playbackFixture is a server with two albums of five songs and a signed-in admin.
@@ -230,7 +231,7 @@ func TestPlaybackKeepsItsShuffle(t *testing.T) {
 	first := songsOf(&page)[0]
 	save := &api.PlaybackSave{
 		Kind: kindShuffle, Tracks: []string{first}, Shuffle: &api.PlaybackShuffleSave{ID: page.ID, After: 1},
-		ClientID: aClientID, Device: "tablet",
+		ClientID: aClientID, Device: deviceTablet,
 	}
 	wantNoContent(t, ts.putPlayback(t, sess.token, save))
 	got := ts.playback(t, sess.token)
@@ -248,7 +249,7 @@ func TestPlaybackLeavesAnotherPersonsShuffle(t *testing.T) {
 	first := songsOf(&page)[0]
 	save := &api.PlaybackSave{
 		Kind: kindShuffle, Tracks: []string{first}, Shuffle: &api.PlaybackShuffleSave{ID: page.ID, After: 1},
-		ClientID: aClientID, Device: "tablet",
+		ClientID: aClientID, Device: deviceTablet,
 	}
 	other := ts.tokenFor(t, store.RoleUser)
 	wantNoContent(t, ts.putPlayback(t, other, save))

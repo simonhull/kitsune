@@ -71,18 +71,13 @@ export function whyLine(why: ShuffleWhy, songs = 1): string {
 	if (why.after !== undefined && why.flow > leans) {
 		facts.push(`close to ${why.after.name}`);
 	}
-	// Stars a heart gave name their source, so they never claim a rating the person didn't give.
-	const byHeart = why.stars > 0 && why.heartStars > 0;
 	if (why.stars > 0) {
-		facts.push(byHeart ? `${starsMark(why.stars)} by heart` : starsMark(why.stars));
-	}
-	if (why.hearted && !byHeart) {
-		facts.push('hearted');
+		facts.push(starsMark(why.stars));
 	}
 	if (!why.played) {
 		facts.push('never played', 'a nudge for new');
 	}
-	if (why.stars <= 0 && !why.hearted && why.played) {
+	if (why.stars <= 0 && why.played) {
 		facts.push('unrated');
 	}
 	if (why.played && why.sinceDays >= unheardDays) {
@@ -123,14 +118,7 @@ function heardWhen({ played, sinceDays }: ShuffleWhy): string {
 
 /** Every factor behind the song's weight, in words, for the popover. */
 export function whyFactors(why: ShuffleWhy): WhyFactor[] {
-	const rated =
-		why.heartStars > 0
-			? `Rated ${starsMark(why.stars)} · from your heart`
-			: `Rated ${starsMark(why.stars)}`;
-	const out = [factor(why.stars > 0 ? rated : 'Unrated', why.rating)];
-	if (why.hearted) {
-		out.push(factor('Hearted', why.heart));
-	}
+	const out = [factor(why.stars > 0 ? `Rated ${starsMark(why.stars)}` : 'Unrated', why.rating)];
 	out.push(factor(heardWhen(why), why.recency));
 	if (why.memory) {
 		if (why.earlySkips > 0) {

@@ -172,9 +172,8 @@ type AlbumPlays struct {
 // Listening is the response to GET /me/listening: what the caller has done
 // with the library, counted.
 type Listening struct {
-	Plays  int `json:"plays"`
-	Hearts int `json:"hearts"`
-	Rated  int `json:"rated"`
+	Plays int `json:"plays"`
+	Rated int `json:"rated"`
 }
 
 // LastfmStatus is the response to GET and PATCH /me/lastfm. It never carries
@@ -188,6 +187,9 @@ type LastfmStatus struct {
 	Scrobble   bool   `json:"scrobble"`
 	NowPlaying bool   `json:"nowPlaying"`
 	Loves      bool   `json:"loves"`
+	// LoveFrom is the love line: with Loves on, a song rated at or over it is
+	// loved, and one that falls under it is unloved. ½ to 5 in halves.
+	LoveFrom float64 `json:"loveFrom"`
 	// State is LastfmOK, LastfmWaiting or LastfmReconnect.
 	State string `json:"state"`
 	// Waiting counts the plays the server holds for Last.fm.
@@ -203,6 +205,48 @@ type LastfmSwitches struct {
 	Scrobble   *bool `json:"scrobble,omitzero"`
 	NowPlaying *bool `json:"nowPlaying,omitzero"`
 	Loves      *bool `json:"loves,omitzero"`
+	// LoveFrom moves the love line, ½ to 5 in halves. Songs already rated
+	// send nothing; only later ratings that cross it do.
+	LoveFrom *float64 `json:"loveFrom,omitzero"`
+}
+
+// HeartsSummary is the response to GET /me/hearts/summary: the hearts the
+// caller kept from before stars were the only like. All zeros, no card.
+type HeartsSummary struct {
+	// TracksRated and TracksUnrated count the hearted songs with and without
+	// stars of their own.
+	TracksRated   int `json:"tracksRated"`
+	TracksUnrated int `json:"tracksUnrated"`
+	Albums        int `json:"albums"`
+	Artists       int `json:"artists"`
+	// ByStars counts the hearted, rated songs at 1★ to 5★, a half rounding up.
+	ByStars []int `json:"byStars"`
+	// Preview is up to five of the unrated hearted songs.
+	Preview []HeartedSong `json:"preview"`
+}
+
+// HeartedSong is a song in a [HeartsSummary]'s preview.
+type HeartedSong struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Artist string `json:"artist,omitzero"`
+}
+
+// HeartsConvert is the body of POST /me/hearts/convert: the stars every
+// hearted song without any gets, ½ to 5 in halves, or null for none. Stars
+// must be there: an empty body chooses nothing.
+type HeartsConvert struct {
+	Stars jsontext.Value `json:"stars"`
+}
+
+// HeartsConverted is the response to POST /me/hearts/convert: what it wrote.
+type HeartsConverted struct {
+	// Rated counts the songs given stars.
+	Rated int `json:"rated"`
+	// Tracks, Albums and Artists count the hearts taken off.
+	Tracks  int `json:"tracks"`
+	Albums  int `json:"albums"`
+	Artists int `json:"artists"`
 }
 
 // LastfmConnect is the response to POST /me/lastfm/connect: the last.fm page
@@ -226,13 +270,12 @@ type EventLibrary struct {
 	All    bool     `json:"all"` // Too many to list: read the index again.
 }
 
-// EventMarks is a marks event: a heart or a rating changed. Hearted comes with
-// a heart and Stars, ½ to 5 in halves or 0 for none, with a rating.
+// EventMarks is a marks event: the person rated a song, or rated many at once
+// as their hearts became stars. Stars is ½ to 5 in halves, or 0 for none.
 type EventMarks struct {
-	Kind    string   `json:"kind"` // tracks, albums or artists, as the routes name them.
-	ID      string   `json:"id"`
-	Hearted *bool    `json:"hearted,omitempty"`
-	Stars   *float64 `json:"stars,omitempty"`
+	Kind  string  `json:"kind"` // Always tracks, as the routes name them.
+	ID    string  `json:"id"`
+	Stars float64 `json:"stars"`
 }
 
 // EventPrefs is a prefs event: the key of the preference that changed.
@@ -342,9 +385,8 @@ type Track struct {
 	Genres       []string `json:"genres"`
 	// Etag changes when the file does. It is not the stream's ETag.
 	Etag string `json:"etag"`
-	// Hearted and Stars are the caller's own. Stars is absent when unrated.
-	Hearted bool    `json:"hearted"`
-	Stars   float64 `json:"stars,omitzero"` // ½ to 5 in halves.
+	// Stars are the caller's own, absent when unrated.
+	Stars float64 `json:"stars,omitzero"` // ½ to 5 in halves.
 }
 
 // TrackDetail is the response to GET /tracks/{id}: a [Track], and its
@@ -461,8 +503,6 @@ type AlbumDetail struct {
 	DisplayGenres []string `json:"displayGenres"`
 	// Etag is the If-Match value for POST /albums/{id}/edits.
 	Etag string `json:"etag"`
-	// Hearted is whether the caller has hearted the album.
-	Hearted bool `json:"hearted"`
 }
 
 // ArtistEntry is an artist as a list shows it. AlbumCount counts the albums it
@@ -524,12 +564,11 @@ type LibraryIndex struct {
 
 // LibraryArtist is one heading of the library index. ID is empty for a group
 // with no owner a reader shows, such as Various Artists. The index carries the
-// caller's own hearts and stars.
+// caller's own stars.
 type LibraryArtist struct {
 	ID       string         `json:"id,omitzero"`
 	Name     string         `json:"name"`
 	SortName string         `json:"sortName"`
-	Hearted  bool           `json:"hearted"`
 	Albums   []LibraryAlbum `json:"albums"`
 }
 
@@ -539,7 +578,6 @@ type LibraryAlbum struct {
 	Title       string         `json:"title"`
 	Artist      string         `json:"artist"`
 	Compilation bool           `json:"compilation"`
-	Hearted     bool           `json:"hearted"`
 	Year        int            `json:"year,omitzero"`
 	Artwork     *Artwork       `json:"artwork,omitzero"`
 	Tracks      []LibraryTrack `json:"tracks"`
@@ -571,7 +609,6 @@ type LibraryTrack struct {
 	Artists    []string `json:"artists"`
 	DiscNo     int      `json:"discNo,omitzero"`
 	TrackNo    int      `json:"trackNo,omitzero"`
-	Hearted    bool     `json:"hearted"`
 	// Stars is absent when the caller hasn't rated it.
 	Stars float64 `json:"stars,omitzero"` // ½ to 5 in halves.
 
@@ -639,7 +676,7 @@ type ShuffleStart struct {
 
 // ShuffleScope is what a shuffle draws from.
 type ShuffleScope struct {
-	// Kind is library, hearted, rated, album, artist or tracks.
+	// Kind is library, rated, album, artist or tracks.
 	Kind string `json:"kind"`
 	// ID is the album's or artist's.
 	ID string `json:"id,omitzero"`
@@ -734,9 +771,6 @@ type ShufflePick struct {
 type ShuffleWhy struct {
 	Stars      float64     `json:"stars"`
 	Rating     float64     `json:"rating"`
-	HeartStars int         `json:"heartStars"`
-	Hearted    bool        `json:"hearted"`
-	Heart      float64     `json:"heart"`
 	Played     bool        `json:"played"`
 	SinceDays  int         `json:"sinceDays"`
 	Recency    float64     `json:"recency"`

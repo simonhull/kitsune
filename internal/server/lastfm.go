@@ -12,6 +12,7 @@ import (
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/events"
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -101,6 +102,7 @@ func (s *Server) lastfmStatus(r *http.Request, userID int64) (api.LastfmStatus, 
 	status.Connected = true
 	status.Name = acct.Name
 	status.Scrobble, status.NowPlaying, status.Loves = acct.Switches.Scrobble, acct.Switches.NowPlaying, acct.Switches.Loves
+	status.LoveFrom = acct.Switches.LoveFrom.Stars()
 	status.Waiting = acct.Waiting
 	status.LastSentAt = acct.LastSentAt
 	switch {
@@ -113,12 +115,23 @@ func (s *Server) lastfmStatus(r *http.Request, userID int64) (api.LastfmStatus, 
 	return status, nil
 }
 
-// patchLastfm changes the switches the body names.
+// badSwitches is patchLastfm's 400 detail.
+const badSwitches = "request body must be a JSON object of switches (scrobble, nowPlaying and loves) and loveFrom, ½ to 5 stars in halves"
+
+// patchLastfm changes the switches the body names, and the love line.
 func (s *Server) patchLastfm(w http.ResponseWriter, r *http.Request) {
 	var req api.LastfmSwitches
 	if err := readJSON(w, r, &req); err != nil {
-		writeProblem(w, r, http.StatusBadRequest, "request body must be a JSON object of switches: scrobble, nowPlaying and loves")
+		writeProblem(w, r, http.StatusBadRequest, badSwitches)
 		return
+	}
+	loveFrom := rating.None
+	if req.LoveFrom != nil {
+		var err error
+		if loveFrom, err = rating.FromStars(*req.LoveFrom); err != nil {
+			writeProblem(w, r, http.StatusBadRequest, badSwitches)
+			return
+		}
 	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
 	acct, err := s.library.LastfmAccount(r.Context(), user.ID)
@@ -132,6 +145,9 @@ func (s *Server) patchLastfm(w http.ResponseWriter, r *http.Request) {
 		set(&sw.Scrobble, req.Scrobble)
 		set(&sw.NowPlaying, req.NowPlaying)
 		set(&sw.Loves, req.Loves)
+		if loveFrom.Valid() {
+			sw.LoveFrom = loveFrom
+		}
 		err = s.library.SetLastfmSwitches(r.Context(), user.ID, sw)
 	}
 	switch {

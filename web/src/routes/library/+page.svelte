@@ -41,7 +41,7 @@
 		type SongActions,
 		type SongFacts
 	} from '#lib/pages/songActions.ts';
-	import { goodStars, letterOf, railLetters } from '#lib/pages/libraryRows.ts';
+	import { letterOf, railLetters } from '#lib/pages/libraryRows.ts';
 	import { hasLetters, railFor, railLit, sortFields } from '#lib/library/libraryOrder.ts';
 	import { artistAlbumOrders, libraryArtistOrders, wayOf } from '#lib/library/sorts.ts';
 	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
@@ -49,7 +49,6 @@
 	import { libraryView as view } from '#lib/pages/libraryView.svelte.ts';
 	import SongHeader from '#lib/pages/SongHeader.svelte';
 	import { player } from '#lib/player/player.svelte.ts';
-	import HeartButton from '#lib/shell/HeartButton.svelte';
 	import ScanCard from '#lib/pages/ScanCard.svelte';
 	import ShuffleFab from '#lib/shuffle/ShuffleFab.svelte';
 	import { shuffles } from '#lib/shuffle/session.svelte.ts';
@@ -493,7 +492,6 @@
 			<div class="filters" data-morph-part="intro" data-morph-key="filters">
 				<LibraryFilters
 					filter={view.filter}
-					heartStars={library.marks.heartStars}
 					choose={(filter) => {
 						view.choose(filter);
 					}}
@@ -525,19 +523,11 @@
 							layout.artists.length,
 							layout.songs,
 							layout.totalSongs
-						)}{#if layout.byHeart > 0}<span class="by-heart"
-								>{` · ${layout.byHeart.toLocaleString('en-US')} BY HEART`}</span
-							>{/if}
+						)}
 					</p>
 				</div>
 			{:else if filtered}
-				<p class="frame none" role="status">
-					{view.filter === 'hearted'
-						? 'Nothing hearted yet.'
-						: library.marks.heartStars >= goodStars
-							? 'No song rated 4 or 5, or hearted, yet.'
-							: 'No song rated 4 or 5 yet.'}
-				</p>
+				<p class="frame none" role="status">No song rated 4 or 5 yet.</p>
 			{/if}
 		</div>
 		{#if facts !== null && facts.scan.state === 'running'}
@@ -598,9 +588,6 @@
 								{/if}
 							</h2>
 							<div class="facts">
-								{#if id !== undefined}
-									<HeartButton kind="artists" {id} {name} size={18} />
-								{/if}
 								<p class="holdings">{artistHoldings(block.artist.albums, block)}</p>
 								{#if !view.columns}
 									<!-- A phone has no header: its way to the song line is here, on the artist's line. -->
@@ -705,7 +692,6 @@
 				hidden={selection.size - picked.filter((id) => rowOf.has(id)).length}
 				albums={pickedFacts.albums}
 				durationMs={pickedFacts.durationMs}
-				hearted={picked.every((id) => library.marks.hearted('tracks', id))}
 				actions={pickedActions}
 				compact={!view.columns}
 				edit={editPicked}
@@ -915,11 +901,6 @@
 		white-space: nowrap;
 	}
 
-	/* How many songs 4 and up shows by their heart alone. */
-	.by-heart {
-		color: var(--fox-text);
-	}
-
 	.sort-round {
 		order: 3;
 	}
@@ -1060,19 +1041,11 @@
 		color: var(--fox-text);
 	}
 
-	/* Amber: the artist is the frame's, not a cover's. */
 	.facts {
-		--heart-on: var(--star);
-		--heart-off: var(--text-secondary);
-
 		margin-top: 14px;
 		display: flex;
 		align-items: center;
 		gap: 8px;
-	}
-
-	.facts :global(.heart) {
-		margin-left: -12px;
 	}
 
 	.holdings {
@@ -1176,7 +1149,7 @@
 			line-height: 0.95;
 		}
 
-		/* The head is 80 tall: the heart keeps its target, and lets it overhang the line. */
+		/* The head is 80 tall. */
 		.facts {
 			height: 22px;
 			margin-top: 2px;

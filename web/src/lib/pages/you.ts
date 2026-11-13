@@ -27,12 +27,8 @@ function counted(n: number, one: string, many: string): string {
 }
 
 /** The counts under the name, as board A sets them. */
-export function countsLine({ plays, hearts, rated }: Listening): string {
-	return [
-		counted(plays, 'PLAY', 'PLAYS'),
-		counted(hearts, 'HEART', 'HEARTS'),
-		`${counted(rated, 'SONG', 'SONGS')} RATED`
-	].join(' · ');
+export function countsLine({ plays, rated }: Listening): string {
+	return [counted(plays, 'PLAY', 'PLAYS'), `${counted(rated, 'SONG', 'SONGS')} RATED`].join(' · ');
 }
 
 /** "2 minutes ago", and the like, for something that happened at `then`. */

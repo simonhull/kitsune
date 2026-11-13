@@ -312,7 +312,7 @@ func cycles(t *testing.T, b *strings.Builder, lib *library) {
 	for j := range units {
 		r := shuffle.Explain(&units[j], settings, now)
 		c := int(math.Round(r.Stars))
-		weight[c] += r.Rating * r.Heart
+		weight[c] += r.Rating
 		count[c]++
 	}
 	for _, share := range []float64{0.5, 0.6, 0.7, 0.8, 0.9} {
@@ -349,7 +349,7 @@ func weights(t *testing.T, b *strings.Builder, lib *library) {
 		for j := range units {
 			r := shuffle.Explain(&units[j], settings, now)
 			c := int(math.Round(r.Stars))
-			weight[c] += r.Rating * r.Heart
+			weight[c] += r.Rating
 			count[c]++
 		}
 		ours := fromPicks(newSession(t, lib, settings, nil, neutral{}, 12).play(picks))
@@ -361,7 +361,7 @@ func weights(t *testing.T, b *strings.Builder, lib *library) {
 		}
 	}
 	tb.note("Distance is the total variation between plays by rating and weight by rating, the weight" +
-		" being rating × heart. The no-repeat window and recency hold plays closer to even than the" +
+		" being the rating factor. The no-repeat window and recency hold plays closer to even than the" +
 		" weights alone would, by design, and spacing caps an artist at one unit in four, which holds" +
 		" back this library's biggest artist and the ratings it tends to get, even with ratings off.")
 }

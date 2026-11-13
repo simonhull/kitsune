@@ -17,6 +17,7 @@ import (
 	"github.com/simonhull/kitsune/internal/config"
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/navidrome"
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store"
 	"github.com/simonhull/kitsune/internal/store/navidromedb"
 )
@@ -56,7 +57,15 @@ type importArgs struct {
 	configPath, file    string
 	dryRun, verbose     bool
 	users, roots, paths pairs
+	heartStars          rating.Rating
 }
+
+// defaultHeartStars is what a starred song with no rating is rated unless
+// -heart-stars says otherwise: 4★, in halves.
+const defaultHeartStars = 8
+
+// errHeartStars means -heart-stars is no number of halves from 0 to 10.
+var errHeartStars = errors.New("-heart-stars wants halves from 1 (½★) to 10 (5★), or 0 to leave them unrated")
 
 // runImport dispatches the import subcommands.
 func runImport(args []string, env config.Env, stdout io.Writer) error {
@@ -82,8 +91,16 @@ func parseImport(args []string) (importArgs, error) {
 	flags.Var(a.users, "user", "a Navidrome user's Kitsune account, NAVIDROME=KITSUNE (repeatable)")
 	flags.Var(a.roots, "root", "a Navidrome library's Kitsune root, NAVIDROME=KITSUNE (repeatable)")
 	flags.Var(a.paths, "map", "a moved file, OLD=NEW relative to its root (repeatable)")
+	halves := flags.Int64("heart-stars", defaultHeartStars, "what a starred song with no rating is rated, in halves (8 is 4★); 0 leaves it unrated")
 	if err := flags.Parse(args); err != nil {
 		return importArgs{}, &usageError{msg: err.Error()}
+	}
+	if *halves != 0 {
+		r, err := rating.FromHalves(*halves)
+		if err != nil {
+			return importArgs{}, &usageError{msg: errHeartStars.Error()}
+		}
+		a.heartStars = r
 	}
 	if flags.NArg() != 1 {
 		return importArgs{}, &usageError{msg: "import navidrome takes exactly one FILE"}
@@ -92,9 +109,10 @@ func parseImport(args []string) (importArgs, error) {
 	return a, nil
 }
 
-// runImportNavidrome imports plays, hearts and ratings from a Navidrome
-// database. It never migrates or creates Kitsune's database, and works while a
-// server runs on it: each person's import is one write.
+// runImportNavidrome imports plays and ratings from a Navidrome database,
+// rating starred songs that have none -heart-stars. It never migrates or
+// creates Kitsune's database, and works while a server runs on it: each
+// person's import is one write.
 func runImportNavidrome(args []string, env config.Env, stdout io.Writer) error {
 	a, err := parseImport(args)
 	if err != nil {
@@ -197,7 +215,7 @@ func planImport(ctx context.Context, st *store.Store, src *navidrome.Source, a *
 		accounts[i] = navidrome.Account{ID: users[i].User.ID, Name: users[i].User.Name}
 	}
 	return navidrome.New(src, &targets, &navidrome.Options{ //nolint:wrapcheck // Its errors name the flag at fault.
-		Accounts: accounts, Users: a.users, Roots: a.roots, Paths: a.paths, Now: now,
+		Accounts: accounts, Users: a.users, Roots: a.roots, Paths: a.paths, Now: now, HeartStars: a.heartStars,
 	})
 }
 

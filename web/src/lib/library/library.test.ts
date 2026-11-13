@@ -30,8 +30,7 @@ function track(id: string): Track {
 		durationMs: 100_000,
 		format: 'FLAC',
 		genres: [],
-		etag: '',
-		hearted: false
+		etag: ''
 	};
 }
 
@@ -400,23 +399,27 @@ describe('Library', () => {
 		expect(theme.choice).toBeNull();
 	});
 
-	it('reads what hearts count as at sign-in, saves a change, and forgets it with the session', async () => {
-		const fixture = createFixtureSource({ prefs: { 'ratings.heart_stars': 4.5 } });
-		const library = new Library(fixture);
-		expect(library.marks.heartStars).toBe(0);
-		await library.loadShell();
-		await vi.waitFor(() => {
-			expect(library.marks.heartStars).toBe(4.5);
+	it('turns the hearts kept into stars, once', async () => {
+		const library = new Library(createFixtureSource(), { readyMemory: forgetful() });
+		const before = await library.heartsSummary();
+		// Board A's hearts: five songs, three rated 5, 4 and 4 that keep their stars, two to rate.
+		expect(before).toMatchObject({ tracksRated: 3, tracksUnrated: 2, albums: 2, artists: 1 });
+		expect(before.byStars).toEqual([0, 0, 0, 2, 1]);
+		expect(before.preview.map(({ id }) => id).toSorted()).toEqual([
+			'night-ferry-94-3',
+			'tidewrack-41-2'
+		]);
+		expect(await library.convertHearts(4.5)).toEqual({
+			rated: 2,
+			tracks: 5,
+			albums: 2,
+			artists: 1
 		});
-		library.setHeartStars(3);
-		expect(library.marks.heartStars).toBe(3);
-		await vi.waitFor(async () => {
-			expect(await fixture.pref('ratings.heart_stars')).toBe(3);
-		});
-		library.setHeartStars(0.5); // Under 1★ isn't a value: nothing changes.
-		expect(library.marks.heartStars).toBe(3);
-		library.reset();
-		expect(library.marks.heartStars).toBe(0);
+		const after = await library.heartsSummary();
+		expect(after.tracksRated + after.tracksUnrated + after.albums + after.artists).toBe(0);
+		await library.loadIndex();
+		expect(library.marks.stars('tidewrack-41-2')).toBe(4.5);
+		expect(library.marks.stars('glasshouse-66-1')).toBe(5);
 	});
 
 	it('keeps the theme as it is when the person never chose one', async () => {
@@ -627,8 +630,7 @@ class Scripted {
 							durationMs: 1000,
 							format: 'FLAC',
 							genres: [],
-							etag: '',
-							hearted: false
+							etag: ''
 						}
 					],
 					discs: [],
@@ -636,8 +638,7 @@ class Scripted {
 					formats: [],
 					addedAt: '',
 					genres: [],
-					etag: '',
-					hearted: false
+					etag: ''
 				}))
 		});
 	}
@@ -1492,29 +1493,26 @@ describe('marks', () => {
 	it('holds what the index and album pages say, and one press shows on both', async () => {
 		const library = new Library(source(), { readyMemory: forgetful() });
 		await library.loadIndex();
-		expect(library.marks.hearted('artists', 'artist-low-tide-choir')).toBe(true);
-		expect(library.marks.hearted('albums', 'glasshouse-66')).toBe(true);
 		expect(library.marks.stars('glasshouse-66-1')).toBe(5);
-		expect(library.marks.hearted('tracks', 'glasshouse-66-2')).toBe(false);
+		expect(library.marks.stars('glasshouse-66-4')).toBeNull();
 
-		library.marks.toggle('tracks', 'glasshouse-66-2');
+		library.marks.rate('glasshouse-66-4', 3.5);
 		// The album page asks after the press: what it's given mustn't undo it.
 		await library.loadAlbum('glasshouse-66');
-		expect(library.marks.hearted('tracks', 'glasshouse-66-2')).toBe(true);
+		expect(library.marks.stars('glasshouse-66-4')).toBe(3.5);
 		await vi.waitFor(() => {
 			expect(library.marks.failure).toBeNull();
 		});
 
 		// A reread after it landed agrees: the server has it.
 		await library.reread('glasshouse-66');
-		expect(library.marks.hearted('tracks', 'glasshouse-66-2')).toBe(true);
+		expect(library.marks.stars('glasshouse-66-4')).toBe(3.5);
 	});
 
 	it('forgets the marks of the last session', async () => {
 		const library = new Library(source(), { readyMemory: forgetful() });
 		await library.loadIndex();
 		library.reset();
-		expect(library.marks.hearted('albums', 'glasshouse-66')).toBe(false);
 		expect(library.marks.stars('glasshouse-66-1')).toBeNull();
 	});
 });

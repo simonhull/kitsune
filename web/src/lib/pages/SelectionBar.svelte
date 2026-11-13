@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { floor } from '#lib/shell/floor.svelte.ts';
-	import Icon, { heartPath } from '#lib/shell/Icon.svelte';
+	import Icon from '#lib/shell/Icon.svelte';
 	import type { StarsBy } from '#lib/library/stars.ts';
 	import StarsInput from '#lib/shell/StarsInput.svelte';
 	import { factsLine, type SongActions } from './songActions.ts';
@@ -11,8 +11,6 @@
 		hidden: number;
 		albums: number;
 		durationMs: number;
-		/** Whether every one is hearted, so the heart says it takes them off. */
-		hearted: boolean;
 		actions: SongActions;
 		/** A phone: Play stays, and the rest go in More. */
 		compact: boolean;
@@ -21,8 +19,7 @@
 		onclear: () => void;
 	}
 
-	let { count, hidden, albums, durationMs, hearted, actions, compact, edit, onclear }: Props =
-		$props();
+	let { count, hidden, albums, durationMs, actions, compact, edit, onclear }: Props = $props();
 
 	const editLabel = $derived(
 		`Edit ${count.toLocaleString('en-US')} ${count === 1 ? 'song' : 'songs'}`
@@ -50,22 +47,6 @@
 		}
 	}
 </script>
-
-{#snippet heartButton()}
-	<button
-		type="button"
-		class="icon"
-		class:on={hearted}
-		aria-label={hearted ? `Take the heart off all ${String(count)}` : `Heart all ${String(count)}`}
-		aria-pressed={hearted}
-		onclick={() => {
-			actions.heart();
-		}}
-		><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
-			><path d={heartPath}></path></svg
-		></button
-	>
-{/snippet}
 
 {#snippet stars()}
 	<div class="stars">
@@ -127,7 +108,6 @@
 		{#if edit !== undefined}
 			<button type="button" class="primary" onclick={edit}>{editLabel}</button>
 		{/if}
-		{@render heartButton()}
 		<button
 			type="button"
 			class="text"
@@ -163,15 +143,6 @@
 					actions.addToQueue();
 					more = false;
 				}}>Add to queue</button
-			>
-			<button
-				type="button"
-				role="menuitem"
-				class="sheet-item"
-				onclick={() => {
-					actions.heart();
-					more = false;
-				}}>{hearted ? 'Take the hearts off' : 'Heart all'}</button
 			>
 			{#if edit !== undefined}
 				<button
@@ -257,26 +228,8 @@
 		padding: 0 14px;
 	}
 
-	.text:hover,
-	.icon:hover {
+	.text:hover {
 		background: var(--hover);
-	}
-
-	.icon {
-		width: 48px;
-		display: grid;
-		place-items: center;
-	}
-
-	.icon path {
-		fill: none;
-		stroke: var(--text);
-		stroke-width: 2;
-	}
-
-	.icon.on path {
-		fill: var(--fox-text);
-		stroke: var(--fox-text);
 	}
 
 	.clear {

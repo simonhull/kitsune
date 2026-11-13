@@ -31,22 +31,17 @@ describe('shuffle words', () => {
 
 	it('says what ratings do at each value, from the server’s curve', () => {
 		expect(ratingsSentence(0.5)).toBe(
-			'A 5★ song comes up about 1.5 times as often as an unrated one, and a 1★ about half as often. Hearts give a small lift.'
+			'A 5★ song comes up about 1.5 times as often as an unrated one, and a 1★ about half as often.'
 		);
 		expect(ratingsSentence(1)).toContain('about 2.4 times as often');
 		expect(ratingsSentence(1)).toContain('a 1★ about a fifth as often');
 		expect(ratingsSentence(0.25)).toContain('about 1.2 times');
 		expect(ratingsSentence(0)).toBe(
-			'Ratings and hearts change nothing: every song comes up as often as any other.'
+			'Ratings change nothing: every song comes up as often as any other.'
 		);
-	});
-
-	it('says what an unrated heart counts as, when it counts', () => {
-		expect(ratingsSentence(0.5, 4.5)).toBe(
-			'A 5★ song comes up about 1.5 times as often as an unrated one, and a 1★ about half as often. Hearts give a small lift. An unrated heart counts as 4½★.'
+		expect(ratingsSentence(0.5)).toBe(
+			'A 5★ song comes up about 1.5 times as often as an unrated one, and a 1★ about half as often.'
 		);
-		expect(ratingsSentence(0.5, 0)).toBe(ratingsSentence(0.5));
-		expect(ratingsSentence(0, 5)).toBe(ratingsSentence(0));
 	});
 
 	it('names the Library’s Shuffle for what it shuffles', () => {
@@ -54,11 +49,6 @@ describe('shuffle words', () => {
 			name: 'Shuffle the library',
 			what: 'The library',
 			tag: ''
-		});
-		expect(fabWords('hearted')).toEqual({
-			name: 'Shuffle these: what you hearted',
-			what: 'What you hearted',
-			tag: '♥'
 		});
 		expect(fabWords('rated')).toEqual({
 			name: 'Shuffle these: 4★ and up',

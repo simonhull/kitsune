@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { noDisc } from '#lib/library/format.ts';
-import { counted } from '#lib/library/heartStars.ts';
 import type {
 	LibraryAlbum,
 	LibraryArtist,
@@ -39,17 +38,16 @@ function song(id: string, discNo?: number): LibraryTrack {
 		title: id,
 		durationMs: 1000,
 		artists: [],
-		hearted: false,
 		...(discNo === undefined ? {} : { discNo })
 	};
 }
 
 function album(id: string, tracks: LibraryTrack[]): LibraryAlbum {
-	return { id, title: id, artist: 'x', compilation: false, hearted: false, tracks };
+	return { id, title: id, artist: 'x', compilation: false, tracks };
 }
 
 function artist(name: string, albums: LibraryAlbum[]): LibraryArtist {
-	return { id: name, name, sortName: name, hearted: false, albums };
+	return { id: name, name, sortName: name, albums };
 }
 
 const index: LibraryIndex = {
@@ -291,15 +289,9 @@ describe('railHere', () => {
 	});
 });
 
-/** Marks for the filter tests: hearts by kind and ID, and stars by track. */
-/** Marks with these hearts (`kind/id`) and own stars, and hearts counting as `heartStars`. */
-function marks(hearts: string[], stars: Record<string, number> = {}, heartStars = 0) {
-	return {
-		hearted: (kind: string, id: string) => hearts.includes(`${kind}/${id}`),
-		stars: (id: string) => stars[id] ?? null,
-		heartStars,
-		counted: (id: string) => counted(stars[id] ?? null, hearts.includes(`tracks/${id}`), heartStars)
-	};
+/** Marks for the filter tests: stars by track. */
+function marks(stars: Record<string, number> = {}) {
+	return { stars: (id: string) => stars[id] ?? null };
 }
 
 /** What a layout shows: each artist, with each album's songs. */
@@ -316,96 +308,29 @@ function shown(index: LibraryIndex, keep: ReturnType<typeof keepFor>) {
 	}));
 }
 
-describe('the Hearted filter', () => {
-	it('shows only hearted songs, under their album and artist', () => {
-		const keep = keepFor('hearted', marks(['tracks/b', 'tracks/h']));
-		expect(shown(index, keep)).toEqual([{ Abba: [['b']] }, { Cher: [['h']] }]);
-	});
-
-	it('shows every song of a hearted album', () => {
-		const keep = keepFor('hearted', marks(['albums/a1', 'tracks/i']));
-		expect(shown(index, keep)).toEqual([{ Abba: [['a', 'b', 'c']] }, { Cher: [['i']] }]);
-	});
-
-	it('shows every album of a hearted artist', () => {
-		const keep = keepFor('hearted', marks(['artists/Abba']));
-		expect(shown(index, keep)).toEqual([{ Abba: [['a', 'b', 'c'], ['d']] }]);
-	});
-
-	it('takes no heart from a group with nobody to link to', () => {
-		const various = { ...artist('Various', [album('v', [song('v1')])]), id: undefined };
-		const keep = keepFor('hearted', marks(['artists/undefined', 'artists/Various']));
-		expect(layOut({ artists: [various] }, metrics, keep).artists).toEqual([]);
-	});
-
-	it('knows nothing of stars', () => {
-		expect(shown(index, keepFor('hearted', marks([], { a: 5 })))).toEqual([]);
-	});
-});
-
 describe('the 4 and up filter', () => {
 	it('shows songs rated 4 or 5, under their album and artist', () => {
-		const keep = keepFor('rated', marks([], { a: 4, b: 3, d: 5, g: 1 }));
+		const keep = keepFor('rated', marks({ a: 4, b: 3, d: 5, g: 1 }));
 		expect(shown(index, keep)).toEqual([{ Abba: [['a'], ['d']] }]);
 	});
 
 	it('keeps 4 and 4½ and leaves 3½ out: 4 and up is at least 4', () => {
-		const keep = keepFor('rated', marks([], { a: 4.5, b: 3.5, c: 4, d: 0.5 }));
+		const keep = keepFor('rated', marks({ a: 4.5, b: 3.5, c: 4, d: 0.5 }));
 		expect(shown(index, keep)).toEqual([{ Abba: [['a', 'c']] }]);
 	});
 
 	it("never shows an unrated song because its neighbors were good: album means don't count", () => {
-		const keep = keepFor('rated', marks(['albums/c1', 'artists/Cher'], { g: 5, h: 5 }));
+		const keep = keepFor('rated', marks({ g: 5, h: 5 }));
 		expect(shown(index, keep)).toEqual([{ Cher: [['g', 'h']] }]);
-	});
-
-	it('knows nothing of hearts while they count for nothing', () => {
-		expect(shown(index, keepFor('rated', marks(['tracks/a', 'artists/Abba'])))).toEqual([]);
-	});
-});
-
-describe('4 and up, with hearts counting as stars', () => {
-	// a is hearted and unrated, b hearted and rated 3, c rated 5; d's album and Cher are hearted.
-	const hearts = ['tracks/a', 'tracks/b', 'albums/a2', 'artists/Cher'];
-	const own = { b: 3, c: 5 };
-	const at = (n: number) => layOut(index, metrics, keepFor('rated', marks(hearts, own, n)));
-
-	it('takes an unrated heart when hearts count as 4 or more, and counts it', () => {
-		for (const n of [4, 4.5, 5]) {
-			expect(shown(index, keepFor('rated', marks(hearts, own, n)))).toEqual([
-				{ Abba: [['a', 'c']] }
-			]);
-			expect(at(n)).toMatchObject({ songs: 2, byHeart: 1 });
-		}
-	});
-
-	it('leaves it out under 4, as at 3½: 4 and up is at least 4', () => {
-		for (const n of [0, 1, 3, 3.5]) {
-			expect(shown(index, keepFor('rated', marks(hearts, own, n)))).toEqual([{ Abba: [['c']] }]);
-			expect(at(n)).toMatchObject({ songs: 1, byHeart: 0 });
-		}
-	});
-
-	it("never lets a heart outrank the song's own stars", () => {
-		expect(shown(index, keepFor('rated', marks(['tracks/b'], { b: 3 }, 5)))).toEqual([]);
-	});
-
-	it('gives nothing to the songs of a hearted album or artist', () => {
-		expect(shown(index, keepFor('rated', marks(['albums/a2', 'artists/Cher'], {}, 5)))).toEqual([]);
-	});
-
-	it('counts nothing by heart under another filter', () => {
-		expect(layOut(index, metrics, keepFor('hearted', marks(hearts, own, 5))).byHeart).toBe(0);
-		expect(layOut(index, metrics).byHeart).toBe(0);
 	});
 });
 
 describe('a filtered layout', () => {
-	const keep = keepFor('hearted', marks(['tracks/b', 'tracks/c', 'tracks/h']));
+	const keep = keepFor('rated', marks({ b: 4, c: 5, h: 4.5 }));
 	const layout = layOut(index, metrics, keep);
 
 	it('lays out everything with no filter', () => {
-		expect(keepFor('everything', marks(['tracks/a']))).toBeUndefined();
+		expect(keepFor('everything', marks({ a: 5 }))).toBeUndefined();
 		expect(layOut(index, metrics, undefined)).toEqual(layOut(index, metrics));
 	});
 
@@ -441,7 +366,7 @@ describe('a filtered layout', () => {
 	});
 
 	it('lays out nothing when nothing is kept', () => {
-		const none = layOut(index, metrics, keepFor('rated', marks([])));
+		const none = layOut(index, metrics, keepFor('rated', marks()));
 		expect(none).toMatchObject({ rows: [], albums: [], artists: [], height: 0, songs: 0 });
 		expect(none.totalSongs).toBe(9);
 	});

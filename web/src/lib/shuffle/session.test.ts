@@ -25,8 +25,7 @@ function track(album: string, index: number): Track {
 		durationMs: 100_000,
 		format: 'FLAC',
 		genres: [],
-		etag: '',
-		hearted: false
+		etag: ''
 	};
 }
 
@@ -47,8 +46,7 @@ const albums = new Map<string, Album>(
 			formats: ['FLAC'],
 			addedAt: '2026-10-12T18:00:00Z',
 			genres: [],
-			etag: '',
-			hearted: false
+			etag: ''
 		};
 		return [id, album] as const;
 	})
@@ -63,9 +61,6 @@ function pick(id: string): ShufflePick {
 		why: {
 			stars: 0,
 			rating: 1,
-			heartStars: 0,
-			hearted: false,
-			heart: 1,
 			played: false,
 			sinceDays: 0,
 			recency: 1.2,
@@ -146,7 +141,7 @@ async function settle(times = 6): Promise<void> {
 }
 
 const unitOf = (id: string): Unit => ({
-	songs: [{ id, albumId: id.split('-')[0] ?? '', hearted: false }]
+	songs: [{ id, albumId: id.split('-')[0] ?? '' }]
 });
 
 describe('Shuffles', () => {
@@ -176,8 +171,8 @@ describe('Shuffles', () => {
 		await Promise.all([library.loadAlbum('a'), library.loadAlbum('b')]);
 		const run: Unit = {
 			songs: [
-				{ id: 'b-0', albumId: 'b', hearted: false },
-				{ id: 'a-2', albumId: 'a', hearted: false }
+				{ id: 'b-0', albumId: 'b' },
+				{ id: 'a-2', albumId: 'a' }
 			]
 		};
 		shuffles.start(sourceOf([run]));

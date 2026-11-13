@@ -254,8 +254,7 @@
 							{lineChars}
 							sameOnAlbum={sharedHas}
 							{now}
-							rating={library.marks.counted(track.id)}
-							hearted={library.marks.hearted('tracks', track.id)}
+							stars={library.marks.stars(track.id)}
 							cued={track.id === cuedId}
 							{sounding}
 							picked={selection.has(track.id)}

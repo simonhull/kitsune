@@ -6,7 +6,7 @@
 	interface Props {
 		/** What a press shuffles. */
 		source: ShuffleSource;
-		/** `system` is the amber tile, the frame's own; `card` is a quiet one with the fox heart. */
+		/** `system` is the amber tile, the frame's own; `card` is a quiet one with the fox star. */
 		look: 'system' | 'card';
 		/** In large type, after "Shuffle". `short` is what a phone says. */
 		title: string;
@@ -62,7 +62,7 @@
 	<span class="label">Shuffle</span>
 	<span class="glyph">
 		{#if look === 'system'}<Icon name="shuffle" size={28} />{:else}<Icon
-				name="heart"
+				name="star"
 				size={26}
 			/>{/if}
 	</span>

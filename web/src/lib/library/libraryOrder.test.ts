@@ -13,7 +13,7 @@ import type { LibraryAlbum, LibraryArtist, LibraryIndex, LibraryTrack } from './
 import { defaultLibrarySort, type LibrarySort } from './sorts.ts';
 
 function track(id: string, extra: Partial<LibraryTrack> = {}): LibraryTrack {
-	return { id, title: id, durationMs: 1000, artists: [], hearted: false, ...extra };
+	return { id, title: id, durationMs: 1000, artists: [], ...extra };
 }
 
 function album(id: string, extra: Partial<LibraryAlbum> = {}): LibraryAlbum {
@@ -22,14 +22,13 @@ function album(id: string, extra: Partial<LibraryAlbum> = {}): LibraryAlbum {
 		title: id,
 		artist: 'x',
 		compilation: false,
-		hearted: false,
 		tracks: [track(`${id}-1`)],
 		...extra
 	};
 }
 
 function artist(id: string, albums: LibraryAlbum[], sortName = id): LibraryArtist {
-	return { id, name: id, sortName, hearted: false, albums };
+	return { id, name: id, sortName, albums };
 }
 
 const added = (at: string, plays = 0): Partial<LibraryAlbum> => ({

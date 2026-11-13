@@ -62,7 +62,7 @@ func (s *Server) shuffleFailed(w http.ResponseWriter, r *http.Request, err error
 	case err == nil:
 		return false
 	case errors.Is(err, shuffler.ErrBadScope):
-		writeProblem(w, r, http.StatusBadRequest, "scope must be library, hearted or rated alone, an album or artist with its id, or 1 to 10000 tracks; mode finite or endless")
+		writeProblem(w, r, http.StatusBadRequest, "scope must be library or rated alone, an album or artist with its id, or 1 to 10000 tracks; mode finite or endless")
 	case errors.Is(err, shuffler.ErrBadAfter):
 		writeProblem(w, r, http.StatusBadRequest, "the shuffle hasn't got that far")
 	case errors.Is(err, store.ErrNotFound):
@@ -91,7 +91,7 @@ func toAPIShufflePage(p *shuffler.Page) api.ShufflePage {
 
 func toAPIWhy(w *shuffler.Why, after *store.ArtistLink) api.ShuffleWhy {
 	out := api.ShuffleWhy{
-		Stars: w.Stars, Rating: w.Rating, HeartStars: w.HeartStars, Hearted: w.Hearted, Heart: w.Heart,
+		Stars: w.Stars, Rating: w.Rating,
 		Played: w.Played, SinceDays: w.SinceDays, Recency: w.Recency, Memory: w.Memory,
 		EarlySkips: w.EarlySkips, SkipMemory: w.SkipMemory, Starts: w.Starts, Skips: w.Skips, SkipRate: w.SkipRate,
 		Listens: w.Listens, Heard: w.Heard, Listen: w.Listen, Flow: w.Flow,

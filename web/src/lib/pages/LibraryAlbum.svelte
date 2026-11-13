@@ -86,7 +86,6 @@
 	const album = $derived(block.album);
 	/** What the index says of each disc: its name, count and length. */
 	const discs = $derived(new Map((album.discs ?? []).map((disc) => [discKey(disc), disc])));
-	const hearted = $derived(library.marks.hearted('albums', album.id));
 	/** Each disc's songs, for its heading's box: the songs with no disc number as one more. */
 	const discSongs = $derived(Map.groupBy(album.tracks, (track) => discOf(track.discNo)));
 	const sharedHas = (id: ColumnId): boolean => shared.has(id);
@@ -147,11 +146,6 @@
 						title={album.title}
 						use:morph={{ id: `title:${album.id}`, slot: 'card', kind: 'title' }}>{album.title}</a
 					>
-					{#if hearted}
-						<span class="hearted" role="img" aria-label="Hearted"
-							><Icon name="heart" size={16} /></span
-						>
-					{/if}
 				</div>
 				{#if trouble}
 					<p class="facts trouble" role="status">Couldn't load this album</p>
@@ -246,8 +240,7 @@
 						top={row.top - block.top - head}
 						height={row.height}
 						{now}
-						rating={library.marks.counted(track.id)}
-						hearted={library.marks.hearted('tracks', track.id)}
+						stars={library.marks.stars(track.id)}
 						cued={track.id === cuedId}
 						{sounding}
 						picked={selection.has(track.id)}
@@ -322,12 +315,6 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
-	}
-
-	.hearted {
-		flex: none;
-		display: flex;
-		color: var(--text);
 	}
 
 	/* As wide as the words: a flight measures the element, and an empty right side would stretch. */

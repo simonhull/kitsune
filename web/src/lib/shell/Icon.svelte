@@ -1,9 +1,3 @@
-<script lang="ts" module>
-	/** The heart, for a control that draws it filled and outlined at once, to move between them. */
-	export const heartPath =
-		'M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6C19 16.5 12 21 12 21z';
-</script>
-
 <script lang="ts">
 	const glyphs = {
 		fox: { box: '0 0 32 32', path: 'M4 4 L12 12 L20 12 L28 4 L26 18 L16 28 L6 18 Z' },
@@ -11,7 +5,11 @@
 		next: { box: '0 0 24 24', path: 'M16 5h2v14h-2zM4 5v14l11-7z' },
 		pause: { box: '0 0 24 24', path: 'M7 5h4v14H7zM13 5h4v14h-4z' },
 		play: { box: '0 0 24 24', path: 'M7 4v16l13-8z' },
-		heart: { box: '0 0 24 24', path: heartPath }
+		// The stars-only board's star: a like is a rating now, so favourites wear it.
+		star: {
+			box: '0 0 24 24',
+			path: 'M12 2.5l2.9 6.6 7.1.7-5.4 4.8 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.8l7.1-.7z'
+		}
 	} as const;
 
 	const outlines = {

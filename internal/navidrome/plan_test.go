@@ -29,6 +29,7 @@ const (
 	pathY    = "y.flac"
 	recMBID  = "rec-1"
 	mbShared = "mb-3"
+	pathDup  = "dup.flac"
 )
 
 var now = time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC) //nolint:gochecknoglobals // Read-only fixture.
@@ -168,12 +169,14 @@ func TestSongsMatchByPathThenMBID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			w := world{songs: tt.songs, tracks: tt.tracks, opts: tt.opts, notes: []navidromedb.Annotation{starred("s1")}}
+			opts := tt.opts
+			opts.HeartStars = heartStars
+			w := world{songs: tt.songs, tracks: tt.tracks, opts: opts, notes: []navidromedb.Annotation{starred("s1")}}
 			p := w.person(t)
-			r := p.Report.SongHearts
+			r := p.Report.UnratedHearts
 			var got string
-			if len(p.Import.TrackHearts) > 0 {
-				got = p.Import.TrackHearts[0].ID
+			if len(p.Import.HeartRatings) > 0 {
+				got = p.Import.HeartRatings[0].TrackID
 			}
 			if got != tt.wantTrack || (r.ByPath == 1) != tt.wantPath || (r.ByMBID == 1) != (tt.wantTrack != "" && !tt.wantPath) {
 				t.Errorf("heart on %q, tally %+v; want %q, by path %v", got, r, tt.wantTrack, tt.wantPath)
@@ -295,9 +298,9 @@ func TestPlayCountsAddUp(t *testing.T) {
 func TestRatingsBecomeHalves(t *testing.T) {
 	t.Parallel()
 	w := world{
-		songs:  []navidromedb.Song{song("s1", pathOne), song("s2", "two.flac"), song("s3", "dup.flac")},
+		songs:  []navidromedb.Song{song("s1", pathOne), song("s2", "two.flac"), song("s3", pathDup)},
 		tracks: []store.ImportTrack{ktrack('1', pathOne, albumA), ktrack('2', "two.flac", albumA)},
-		opts:   navidrome.Options{Paths: map[string]string{"dup.flac": "two.flac"}},
+		opts:   navidrome.Options{Paths: map[string]string{pathDup: "two.flac"}},
 		notes: []navidromedb.Annotation{
 			{ItemID: "s1", ItemType: navidromedb.ItemSong, Rating: 4, RatedAt: ts(1, 0)},
 			{ItemID: "s2", ItemType: navidromedb.ItemSong, Rating: 1},                    // No rated_at.
@@ -317,26 +320,55 @@ func TestRatingsBecomeHalves(t *testing.T) {
 	}
 }
 
-func TestSongHeartsTakeTheEarliestStar(t *testing.T) {
+// heartStars is what the tests rate a starred song with no rating, 4★.
+const heartStars rating.Rating = 8
+
+func TestUnratedHeartsBecomeHeartStarsAtTheEarliestStar(t *testing.T) {
 	t.Parallel()
 	w := world{
-		songs:  []navidromedb.Song{song("s1", pathOne), song("s2", "dup.flac"), song("s3", "two.flac")},
-		tracks: []store.ImportTrack{ktrack('1', pathOne, albumA), ktrack('2', "two.flac", albumA)},
-		opts:   navidrome.Options{Paths: map[string]string{"dup.flac": pathOne}},
+		songs:  []navidromedb.Song{song("s1", pathOne), song("s2", pathDup), song("s3", "two.flac"), song("s4", "three.flac")},
+		tracks: []store.ImportTrack{ktrack('1', pathOne, albumA), ktrack('2', "two.flac", albumA), ktrack('3', "three.flac", albumA)},
+		opts:   navidrome.Options{Paths: map[string]string{pathDup: pathOne}, HeartStars: heartStars},
 		notes: []navidromedb.Annotation{
 			{ItemID: "s1", ItemType: navidromedb.ItemSong, Starred: true, StarredAt: ts(5, 0)},
 			{ItemID: "s2", ItemType: navidromedb.ItemSong, Starred: true, StarredAt: ts(3, 0)},
 			{ItemID: "s3", ItemType: navidromedb.ItemSong, Starred: true}, // No starred_at.
+			{ItemID: "s4", ItemType: navidromedb.ItemSong, Starred: true, StarredAt: ts(4, 0), Rating: 2, RatedAt: ts(6, 0)},
 		},
 	}
 	p := w.person(t)
-	want := []store.ImportedHeart{{ID: track('1'), At: ts(3, 0)}, {ID: track('2'), At: now}}
-	if !slices.Equal(p.Import.TrackHearts, want) || p.Report.SongHearts != (navidrome.Tally{Source: 3, ByPath: 3}) {
-		t.Errorf("hearts %+v, tally %+v; want %+v", p.Import.TrackHearts, p.Report.SongHearts, want)
+	want := []store.ImportedRating{{TrackID: track('1'), Rating: heartStars, At: ts(3, 0)}, {TrackID: track('2'), Rating: heartStars, At: now}}
+	if !slices.Equal(p.Import.HeartRatings, want) || p.Report.UnratedHearts != (navidrome.Tally{Source: 3, ByPath: 3}) {
+		t.Errorf("heart ratings %+v, tally %+v; want %+v", p.Import.HeartRatings, p.Report.UnratedHearts, want)
+	}
+	if rated := []store.ImportedRating{{TrackID: track('3'), Rating: 4, At: ts(6, 0)}}; !slices.Equal(p.Import.Ratings, rated) || p.Report.RatedHearts != 1 {
+		t.Errorf("ratings %+v, rated hearts %d; want %+v, 1: a starred, rated song keeps just its rating", p.Import.Ratings, p.Report.RatedHearts, rated)
+	}
+
+	w.opts.HeartStars = rating.None
+	if p = w.person(t); len(p.Import.HeartRatings) != 0 || p.Report.UnratedHearts.Source != 3 {
+		t.Errorf("with no heart stars: heart ratings %+v, tally %+v; want none, still counted", p.Import.HeartRatings, p.Report.UnratedHearts)
 	}
 }
 
-func TestAlbumHeartsGoThroughTheirSongs(t *testing.T) {
+func TestAHeartNeverOutranksARating(t *testing.T) {
+	t.Parallel()
+	w := world{
+		songs:  []navidromedb.Song{song("s1", pathOne), song("s2", pathDup)},
+		tracks: []store.ImportTrack{ktrack('1', pathOne, albumA)},
+		opts:   navidrome.Options{Paths: map[string]string{pathDup: pathOne}, HeartStars: heartStars},
+		notes: []navidromedb.Annotation{
+			{ItemID: "s1", ItemType: navidromedb.ItemSong, Starred: true, StarredAt: ts(5, 0)},
+			{ItemID: "s2", ItemType: navidromedb.ItemSong, Rating: 1, RatedAt: ts(1, 0)},
+		},
+	}
+	p := w.person(t)
+	if len(p.Import.HeartRatings) != 0 || len(p.Import.Ratings) != 1 || p.Import.Ratings[0].Rating != 2 {
+		t.Errorf("ratings %+v, heart ratings %+v; want the one rating alone", p.Import.Ratings, p.Import.HeartRatings)
+	}
+}
+
+func TestAlbumHeartsAreCountedThroughTheirSongs(t *testing.T) {
 	t.Parallel()
 	songs := []navidromedb.Song{
 		{ID: "s1", LibraryID: 1, Path: "a/1.flac", AlbumID: "split"},
@@ -356,10 +388,8 @@ func TestAlbumHeartsGoThroughTheirSongs(t *testing.T) {
 		},
 	}
 	p := w.person(t)
-	want := []store.ImportedHeart{{ID: albumA, At: ts(2, 0)}, {ID: albumB, At: ts(3, 0)}}
-	slices.SortFunc(p.Import.AlbumHearts, func(a, b store.ImportedHeart) int { return strings.Compare(a.ID, b.ID) })
-	if !slices.Equal(p.Import.AlbumHearts, want) {
-		t.Errorf("album hearts = %+v, want %+v", p.Import.AlbumHearts, want)
+	if len(p.Import.Ratings)+len(p.Import.HeartRatings) != 0 {
+		t.Errorf("import = %+v, want nothing: album marks aren't imported", p.Import)
 	}
 	r := p.Report
 	if r.AlbumHearts != (navidrome.Tally{Source: 3, BySong: 2, Unmatched: 1}) || r.SplitAlbums != 1 || r.AlbumRatings != 1 {
@@ -367,7 +397,7 @@ func TestAlbumHeartsGoThroughTheirSongs(t *testing.T) {
 	}
 }
 
-func TestArtistHearts(t *testing.T) {
+func TestArtistHeartsAreCounted(t *testing.T) {
 	t.Parallel()
 	artists := []store.ImportArtist{
 		{ULID: "A1", MatchKey: "the band", MBID: "mb-1"},
@@ -376,21 +406,19 @@ func TestArtistHearts(t *testing.T) {
 		{ULID: "A4", MatchKey: "twin too", MBID: mbShared},
 	}
 	tests := []struct {
-		name   string
-		artist navidromedb.Artist
-		note   navidromedb.Annotation
-		want   []store.ImportedHeart
-		tally  navidrome.Tally
+		name    string
+		artist  navidromedb.Artist
+		note    navidromedb.Annotation
+		tally   navidrome.Tally
+		ratings int
 	}{
 		{
 			name: "by name, folded", artist: navidromedb.Artist{ID: "x", Name: "  The  BAND ", MBID: "mb-9"},
-			note: navidromedb.Annotation{Starred: true, StarredAt: ts(1, 0)},
-			want: []store.ImportedHeart{{ID: "A1", At: ts(1, 0)}}, tally: navidrome.Tally{Source: 1, ByName: 1},
+			note: navidromedb.Annotation{Starred: true, StarredAt: ts(1, 0)}, tally: navidrome.Tally{Source: 1, ByName: 1},
 		},
 		{
-			name: "by MBID, a rating hearted at its time", artist: navidromedb.Artist{ID: "x", Name: "Renamed", MBID: "mb-2"},
-			note: navidromedb.Annotation{Rating: 5, RatedAt: ts(2, 0)},
-			want: []store.ImportedHeart{{ID: "A2", At: ts(2, 0)}}, tally: navidrome.Tally{Source: 1, ByMBID: 1},
+			name: "by MBID, a rating", artist: navidromedb.Artist{ID: "x", Name: "Renamed", MBID: "mb-2"},
+			note: navidromedb.Annotation{Rating: 5, RatedAt: ts(2, 0)}, tally: navidrome.Tally{Source: 1, ByMBID: 1}, ratings: 1,
 		},
 		{
 			name: "an MBID two artists share", artist: navidromedb.Artist{ID: "x", Name: "Nobody", MBID: mbShared},
@@ -414,8 +442,8 @@ func TestArtistHearts(t *testing.T) {
 			note.ItemID, note.ItemType = "x", navidromedb.ItemArtist
 			w := world{kArts: artists, artists: []navidromedb.Artist{tt.artist}, notes: []navidromedb.Annotation{note}}
 			p := w.person(t)
-			if !slices.Equal(p.Import.ArtistHearts, tt.want) || p.Report.ArtistHearts != tt.tally {
-				t.Errorf("hearts %+v, tally %+v; want %+v, %+v", p.Import.ArtistHearts, p.Report.ArtistHearts, tt.want, tt.tally)
+			if p.Report.ArtistHearts != tt.tally || p.Report.ArtistRatings != tt.ratings || len(p.Import.Ratings) != 0 {
+				t.Errorf("tally %+v, artist ratings %d, import %+v; want %+v, %d, nothing", p.Report.ArtistHearts, p.Report.ArtistRatings, p.Import, tt.tally, tt.ratings)
 			}
 		})
 	}
