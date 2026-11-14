@@ -18,6 +18,8 @@ async function playAlbum(page: Page): Promise<{ island: Locator; order: string[]
 		.click();
 	const island = page.locator('aside[aria-label="Player"]');
 	await expect(island.locator('.song')).toHaveText(first);
+	// Landed: while it rises, a pointer aimed at a control ends up beside it.
+	await expect(island).not.toHaveClass(/arrive/);
 	return { island, order };
 }
 
@@ -60,7 +62,18 @@ test('Shuffle reorders what comes next, and off goes back to the album from the 
 	await expect(shuffle).toHaveAttribute('aria-pressed', 'true');
 	const line = page.getByRole('region', { name: 'Up next' }).locator('.next-label');
 	await expect(line).toHaveText(/^UP NEXT · SHUFFLED FROM /);
-	const shuffled = await upNext(page);
+	let shuffled = await upNext(page);
+	// Off goes on in album order after the song playing: from the album's last song, nothing
+	// does. A fresh seed until the shuffle leads with another, so the test never rests on luck.
+	for (let tries = 0; shuffled[0] === order.at(-1) && tries < 20; tries++) {
+		await shuffle.click();
+		await expect(shuffle).toHaveAttribute('aria-pressed', 'false');
+		await shuffle.click();
+		await expect(shuffle).toHaveAttribute('aria-pressed', 'true');
+		await expect(line).toHaveText(/^UP NEXT · SHUFFLED FROM /);
+		shuffled = await upNext(page);
+	}
+	expect(shuffled[0]).not.toBe(order.at(-1));
 	expect(shuffled.length).toBe(3);
 
 	// Next plays from the shuffled order: Shift+→ from the page, off the toolbar's own arrows.
