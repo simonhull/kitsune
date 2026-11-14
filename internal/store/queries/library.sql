@@ -98,7 +98,7 @@ ON CONFLICT (root, rel_path) DO UPDATE SET
 -- name: TrackStates :many
 SELECT id, rel_path, size, mtime, missing_since IS NOT NULL AS missing
 FROM tracks
-WHERE root = ?;
+WHERE root = ? AND trashed_at IS NULL;
 
 -- name: IssueStates :many
 SELECT rel_path, size, mtime, reader
@@ -108,11 +108,11 @@ WHERE root = ?;
 -- name: MissingByDigest :many
 SELECT id, root, rel_path
 FROM tracks
-WHERE missing_since IS NOT NULL AND audio_digest = ?
+WHERE missing_since IS NOT NULL AND trashed_at IS NULL AND audio_digest = ?
 ORDER BY id;
 
 -- name: AnyMissingWithDigest :one
-SELECT EXISTS (SELECT 1 FROM tracks WHERE missing_since IS NOT NULL AND audio_digest IS NOT NULL) AS found;
+SELECT EXISTS (SELECT 1 FROM tracks WHERE missing_since IS NOT NULL AND trashed_at IS NULL AND audio_digest IS NOT NULL) AS found;
 
 -- name: Undigested :many
 SELECT id, root, rel_path, size, mtime
@@ -134,9 +134,6 @@ SELECT a.ulid FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.id = ?;
 -- name: MarkMissing :exec
 UPDATE tracks SET missing_since = ? WHERE id = ? AND missing_since IS NULL;
 
--- name: DeleteMissingBefore :execrows
-DELETE FROM tracks WHERE missing_since < ?;
-
 -- name: PruneAlbums :execrows
 DELETE FROM albums WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE tracks.album_id = albums.id);
 
@@ -148,4 +145,4 @@ RETURNING hash;
 DELETE FROM artists WHERE NOT EXISTS (SELECT 1 FROM track_artists WHERE track_artists.artist_id = artists.id);
 
 -- name: KnownRoots :many
-SELECT root FROM tracks UNION SELECT root FROM scan_issues;
+SELECT root FROM tracks WHERE trashed_at IS NULL UNION SELECT root FROM scan_issues;

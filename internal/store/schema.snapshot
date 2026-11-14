@@ -604,7 +604,7 @@ CREATE TABLE tracks (
 	rg_album_peak REAL,
 	scan_warnings TEXT    NOT NULL,     -- JSON array of strings
 	added_at      INTEGER NOT NULL,     -- first sight; kept across updates and moves
-	missing_since INTEGER, disc_subtitle TEXT,
+	missing_since INTEGER, disc_subtitle TEXT, trashed_at INTEGER, trashed_by INTEGER REFERENCES users (id) ON DELETE SET NULL, restore_path TEXT,
 	UNIQUE (root, rel_path)
 ) STRICT;
 --   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
@@ -640,7 +640,11 @@ CREATE TABLE tracks (
 --   column cid=30 name=added_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=31 name=missing_since type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
 --   column cid=32 name=disc_subtitle type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
---   foreign key id=0 seq=0 table=albums from=album_id to=id on_update=NO ACTION on_delete=NO ACTION match=NONE
+--   column cid=33 name=trashed_at type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=34 name=trashed_by type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=35 name=restore_path type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=users from=trashed_by to=id on_update=NO ACTION on_delete=SET NULL match=NONE
+--   foreign key id=1 seq=0 table=albums from=album_id to=id on_update=NO ACTION on_delete=NO ACTION match=NONE
 
 -- index tracks_album
 CREATE INDEX tracks_album ON tracks (album_id, disc_no, track_no);
@@ -663,6 +667,11 @@ CREATE INDEX tracks_missing_digest ON tracks (audio_digest) WHERE missing_since 
 -- index tracks_missing_since
 CREATE INDEX tracks_missing_since ON tracks (missing_since) WHERE missing_since IS NOT NULL;
 --   key seqno=0 cid=31 name=missing_since desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index tracks_trashed
+CREATE INDEX tracks_trashed ON tracks (trashed_at) WHERE trashed_at IS NOT NULL;
+--   key seqno=0 cid=33 name=trashed_at desc=0 coll=BINARY key=1
 --   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
 
 -- index tracks_undigested

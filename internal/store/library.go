@@ -804,25 +804,67 @@ func (s *Store) DeleteScanIssues(ctx context.Context, root string, relPaths []st
 	return nil
 }
 
-// ftsDeleteMissingSQL is hand-written for the same reason as the other FTS
-// statements: sqlc can't express an FTS5 rowid write.
-const ftsDeleteMissingSQL = "DELETE FROM tracks_fts WHERE rowid IN (SELECT id FROM tracks WHERE missing_since < ?)"
+// trackDelete says which tracks [deleteTracks] deletes.
+type trackDelete int
+
+const (
+	// missingPastGrace takes the cutoff in Unix ms. A trashed track is never
+	// among them: it waits out the Trash's own time instead.
+	missingPastGrace trackDelete = iota
+	// trashedIn takes the IDs of trashed tracks as a JSON array.
+	trashedIn
+)
+
+// The statements are hand-written because sqlc can't express an FTS5 rowid
+// write. Each pair chooses its tracks the same way.
+const (
+	missingBeforeSQL    = "missing_since < ? AND trashed_at IS NULL"
+	trashedInSQL        = "trashed_at IS NOT NULL AND id IN (SELECT value FROM json_each(?))"
+	ftsOfTracksSQL      = "DELETE FROM tracks_fts WHERE rowid IN (SELECT id FROM tracks WHERE "
+	deleteTracksSQL     = "DELETE FROM tracks WHERE "
+	ftsMissingSQL       = ftsOfTracksSQL + missingBeforeSQL + ")"
+	deleteMissingSQL    = deleteTracksSQL + missingBeforeSQL
+	ftsTrashedSQL       = ftsOfTracksSQL + trashedInSQL + ")"
+	deleteTrashedRowSQL = deleteTracksSQL + trashedInSQL
+)
+
+// statements returns the search-row delete and the track delete for d.
+func (d trackDelete) statements() [2]string {
+	if d == trashedIn {
+		return [2]string{ftsTrashedSQL, deleteTrashedRowSQL}
+	}
+	return [2]string{ftsMissingSQL, deleteMissingSQL}
+}
+
+// deleteTracks is the one way a track leaves the store: its search row, then
+// its row, and with it, by ON DELETE CASCADE, its tags, artist links and every
+// person's data about it (plays, listens, ratings, Last.fm's outbox). It
+// returns how many tracks went.
+func deleteTracks(ctx context.Context, tx *sql.Tx, which trackDelete, arg any) (int64, error) {
+	stmts := which.statements()
+	if _, err := tx.ExecContext(ctx, stmts[0], arg); err != nil {
+		return 0, fmt.Errorf("delete fts rows: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, stmts[1], arg)
+	if err != nil {
+		return 0, fmt.Errorf("delete tracks: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("delete tracks: %w", err)
+	}
+	return n, nil
+}
 
 // DeleteMissingBefore deletes the tracks that have been missing since before
 // cutoff, with their tags, artist links and search rows, and returns how many
-// it deleted.
+// it deleted. A trashed track is not missing, and stays.
 func (s *Store) DeleteMissingBefore(ctx context.Context, cutoff time.Time) (int64, error) {
 	var n int64
-	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) error {
-		if _, ftsErr := tx.ExecContext(ctx, ftsDeleteMissingSQL, ms(cutoff)); ftsErr != nil {
-			return fmt.Errorf("delete fts rows: %w", ftsErr)
-		}
-		deleted, delErr := q.DeleteMissingBefore(ctx, new(ms(cutoff)))
-		if delErr != nil {
-			return fmt.Errorf("delete tracks: %w", delErr)
-		}
+	err := s.inLibraryTx(ctx, func(_ *sqlcdb.Queries, tx *sql.Tx) error {
+		deleted, err := deleteTracks(ctx, tx, missingPastGrace, ms(cutoff))
 		n = deleted
-		return nil
+		return err
 	})
 	if err != nil {
 		return 0, fmt.Errorf("delete missing before %s: %w", cutoff.Format(time.RFC3339), err)

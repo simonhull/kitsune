@@ -5,13 +5,14 @@
 SELECT t.ulid, t.root, t.rel_path, a.ulid AS album
 FROM tracks AS t
 JOIN albums AS a ON a.id = t.album_id
+WHERE t.trashed_at IS NULL -- a trashed song takes nothing an import brings
 ORDER BY t.id;
 
 -- name: ImportTrackTags :many
 SELECT t.ulid, g.key, g.value
 FROM track_tags AS g
 JOIN tracks AS t ON t.id = g.track_id
-WHERE g.key IN (sqlc.slice(keys))
+WHERE g.key IN (sqlc.slice(keys)) AND t.trashed_at IS NULL
 ORDER BY t.id, g.key, g.ord;
 
 -- name: ImportArtists :many
