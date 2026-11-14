@@ -38,7 +38,8 @@ const kinds: readonly ServerEventKind[] = [
 	'shuffle',
 	'listening',
 	'lastfm',
-	'settings'
+	'settings',
+	'playlists'
 ];
 
 /**

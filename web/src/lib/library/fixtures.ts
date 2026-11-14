@@ -5,6 +5,7 @@ import { normalizeCode } from '#lib/pages/passwords.ts';
 import { discOf, discsOf } from './format.ts';
 import { partOf } from './indexPatch.ts';
 import { createPlaybackFixture, type PlaybackFixture } from './playbackFixture.ts';
+import { createPlaylistsFixture } from './playlistsFixture.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
 	AlbumNotFoundError,
@@ -974,6 +975,13 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	let runsMade = 0;
 	/** Each shuffle's whole order, worked out at the start: the fixtures have no listening to learn from. */
 	const shuffles = new Map<string, { mode: ShuffleMode; picks: ShufflePick[] }>();
+	// And the playlists, which outlive a reload as the server's would.
+	const lists = createPlaylistsFixture({
+		albums: () => new Map([...held, ...listOnly]),
+		gone,
+		stars: (id) => stars.get(id),
+		...(options.playbackStore === undefined ? {} : { store: options.playbackStore })
+	});
 
 	/** The songs a scope holds, with their albums. */
 	function inScope(scope: ShuffleScope): { album: Album; track: Track }[] {
@@ -987,6 +995,10 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				return all.filter(({ album }) => album.artists.some(({ id }) => id === scope.id));
 			case 'tracks':
 				return all.filter(({ track }) => scope.tracks.includes(track.id));
+			case 'playlist': {
+				const listed = new Set(lists.trackIdsOf(scope.id));
+				return all.filter(({ track }) => listed.has(track.id) && !gone(track.id));
+			}
 			case 'rated':
 				return all.filter(({ track }) => (stars.get(track.id) ?? 0) >= 4);
 			case 'library':
@@ -1345,6 +1357,12 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		return answer();
 	}
 
+	/** {@link respond} for an answer that is itself on its way. */
+	async function after<T>(answer: () => Promise<T>): Promise<T> {
+		await respond(() => undefined);
+		return answer();
+	}
+
 	return {
 		me: () => respond(whoIsSignedIn),
 		sessionUser: () => respond(whoIsSignedIn),
@@ -1677,6 +1695,14 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			}),
 		restoreTrash: (trackIds) => respond(() => restoreFromTrash(trackIds)),
 		emptyTrash: (target) => respond(() => emptyBin(target)),
+		playlists: (holding) => after(() => lists.playlists(holding)),
+		playlist: (id) => after(() => lists.playlist(id)),
+		createPlaylist: (name, tracks) => after(() => lists.createPlaylist(name, tracks)),
+		renamePlaylist: (id, name) => after(() => lists.renamePlaylist(id, name)),
+		deletePlaylist: (id) => after(() => lists.deletePlaylist(id)),
+		addToPlaylist: (id, add) => after(() => lists.addToPlaylist(id, add)),
+		removeFromPlaylist: (id, entries) => after(() => lists.removeFromPlaylist(id, entries)),
+		movePlaylistEntry: (id, entry, place) => after(() => lists.movePlaylistEntry(id, entry, place)),
 		changeSettings: (change) =>
 			respond(() => {
 				adminOnly();

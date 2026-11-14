@@ -34,6 +34,14 @@ function holds(extra: Partial<ScopeHolds> = {}): ScopeHolds {
 		index,
 		album: (id) => (id === 'x' ? album : undefined),
 		artistSongs: (id) => (id === 'artist' ? index : null),
+		playlist: (id) =>
+			id === 'mix'
+				? [
+						{ trackId: 'y1', albumId: 'y' },
+						{ trackId: 'x0', albumId: 'x' },
+						{ trackId: 'y1', albumId: 'y' }
+					]
+				: null,
 		marks: { stars: (id) => (id.endsWith('1') ? 4.5 : null) },
 		...extra
 	};
@@ -58,6 +66,11 @@ describe('scopeOrder', () => {
 		expect(scopeOrder({ kind: 'album', id: 'z' }, holds())).toBeNull();
 		expect(ids(scopeOrder({ kind: 'artist', id: 'artist' }, holds()))).toHaveLength(4);
 		expect(scopeOrder({ kind: 'artist', id: 'other' }, holds())).toBeNull();
+	});
+
+	it("reads a playlist in its own order, a song in twice twice, and none while it isn't here", () => {
+		expect(ids(scopeOrder({ kind: 'playlist', id: 'mix' }, holds()))).toEqual(['y1', 'x0', 'y1']);
+		expect(scopeOrder({ kind: 'playlist', id: 'other' }, holds())).toBeNull();
 	});
 });
 

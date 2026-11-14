@@ -588,6 +588,12 @@ export class Shuffles {
 				const songs = host.artistSongs(id);
 				return songs.kind === 'ready' ? songs.value : null;
 			},
+			playlist: (id) => {
+				const held = host.playlists.detail(id);
+				return held.kind === 'ready'
+					? held.value.entries.map(({ track, albumId }) => ({ trackId: track.id, albumId }))
+					: null;
+			},
 			marks: host.marks
 		};
 	}
@@ -602,6 +608,8 @@ export class Shuffles {
 			await host.loadAlbum(scope.id);
 		} else if (scope.kind === 'artist') {
 			await host.loadArtistSongs(scope.id, []);
+		} else if (scope.kind === 'playlist') {
+			await host.playlists.loadDetail(scope.id);
 		} else if (host.index.kind !== 'ready') {
 			await host.loadIndex();
 		}

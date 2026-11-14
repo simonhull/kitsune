@@ -21,6 +21,7 @@ import { Trashed } from './trashed.svelte.ts';
 import type { PlaybackFixture } from './playbackFixture.ts';
 import { eventsUrl, Live, type EventStream } from './live.ts';
 import { Marks } from './marks.svelte.ts';
+import { Playlists } from './playlists.svelte.ts';
 import { ListenOutbox, Outbox } from './outbox.ts';
 import { createPrefs, type PrefsStore } from './prefs.ts';
 import { Search } from './search.svelte.ts';
@@ -272,6 +273,8 @@ export class Library {
 	readonly simulated: boolean;
 	/** The signed-in person's stars: what every page shows, whatever it was given. */
 	readonly marks: Marks;
+	/** The signed-in person's playlists. */
+	readonly playlists: Playlists;
 	/** The signed-in person's preferences, kept on the server. */
 	readonly prefs: PrefsStore;
 	/** What {@link Library.index} was asked for besides the songs, joined by commas. */
@@ -358,6 +361,7 @@ export class Library {
 		this.#outbox = new Outbox(options.outbox ?? (() => localStorage), this.#source);
 		this.#listens = new ListenOutbox(options.outbox ?? (() => localStorage), this.#source);
 		this.marks = new Marks(this.#source);
+		this.playlists = new Playlists(this.#source);
 		this.prefs = createPrefs(this.#source);
 		const events = options.events === undefined ? browserEvents() : options.events;
 		this.#live =
@@ -383,6 +387,9 @@ export class Library {
 						lastfm: () => void this.refreshLastfm(),
 						'shuffle-rules': () => {
 							this.#heardShuffleRules();
+						},
+						playlists: ({ ids }) => {
+							this.playlists.heard(ids);
 						},
 						settings: () => {
 							this.settingsHeard += 1;
@@ -688,6 +695,7 @@ export class Library {
 		const epoch = this.#epoch;
 		try {
 			this.user ??= await this.#source.me();
+			void this.playlists.load();
 			this.#live?.start();
 			this.flushPlays();
 			void this.refreshLastfm();
@@ -1431,6 +1439,7 @@ export class Library {
 			void this.#refreshAlbum(id);
 		}
 		this.settingsHeard += 1;
+		this.playlists.resync();
 		this.#artistSongsChanged();
 		if (this.index.kind === 'ready') {
 			await this.loadIndex(this.#fields());
@@ -1843,6 +1852,7 @@ export class Library {
 		this.#artistNames.clear();
 		this.#artistSongs.clear();
 		this.marks.reset();
+		this.playlists.reset();
 		this.search.reset();
 	}
 }
