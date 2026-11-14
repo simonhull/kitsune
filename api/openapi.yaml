@@ -3494,13 +3494,13 @@ components:
       additionalProperties: false
       description: >-
         What a shuffle draws from. `library` is every song; `rated` is the
-        Library list's 4★-and-up filter; `album` and `artist` take `id`;
+        Library list's 4★-and-up filter; `album`, `artist` and `playlist` (one of the caller's) take `id`;
         `tracks` names from 1 to 10,000 songs, such as a selection. Nothing
         else may be given. A session or playback record saved with the
         `hearted` scope, gone with hearts, goes on as `rated`.
       required: [kind]
       properties:
-        kind: { type: string, enum: [library, rated, album, artist, tracks] }
+        kind: { type: string, enum: [library, rated, album, artist, playlist, tracks] }
         id: { type: string, minLength: 1 }
         tracks:
           type: array

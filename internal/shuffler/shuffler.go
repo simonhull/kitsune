@@ -372,7 +372,7 @@ func (s *Service) build(ctx context.Context, userID int64, sc *Scope, now time.T
 	if err != nil {
 		return nil, err //nolint:wrapcheck // The store names it.
 	}
-	in, err := keeper(ctx, s.st, sc)
+	in, err := keeper(ctx, s.st, userID, sc)
 	if err != nil {
 		return nil, err
 	}

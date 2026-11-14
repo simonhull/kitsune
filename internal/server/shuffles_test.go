@@ -377,3 +377,21 @@ func TestShuffleRefuses(t *testing.T) {
 	h.Set(contentType, api.JSONMediaType)
 	ts.send(t, call{method: http.MethodPost, path: shufflesPath, body: `{"scope":{"kind":"library"},"mode":"finite"}`, header: h}).problem(t, http.StatusForbidden)
 }
+
+// A playlist's shuffle draws from its songs, each once however often it holds
+// them; another person's playlist is a 404.
+func TestShufflePlaylist(t *testing.T) {
+	t.Parallel()
+	ts, sess, other := playlistsFixture(t)
+	songs := []string{songAt(1, 2), songAt(2, 3), songAt(1, 2), songAt(2, 1)}
+	id := ts.makePlaylist(t, sess.token, &api.PlaylistCreate{Name: mixName}).Playlist.ID
+	ts.send(t, call{method: http.MethodPost, path: playlistPath(id, "tracks"), body: jsonBody(t, &api.PlaylistAdd{Tracks: songs, Again: true}), header: jsonHeader(sess.token)})
+	page := ts.startShuffle(t, sess.token, &api.ShuffleStart{Scope: api.ShuffleScope{Kind: "playlist", ID: id}, Mode: modeFinite})
+	got := songsOf(&page)
+	slices.Sort(got)
+	if want := []string{songAt(1, 2), songAt(2, 1), songAt(2, 3)}; !slices.Equal(got, want) || page.Songs != len(want) {
+		t.Errorf("shuffled %v (%d songs), want each of %v once", got, page.Songs, want)
+	}
+	body := jsonBody(t, &api.ShuffleStart{Scope: api.ShuffleScope{Kind: "playlist", ID: id}, Mode: modeFinite})
+	ts.send(t, call{method: http.MethodPost, path: shufflesPath, body: body, header: jsonHeader(other)}).problem(t, http.StatusNotFound)
+}
