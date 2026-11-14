@@ -53,7 +53,7 @@ func TestNextDaily(t *testing.T) {
 func TestRunDaily(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		var scans, readies atomic.Int32
+		var scans, readies, thens atomic.Int32
 		scan := func(context.Context) { scans.Add(1) }
 		ready := func() {
 			readies.Add(1)
@@ -61,21 +61,27 @@ func TestRunDaily(t *testing.T) {
 				t.Errorf("ready ran after %d scans, want 1", got)
 			}
 		}
+		then := func(context.Context) {
+			if thens.Add(1) == 1 && readies.Load() != 1 {
+				t.Error("the first purge ran before ready: readiness must not wait for it")
+			}
+		}
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			runDaily(ctx, time.Now, func() Daily { return Daily{Hour: 3, Minute: 30} }, nil, scan, ready)
+			runDaily(ctx, time.Now, func() Daily { return Daily{Hour: 3, Minute: 30} }, nil, scan, ready, then)
 		}()
+		counts := func() [3]int32 { return [3]int32{scans.Load(), readies.Load(), thens.Load()} }
 		synctest.Wait()
-		if scans.Load() != 1 || readies.Load() != 1 {
-			t.Fatalf("after start: scans = %d, readies = %d, want 1 and 1", scans.Load(), readies.Load())
+		if got := counts(); got != [3]int32{1, 1, 1} {
+			t.Fatalf("after start: scans, readies, purges = %v, want 1 each", got)
 		}
 		time.Sleep(24 * time.Hour)
 		synctest.Wait()
-		if scans.Load() != 2 || readies.Load() != 1 {
-			t.Errorf("after a day: scans = %d, readies = %d, want 2 and 1", scans.Load(), readies.Load())
+		if got := counts(); got != [3]int32{2, 1, 2} {
+			t.Errorf("after a day: scans, readies, purges = %v, want 2, 1 and 2", got)
 		}
 		cancel()
 		synctest.Wait()
