@@ -480,9 +480,14 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   (`repeat`, `shuffled`); one saved before them is off and off, and `shuffled.order` counts against
   the 1,000. A press reorders in memory and never stops the song; the save follows. The island is
   one Tab stop (`roving.ts`), and the player's keys are `playerKey` in `lib/player/keys.ts`.
-- An editor over a page (the album's tag editor, Edit N songs) has a shallow history entry of its own
-  (`editorHistory`): Back closes it and drops its edits, as Leave it does; closing it any other way
-  takes the entry back off; leaving the page drops the edits too. Edits never outlive their page.
+- There is one tag editor (`tagEditor.svelte.ts`), which the shell draws over whatever page opened it
+  (`EditorHost`): Edit tags, the album and song menus and a selection's Edit all open it, and the album
+  page never edits in place. Its session holds the songs, the ticked ones, a draft by song and the
+  shared fields over the ticked (`lib/library/edit.ts`), and writes through `POST /albums/{id}/edits`
+  when the songs that change are on one album, `POST /edits` otherwise. A match only fills its fields.
+  It has a shallow history entry of its own (`editorHistory`): Back and Esc close it and drop its
+  edits, as Leave it does; closing it any other way takes the entry back off; leaving the page drops
+  the edits too. Edits never outlive their page.
 - The Trash's controls (the row and album menus' last item, the selection bar's button, Delete, the
   Server page's link and Server › Trash) show only when `library.user?.canTrash`. Trashing is
   optimistic (`trashBin.svelte.ts`): the rows fold and leave every list and the queue (not the song

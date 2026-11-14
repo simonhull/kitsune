@@ -1,18 +1,18 @@
 <script lang="ts">
-	import { bulkFieldId, isBulkChanged, shownOf, type BulkSpec } from '#lib/library/bulk.ts';
+	import { isSharedChanged, sharedFieldId, shownOf, type SharedSpec } from '#lib/library/edit.ts';
 	import ChipField from './ChipField.svelte';
-	import type { BulkSession } from './bulkEdits.svelte.ts';
+	import type { EditSession } from './tagEditor.svelte.ts';
 
 	interface Props {
-		spec: BulkSpec;
-		session: BulkSession;
+		spec: SharedSpec;
+		session: EditSession;
 	}
 
 	let { spec, session }: Props = $props();
 
-	const id = $derived(bulkFieldId(spec.key));
-	const shown = $derived(shownOf(session.pickedTracks, session.draft, spec.key));
-	const changed = $derived(isBulkChanged(session.pickedTracks, session.draft, spec.key));
+	const id = $derived(sharedFieldId(spec.key));
+	const shown = $derived(shownOf(session.tickedTracks, session.draft, spec.key));
+	const changed = $derived(isSharedChanged(session.tickedTracks, session.draft, spec.key));
 	const problem = $derived(session.problem(id));
 	/** "Mixed" says the songs differ: left alone, each keeps its own. */
 	const hint = $derived(shown.mixed ? 'Mixed' : 'Empty');
@@ -29,7 +29,7 @@
 			bind:values={
 				() => shown.values,
 				(next) => {
-					session.setField(spec.key, next);
+					session.setShared(spec.key, next);
 				}
 			}
 		/>
@@ -37,7 +37,7 @@
 		<input
 			{id}
 			type="text"
-			inputmode={spec.number || spec.key === 'year' ? 'numeric' : undefined}
+			inputmode={spec.kind === 'text' ? undefined : 'numeric'}
 			autocomplete="off"
 			placeholder={hint}
 			aria-invalid={problem !== undefined}
@@ -45,7 +45,7 @@
 			bind:value={
 				() => shown.values.at(0) ?? '',
 				(value) => {
-					session.setField(spec.key, [value]);
+					session.setShared(spec.key, [value]);
 				}
 			}
 		/>
@@ -57,7 +57,7 @@
 	.field {
 		grid-column: span var(--span);
 		min-width: 0;
-		padding-bottom: 4px;
+		padding-bottom: 2px;
 		border-bottom: 1px solid var(--edge-field);
 		transition: border-color var(--morph-fast) var(--curve-morph);
 	}
@@ -83,7 +83,7 @@
 	input {
 		display: block;
 		width: 100%;
-		height: 34px;
+		height: 32px;
 		padding: 0;
 		border: 0;
 		outline: none;
@@ -94,15 +94,10 @@
 		font-weight: 600;
 	}
 
-	input::placeholder {
-		font-style: italic;
-		font-weight: 400;
-		color: var(--text-meta);
-	}
-
 	.field :global(input::placeholder) {
 		font-style: italic;
 		font-weight: 400;
+		color: var(--text-meta);
 	}
 
 	.problem {

@@ -3,10 +3,7 @@ import {
 	type AlbumEdit,
 	type AlbumTags,
 	type EditFailure,
-	type FieldValues,
-	type TagEdit,
-	type TagField,
-	type TrackTags
+	type TagField
 } from './source.ts';
 
 /** What the server takes: M4A holds a track or disc number in 16 bits. */
@@ -39,39 +36,6 @@ const multiFields: readonly TagField[] = [
 	'language',
 	'musicbrainzAlbumArtistId',
 	'musicbrainzArtistId'
-];
-
-/** Every field an edit can name, in the order of the page. */
-const pageOrder: readonly TagField[] = [
-	'disc',
-	'track',
-	'title',
-	'trackTotal',
-	'discTotal',
-	'discSubtitle',
-	'date',
-	'genres',
-	'composers',
-	'conductor',
-	'lyricist',
-	'performers',
-	'remixer',
-	'grouping',
-	'label',
-	'catalogNumber',
-	'barcode',
-	'isrc',
-	'originalDate',
-	'language',
-	'bpm',
-	'key',
-	'copyright',
-	'comment',
-	'sortTitle',
-	'sortArtist',
-	'sortAlbum',
-	'sortAlbumArtist',
-	'lyrics'
 ];
 
 /** One field of a track's whole tag list. */
@@ -191,36 +155,13 @@ export const tagGroups: readonly { name: string; fields: readonly FieldSpec[] }[
 	}
 ];
 
-/** What someone has touched on one track, as typed. */
-export interface TrackDraft {
-	fields: FieldValues;
-	/** By the key the server showed. No values removes the tag. */
-	tags: Record<string, string[]>;
-}
+/** Every field a track's own view edits, in its order: the groups', then the lyrics. */
+export const fieldOrder: readonly TagField[] = [
+	...tagGroups.flatMap(({ fields }) => fields.map(({ field }) => field)),
+	'lyrics'
+];
 
-/**
- * What someone has touched, as typed, and nothing else: whatever isn't here reads through to the
- * files. Year and genres on the album page go to every track, and a track's own value goes on top,
- * as `POST /albums/{id}/edits` layers them.
- */
-export interface Draft {
-	/** Null until touched. */
-	year: string | null;
-	genres: string[] | null;
-	tracks: Record<string, TrackDraft>;
-}
-
-/** What the album page shows of the fields it edits for every track at once. */
-export interface AlbumWide {
-	/** Empty when the tracks have none, or differ. */
-	year: string;
-	yearsDiffer: boolean;
-	/** Every genre of the tracks, each once, in track order. */
-	genres: string[];
-	genresDiffer: boolean;
-}
-
-/** What a save would do, as the bar counts it. An edit of every track is one change. */
+/** What a save would do, as the bar counts it. A field of every song is one change. */
 export interface Summary {
 	changes: number;
 	files: number;
@@ -259,9 +200,6 @@ export interface Report {
 	retry: boolean;
 }
 
-/** The problem key of the album page's year. */
-export const yearField = 'year';
-
 /** Names a field of a track, as an element ID and as the key of a problem. */
 export function fieldId(trackId: string, field: TagField): string {
 	return `${field}-${trackId}`;
@@ -272,20 +210,17 @@ export function tagId(trackId: string, key: string): string {
 	return `tag-${key}-${trackId}`;
 }
 
-export function emptyDraft(): Draft {
-	return { year: null, genres: null, tracks: {} };
-}
-
 /** Reports whether a field holds a list, shown as chips and never as joined text. */
 export function isMulti(field: TagField): boolean {
 	return multiFields.includes(field);
 }
 
-function cleaned(values: readonly string[]): string[] {
+/** Values as they're written: trimmed, and the empty ones gone. */
+export function cleaned(values: readonly string[]): string[] {
 	return values.map((value) => value.trim()).filter((value) => value !== '');
 }
 
-function sameList(a: readonly string[], b: readonly string[]): boolean {
+export function sameList(a: readonly string[], b: readonly string[]): boolean {
 	return a.length === b.length && a.every((item, index) => item === b[index]);
 }
 
@@ -294,7 +229,7 @@ function isWhole(value: string): boolean {
 }
 
 /** Whether two sets of values mean the same to the field: `01` is track 1, whatever's typed. */
-function same(field: TagField, a: readonly string[], b: readonly string[]): boolean {
+export function sameValues(field: TagField, a: readonly string[], b: readonly string[]): boolean {
 	const [one, other] = [cleaned(a), cleaned(b)];
 	if (multiFields.includes(field)) {
 		return sameList(one, other);
@@ -305,170 +240,9 @@ function same(field: TagField, a: readonly string[], b: readonly string[]): bool
 		: first === second;
 }
 
-function yearOf(values: readonly string[] | undefined): string {
+/** The year a date begins with, or nothing. */
+export function yearOf(values: readonly string[] | undefined): string {
 	return /^\d{4}/.exec(values?.at(0)?.trim() ?? '')?.[0] ?? '';
-}
-
-const wides = new WeakMap<AlbumTags, AlbumWide>();
-const byId = new WeakMap<AlbumTags, Map<string, TrackTags>>();
-
-/** Reads what the tracks agree on, for the album page's year and genres. Tags never change. */
-export function albumWide(tags: AlbumTags): AlbumWide {
-	const held = wides.get(tags);
-	if (held !== undefined) {
-		return held;
-	}
-	const { tracks } = tags;
-	const years = new Set(tracks.map(({ fields }) => yearOf(fields.date)));
-	const [year = ''] = years;
-	const genres = [...new Set(tracks.flatMap(({ fields }) => fields.genres ?? []))];
-	const wide = {
-		year: years.size === 1 ? year : '',
-		yearsDiffer: years.size > 1,
-		genres,
-		genresDiffer: tracks.some((track) => (track.fields.genres ?? []).length !== genres.length)
-	};
-	wides.set(tags, wide);
-	return wide;
-}
-
-function yearChanged(draft: Draft, wide: AlbumWide): boolean {
-	return draft.year !== null && draft.year.trim() !== wide.year;
-}
-
-function genresChanged(draft: Draft, wide: AlbumWide): boolean {
-	return draft.genres !== null && !sameList(cleaned(draft.genres), wide.genres);
-}
-
-/** What the album page's edit gives a field of every track, if it gives it anything. */
-function acrossAlbum(draft: Draft, wide: AlbumWide, field: TagField): string[] | undefined {
-	if (field === 'date' && yearChanged(draft, wide)) {
-		return cleaned([draft.year ?? '']);
-	}
-	if (field === 'genres' && genresChanged(draft, wide)) {
-		return cleaned(draft.genres ?? []);
-	}
-	return undefined;
-}
-
-function trackIn(tags: AlbumTags, id: string): TrackTags | undefined {
-	const tracks = byId.get(tags) ?? new Map(tags.tracks.map((track) => [track.id, track]));
-	byId.set(tags, tracks);
-	return tracks.get(id);
-}
-
-/** What a field holds in the file. */
-export function wasOf(tags: AlbumTags, id: string, field: TagField): string[] {
-	return trackIn(tags, id)?.fields[field] ?? [];
-}
-
-/** What a field will hold if nothing more of it is touched on this track. */
-function beneath(tags: AlbumTags, draft: Draft, id: string, field: TagField): string[] {
-	return acrossAlbum(draft, albumWide(tags), field) ?? wasOf(tags, id, field);
-}
-
-/** What a field shows now. */
-export function valueOf(tags: AlbumTags, draft: Draft, id: string, field: TagField): string[] {
-	return draft.tracks[id]?.fields[field] ?? beneath(tags, draft, id, field);
-}
-
-/** Whether a field shows something the file doesn't hold. */
-export function isChanged(tags: AlbumTags, draft: Draft, id: string, field: TagField): boolean {
-	return !same(field, valueOf(tags, draft, id, field), wasOf(tags, id, field));
-}
-
-/** What a row of the album page says it was: the old title, and any old numbers. */
-export function rowNote(tags: AlbumTags, draft: Draft, id: string): { old: string; text: string } {
-	const number = (field: 'disc' | 'track'): string[] => {
-		if (!isChanged(tags, draft, id, field)) {
-			return [];
-		}
-		const [was] = wasOf(tags, id, field);
-		return [was === undefined ? `had no ${field} number` : `was ${field} ${was}`];
-	};
-	const [old = ''] = isChanged(tags, draft, id, 'title') ? wasOf(tags, id, 'title') : [];
-	return { old, text: [...number('disc'), ...number('track')].join(' · ') };
-}
-
-function tagWas(tags: AlbumTags, id: string, key: string): string[] {
-	return trackIn(tags, id)?.tags.find((tag) => tag.key === key)?.values ?? [];
-}
-
-/** What a raw tag shows now. */
-export function tagValueOf(tags: AlbumTags, draft: Draft, id: string, key: string): string[] {
-	return draft.tracks[id]?.tags[key] ?? tagWas(tags, id, key);
-}
-
-/** Whether a raw tag shows something the file doesn't hold. */
-export function isTagChanged(tags: AlbumTags, draft: Draft, id: string, key: string): boolean {
-	return !sameList(cleaned(tagValueOf(tags, draft, id, key)), cleaned(tagWas(tags, id, key)));
-}
-
-function without<V>(record: Partial<Record<string, V>>, key: string): Record<string, V> {
-	return Object.fromEntries(Object.entries(record).filter(([name]) => name !== key)) as Record<
-		string,
-		V
-	>;
-}
-
-function withTrack(draft: Draft, id: string, track: TrackDraft): Draft {
-	const others = without(draft.tracks, id);
-	const blank = Object.keys(track.fields).length === 0 && Object.keys(track.tags).length === 0;
-	return { ...draft, tracks: blank ? others : { ...others, [id]: track } };
-}
-
-/** Takes what's typed into a track's field. Typing the old value back forgets the field. */
-export function withField(
-	tags: AlbumTags,
-	draft: Draft,
-	id: string,
-	field: TagField,
-	values: string[]
-): Draft {
-	const others = without(draft.tracks[id]?.fields ?? {}, field);
-	const undone = sameList(values, beneath(tags, draft, id, field));
-	return withTrack(draft, id, {
-		tags: draft.tracks[id]?.tags ?? {},
-		fields: undone ? others : { ...others, [field]: values }
-	});
-}
-
-/** Takes what's typed into a raw tag, the same way. */
-export function withTag(
-	tags: AlbumTags,
-	draft: Draft,
-	id: string,
-	key: string,
-	values: string[]
-): Draft {
-	const others = without(draft.tracks[id]?.tags ?? {}, key);
-	const undone = sameList(values, tagWas(tags, id, key));
-	return withTrack(draft, id, {
-		fields: draft.tracks[id]?.fields ?? {},
-		tags: undone ? others : { ...others, [key]: values }
-	});
-}
-
-/** What a track's own edit says, field by field: only what differs from what lies beneath it. */
-function ownFields(tags: AlbumTags, draft: Draft, id: string): [TagField, string[]][] {
-	const fields = draft.tracks[id]?.fields ?? {};
-	return pageOrder.flatMap((field) => {
-		const values = fields[field];
-		return values === undefined || same(field, values, beneath(tags, draft, id, field))
-			? []
-			: [[field, cleaned(values)] as [TagField, string[]]];
-	});
-}
-
-function ownTags(tags: AlbumTags, draft: Draft, id: string): [string, string[]][] {
-	return Object.entries(draft.tracks[id]?.tags ?? {}).flatMap(([key, values]) =>
-		sameList(cleaned(values), cleaned(tagWas(tags, id, key))) ? [] : [[key, cleaned(values)]]
-	) as [string, string[]][];
-}
-
-/** Reports whether a track's own edit changes anything, shown on its row or not. */
-export function isTrackEdited(tags: AlbumTags, draft: Draft, id: string): boolean {
-	return ownFields(tags, draft, id).length > 0 || ownTags(tags, draft, id).length > 0;
 }
 
 function isDate(value: string): boolean {
@@ -484,10 +258,11 @@ function isDate(value: string): boolean {
 	return date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
 }
 
-function problemWith(field: TagField, values: readonly string[]): string | undefined {
+/** What the server would refuse in a field's new values, in a person's words. */
+export function problemOf(field: TagField, values: readonly string[]): string | undefined {
 	const [value] = values;
 	if (value === undefined) {
-		return field === 'title' ? 'A track needs a title.' : undefined;
+		return field === 'title' ? 'A song needs a title.' : undefined;
 	}
 	const name = numberNames[field];
 	if (name !== undefined && (!isWhole(value) || Number(value) < 1 || Number(value) > mostNumber)) {
@@ -497,105 +272,6 @@ function problemWith(field: TagField, values: readonly string[]): string | undef
 		return 'A date is YYYY, YYYY-MM or YYYY-MM-DD.';
 	}
 	return undefined;
-}
-
-/**
- * Finds what the server would refuse, by field, in the order of the page. Only what changed counts:
- * a tag that's wrong already can stay wrong.
- */
-export function problemsIn(tags: AlbumTags, draft: Draft): Map<string, string> {
-	const problems = new Map<string, string>();
-	if (yearChanged(draft, albumWide(tags)) && !/^(?!0000)\d{4}$|^$/.test(draft.year?.trim() ?? '')) {
-		problems.set(yearField, 'A year is four digits.');
-	}
-	for (const { id } of tags.tracks) {
-		for (const [field, values] of ownFields(tags, draft, id)) {
-			const problem = problemWith(field, values);
-			if (problem !== undefined) {
-				problems.set(fieldId(id, field), problem);
-			}
-		}
-	}
-	return problems;
-}
-
-/** Counts what a save would write. A field with a problem won't be written, so it doesn't count. */
-export function summaryOf(tags: AlbumTags, draft: Draft): Summary {
-	const wide = albumWide(tags);
-	const problems = problemsIn(tags, draft);
-	const across =
-		Number(yearChanged(draft, wide) && !problems.has(yearField)) +
-		Number(genresChanged(draft, wide));
-	const counts = tags.tracks.flatMap(({ id }) => {
-		const count =
-			ownFields(tags, draft, id).filter(([field]) => !problems.has(fieldId(id, field))).length +
-			ownTags(tags, draft, id).length;
-		return count === 0 ? [] : [{ id, count }];
-	});
-	const [first] = counts;
-	return {
-		changes: across + counts.reduce((sum, { count }) => sum + count, 0),
-		files: across > 0 ? tags.tracks.length : counts.length,
-		only: across === 0 && counts.length === 1 && first !== undefined ? first.id : null
-	};
-}
-
-function tagEdit(fields: [TagField, string[]][], tags: [string, string[]][] = []): TagEdit {
-	const set = fields.filter(([, values]) => values.length > 0);
-	const clear = fields.filter(([, values]) => values.length === 0).map(([field]) => field);
-	return {
-		...(set.length > 0 ? { set: Object.fromEntries(set) } : {}),
-		...(clear.length > 0 ? { clear } : {}),
-		...(tags.length > 0 ? { tags: tags.map(([key, values]) => ({ key, values })) } : {})
-	};
-}
-
-function isEmpty(edit: object): boolean {
-	return Object.keys(edit).length === 0;
-}
-
-/** Builds the one request that turns the files into the draft, or null if there's nothing to do. */
-export function editOf(tags: AlbumTags, draft: Draft): AlbumEdit | null {
-	const wide = albumWide(tags);
-	const all = tagEdit([
-		...(yearChanged(draft, wide)
-			? ([['date', cleaned([draft.year ?? ''])]] as [TagField, string[]][])
-			: []),
-		...(genresChanged(draft, wide)
-			? ([['genres', cleaned(draft.genres ?? [])]] as [TagField, string[]][])
-			: [])
-	]);
-	const tracks = tags.tracks.flatMap(({ id }) => {
-		const edit = tagEdit(ownFields(tags, draft, id), ownTags(tags, draft, id));
-		return isEmpty(edit) ? [] : [{ id, ...edit }];
-	});
-	if (isEmpty(all) && tracks.length === 0) {
-		return null;
-	}
-	return { ...(isEmpty(all) ? {} : { all }), ...(tracks.length > 0 ? { tracks } : {}) };
-}
-
-/**
- * Carries someone's edits over to files that moved on: what they touched stays theirs, and what
- * can't be touched any more goes. Everything else reads through to the new files by itself.
- */
-export function rebased(draft: Draft, fresh: AlbumTags): Draft {
-	const tracks: Record<string, TrackDraft> = {};
-	for (const track of fresh.tracks) {
-		const held = draft.tracks[track.id];
-		if (held === undefined) {
-			continue;
-		}
-		const fields = Object.fromEntries(
-			Object.entries(held.fields).filter(([field]) => !track.readOnly?.includes(field as TagField))
-		);
-		const open = track.tags.filter(({ readOnly = false }) => !readOnly).map(({ key }) => key);
-		const kept = Object.entries(held.tags).filter(([key]) => open.includes(key));
-		if (Object.keys(fields).length > 0 || kept.length > 0) {
-			tracks[track.id] = { fields, tags: Object.fromEntries(kept) };
-		}
-	}
-	return { ...draft, tracks };
 }
 
 function isStopped(failure: SaveStop): failure is Extract<EditFailure, { changed: string[] }> {

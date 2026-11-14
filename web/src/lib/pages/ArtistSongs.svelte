@@ -21,7 +21,6 @@
 		wayOf,
 		type ArtistSongs as ArtistSongsPref
 	} from '#lib/library/sorts.ts';
-	import { matchFromBulk } from '#lib/matching/hooks.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import { shuffles } from '#lib/shuffle/session.svelte.ts';
@@ -39,9 +38,7 @@
 		topCount,
 		type ArtistSong
 	} from './artistSongs.ts';
-	import BulkEditor from './BulkEditor.svelte';
-	import { bulkEdits } from './bulkEdits.svelte.ts';
-	import { editorHistory } from './editorHistory.svelte.ts';
+	import { tagEditor } from './tagEditor.svelte.ts';
 	import {
 		columnsFrom,
 		columnsIn,
@@ -81,7 +78,6 @@
 	import { rowEvents, SongList } from './songRow.ts';
 	import SortControl, { type SortGroup } from './SortControl.svelte';
 	import { sorts } from './sortsView.svelte.ts';
-	import TagBar from './TagBar.svelte';
 
 	interface Props {
 		id: string;
@@ -278,47 +274,30 @@
 			? undefined
 			: { albumId: song.album.id, durationMs: song.track.durationMs };
 	};
-	const bulk = $derived(bulkEdits.current?.layout === 'selection' ? bulkEdits.current : null);
-	let bulkNote = $state('');
+	/** The tag editor is open over the page. */
+	const editing = $derived(tagEditor.current !== null);
 
+	/** Edit N songs: the one editor, on the songs picked. */
 	function editPicked(): void {
-		bulkNote = '';
-		bulkEdits.open(
-			'selection',
-			picked.flatMap((trackId) => {
-				const song = songOf.get(trackId);
-				return song === undefined
-					? []
-					: [
-							{
-								id: trackId,
-								albumId: song.album.id,
-								title: song.track.title,
-								trackNo: song.track.trackNo
-							}
-						];
-			}),
+		tagEditor.open(
+			{
+				kind: 'songs',
+				songs: picked.flatMap((trackId) => {
+					const song = songOf.get(trackId);
+					return song === undefined
+						? []
+						: [
+								{
+									id: trackId,
+									albumId: song.album.id,
+									title: song.track.title,
+									trackNo: song.track.trackNo
+								}
+							];
+				})
+			},
 			library.user?.canEditTags === true
 		);
-	}
-
-	// Its own history entry: Back closes it, and the artist stays.
-	editorHistory(
-		() => (bulk === null ? null : 'bulk'),
-		() => {
-			bulkEdits.close();
-		}
-	);
-
-	async function writeBulk(): Promise<void> {
-		const written = await bulk?.write();
-		if (written?.kind === 'done') {
-			bulkEdits.close();
-			bulkNote = 'Tags written.';
-		} else if (written?.kind === 'problem') {
-			await tick();
-			document.getElementById(written.field)?.focus();
-		}
 	}
 
 	/** Puts a song's row on screen, if it isn't, and gives it the focus. */
@@ -478,7 +457,7 @@
 	});
 
 	function onWindowKey(event: KeyboardEvent): void {
-		songList.windowKey(event, rowMenu !== null || columnsMenu !== null || bulk !== null);
+		songList.windowKey(event, rowMenu !== null || columnsMenu !== null || editing);
 	}
 
 	// The frame line: the list's own controls, while the full list shows.
@@ -1211,20 +1190,7 @@
 		onclose={closeMenus}
 	/>
 {/if}
-{#if bulk !== null}
-	<div class="bulk-layer" role="region" aria-label="Editing songs">
-		<BulkEditor session={bulk} />
-		<TagBar
-			session={bulk}
-			what="these songs"
-			leave={() => {
-				bulkEdits.close();
-			}}
-			write={() => void writeBulk()}
-			match={matchFromBulk(bulk)}
-		/>
-	</div>
-{:else if selection.any}
+{#if selection.any && !editing}
 	{@const facts = pickedFacts(picked, songFacts)}
 	<SelectionBar
 		count={selection.size}
@@ -1239,7 +1205,6 @@
 		}}
 	/>
 {/if}
-<p class="visually-hidden" role="status">{bulkNote}</p>
 
 <style>
 	.songs {
@@ -1528,28 +1493,7 @@
 		color: var(--fox-text);
 	}
 
-	.bulk-layer {
-		position: fixed;
-		inset: 0;
-		z-index: 2;
-		overflow-y: auto;
-		padding: 64px 0 240px;
-		background: var(--ground);
-		animation: rise var(--morph) var(--curve-morph) both;
-	}
-
-	@keyframes rise {
-		from {
-			opacity: 0;
-			translate: 0 16px;
-		}
-	}
-
 	@media (prefers-reduced-motion: reduce) {
-		.bulk-layer {
-			animation: none;
-		}
-
 		.more-all {
 			transition: none;
 		}

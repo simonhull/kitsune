@@ -1,5 +1,5 @@
 /**
- * An editor drawn over a page (the album's tag editor, an Edit N songs) gets a history entry of its
+ * An editor drawn over a page (the one tag editor, which the shell hosts) gets a history entry of its
  * own, a shallow one holding which editor it is. Back, from the browser, a mouse button or a gesture,
  * closes the editor and drops its edits, as Leave it does, and the page stays. Closing it any other way
  * (Leave it, Write, an apply) takes the entry back off, so a later Back goes where it would have gone
@@ -62,6 +62,8 @@ export function editorHistory(
 				const was = pushed.editor;
 				pushed = null;
 				close(was, 'left');
+				// What this run read of the editor is from before it closed: the next run has it.
+				return;
 			}
 			if (pushed !== null && held === pushed.editor) {
 				pushed.shown = true;
@@ -89,7 +91,7 @@ export function editorHistory(
 				pushed = { editor, path, shown: false };
 				void pushState('', { editor });
 			} else if (pushed.editor !== editor) {
-				// One editor for another, as Many at once does: the same entry.
+				// One editor for another, as the match sheet's Edit by hand can open: the same entry.
 				pushed = { editor, path, shown: false };
 				void replaceState('', { editor });
 			}

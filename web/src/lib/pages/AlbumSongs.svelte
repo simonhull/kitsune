@@ -3,7 +3,6 @@
 	which is the page), a disc heading with its own box and play, and the facts at the foot.
 -->
 <script lang="ts">
-	import type { Snippet } from 'svelte';
 	import {
 		addedOn,
 		discFacts,
@@ -68,12 +67,6 @@
 		/** It couldn't be fetched this time. */
 		unavailable: boolean;
 		retry: () => void;
-		/** Whether the album is being edited: the panel takes the editor's shape. */
-		editing: boolean;
-		/** One track is open to every tag: the stage has drawn up further. */
-		one: boolean;
-		/** Takes the rows' place in the panel, once the files have been read. */
-		editor: Snippet<[Album]> | undefined;
 	}
 
 	let {
@@ -90,10 +83,7 @@
 		openColumns,
 		gone,
 		unavailable,
-		retry,
-		editing,
-		one,
-		editor
+		retry
 	}: Props = $props();
 
 	/** When "Yesterday" is, for Last played: read once a visit. */
@@ -153,16 +143,12 @@
 <section
 	aria-label="Tracks"
 	class="panel song-list stepped"
-	class:editing
-	class:one
 	data-morph-part="panel"
 	data-selecting={selection.any ? '' : undefined}
 	use:songGrid={grid}
 	style={columnVars(fitted.shown, pref.widths, step)}
 >
-	{#if album !== undefined && editor !== undefined}
-		{@render editor(album)}
-	{:else if gone}
+	{#if gone}
 		<p class="note">This album isn't in the library any more.</p>
 	{:else if unavailable}
 		<p class="note">
@@ -297,23 +283,6 @@
 		transition:
 			margin-top var(--morph-slow) var(--curve-settle),
 			width var(--morph-slow) var(--curve-settle);
-	}
-
-	/* Editing, it reaches 32 past the words on each side. */
-	.editing {
-		margin-top: -34px;
-		width: calc(100% - 2 * max(32px, var(--gutter) - 32px));
-		padding: 12px 24px;
-		border-radius: var(--radius-28);
-		background: var(--card);
-		backdrop-filter: none;
-		transition-duration: var(--morph);
-		transition-timing-function: var(--curve-morph);
-	}
-
-	.one {
-		margin-top: -84px;
-		padding: 8px 24px;
 	}
 
 	.note {
@@ -461,14 +430,6 @@
 			width: calc(100% - 16px);
 			padding: 8px;
 			border-radius: var(--radius-28);
-		}
-
-		.editing {
-			margin-top: -20px;
-			width: 100%;
-			padding: 8px 16px;
-			border: 0;
-			border-radius: var(--radius-28) var(--radius-28) 0 0;
 		}
 	}
 

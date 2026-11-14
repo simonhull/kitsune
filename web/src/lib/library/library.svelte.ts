@@ -3,7 +3,7 @@ import { preload } from '#lib/cover/rungs.ts';
 import { decodesAhead, mostQueued, openingFor, throwGap } from '#lib/pages/deck.ts';
 import { theme } from '#lib/theme/theme.svelte.ts';
 import { createApiSource } from './api.ts';
-import { once } from './bulk.ts';
+import { once } from './edit.ts';
 import type { RuleChange } from './shuffleRules.ts';
 import { retagged, type NowPlaying } from './cue.ts';
 import {

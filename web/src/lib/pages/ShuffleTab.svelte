@@ -5,25 +5,24 @@
 	import {
 		combineOn,
 		combinedElsewhere,
-		excludeOn,
 		excludedNote,
 		orderOf
 	} from '#lib/library/shuffleRules.ts';
 	import Switch from './Switch.svelte';
-	import type { BulkSession } from './bulkEdits.svelte.ts';
+	import type { EditSession } from './tagEditor.svelte.ts';
 
 	interface Props {
-		session: BulkSession;
+		session: EditSession;
 	}
 
 	let { session }: Props = $props();
 
-	const songs = $derived(session.pickedIds);
+	const songs = $derived(session.tickedIds);
 	const count = $derived(songs.length);
 	const combined = $derived(combineOn(songs, session.rules, session.rulesDraft));
 	const order = $derived(orderOf(songs, session.rules, session.rulesDraft));
 	const elsewhere = $derived(combinedElsewhere(songs, session.rules));
-	const excluded = $derived(excludeOn(songs, session.rules, session.rulesDraft));
+	const excluded = $derived(session.allExcluded);
 	const byId = $derived(new Map(session.tracks.map((track) => [track.id, track])));
 
 	/** Where a dragged song started, while it's held. */

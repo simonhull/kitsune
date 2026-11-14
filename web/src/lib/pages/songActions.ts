@@ -1,5 +1,3 @@
-import { goto } from '$app/navigation';
-import { resolve } from '$app/paths';
 import { clock } from '#lib/library/format.ts';
 import { library } from '#lib/library/library.svelte.ts';
 import type { LibraryIndex } from '#lib/library/source.ts';
@@ -7,7 +5,7 @@ import { player } from '#lib/player/player.svelte.ts';
 import { shuffles } from '#lib/shuffle/session.svelte.ts';
 import { selectionSource } from '#lib/shuffle/sources.ts';
 import type { Queued } from '#lib/player/queue.ts';
-import { tagEdits } from './tagEdits.svelte.ts';
+import { tagEditor } from './tagEditor.svelte.ts';
 import { trashBin } from './trashBin.svelte.ts';
 
 /** Where each song in the index is: its album, by track ID. */
@@ -177,7 +175,7 @@ export interface SongActions {
 	playNext(): void;
 	addToQueue(): void;
 	rate(stars: number | null): void;
-	/** Set when they're all on one album the person may edit. */
+	/** Opens the tag editor on them. Set for a person who may edit tags, once each song's album is known. */
 	editTags: (() => void) | undefined;
 	/** Moves them to Trash. Set for an administrator on a server that may change its files. */
 	trash: (() => void) | undefined;
@@ -192,9 +190,10 @@ export function actionsFor(
 	albumOf: ReadonlyMap<string, string>,
 	index?: () => LibraryIndex
 ): SongActions {
-	const albums = new Set(trackIds.map((id) => albumOf.get(id)));
-	const [only] = albums;
-	const editable = albums.size === 1 && only !== undefined && library.user?.canEditTags === true;
+	const editable =
+		trackIds.length > 0 &&
+		library.user?.canEditTags === true &&
+		trackIds.every((id) => albumOf.has(id));
 	const queued = (then: (songs: Queued[]) => void): (() => void) => {
 		return () => {
 			void songsOf(trackIds, albumOf).then(then);
@@ -220,8 +219,15 @@ export function actionsFor(
 		},
 		editTags: editable
 			? () => {
-					tagEdits.open(only);
-					void goto(resolve('/album/[id]', { id: only }));
+					const songs = trackIds.map((id) => ({ id, albumId: albumOf.get(id) ?? '', title: '' }));
+					const [one] = songs;
+					// One song opens on its album, it alone ticked and open to every tag.
+					tagEditor.open(
+						songs.length === 1 && one !== undefined
+							? { kind: 'album', albumId: one.albumId, ticked: [one.id], open: one.id }
+							: { kind: 'songs', songs },
+						true
+					);
 				}
 			: undefined,
 		trash: trashBin.can

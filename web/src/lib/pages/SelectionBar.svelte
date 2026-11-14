@@ -14,7 +14,7 @@
 		actions: SongActions;
 		/** A phone: Play stays, and the rest go in More. */
 		compact: boolean;
-		/** Opens bulk editing on the songs. Left out for anyone who can't. */
+		/** Opens the tag editor on the songs. Left out for anyone who can't. */
 		edit: (() => void) | undefined;
 		onclear: () => void;
 	}
