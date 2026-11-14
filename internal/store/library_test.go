@@ -52,10 +52,10 @@ func newWrite(i int) store.TrackWrite {
 	}
 }
 
-func writeAll(t *testing.T, s *store.Store, tws ...store.TrackWrite) {
-	t.Helper()
-	if err := s.WriteBatch(t.Context(), &store.Batch{Tracks: tws}); err != nil {
-		t.Fatal(err)
+func writeAll(tb testing.TB, s *store.Store, tws ...store.TrackWrite) {
+	tb.Helper()
+	if err := s.WriteBatch(tb.Context(), &store.Batch{Tracks: tws}); err != nil {
+		tb.Fatal(err)
 	}
 }
 

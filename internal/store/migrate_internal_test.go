@@ -1062,3 +1062,51 @@ func TestTrashLeavesEveryTrackLive(t *testing.T) {
 		t.Errorf("trashed tracks after their admin left = %q, want track 1, by nobody", got)
 	}
 }
+
+// TestPlaylistsStartEmpty runs 0020 over a v19 library: nothing else changes and
+// no one has a playlist. A playlist's entries go with their track, and its
+// person's playlists with them; two entries can't share a place.
+func TestPlaylistsStartEmpty(t *testing.T) {
+	t.Parallel()
+	steps := shippedSteps(t)
+	at := slices.IndexFunc(steps, func(m migration) bool { return m.name == "0020_playlists.sql" })
+	if at < 0 {
+		t.Fatal("0020_playlists.sql is not shipped")
+	}
+	d := newScratchDB(t)
+	d.mustSettle(t, steps[:at])
+	seedLibrary(t, d.w)
+	facts := libraryFacts(t, d.w)
+
+	d.mustSettle(t, steps[:at+1])
+
+	expectFacts(t, d.w, facts)
+	const count = "SELECT (SELECT count(*) FROM playlists) + (SELECT count(*) FROM playlist_tracks)"
+	if got := rawRows(t, d.w, count); !slices.Equal(got, []string{"0"}) {
+		t.Errorf("playlists and entries = %q, want none", got)
+	}
+	for _, q := range []string{
+		"INSERT INTO playlists (id, ulid, user_id, name, source, created_at, updated_at) VALUES (1, '01PLAYLIST0000000000000001', 1, 'Mine', 'kitsune', 1, 1)",
+		"INSERT INTO playlist_tracks (playlist_id, position, track_id, added_at) VALUES (1, 65536, 1, 1), (1, 131072, 1, 1), (1, 196608, 2, 1)",
+		"DELETE FROM tracks_fts WHERE rowid = 1",
+		"DELETE FROM tracks WHERE id = 1",
+	} {
+		if _, err := d.w.ExecContext(t.Context(), q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if got := rawRows(t, d.w, "SELECT track_id FROM playlist_tracks ORDER BY position"); !slices.Equal(got, []string{"2"}) {
+		t.Errorf("entries after track 1 went = %q, want track 2's alone", got)
+	}
+	if _, err := d.w.ExecContext(t.Context(), "INSERT INTO playlist_tracks (playlist_id, position, track_id, added_at) VALUES (1, 196608, 2, 1)"); err == nil {
+		t.Error("two entries took one place")
+	}
+	for _, q := range []string{"DELETE FROM sessions", "DELETE FROM users WHERE id = 1"} {
+		if _, err := d.w.ExecContext(t.Context(), q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if got := rawRows(t, d.w, count); !slices.Equal(got, []string{"0"}) {
+		t.Errorf("after their person left, playlists and entries = %q, want none", got)
+	}
+}
