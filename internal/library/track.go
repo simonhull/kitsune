@@ -67,16 +67,26 @@ func setTitle(tw *store.TrackWrite, t *audiometa.Tags) {
 		base := filepath.Base(tw.RelPath)
 		tw.Title = strings.TrimSuffix(base, filepath.Ext(base))
 	}
-	tw.SortTitle = cmp.Or(single(t, keysTitleSort), tw.Title)
+	tw.SortTitle = cmp.Or(single(t, scanKeys(FieldSortTitle)), tw.Title)
 }
 
-// setNumbers copies the track, disc and year fields, and the disc's name.
+// setNumbers sets the track, disc and year fields, and the disc's name. Each
+// reads audiometa's typed field first, then the keys the editor reads it from,
+// which hold it where audiometa reads none ("DISC" for "DISCNUMBER").
 func setNumbers(tw *store.TrackWrite, t *audiometa.Tags) {
-	tw.TrackNo, tw.TrackTotal = t.TrackNumber, t.TrackTotal
-	tw.DiscNo, tw.DiscTotal = t.DiscNumber, t.DiscTotal
-	tw.DiscSubtitle = single(t, keysDiscSubtitle)
-	tw.Year = t.Year
-	tw.OriginalYear = leadingYear(cmp.Or(t.OriginalDate, single(t, keysOriginalDate)))
+	tw.TrackNo, tw.TrackTotal = vorbisTrack.readNumber(t, t.TrackNumber), vorbisTrack.readTotal(t, t.TrackTotal)
+	tw.DiscNo, tw.DiscTotal = vorbisDisc.readNumber(t, t.DiscNumber), vorbisDisc.readTotal(t, t.DiscTotal)
+	tw.DiscSubtitle = single(t, scanKeys(FieldDiscSubtitle))
+	tw.Year = cmp.Or(t.Year, leadingYear(first(scanValues(t, FieldDate))))
+	tw.OriginalYear = leadingYear(cmp.Or(t.OriginalDate, single(t, scanKeys(FieldOriginalDate))))
+}
+
+// first returns the first of values, or "".
+func first(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }
 
 // leadingYear returns the four-digit year a date starts with, or 0.
@@ -94,7 +104,7 @@ func leadingYear(date string) int {
 
 // isCompilation reports whether the compilation flag is set.
 func isCompilation(t *audiometa.Tags) bool {
-	v := single(t, keysCompilation)
+	v := single(t, scanKeys(FieldCompilation))
 	return v == "1" || strings.EqualFold(v, "true")
 }
 
@@ -102,11 +112,11 @@ func isCompilation(t *audiometa.Tags) bool {
 func setAlbum(tw *store.TrackWrite, t *audiometa.Tags) {
 	tw.Album = store.AlbumWrite{
 		Name:        strings.TrimSpace(t.Album),
-		MBID:        cmp.Or(single(t, keysAlbumMBID), strings.TrimSpace(t.MusicBrainzAlbumID)),
+		MBID:        cmp.Or(single(t, scanKeys(FieldMusicBrainzAlbumID)), strings.TrimSpace(t.MusicBrainzAlbumID)),
 		Year:        tw.Year,
 		Compilation: tw.Compilation,
 	}
-	tw.Album.SortName = cmp.Or(single(t, keysAlbumSort), tw.Album.Name)
+	tw.Album.SortName = cmp.Or(single(t, scanKeys(FieldSortAlbum)), tw.Album.Name)
 	tw.Album.GroupKey = groupKey(tw)
 	// After grouping, which still sees the real (possibly empty) name.
 	tw.Album.Name = cmp.Or(tw.Album.Name, unknownAlbum)
@@ -140,22 +150,26 @@ func albumArtistName(tw *store.TrackWrite) string {
 	return unknownArtist
 }
 
-// artists maps the track artists, falling back to the single Artist field.
+// artists maps the track artists, falling back to the single Artist field and
+// then to the rest of the keys the editor reads them from.
 func artists(t *audiometa.Tags) []store.ArtistWrite {
 	names := t.Artists
 	if len(names) == 0 && t.Artist != "" {
 		names = []string{t.Artist}
 	}
-	return artistWrites(names, multi(t, keysArtistSort), multi(t, keysArtistMBID))
+	if len(names) == 0 {
+		names = multi(t, scanKeys(FieldArtists))
+	}
+	return artistWrites(names, multi(t, scanKeys(FieldSortArtist)), multi(t, scanKeys(FieldMusicBrainzArtistID)))
 }
 
 // albumArtists maps the album artists, falling back to the typed AlbumArtist.
 func albumArtists(t *audiometa.Tags) []store.ArtistWrite {
-	names := multi(t, keysAlbumArtist)
+	names := multi(t, scanKeys(FieldAlbumArtists))
 	if len(names) == 0 && t.AlbumArtist != "" {
 		names = []string{t.AlbumArtist}
 	}
-	return artistWrites(names, multi(t, keysAlbumArtistSort), multi(t, keysAlbumArtistMBID))
+	return artistWrites(names, multi(t, scanKeys(FieldSortAlbumArtist)), multi(t, scanKeys(FieldMusicBrainzAlbumArtistID)))
 }
 
 // artistWrites cleans names (trimmed; empty and repeated match keys dropped,

@@ -990,3 +990,40 @@ func TestStarsOnlyDropsHeartStarsAndDrawsTheLoveLine(t *testing.T) {
 		}
 	}
 }
+
+// TestRereadEditorKeysMarksOnlyTracksThatReadDifferently runs 0018 over a v17
+// library: a track whose empty column one of the editor's keys now fills reads
+// again at the next scan (its mtime is 0), and every other track keeps its own.
+func TestRereadEditorKeysMarksOnlyTracksThatReadDifferently(t *testing.T) {
+	t.Parallel()
+	steps := shippedSteps(t)
+	at := slices.IndexFunc(steps, func(m migration) bool { return m.name == "0018_reread_editor_keys.sql" })
+	if at < 0 {
+		t.Fatal("0018_reread_editor_keys.sql is not shipped")
+	}
+	d := newScratchDB(t)
+	d.mustSettle(t, steps[:at])
+	seedLibrary(t, d.w)
+	for _, q := range []string{
+		"INSERT INTO track_tags (track_id, key, ord, value) VALUES (1, 'DISC', 0, '1')",            // No disc: reads again.
+		"UPDATE tracks SET disc_no = 1, disc_total = 1 WHERE id = 2",                               // Has its disc and total.
+		"INSERT INTO track_tags (track_id, key, ord, value) VALUES (2, 'DISC', 0, '1')",            // So stays.
+		"INSERT INTO track_tags (track_id, key, ord, value) VALUES (3, 'YEAR', 0, '1984')",         // No year: reads again.
+		"INSERT INTO track_tags (track_id, key, ord, value) VALUES (4, 'ALBUM_ARTIST', 0, 'Band')", // No album artist: reads again.
+		"INSERT INTO track_tags (track_id, key, ord, value) VALUES (5, 'ARTISTS', 0, 'Band')",      // Has its artist: stays.
+		"INSERT INTO track_tags (track_id, key, ord, value) VALUES (6, 'TRACKNUMBER', 0, '1')",     // Not a new key: stays.
+	} {
+		if _, err := d.w.ExecContext(t.Context(), q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	facts := libraryFacts(t, d.w)
+
+	d.mustSettle(t, steps[:at+1])
+
+	got := rawRows(t, d.w, "SELECT id, mtime FROM tracks ORDER BY id")
+	if want := []string{"1 0", "2 1", "3 0", "4 0", "5 1", "6 1"}; !slices.Equal(got, want) {
+		t.Errorf("mtimes = %q, want %q", got, want)
+	}
+	expectFacts(t, d.w, facts)
+}

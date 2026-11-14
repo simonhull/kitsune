@@ -137,8 +137,15 @@ type field struct {
 	frozen func([]string) bool
 	// valid says what a value must look like. Nil takes any.
 	valid func(family, string) error
-	// read returns the file's values. Nil means the first of the keys with any.
-	read func(t *audiometa.Tags, keys []string) []string
+	// scan holds the keys a scan reads the field from, in every format, in the
+	// order it tries them; the editor reads them too, so the two never disagree.
+	// It covers every key of flac, mp3, mp3v23, m4a and native, which
+	// TestScanReadsEveryEditorKey checks. Nil, for a field a scan doesn't read,
+	// means the editor reads the first of the family's keys with any.
+	scan []string
+	// read returns the file's values, for a field whose values need more than
+	// the first of scan with any. A scan reads the field through it too.
+	read func(t *audiometa.Tags) []string
 	// write saves values, or with none removes the field. Nil means [writeKeys].
 	write func(t *audiometa.Tags, fam family, keys, values []string)
 }
@@ -210,7 +217,7 @@ var fields = []field{
 	},
 	{
 		name: FieldArtists, flac: keys("ARTIST", "ARTISTS"), mp3: keys("TPE1", "ARTISTS"), m4a: keys("\xA9ART", "ARTISTS"),
-		multi: true, native: keys("IART", "AUTH"),
+		multi: true, native: keys("IART", "AUTH"), scan: keysArtists,
 		dependents: slices.Concat(keysArtistSort, keysArtistMBID, keys("ARTISTS_SORT", "ARTIST_CREDIT", "ARTISTS_CREDIT", "ARTIST CREDIT")),
 	},
 	{
@@ -218,10 +225,10 @@ var fields = []field{
 		flac:  keys("ALBUMARTIST", "ALBUM ARTIST", "ALBUM_ARTIST", "ALBUMARTISTS", "ALBUM_ARTISTS"),
 		mp3:   keys("TPE2", "ALBUMARTIST", "ALBUM ARTIST", "ALBUM_ARTIST", "ALBUMARTISTS", "ALBUM_ARTISTS"),
 		m4a:   keys("aART"),
-		multi: true, read: candidates(keysAlbumArtist),
+		multi: true, scan: keysAlbumArtist,
 		dependents: slices.Concat(keysAlbumArtistSort, keysAlbumArtistMBID, keys("ALBUMARTISTS_SORT", "ALBUMARTIST_CREDIT", "ALBUMARTISTS_CREDIT", "ALBUM ARTIST CREDIT")),
 	},
-	{name: FieldCompilation, flac: keys("COMPILATION"), mp3: keys("TCMP"), m4a: keys("cpil"), valid: validFlag},
+	{name: FieldCompilation, flac: keys("COMPILATION"), mp3: keys("TCMP"), m4a: keys("cpil"), valid: validFlag, scan: keysCompilation},
 	number(FieldTrack, trackNumber, vorbisTrack, keys("TRCK"), keys("trkn"), "ITRK", "IPRT"),
 	numberTotal(FieldTrackTotal, trackTotal, vorbisTrack, keys("TRCK"), keys("trkn")),
 	number(FieldDisc, discNumber, vorbisDisc, keys("TPOS"), keys("disk")),
@@ -232,20 +239,20 @@ var fields = []field{
 		// takes it off; on ID3v2.4 the change writes it straight back.
 		name: FieldDiscSubtitle, flac: keys(keyDiscSubtitle), mp3: keys(keyTSST, keyDiscSubtitle),
 		mp3v23: keys(keyDiscSubtitle), m4a: keys(keyDiscSubtitle),
-		dependents: []string{keyTSST}, read: candidates(keysDiscSubtitle),
+		dependents: []string{keyTSST}, scan: keysDiscSubtitle,
 	},
 	{
 		name: FieldDate, flac: keys("DATE", keyYear), mp3: keys("TDRC"), mp3v23: keys(keyTYER, keyTDAT), m4a: keys("\xA9day"),
 		dependents: []string{"TDRC", keyTYER, keyTDAT, "TIME"}, native: keys(keyICRD),
-		valid: validReleaseDate, read: readDate, write: writeDate,
+		valid: validReleaseDate, scan: keysDate, read: readDate, write: writeDate,
 	},
 	{
 		name: FieldGenres, flac: keys("GENRE"), mp3: keys("TCON"), m4a: keys("\xA9gen"), multi: true, native: keys("IGNR"),
-		dependents: []string{"gnre"},
+		dependents: []string{"gnre"}, scan: keysGenre,
 	},
 	{
 		name: FieldComposers, flac: keys("COMPOSER"), mp3: keys("TCOM"), m4a: keys("\xA9wrt"), multi: true,
-		dependents: []string{"COMPOSERSORT"},
+		dependents: []string{"COMPOSERSORT"}, scan: keysComposer,
 	},
 	{name: FieldConductor, flac: keys("CONDUCTOR"), mp3: keys("TPE3"), m4a: keys("CONDUCTOR"), multi: true},
 	{name: FieldLyricist, flac: keys("LYRICIST"), mp3: keys("TEXT"), m4a: keys("LYRICIST"), multi: true},
@@ -260,7 +267,7 @@ var fields = []field{
 	{
 		name: FieldOriginalDate, flac: keys("ORIGINALDATE"), mp3: keys("TDOR"), mp3v23: keys(keyTORY), m4a: keys("ORIGINALDATE"),
 		dependents: []string{"TDOR", keyTORY},
-		valid:      validDate, read: candidates(keysOriginalDate), write: writeOriginalDate,
+		valid:      validDate, scan: keysOriginalDate, write: writeOriginalDate,
 	},
 	{name: FieldLanguage, flac: keys("LANGUAGE"), mp3: keys("TLAN"), m4a: keys("LANGUAGE"), multi: true},
 	{name: FieldBPM, flac: keys("BPM"), mp3: keys("TBPM"), m4a: keys("tmpo"), valid: validBPM},
@@ -274,12 +281,12 @@ var fields = []field{
 		name: FieldLyrics, flac: keys("LYRICS"), mp3: keys(keyLyrics), m4a: keys("\xA9lyr"),
 		matching: []string{"UNSYNCEDLYRICS"}, frozen: timestamped,
 	},
-	{name: FieldSortTitle, flac: keys("TITLESORT"), mp3: keys("TSOT"), m4a: keys("sonm")},
-	{name: FieldSortArtist, flac: keys("ARTISTSORT"), mp3: keys("TSOP"), m4a: keys("soar")},
-	{name: FieldSortAlbum, flac: keys("ALBUMSORT"), mp3: keys("TSOA"), m4a: keys("soal")},
+	{name: FieldSortTitle, flac: keys("TITLESORT"), mp3: keys("TSOT"), m4a: keys("sonm"), scan: keysTitleSort},
+	{name: FieldSortArtist, flac: keys("ARTISTSORT"), mp3: keys("TSOP"), m4a: keys("soar"), scan: keysArtistSort},
+	{name: FieldSortAlbum, flac: keys("ALBUMSORT"), mp3: keys("TSOA"), m4a: keys("soal"), scan: keysAlbumSort},
 	{
 		name: FieldSortAlbumArtist, flac: keys("ALBUMARTISTSORT"), mp3: keys("TSO2", "ALBUMARTISTSORT"), m4a: keys("soaa"),
-		read: candidates(keysAlbumArtistSort),
+		scan: keysAlbumArtistSort,
 	},
 	// The MBIDs come after artists and album artists, whose change deletes the
 	// artist IDs as dependents: one request can rename and give the new IDs.
@@ -291,7 +298,7 @@ var fields = []field{
 		// The recording's ID is a UFID in ID3, which a TXXX left by another tagger
 		// follows, and a freeform "MusicBrainz Track Id" in M4A.
 		name: FieldMusicBrainzRecordingID, flac: keys(keysTrackMBID[0]), mp3: keys(keyRecordingUFID, keysTrackMBID[2]),
-		m4a: keys(keysTrackMBID[2]), valid: validMBID,
+		m4a: keys(keysTrackMBID[2]), valid: validMBID, scan: keysTrackMBID,
 	},
 	mbid(FieldMusicBrainzTrackID, false, keysReleaseTrackMBID),
 }
@@ -303,7 +310,7 @@ func keys(names ...string) []string { return names }
 // spells the latter.
 func mbid(name Field, multi bool, candidates []string) field {
 	vorbisKey, otherKey := candidates[0], candidates[1]
-	return field{name: name, flac: keys(vorbisKey), mp3: keys(otherKey), m4a: keys(otherKey), multi: multi, valid: validMBID}
+	return field{name: name, flac: keys(vorbisKey), mp3: keys(otherKey), m4a: keys(otherKey), multi: multi, valid: validMBID, scan: candidates}
 }
 
 // mbidPattern is the shape of a MusicBrainz ID: a UUID, as MusicBrainz writes it.
@@ -321,11 +328,6 @@ func trackNumber(t *audiometa.Tags) *int { return &t.TrackNumber }
 func trackTotal(t *audiometa.Tags) *int  { return &t.TrackTotal }
 func discNumber(t *audiometa.Tags) *int  { return &t.DiscNumber }
 func discTotal(t *audiometa.Tags) *int   { return &t.DiscTotal }
-
-// candidates reads a field through the same keys, in the same order, as a scan.
-func candidates(names []string) func(*audiometa.Tags, []string) []string {
-	return func(t *audiometa.Tags, _ []string) []string { return firstValues(t, names) }
-}
 
 // timestamped reports lyrics with time codes, which a plain text box would ruin.
 func timestamped(values []string) bool {
@@ -387,6 +389,51 @@ func (n vorbisNumbers) writeTotal(t *audiometa.Tags, values []string) {
 	}
 }
 
+// readNumber returns the number a scan and the editor read: typed, audiometa's
+// field, which reads only the first number key; else the number part of the
+// first number key that holds one; else 0.
+func (n vorbisNumbers) readNumber(t *audiometa.Tags, typed int) int {
+	if typed != 0 {
+		return typed
+	}
+	for _, key := range n.number {
+		num, _, _ := strings.Cut(t.GetFirst(key), "/")
+		if v, ok := positive(num); ok {
+			return v
+		}
+	}
+	return 0
+}
+
+// readTotal returns the total a scan and the editor read: typed, audiometa's
+// field, which reads only some of the keys; else the first total key that holds
+// one; else what the first number key holding one keeps after its number, an
+// explicit total winning over that as it does for audiometa; else 0.
+func (n vorbisNumbers) readTotal(t *audiometa.Tags, typed int) int {
+	if typed != 0 {
+		return typed
+	}
+	for _, key := range n.total {
+		if v, ok := positive(t.GetFirst(key)); ok {
+			return v
+		}
+	}
+	for _, key := range n.number {
+		if _, total, held := strings.Cut(t.GetFirst(key), "/"); held {
+			if v, ok := positive(total); ok {
+				return v
+			}
+		}
+	}
+	return 0
+}
+
+// positive parses s, trimmed, as a number above zero.
+func positive(s string) (int, bool) {
+	v, err := strconv.Atoi(strings.TrimSpace(s))
+	return v, err == nil && v > 0
+}
+
 // suffix returns the total the first number key holding one keeps after its
 // number, or "".
 func (n vorbisNumbers) suffix(t *audiometa.Tags) string {
@@ -402,24 +449,27 @@ func (n vorbisNumbers) suffix(t *audiometa.Tags) string {
 // total. Their typed fields read every format, since a Vorbis value can be
 // "3/12", and write the two that keep a number and a total together. Vorbis
 // keeps them under the raw keys, and audiometa reads only some: a value held
-// only by a mirror is still the field's.
+// only by a mirror is still the field's, for a scan as for the editor.
 func number(name Field, pick func(*audiometa.Tags) *int, v vorbisNumbers, mp3, m4a []string, native ...string) field {
-	return numeric(name, pick, v.number, v.writeNumber, mp3, m4a, native)
+	return numeric(name, pick, v.number, v.readNumber, v.writeNumber, mp3, m4a, native)
 }
 
 // numberTotal is the row of a track or disc total; see [number].
 func numberTotal(name Field, pick func(*audiometa.Tags) *int, v vorbisNumbers, mp3, m4a []string) field {
-	return numeric(name, pick, v.total, v.writeTotal, mp3, m4a, nil)
+	return numeric(name, pick, v.total, v.readTotal, v.writeTotal, mp3, m4a, nil)
 }
 
-func numeric(name Field, pick func(*audiometa.Tags) *int, flac []string, writeVorbis func(*audiometa.Tags, []string), mp3, m4a, native []string) field {
+func numeric(
+	name Field, pick func(*audiometa.Tags) *int, flac []string,
+	readVorbis func(*audiometa.Tags, int) int, writeVorbis func(*audiometa.Tags, []string), mp3, m4a, native []string,
+) field {
 	return field{
-		name: name, flac: flac, mp3: mp3, m4a: m4a, native: native, typed: true, valid: validNumber,
-		read: func(t *audiometa.Tags, keys []string) []string {
-			if n := *pick(t); n != 0 {
+		name: name, flac: flac, mp3: mp3, m4a: m4a, native: native, typed: true, valid: validNumber, scan: flac,
+		read: func(t *audiometa.Tags) []string {
+			if n := readVorbis(t, *pick(t)); n != 0 {
 				return []string{strconv.Itoa(n)}
 			}
-			return firstValues(t, keys[1:])
+			return nil
 		},
 		write: func(t *audiometa.Tags, fam family, _, values []string) {
 			if fam == vorbis {
@@ -485,7 +535,7 @@ func validReleaseDate(fam family, v string) error {
 
 // readDate returns the date, joining an ID3v2.3 year to its TDAT, which holds
 // the day and month as DDMM.
-func readDate(t *audiometa.Tags, _ []string) []string {
+func readDate(t *audiometa.Tags) []string {
 	date := firstValues(t, keysDate)
 	if len(date) == 0 {
 		return nil
@@ -592,8 +642,11 @@ func (f *field) keys(fam family) []string {
 // values returns what the file holds. Empty values read as absent. A WAV or
 // AIFF file's native text counts after its ID3 frames, as audiometa reads it.
 func (f *field) values(t *audiometa.Tags, fam family) []string {
-	if f.read != nil {
-		return f.read(t, f.keys(fam))
+	switch {
+	case f.read != nil:
+		return f.read(t)
+	case f.scan != nil:
+		return firstValues(t, f.scan)
 	}
 	return firstValues(t, f.covers(fam))
 }
