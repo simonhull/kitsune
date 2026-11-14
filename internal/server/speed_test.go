@@ -142,8 +142,7 @@ func newSpeedStream(tb testing.TB) *streamServer {
 	return ss
 }
 
-func TestStreamFirstByteSpeed(t *testing.T) {
-	t.Parallel()
+func TestStreamFirstByteSpeed(t *testing.T) { //nolint:paralleltest // Timed: a speed test measures a server alone, never beside another.
 	b, limit := speedBudget(t, "stream-first-byte")
 	ss := newSpeedStream(t)
 	ss.firstByte(t, streamTrackID) // Warm: the connection, the statement cache, the page cache.
@@ -163,8 +162,7 @@ func BenchmarkStreamFirstByte(b *testing.B) {
 	b.ReportMetric(ms(total)/float64(b.N), "ms/first-byte")
 }
 
-func TestLibraryIndexSpeed(t *testing.T) {
-	t.Parallel()
+func TestLibraryIndexSpeed(t *testing.T) { //nolint:paralleltest // Timed: a speed test measures a server alone, never beside another.
 	b, limit := speedBudget(t, "library-index")
 	ts := newTestServer(t)
 	shape := benchShapes[len(benchShapes)-1]
@@ -174,8 +172,7 @@ func TestLibraryIndexSpeed(t *testing.T) {
 
 // TestArtistIndexSpeed times the artist page's list: one artist's songs, of a
 // library as large as the whole index's budget reads.
-func TestArtistIndexSpeed(t *testing.T) {
-	t.Parallel()
+func TestArtistIndexSpeed(t *testing.T) { //nolint:paralleltest // Timed: a speed test measures a server alone, never beside another.
 	b, limit := speedBudget(t, "artist-index")
 	ts := newTestServer(t)
 	shape := benchShapes[len(benchShapes)-1]
