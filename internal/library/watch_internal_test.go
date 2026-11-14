@@ -232,10 +232,14 @@ func TestWatcherIgnoresWhatAScanSkips(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		l, n := synctestLib(t)
 		root := l.roots[0]
-		for _, rel := range []string{"@eaDir/a.flac", ".hidden/b.flac", "a/.c.flac", "a/.d.flac.audiometa-1.tmp", "a/notes.txt"} {
+		for _, rel := range []string{
+			"@eaDir/a.flac", ".hidden/b.flac", "a/.c.flac", "a/.d.flac.audiometa-1.tmp", "a/notes.txt",
+			TrashDir + "/01J0000000000000000000TRSH/a/e.flac",
+		} {
 			l.copyTo(root, rel, sampleFLAC)
 			n.events <- fsnotify.Event{Name: filepath.Join(root, rel), Op: fsnotify.Create}
 		}
+		n.events <- fsnotify.Event{Name: filepath.Join(root, TrashDir), Op: fsnotify.Create} // The Trash itself, made.
 		time.Sleep(2 * defaultSettle)
 		synctest.Wait()
 		if got := l.live(root); len(got) != 0 {

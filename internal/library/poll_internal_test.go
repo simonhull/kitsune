@@ -140,6 +140,33 @@ func TestChangedDirs(t *testing.T) {
 	}
 }
 
+// A song moved into the Trash changes its own folder, and nothing in the Trash
+// is ever a change: the poller never sees it, as the scanner never does.
+func TestSnapshotLeavesTheTrashOut(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	root := l.roots[0]
+	l.copyTo(root, "a/one.flac", sampleFLAC)
+	l.copyTo(root, "a/two.flac", sampleFLAC)
+	trashed := filepath.Join(root, TrashDir, "01J0000000000000000000TRSH", "a", "two.flac")
+	// Made before the first look: making it moves the root's own mtime, as any new folder would.
+	if err := os.MkdirAll(filepath.Dir(trashed), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshot(t.Context(), root)
+	if err := os.Rename(filepath.Join(root, "a", "two.flac"), trashed); err != nil {
+		t.Fatal(err)
+	}
+	moved := snapshot(t.Context(), root)
+	if got, want := changedDirs(before, moved), []string{"a"}; !slices.Equal(got, want) {
+		t.Errorf("changed = %v, want %v", got, want)
+	}
+	bump(t, trashed, 3)
+	if got := changedDirs(moved, snapshot(t.Context(), root)); len(got) != 0 {
+		t.Errorf("changed = %v, want nothing: the Trash is out of sight", got)
+	}
+}
+
 func TestSnapshotSeesAFileRewrittenInPlace(t *testing.T) {
 	t.Parallel()
 	l := newTestLib(t, 1)

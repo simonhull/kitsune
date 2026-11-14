@@ -86,8 +86,13 @@ func isAudio(name string) bool {
 // name starting with "." never is.
 func IsAudio(name string) bool { return !strings.HasPrefix(name, ".") && isAudio(name) }
 
+// TrashDir is the folder under each root where trashed songs wait. It is
+// hidden, so the walk, the watcher, the poller and the folder picker, which
+// all ask [SkipsFolder], never see what is in it.
+const TrashDir = ".kitsune-trash"
+
 // SkipsFolder reports whether a scan leaves the folder name out: a hidden one,
-// or a NAS's own, such as "@eaDir".
+// [TrashDir] among them, or a NAS's own, such as "@eaDir".
 func SkipsFolder(name string) bool {
 	return strings.HasPrefix(name, ".") || strings.HasPrefix(name, "@")
 }
@@ -267,13 +272,13 @@ func (w *walked) visitRoot(d fs.DirEntry, err error) error {
 	return filepath.SkipAll
 }
 
-// visitEntry filters one readable entry below the root. Below the root,
-// folders starting with "." or "@" (Synology's @eaDir) and files starting
-// with "." (macOS ._ files) are skipped.
+// visitEntry filters one readable entry below the root. Below the root, the
+// folders [SkipsFolder] names and files starting with "." (macOS ._ files)
+// are skipped.
 func (w *walked) visitEntry(path, rel string, d fs.DirEntry) error {
 	name := d.Name()
 	switch {
-	case d.IsDir() && (strings.HasPrefix(name, ".") || strings.HasPrefix(name, "@")):
+	case d.IsDir() && SkipsFolder(name):
 		return filepath.SkipDir
 	case d.Type().IsRegular() && isWriteTemp(name):
 		w.temps = append(w.temps, path)

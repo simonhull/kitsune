@@ -236,7 +236,8 @@ func TestScanDirsIgnoresWhatAScanSkips(t *testing.T) {
 	l.copyTo(root, "@eaDir/one.flac", sampleFLAC)
 	l.copyTo(root, ".hidden/two.flac", sampleFLAC)
 	l.copyTo(root, "a/.three.flac", sampleFLAC)
-	stats := l.scanDirs(root, ".", "@eaDir", ".hidden", "a", "../outside")
+	l.copyTo(root, TrashDir+"/01J0000000000000000000TRSH/a/four.flac", sampleFLAC)
+	stats := l.scanDirs(root, ".", "@eaDir", ".hidden", "a", "../outside", TrashDir, TrashDir+"/01J0000000000000000000TRSH/a")
 	if stats.Read != 0 {
 		t.Errorf("stats = %+v, want nothing read", stats)
 	}
