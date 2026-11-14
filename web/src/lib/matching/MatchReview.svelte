@@ -78,6 +78,8 @@
 			? 'Nothing ticked yet'
 			: `${what}, to ${summary.files === summary.of ? plural(summary.files, 'file') : `${String(summary.files)} of ${plural(summary.of, 'file')}`}`;
 	});
+	/** From the tag editor, Apply fills its fields and writes nothing. */
+	const filling = $derived(matchSheet.current?.fill !== undefined);
 	const footnote = $derived.by(() => {
 		if (summary === null) {
 			return '';
@@ -89,7 +91,9 @@
 		const split = summary.splits
 			? 'They keep the album name they have, so they’d show as an album of their own. '
 			: '';
-		return `${waiting}${split}Writes through the tag editor, so the Library follows.`;
+		return filling
+			? `${waiting}${split}Fills the editor’s fields: nothing is written until you write them.`
+			: `${waiting}${split}Writes through the tag editor, so the Library follows.`;
 	});
 
 	const two = (n: number): string => String(n).padStart(2, '0');
@@ -434,7 +438,10 @@
 				disabled={summary.files === 0 || matchSheet.applying || matchSheet.report?.retry === false}
 				onclick={() => void matchSheet.apply()}
 			>
-				{#if matchSheet.applying}Writing…{:else}Apply to {plural(summary.files, 'file')}{/if}
+				{#if matchSheet.applying}Writing…{:else if filling}Fill {plural(
+						summary.files,
+						'song'
+					)}{:else}Apply to {plural(summary.files, 'file')}{/if}
 			</button>
 		</div>
 	{:else}

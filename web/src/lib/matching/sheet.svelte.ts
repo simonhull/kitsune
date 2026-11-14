@@ -1,5 +1,6 @@
 import { library } from '#lib/library/library.svelte.ts';
 import { EditError } from '#lib/library/source.ts';
+import type { AlbumEdit } from '#lib/library/source.ts';
 import { reportOf, type Report } from '#lib/library/tags.ts';
 import { findMatches, MatchError, reviewMatch, setMatchState, type MatchFailure } from './api.ts';
 import { editOf, initialChoices, summaryOf, type Basis, type Choices } from './review.ts';
@@ -12,11 +13,17 @@ export type Load<T> =
 /** Where the sheet was opened from, and what it does once the songs are written. */
 export interface Opening {
 	albumId: string;
-	from: 'album' | 'editor' | 'bulk' | 'queue';
-	/** The songs to tick, a selection's. All of them when left out. */
+	from: 'album' | 'editor' | 'queue';
+	/** The songs to tick, the editor's ticked ones. All of them when left out. */
 	only?: readonly string[];
 	/** After Apply wrote: the album the songs are on now, and how many files took it. */
 	applied?: (albumId: string, files: number) => void;
+	/**
+	 * From the tag editor: Apply hands it the edit instead of writing it, and the editor takes it into
+	 * its fields like any other change. Nothing is written, and nothing is recorded as matched, until
+	 * the editor writes.
+	 */
+	fill?: (edit: AlbumEdit) => void;
 }
 
 /** How a step arrives. Going back is a move of its own, never the last one played in reverse. */
@@ -172,7 +179,10 @@ class MatchSheet {
 		this.report = null;
 	}
 
-	/** Writes what's ticked, through the tag editor's own path, and records the album as matched. */
+	/**
+	 * Writes what's ticked, through the album's edit route, and records the album as matched. Opened
+	 * from the tag editor, it fills the editor's fields instead.
+	 */
 	async apply(): Promise<void> {
 		const opening = this.current;
 		const review = this.review;
@@ -182,6 +192,11 @@ class MatchSheet {
 		const edit = editOf(review.value, this.choices);
 		const files = summaryOf(review.value, this.choices).files;
 		if ((edit.tracks ?? []).length === 0) {
+			return;
+		}
+		if (opening.fill !== undefined) {
+			this.close();
+			opening.fill(edit);
 			return;
 		}
 		this.applying = true;

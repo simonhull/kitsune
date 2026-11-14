@@ -1,8 +1,7 @@
 /**
  * Where the match sheet opens from, each as one call, so the pages that offer it hold only a line.
  */
-import { bulkEdits, type BulkSession } from '#lib/pages/bulkEdits.svelte.ts';
-import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
+import type { EditSession } from '#lib/pages/tagEditor.svelte.ts';
 import { matchSheet } from './sheet.svelte.ts';
 
 /** From the album page: the songs are written, and the page follows the library. */
@@ -10,31 +9,22 @@ export function matchAlbum(albumId: string): void {
 	matchSheet.open({ albumId, from: 'album' });
 }
 
-/** From the tag editor, while it holds nothing unsaved: it reads the files again after Apply. */
-export function matchFromEditor(albumId: string): void {
-	matchSheet.open({
-		albumId,
-		from: 'editor',
-		applied: (landed) => {
-			tagEdits.close(albumId);
-			tagEdits.open(landed);
-		}
-	});
-}
-
-/** From a selection's Edit N songs: only when its songs are on one album, and only they start ticked. */
-export function matchFromBulk(session: BulkSession): (() => void) | undefined {
-	const [albumId, ...others] = session.albumIds;
-	if (albumId === undefined || others.length > 0) {
+/**
+ * From the tag editor's Matches tab, while every ticked song is on one album: only they start
+ * ticked, and Apply fills the editor's fields, before anything is written.
+ */
+export function matchInEditor(session: EditSession): (() => void) | undefined {
+	const albumId = session.oneAlbum;
+	if (albumId === null || !session.canTag) {
 		return undefined;
 	}
 	return () => {
 		matchSheet.open({
 			albumId,
-			from: 'bulk',
-			only: session.pickedIds,
-			applied: () => {
-				bulkEdits.close();
+			from: 'editor',
+			only: session.tickedIds,
+			fill: (edit) => {
+				session.fill(albumId, edit);
 			}
 		});
 	};

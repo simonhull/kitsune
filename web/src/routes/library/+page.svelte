@@ -24,12 +24,8 @@
 	import LibraryFilters from '#lib/pages/LibraryFilters.svelte';
 	import LibraryRail from '#lib/pages/LibraryRail.svelte';
 	import RowMenu from '#lib/pages/RowMenu.svelte';
-	import BulkEditor from '#lib/pages/BulkEditor.svelte';
-	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
-	import { editorHistory } from '#lib/pages/editorHistory.svelte.ts';
+	import { tagEditor } from '#lib/pages/tagEditor.svelte.ts';
 	import SelectionBar from '#lib/pages/SelectionBar.svelte';
-	import { matchFromBulk } from '#lib/matching/hooks.ts';
-	import TagBar from '#lib/pages/TagBar.svelte';
 	import PickBox from '#lib/pages/PickBox.svelte';
 	import { onScreen, selection } from '#lib/pages/selection.svelte.ts';
 	import { rowEvents, SongList } from '#lib/pages/songRow.ts';
@@ -218,46 +214,30 @@
 	};
 	const pickedFacts = $derived(pickedFactsOf(picked, songFacts));
 	const box = $derived(selection.boxFor(order));
-	/** Bulk editing a selection takes the page, over the list, which keeps its place beneath. */
-	const bulk = $derived(bulkEdits.current?.layout === 'selection' ? bulkEdits.current : null);
-	const canEditTags = $derived(library.user?.canEditTags === true);
-	let bulkNote = $state('');
+	/** The tag editor takes the page, over the list, which keeps its place beneath. */
+	const editing = $derived(tagEditor.current !== null);
 
+	/** Edit N songs: the one editor, on the songs picked. */
 	function editPicked(): void {
-		bulkNote = '';
-		bulkEdits.open(
-			'selection',
-			picked.flatMap((id) => {
-				const song = songs.get(id);
-				return song === undefined
-					? []
-					: [{ id, albumId: song.album.id, title: song.track.title, trackNo: song.track.trackNo }];
-			}),
-			canEditTags
+		tagEditor.open(
+			{
+				kind: 'songs',
+				songs: picked.flatMap((id) => {
+					const song = songs.get(id);
+					return song === undefined
+						? []
+						: [
+								{
+									id,
+									albumId: song.album.id,
+									title: song.track.title,
+									trackNo: song.track.trackNo
+								}
+							];
+				})
+			},
+			library.user?.canEditTags === true
 		);
-	}
-
-	function leaveBulk(words = ''): void {
-		bulkEdits.close();
-		bulkNote = words;
-	}
-
-	// Its own history entry: Back closes it, and the list stays.
-	editorHistory(
-		() => (bulk === null ? null : 'bulk'),
-		() => {
-			leaveBulk();
-		}
-	);
-
-	async function writeBulk(): Promise<void> {
-		const written = await bulk?.write();
-		if (written?.kind === 'done') {
-			leaveBulk('Tags written.');
-		} else if (written?.kind === 'problem') {
-			await tick();
-			document.getElementById(written.field)?.focus();
-		}
 	}
 
 	/** The ⋯ menu, where it was opened, and on what. */
@@ -359,7 +339,7 @@
 	const canMove = (id: MovableId): boolean => movable(id, columnsView.pref);
 
 	function onWindowKey(event: KeyboardEvent): void {
-		list.windowKey(event, menu !== null || rowMenu !== null || bulk !== null);
+		list.windowKey(event, menu !== null || rowMenu !== null || editing);
 	}
 
 	/** The columns menu, where it was opened, and what opened it, to go back to. */
@@ -665,7 +645,7 @@
 			source={shuffleSource}
 			filter={view.filter}
 			count={layout.songs}
-			away={onScreen.current?.any === true || bulkEdits.current !== null}
+			away={onScreen.current?.any === true || editing}
 		/>
 		{#if lettered}
 			<LibraryRail {letters} {quiet} here={railAt} onjump={jump} />
@@ -682,23 +662,7 @@
 				onclose={closeRowMenu}
 			/>
 		{/if}
-		{#if bulk !== null}
-			<div class="bulk-layer" role="region" aria-label="Editing songs">
-				<BulkEditor session={bulk}>
-					{#snippet bar()}
-						<TagBar
-							session={bulk}
-							what="these songs"
-							leave={() => {
-								leaveBulk();
-							}}
-							write={() => void writeBulk()}
-							match={matchFromBulk(bulk)}
-						/>
-					{/snippet}
-				</BulkEditor>
-			</div>
-		{:else if selection.any}
+		{#if selection.any && !editing}
 			<SelectionBar
 				count={selection.size}
 				hidden={selection.size - picked.filter((id) => rowOf.has(id)).length}
@@ -715,43 +679,7 @@
 	{/if}
 </div>
 
-<p class="visually-hidden" role="status">{bulkNote}</p>
-
 <style>
-	.bulk-layer {
-		position: fixed;
-		inset: 0;
-		z-index: 2;
-		overflow-y: auto;
-		padding-top: 64px;
-		background: var(--ground);
-		/* Backwards only: a translate left on the layer would hold the phone's fixed tag bar in it. */
-		animation: rise var(--morph) var(--curve-morph) backwards;
-	}
-
-	/*
-	 * Room under the editor, as content rather than padding: a scroller's padding would push the tag
-	 * bar's sticky bottom up by as much.
-	 */
-	.bulk-layer::after {
-		content: '';
-		display: block;
-		height: var(--frame-bottom);
-	}
-
-	@keyframes rise {
-		from {
-			opacity: 0;
-			translate: 0 16px;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.bulk-layer {
-			animation: none;
-		}
-	}
-
 	/*
 	 * One layout from a phone to 4K and beyond, never a centred column. These are its sizes; from
 	 * 2560 they take one step up together, so a 4K screen at 100% reads like 1920. --cover comes from

@@ -7,7 +7,7 @@ import { matchAlbum } from '#lib/matching/hooks.ts';
 import { player } from '#lib/player/player.svelte.ts';
 import { shuffles } from '#lib/shuffle/session.svelte.ts';
 import { albumSource } from '#lib/shuffle/sources.ts';
-import { tagEdits } from './tagEdits.svelte.ts';
+import { tagEditor } from './tagEditor.svelte.ts';
 import { trashBin } from './trashBin.svelte.ts';
 
 /** What can be done with a whole album, in album order: its ⋯ menu's actions. */
@@ -16,7 +16,7 @@ export interface AlbumActions {
 	playNext(): void;
 	addToQueue(): void;
 	shuffle(): void;
-	/** Set for a person who may edit tags. */
+	/** Opens the tag editor on the album, over the page. Set for a person who may edit tags. */
 	editTags: (() => void) | undefined;
 	/** Opens the match sheet for the album's release. Set for a person who may edit tags. */
 	findMatches: (() => void) | undefined;
@@ -68,8 +68,7 @@ export function albumActions(entry: AlbumEntry, album: Album | undefined): Album
 		editTags:
 			library.user?.canEditTags === true
 				? () => {
-						tagEdits.open(id);
-						void goto(resolve('/album/[id]', { id }));
+						tagEditor.open({ kind: 'album', albumId: id }, true);
 					}
 				: undefined,
 		findMatches:

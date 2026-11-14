@@ -20,10 +20,10 @@
 	import { libraryView } from '#lib/pages/libraryView.svelte.ts';
 	import { onScreen, selection } from '#lib/pages/selection.svelte.ts';
 	import { sorts } from '#lib/pages/sortsView.svelte.ts';
-	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
 	import MatchSheet from '#lib/matching/MatchSheet.svelte';
 	import { matchSheet } from '#lib/matching/sheet.svelte.ts';
-	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
+	import EditorHost from '#lib/pages/EditorHost.svelte';
+	import { tagEditor } from '#lib/pages/tagEditor.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
 	import { playerKey } from '#lib/player/keys.ts';
 	import { followMediaSession } from '#lib/player/mediaSession.svelte.ts';
@@ -62,14 +62,8 @@
 	const stageEntry = $derived(stageAlbum === null ? undefined : library.entry(stageAlbum));
 	const palette = $derived(stageAlbum === null ? null : paletteFor(stageEntry, theme.current));
 
-	const edit = $derived(onAlbum && stageAlbum !== null ? tagEdits.of(stageAlbum) : undefined);
-	/** Many tracks of this album at once: the page draws up as for any edit. */
-	const many = $derived(
-		onAlbum &&
-			stageAlbum !== null &&
-			bulkEdits.current?.layout === 'album' &&
-			bulkEdits.current.albumIds.includes(stageAlbum)
-	);
+	/** The tag editor is open over the page. */
+	const editing = $derived(tagEditor.current !== null);
 
 	/** Stars the server didn't take have already gone back: this says why they moved. */
 	const markTrouble = $derived(
@@ -187,8 +181,7 @@
 			resume.reset();
 			shuffleSettings.reset();
 			playbackSettings.reset();
-			tagEdits.reset();
-			bulkEdits.reset();
+			tagEditor.reset();
 			matchSheet.reset();
 		};
 		// Signing out saves where the player is first, so the next sign-in, anywhere, comes back to it.
@@ -219,10 +212,7 @@
 
 <div
 	class="shell"
-	class:editing={edit !== undefined ||
-		many ||
-		(bulkEdits.current !== null && routeId === '/library')}
-	class:one={edit?.open != null}
+	class:editing
 	style:--accent={palette?.accent}
 	style:--on-accent={palette?.onAccent}
 	style:--wash={palette?.wash}
@@ -249,13 +239,14 @@
 		{/if}
 	</main>
 	<p class="visually-hidden" role="status">{markTrouble}</p>
+	{#if !atDoor}<EditorHost />{/if}
 	<div class="ghost-layer" aria-hidden="true"></div>
 	{#if palette !== null}<Bloom {palette} />{/if}
 	{#if library.playing !== null && !atDoor}
 		<PlayerIsland
 			playing={library.playing}
 			expanded={onNowPlaying}
-			away={onScreen.current?.any === true && bulkEdits.current === null}
+			away={onScreen.current?.any === true && !editing}
 			arrival={resume.arrival}
 			left={resume.left}
 			onArrived={() => {
@@ -281,14 +272,6 @@
 
 		position: relative;
 		min-height: 100dvh;
-	}
-
-	.shell.editing {
-		--hero-height: 430px;
-	}
-
-	.shell.one {
-		--hero-height: 260px;
 	}
 
 	main {
@@ -328,11 +311,9 @@
 		.shell {
 			--hero-height: 640px;
 		}
+	}
 
-		.shell.editing {
-			--hero-height: 300px;
-		}
-
+	@media (max-width: 640px) {
 		/* On a phone the editor has the screen: its board has no room for either. */
 		.shell.editing :global(.nav),
 		.shell.editing :global(.island) {

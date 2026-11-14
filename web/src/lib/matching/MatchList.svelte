@@ -3,10 +3,8 @@
 	confidence and the evidence for it; other terms; and what to do when nothing is found.
 -->
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
-	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
+	import { tagEditor } from '#lib/pages/tagEditor.svelte.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import { matchSheet } from './sheet.svelte.ts';
 	import type { MatchCandidate } from './types.ts';
@@ -80,12 +78,12 @@
 		}
 	}
 
+	/** The editor opens over the page, on this album; from the editor itself, it's already there. */
 	function editByHand(): void {
-		const id = opening?.albumId;
+		const was = opening;
 		close();
-		if (id !== undefined) {
-			tagEdits.open(id);
-			void goto(resolve('/album/[id]', { id }));
+		if (was !== null && was.from !== 'editor') {
+			tagEditor.open({ kind: 'album', albumId: was.albumId }, true);
 		}
 	}
 
