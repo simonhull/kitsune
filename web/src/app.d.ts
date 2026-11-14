@@ -5,7 +5,10 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			/** The editor drawn over the page, whose entry Back takes off (`editorHistory`). */
+			editor?: string;
+		}
 		// interface Platform {}
 	}
 }

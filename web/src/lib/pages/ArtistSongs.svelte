@@ -41,6 +41,7 @@
 	} from './artistSongs.ts';
 	import BulkEditor from './BulkEditor.svelte';
 	import { bulkEdits } from './bulkEdits.svelte.ts';
+	import { editorHistory } from './editorHistory.svelte.ts';
 	import {
 		columnsFrom,
 		columnsIn,
@@ -297,6 +298,14 @@
 			library.user?.canEditTags === true
 		);
 	}
+
+	// Its own history entry: Back closes it, and the artist stays.
+	editorHistory(
+		() => (bulk === null ? null : 'bulk'),
+		() => {
+			bulkEdits.close();
+		}
+	);
 
 	async function writeBulk(): Promise<void> {
 		const written = await bulk?.write();

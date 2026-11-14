@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createFixtureSource, type FixtureEditFault } from '#lib/library/fixtures.ts';
 import type { LibrarySource } from '#lib/library/source.ts';
-import { editOf, type Tagger } from '#lib/library/tags.ts';
+import type { Tagger } from '#lib/library/tags.ts';
 import { TagEdits, type TagSession } from './tagEdits.svelte.ts';
 
 const id = 'glasshouse-66';
@@ -40,27 +40,13 @@ describe('TagEdits', () => {
 		expect(session.tags?.tracks).toHaveLength(10);
 	});
 
-	it('lets go of an album left with nothing to lose', async () => {
-		const { edits } = await opened();
-		edits.depart(id);
-		expect(edits.of(id)).toBeUndefined();
-	});
-
-	it('keeps unsaved edits through a return, on the files as they are then', async () => {
-		const { source, edits, session } = await opened();
+	it('drops an album’s edits on close, unsaved ones too', async () => {
+		const { edits, session } = await opened();
 		session.setField(first, 'title', ['Mine']);
-		edits.depart(id);
-		expect(edits.of(id)).toBe(session);
-
-		const { etag } = await source.album(id);
-		await source.editAlbum(id, etag, { tracks: [{ id: second, set: { title: ['Theirs'] } }] });
-		edits.arrive(id);
-		await vi.waitFor(() => {
-			expect(session.tags?.tracks.at(1)?.fields.title).toEqual(['Theirs']);
-		});
-		expect(session.tags && editOf(session.tags, session.draft)).toEqual({
-			tracks: [{ id: first, set: { title: ['Mine'] } }]
-		});
+		edits.close(id);
+		expect(edits.of(id)).toBeUndefined();
+		edits.open(id);
+		expect(edits.of(id)).not.toBe(session);
 	});
 
 	it('opens one track at a time, and keeps the draft across them', async () => {

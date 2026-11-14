@@ -456,6 +456,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   (`repeat`, `shuffled`); one saved before them is off and off, and `shuffled.order` counts against
   the 1,000. A press reorders in memory and never stops the song; the save follows. The island is
   one Tab stop (`roving.ts`), and the player's keys are `playerKey` in `lib/player/keys.ts`.
+- An editor over a page (the album's tag editor, Edit N songs) has a shallow history entry of its own
+  (`editorHistory`): Back closes it and drops its edits, as Leave it does; closing it any other way
+  takes the entry back off; leaving the page drops the edits too. Edits never outlive their page.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.

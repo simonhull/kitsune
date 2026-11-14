@@ -26,6 +26,7 @@
 	import RowMenu from '#lib/pages/RowMenu.svelte';
 	import BulkEditor from '#lib/pages/BulkEditor.svelte';
 	import { bulkEdits } from '#lib/pages/bulkEdits.svelte.ts';
+	import { editorHistory } from '#lib/pages/editorHistory.svelte.ts';
 	import SelectionBar from '#lib/pages/SelectionBar.svelte';
 	import { matchFromBulk } from '#lib/matching/hooks.ts';
 	import TagBar from '#lib/pages/TagBar.svelte';
@@ -240,6 +241,14 @@
 		bulkEdits.close();
 		bulkNote = words;
 	}
+
+	// Its own history entry: Back closes it, and the list stays.
+	editorHistory(
+		() => (bulk === null ? null : 'bulk'),
+		() => {
+			leaveBulk();
+		}
+	);
 
 	async function writeBulk(): Promise<void> {
 		const written = await bulk?.write();
