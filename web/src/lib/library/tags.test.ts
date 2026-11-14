@@ -8,30 +8,7 @@ import {
 	type FieldValues,
 	type TrackTags
 } from './source.ts';
-import {
-	albumWide,
-	editOf,
-	emptyDraft,
-	fieldId,
-	isChanged,
-	isMulti,
-	isTagChanged,
-	isTrackEdited,
-	problemsIn,
-	rebased,
-	reportOf,
-	rowNote,
-	save,
-	summaryOf,
-	tagGroups,
-	tagValueOf,
-	valueOf,
-	withField,
-	withTag,
-	yearField,
-	type Draft,
-	type Tagger
-} from './tags.ts';
+import { isMulti, problemOf, reportOf, save, tagGroups, type Tagger } from './tags.ts';
 
 function track(id: string, fields: FieldValues = {}, extra: Partial<TrackTags> = {}): TrackTags {
 	return {
@@ -57,9 +34,6 @@ const tags: AlbumTags = {
 		track('t2', { track: ['2'] })
 	]
 };
-
-const titled = (id: string, title: string, on: Draft = emptyDraft()): Draft =>
-	withField(tags, on, id, 'title', [title]);
 
 describe('tagGroups', () => {
 	const specs = tagGroups.flatMap(({ fields }) => fields);
@@ -109,345 +83,32 @@ describe('tagGroups', () => {
 	});
 });
 
-describe('albumWide', () => {
-	it('reads the year the tracks agree on, from whole dates', () => {
-		expect(albumWide(tags)).toMatchObject({ year: '2001', yearsDiffer: false });
-	});
-
-	it('says when years differ, and offers none', () => {
-		const mixed = { ...tags, tracks: [track('t1'), track('t2', { date: ['1999'] })] };
-		expect(albumWide(mixed)).toMatchObject({ year: '', yearsDiffer: true });
-	});
-
-	it('counts a track with no date as differing', () => {
-		const mixed = { ...tags, tracks: [track('t1'), track('t2', { date: [] })] };
-		expect(albumWide(mixed).yearsDiffer).toBe(true);
-	});
-
-	it('gathers genres in track order, and says when tracks differ', () => {
-		const mixed = {
-			...tags,
-			tracks: [track('t1'), track('t2', { genres: ['Rock', 'Noise'] })]
-		};
-		expect(albumWide(mixed)).toMatchObject({ genres: ['Rock', 'Noise'], genresDiffer: true });
-		expect(albumWide(tags)).toMatchObject({ genres: ['Rock'], genresDiffer: false });
-	});
-});
-
-describe('editOf', () => {
-	it('has nothing to send for an untouched album', () => {
-		expect(editOf(tags, emptyDraft())).toBeNull();
-	});
-
-	it('sends only what changed, on the track that changed', () => {
-		expect(editOf(tags, titled('t2', 'New'))).toEqual({
-			tracks: [{ id: 't2', set: { title: ['New'] } }]
-		});
-	});
-
-	it('sends a year and genres to every track, in one go', () => {
-		expect(editOf(tags, { ...emptyDraft(), year: '1999', genres: ['Noise'] })).toEqual({
-			all: { set: { date: ['1999'], genres: ['Noise'] } }
-		});
-	});
-
-	it('clears for an emptied year, an emptied list and an emptied field', () => {
-		const draft = withField(tags, emptyDraft(), 't1', 'track', ['']);
-		expect(editOf(tags, { ...draft, year: '', genres: [] })).toEqual({
-			all: { clear: ['date', 'genres'] },
-			tracks: [{ id: 't1', clear: ['track'] }]
-		});
-	});
-
-	it('sends a value and a clearing in one track, apart', () => {
-		const draft = withField(tags, titled('t1', 'New'), 't1', 'disc', [' ']);
-		expect(editOf(tags, draft)).toEqual({
-			tracks: [{ id: 't1', set: { title: ['New'] }, clear: ['disc'] }]
-		});
-	});
-
-	it('sends what is typed trimmed, and spaces alone change nothing', () => {
-		expect(editOf(tags, titled('t1', ' T1 '))).toBeNull();
-		expect(editOf(tags, titled('t1', ' Fixed '))).toEqual({
-			tracks: [{ id: 't1', set: { title: ['Fixed'] } }]
-		});
-	});
-
-	it('reads a number for its value', () => {
-		expect(editOf(tags, withField(tags, emptyDraft(), 't1', 'track', ['01']))).toBeNull();
-		expect(editOf(tags, withField(tags, emptyDraft(), 't1', 'track', ['03']))).toEqual({
-			tracks: [{ id: 't1', set: { track: ['03'] } }]
-		});
-	});
-
-	it('puts a track on top of the album: its own date wins', () => {
-		const draft = withField(tags, { ...emptyDraft(), year: '1999' }, 't1', 'date', ['1999-02-03']);
-		expect(editOf(tags, draft)).toEqual({
-			all: { set: { date: ['1999'] } },
-			tracks: [{ id: 't1', set: { date: ['1999-02-03'] } }]
-		});
-	});
-
-	it('keeps a track out of the album edit when it clears the field', () => {
-		const draft = withField(tags, { ...emptyDraft(), year: '1999' }, 't1', 'date', ['']);
-		expect(editOf(tags, draft)).toEqual({
-			all: { set: { date: ['1999'] } },
-			tracks: [{ id: 't1', clear: ['date'] }]
-		});
-	});
-
-	it('says nothing of a track that agrees with the album edit', () => {
-		const draft = withField(tags, { ...emptyDraft(), year: '1999' }, 't1', 'date', ['1999']);
-		expect(editOf(tags, draft)).toEqual({ all: { set: { date: ['1999'] } } });
-	});
-
-	it('sends the old value when a track holds out against the album edit', () => {
-		const draft = withField(tags, { ...emptyDraft(), genres: ['Noise'] }, 't1', 'genres', ['Rock']);
-		expect(editOf(tags, draft)).toEqual({
-			all: { set: { genres: ['Noise'] } },
-			tracks: [{ id: 't1', set: { genres: ['Rock'] } }]
-		});
-	});
-
-	it('sends a whole list for a field of several values, never joined text', () => {
-		const draft = withField(tags, emptyDraft(), 't1', 'composers', ['A; B', 'C']);
-		expect(editOf(tags, draft)).toEqual({
-			tracks: [{ id: 't1', set: { composers: ['A; B', 'C'] } }]
-		});
-	});
-
-	it('changes a raw tag, and no values removes it', () => {
-		const changed = withTag(tags, emptyDraft(), 't1', 'MOOD', ['Fast']);
-		expect(editOf(tags, changed)).toEqual({
-			tracks: [{ id: 't1', tags: [{ key: 'MOOD', values: ['Fast'] }] }]
-		});
-		const removed = withTag(tags, emptyDraft(), 't1', 'MOOD', ['']);
-		expect(editOf(tags, removed)).toEqual({
-			tracks: [{ id: 't1', tags: [{ key: 'MOOD', values: [] }] }]
-		});
-	});
-
-	it('takes the first of several values as the one a single field shows', () => {
-		const two = { ...tags, tracks: [track('t1', { comment: ['One', 'Two'] })] };
-		expect(editOf(two, withField(two, emptyDraft(), 't1', 'comment', ['One']))).toBeNull();
-	});
-});
-
-describe('valueOf', () => {
-	it('reads through to the file until something is touched', () => {
-		expect(valueOf(tags, emptyDraft(), 't1', 'title')).toEqual(['T1']);
-		expect(isChanged(tags, emptyDraft(), 't1', 'title')).toBe(false);
-	});
-
-	it('keeps what is typed as typed, spaces and all', () => {
-		const draft = titled('t1', 'New ');
-		expect(valueOf(tags, draft, 't1', 'title')).toEqual(['New ']);
-		expect(isChanged(tags, draft, 't1', 'title')).toBe(true);
-	});
-
-	it('shows the album edit on a track, as changed', () => {
-		const draft = { ...emptyDraft(), year: '1999' };
-		expect(valueOf(tags, draft, 't1', 'date')).toEqual(['1999']);
-		expect(isChanged(tags, draft, 't1', 'date')).toBe(true);
-	});
-
-	it('forgets a field typed back to what it was', () => {
-		expect(titled('t1', 'T1', titled('t1', 'New'))).toEqual(emptyDraft());
-		const tagged = withTag(tags, withTag(tags, emptyDraft(), 't1', 'MOOD', ['X']), 't1', 'MOOD', [
-			'Slow'
-		]);
-		expect(tagged).toEqual(emptyDraft());
-	});
-
-	it('reads raw tags the same way', () => {
-		const draft = withTag(tags, emptyDraft(), 't1', 'MOOD', ['Fast']);
-		expect(tagValueOf(tags, draft, 't1', 'MOOD')).toEqual(['Fast']);
-		expect(isTagChanged(tags, draft, 't1', 'MOOD')).toBe(true);
-		expect(isTagChanged(tags, emptyDraft(), 't1', 'MOOD')).toBe(false);
-	});
-});
-
-describe('rowNote', () => {
-	it('says nothing of an untouched row', () => {
-		expect(rowNote(tags, emptyDraft(), 't1')).toEqual({ old: '', text: '' });
-	});
-
-	it('gives the old title to strike through', () => {
-		expect(rowNote(tags, titled('t1', 'New'), 't1')).toEqual({ old: 'T1', text: '' });
-	});
-
-	it('says what number a track was, in the board’s words', () => {
-		const draft = withField(tags, emptyDraft(), 't2', 'track', ['4']);
-		expect(rowNote(tags, draft, 't2').text).toBe('was track 2');
-	});
-
-	it('says so when a number is cleared, and when there was none', () => {
-		const bare = { ...tags, tracks: [track('t1', { disc: [] })] };
-		const draft = withField(bare, emptyDraft(), 't1', 'track', ['']);
-		expect(rowNote(bare, draft, 't1').text).toBe('was track 1');
-		const given = withField(bare, emptyDraft(), 't1', 'disc', ['2']);
-		expect(rowNote(bare, given, 't1').text).toBe('had no disc number');
-	});
-
-	it('gives both numbers when both moved', () => {
-		const draft = withField(
-			tags,
-			withField(tags, emptyDraft(), 't2', 'disc', ['2']),
-			't2',
-			'track',
-			['1']
-		);
-		expect(rowNote(tags, draft, 't2').text).toBe('was disc 1 · was track 2');
-	});
-});
-
-describe('isTrackEdited', () => {
-	it('sees what a row does not show', () => {
-		const draft = withTag(tags, withField(tags, emptyDraft(), 't1', 'bpm', ['92']), 't2', 'X', [
-			''
-		]);
-		expect(isTrackEdited(tags, draft, 't1')).toBe(true);
-		expect(isTrackEdited(tags, draft, 't2')).toBe(false);
-	});
-
-	it('leaves the album edit to the album', () => {
-		expect(isTrackEdited(tags, { ...emptyDraft(), year: '1999' }, 't1')).toBe(false);
-	});
-});
-
-describe('problemsIn', () => {
-	const number = (field: 'track' | 'trackTotal', value: string): Draft =>
-		withField(tags, emptyDraft(), 't1', field, [value]);
-
-	it('finds nothing in an untouched album, however odd its tags', () => {
-		const odd = { ...tags, tracks: [track('t1', { date: ['soon'], track: ['0'], title: [] })] };
-		expect(problemsIn(odd, emptyDraft()).size).toBe(0);
-	});
-
-	it.each(['999', '10000', 'soon', '19 99', '0000'])('refuses a year of %s', (year) => {
-		expect([...problemsIn(tags, { ...emptyDraft(), year }).keys()]).toEqual([yearField]);
-	});
-
-	it('takes an emptied year: that clears it', () => {
-		expect(problemsIn(tags, { ...emptyDraft(), year: '' }).size).toBe(0);
-	});
-
+describe('problemOf', () => {
 	it.each(['0', '65536', '1a', '-1'])('refuses a track number of %s', (value) => {
-		expect([...problemsIn(tags, number('track', value)).keys()]).toEqual([fieldId('t1', 'track')]);
+		expect(problemOf('track', [value])).toBe('A track number runs from 1 to 65535.');
 	});
 
 	it('takes the ends of the range, and no number at all', () => {
-		expect(problemsIn(tags, number('track', '65535')).size).toBe(0);
-		expect(problemsIn(tags, number('trackTotal', '1')).size).toBe(0);
-		expect(problemsIn(tags, number('track', '')).size).toBe(0);
+		expect(problemOf('track', ['65535'])).toBeUndefined();
+		expect(problemOf('trackTotal', ['1'])).toBeUndefined();
+		expect(problemOf('track', [])).toBeUndefined();
 	});
 
-	it('refuses a blank title, in the words of the board', () => {
-		const problems = problemsIn(tags, titled('t1', '  '));
-		expect(problems.get(fieldId('t1', 'title'))).toBe('A track needs a title.');
+	it('refuses no title, and nothing else for being empty', () => {
+		expect(problemOf('title', [])).toBe('A song needs a title.');
+		expect(problemOf('comment', [])).toBeUndefined();
 	});
 
 	it.each(['2021', '2021-03', '2021-03-12', '2024-02-29'])('takes a date of %s', (date) => {
-		expect(problemsIn(tags, withField(tags, emptyDraft(), 't1', 'date', [date])).size).toBe(0);
+		expect(problemOf('date', [date])).toBeUndefined();
 	});
 
 	it.each(['2021-13', '2023-02-29', '12/03/2021', '21', '0000', '2021-3'])(
 		'refuses a date of %s',
 		(date) => {
-			const draft = withField(tags, emptyDraft(), 't1', 'originalDate', [date]);
-			expect([...problemsIn(tags, draft).keys()]).toEqual([fieldId('t1', 'originalDate')]);
+			expect(problemOf('originalDate', [date])).toBe('A date is YYYY, YYYY-MM or YYYY-MM-DD.');
 		}
 	);
-
-	it('lists problems in the order of the page, row by row', () => {
-		let draft = withField(tags, { ...emptyDraft(), year: 'x' }, 't2', 'title', ['']);
-		draft = withField(tags, draft, 't1', 'title', ['']);
-		draft = withField(tags, draft, 't1', 'track', ['x']);
-		expect([...problemsIn(tags, draft).keys()]).toEqual([
-			yearField,
-			fieldId('t1', 'track'),
-			fieldId('t1', 'title'),
-			fieldId('t2', 'title')
-		]);
-	});
-});
-
-describe('summaryOf', () => {
-	it('counts nothing for an untouched album', () => {
-		expect(summaryOf(tags, emptyDraft())).toEqual({ changes: 0, files: 0, only: null });
-	});
-
-	it('counts an edit of every track once, across every file', () => {
-		expect(summaryOf(tags, { ...emptyDraft(), year: '1999' })).toEqual({
-			changes: 1,
-			files: 2,
-			only: null
-		});
-	});
-
-	it('says which track, when every change is on one', () => {
-		const draft = withField(tags, titled('t2', 'New'), 't2', 'bpm', ['92']);
-		expect(summaryOf(tags, draft)).toEqual({ changes: 2, files: 1, only: 't2' });
-	});
-
-	it('counts files, not fields, and adds a raw tag in', () => {
-		const draft = withTag(tags, titled('t2', 'New'), 't1', 'MOOD', ['Fast']);
-		expect(summaryOf(tags, draft)).toEqual({ changes: 2, files: 2, only: null });
-	});
-
-	it('leaves out a change that has a problem: it will not be written', () => {
-		expect(summaryOf(tags, titled('t1', ''))).toEqual({ changes: 0, files: 0, only: null });
-		expect(summaryOf(tags, { ...emptyDraft(), year: 'x' }).changes).toBe(0);
-	});
-});
-
-describe('rebased', () => {
-	it('keeps what was touched and reads the rest from the files as they are now', () => {
-		const draft = titled('t1', 'Mine');
-		const fresh = { etag: 'b', tracks: [track('t1', { track: ['7'] }), track('t3')] };
-		const moved = rebased(draft, fresh);
-		expect(valueOf(fresh, moved, 't1', 'title')).toEqual(['Mine']);
-		expect(valueOf(fresh, moved, 't1', 'track')).toEqual(['7']);
-	});
-
-	it('drops a track that has gone', () => {
-		const fresh = { etag: 'b', tracks: [track('t1')] };
-		expect(rebased(titled('t2', 'Mine'), fresh)).toEqual(emptyDraft());
-	});
-
-	it('keeps the album edit', () => {
-		const fresh = { etag: 'b', tracks: [track('t1')] };
-		expect(rebased({ ...emptyDraft(), year: '1999' }, fresh).year).toBe('1999');
-	});
-
-	it('drops what can no longer be touched', () => {
-		const draft = withTag(
-			tags,
-			withField(tags, emptyDraft(), 't1', 'lyrics', ['Plain']),
-			't1',
-			'MOOD',
-			['Fast']
-		);
-		const fresh = {
-			etag: 'b',
-			tracks: [
-				track(
-					't1',
-					{},
-					{ readOnly: ['lyrics'], tags: [{ key: 'MOOD', values: ['Slow'], readOnly: true }] }
-				)
-			]
-		};
-		expect(rebased(draft, fresh)).toEqual(emptyDraft());
-	});
-
-	it('finishes a partial write: what landed drops out, what did not stays', () => {
-		const draft = titled('t2', 'Two', titled('t1', 'One'));
-		const fresh = { etag: 'b', tracks: [track('t1', { title: ['One'] }), track('t2')] };
-		expect(editOf(fresh, rebased(draft, fresh))).toEqual({
-			tracks: [{ id: 't2', set: { title: ['Two'] } }]
-		});
-	});
 });
 
 /** A tagger that answers from a script. */
@@ -463,7 +124,7 @@ function tagger(answer?: EditFailure | Error, fresh: AlbumTags = tags) {
 	return { tagged, editAlbum, albumTags, reread };
 }
 
-const edit = { all: { set: { date: ['1999'] } } };
+const edit = { tracks: [{ id: 't1', set: { date: ['1999'] } }] };
 const partial: EditFailure = {
 	kind: 'failed',
 	detail: 'internal error',

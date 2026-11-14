@@ -80,40 +80,38 @@ export function orderOf(
 	return runOf(songs, rules)?.tracks ?? [...songs];
 }
 
-/** Whether the "Exclude all" switch is on: as touched, or whether every one is left out now. */
-export function excludeOn(
-	songs: readonly string[],
-	rules: ShuffleRules,
-	draft: RulesDraft
-): boolean {
-	return draft.exclude ?? (songs.length > 0 && excludedAmong(songs, rules) === songs.length);
-}
-
-/** What saving the Shuffle tab sends, in order. Nothing touched sends nothing. */
-export function ruleChanges(
+/** What saving the Combine switch and the run's order sends. Nothing touched sends nothing. */
+export function runChanges(
 	songs: readonly string[],
 	rules: ShuffleRules,
 	draft: RulesDraft
 ): RuleChange[] {
-	const changes: RuleChange[] = [];
+	if (draft.combine === null && draft.order === null) {
+		return [];
+	}
 	const own = runOf(songs, rules);
-	if (draft.combine !== null || draft.order !== null) {
-		const order = orderOf(songs, rules, draft);
-		if (combineOn(songs, rules, draft)) {
-			if (own === undefined || !sameList(own.tracks, order)) {
-				changes.push({ kind: 'run', tracks: order });
-			}
-		} else if (own !== undefined) {
-			changes.push({ kind: 'unrun', id: own.id });
-		}
+	const order = orderOf(songs, rules, draft);
+	if (combineOn(songs, rules, draft)) {
+		return own === undefined || !sameList(own.tracks, order)
+			? [{ kind: 'run', tracks: order }]
+			: [];
 	}
-	if (draft.exclude !== null) {
-		const tracks = songs.filter((id) => rules.excluded.includes(id) !== draft.exclude);
-		if (tracks.length > 0) {
-			changes.push({ kind: 'exclude', tracks, on: draft.exclude });
-		}
-	}
-	return changes;
+	return own === undefined ? [] : [{ kind: 'unrun', id: own.id }];
+}
+
+/**
+ * What saving the Exclude switches sends: the songs `excluded` now says are out that the rules have
+ * in, and those back in that the rules have out. Songs nobody switched send nothing.
+ */
+export function excludeChanges(
+	songs: readonly string[],
+	rules: ShuffleRules,
+	excluded: (id: string) => boolean
+): RuleChange[] {
+	return [true, false].flatMap((on) => {
+		const tracks = songs.filter((id) => excluded(id) === on && rules.excluded.includes(id) !== on);
+		return tracks.length === 0 ? [] : [{ kind: 'exclude' as const, tracks, on }];
+	});
 }
 
 /** What the "Exclude all" switch says of the songs now. */
