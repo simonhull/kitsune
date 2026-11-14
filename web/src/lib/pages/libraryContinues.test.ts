@@ -144,7 +144,13 @@ function setup() {
 			return player.queue;
 		},
 		continueList: (after, next) => player.continueList(after, next),
-		albumAfter: (id) => albumAfter(layOut(index(), metrics, keepFor(list.filter, marks)).albums, id)
+		albumAfter: (id) =>
+			albumAfter(layOut(index(), metrics, keepFor(list.filter, marks)).albums, id),
+		firstAlbum: () =>
+			layOut(index(), metrics, keepFor(list.filter, marks)).albums.at(0)?.album.id ?? null,
+		get wraps() {
+			return player.repeating === 'all';
+		}
 	});
 	player.onward.list = () => {
 		continues.keep();
@@ -211,6 +217,26 @@ describe('LibraryContinues', () => {
 		expect(player.finished).toBe(true);
 		expect(player.status).toBe('paused');
 		expect(ended()).toEqual(['c0 completed', 'c1 completed', 'd0 completed', 'd1 completed']);
+	});
+
+	it("goes round from the list's end to its start on repeat all", async () => {
+		const { player, play, finish } = setup();
+		play('d');
+		await settle();
+		player.cycleRepeat();
+		expect(player.repeating).toBe('all');
+		await finish();
+		expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['d0', 'd1', 'a0', 'a1']);
+		await finish();
+		expect(player.finished).toBe(false);
+		expect(player.current?.id).toBe('a0');
+		// Off again: from a, the list goes on down as it would have from there.
+		player.cycleRepeat();
+		player.cycleRepeat();
+		expect(player.repeating).toBe('off');
+		await finish();
+		await finish();
+		expect(player.current?.id).toBe('b0');
 	});
 
 	it('plays each album at its own album gain', async () => {

@@ -206,7 +206,11 @@ class LibraryView {
 			return player.queue;
 		},
 		continueList: (after, album) => player.continueList(after, album),
-		albumAfter: (id) => albumAfter(this.layout.albums, id)
+		albumAfter: (id) => albumAfter(this.layout.albums, id),
+		firstAlbum: () => this.layout.albums.at(0)?.album.id ?? null,
+		get wraps() {
+			return player.repeating === 'all';
+		}
 	});
 
 	constructor() {

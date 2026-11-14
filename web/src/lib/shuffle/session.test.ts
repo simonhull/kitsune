@@ -9,6 +9,7 @@ import {
 	type ShufflePage,
 	type ShufflePick,
 	type ShuffleStart,
+	type LibraryIndex,
 	type Track
 } from '#lib/library/source.ts';
 import { SilentOutput } from '#lib/player/output.ts';
@@ -364,5 +365,64 @@ describe('a remembered shuffle', () => {
 		expect(shuffles.current?.ref).toBe(ref);
 		const queue = player.queue;
 		expect((queue?.tracks.length ?? 0) - (queue?.index ?? 0) - 1).toBeGreaterThanOrEqual(3);
+	});
+});
+
+describe('Shuffle pressed', () => {
+	/** The Library's index of every album, in order: the library scope's own order. */
+	const index: LibraryIndex = {
+		artists: [
+			{
+				name: 'A',
+				sortName: 'A',
+				albums: [...albums.values()].map((album) => ({
+					id: album.id,
+					title: album.title,
+					artist: 'A',
+					compilation: false,
+					tracks: album.tracks.map(({ id, title, durationMs }) => ({
+						id,
+						title,
+						durationMs,
+						artists: []
+					}))
+				}))
+			}
+		]
+	};
+
+	it("turns a session's shuffle off into the library's order from the song playing, at once", async () => {
+		const { library, player, shuffles } = setup({ libraryIndex: () => Promise.resolve(index) });
+		await library.loadIndex();
+		await library.loadAlbum('c');
+		shuffles.start(sourceOf([unitOf('c-1')]));
+		await settle();
+		expect(player.shuffling).toBe(true);
+		expect(player.endless).toBe(true);
+		shuffles.toggle();
+		expect(player.shuffling).toBe(false);
+		expect(player.current?.id).toBe('c-1');
+		expect(player.sounding).toBe(true);
+		expect(player.queue?.tracks.slice(1).map(({ id }) => id)).toEqual(['c-2']);
+		expect(player.queue?.later?.at(0)).toEqual({ trackId: 'd-0', albumId: 'd' });
+		expect(shuffles.current?.active).toBe(false);
+		// Off again, the player's own shuffle goes on: no session.
+		shuffles.toggle();
+		expect(player.queue?.shuffled).toBeDefined();
+		expect(player.queue?.shuffle).toBeUndefined();
+	});
+
+	it("waits for the scope's order without stopping, keeping what's queued till it comes", async () => {
+		const { library, player, shuffles } = setup({ libraryIndex: () => Promise.resolve(index) });
+		await library.loadAlbum('c');
+		shuffles.start(sourceOf([unitOf('c-1')]));
+		await settle();
+		const queued = player.queue?.tracks.map(({ id }) => id);
+		shuffles.toggle();
+		expect(player.shuffling).toBe(false);
+		expect(player.queue?.tracks.map(({ id }) => id)).toEqual(queued);
+		await settle();
+		expect(player.queue?.tracks.slice(1).map(({ id }) => id)).toEqual(['c-2']);
+		expect(player.queue?.later?.at(0)?.trackId).toBe('d-0');
 	});
 });

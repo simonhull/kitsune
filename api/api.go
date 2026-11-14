@@ -699,9 +699,25 @@ type PlaybackSave struct {
 	// Continues is the album an album queue goes on from.
 	Continues string               `json:"continues,omitzero"`
 	Shuffle   *PlaybackShuffleSave `json:"shuffle,omitzero"`
-	ClientID  string               `json:"clientId"`
+	// Repeat is off, all or one; absent is off.
+	Repeat   string                `json:"repeat,omitzero"`
+	Shuffled *PlaybackShuffledSave `json:"shuffled,omitzero"`
+	ClientID string                `json:"clientId"`
 	// Device is phone, tablet or computer.
 	Device string `json:"device"`
+}
+
+// PlaybackShuffledSave is the player's own shuffle: its seed, and the queue's
+// own order from the current song on, as track IDs.
+type PlaybackShuffledSave struct {
+	Seed  int64    `json:"seed"`
+	Order []string `json:"order"`
+}
+
+// PlaybackShuffled is the player's own shuffle as the library has it now.
+type PlaybackShuffled struct {
+	Seed  int64          `json:"seed"`
+	Order []PlaybackSong `json:"order"`
 }
 
 // PlaybackShuffleSave is a shuffle session and its position after the songs saved.
@@ -724,8 +740,12 @@ type Playback struct {
 	Moved     bool             `json:"moved"`
 	Continues string           `json:"continues,omitzero"`
 	Shuffle   *PlaybackShuffle `json:"shuffle,omitzero"`
-	ClientID  string           `json:"clientId"`
-	Device    string           `json:"device"`
+	// Repeat is off, all or one.
+	Repeat string `json:"repeat"`
+	// Shuffled is the player's own shuffle, while it's on.
+	Shuffled *PlaybackShuffled `json:"shuffled,omitzero"`
+	ClientID string            `json:"clientId"`
+	Device   string            `json:"device"`
 	// UpdatedAt is when it was saved, Unix ms.
 	UpdatedAt int64 `json:"updatedAt"`
 }

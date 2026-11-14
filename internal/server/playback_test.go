@@ -20,6 +20,8 @@ const (
 	kindList     = "list"
 	kindShuffle  = "shuffle"
 	deviceTablet = "tablet"
+	repeatOff    = "off"
+	repeatOne    = "one"
 )
 
 // playbackFixture is a server with two albums of five songs and a signed-in admin.
@@ -73,13 +75,41 @@ func TestPlaybackIsRemembered(t *testing.T) {
 	}
 	want := api.Playback{
 		Kind: scopeAlbum, Tracks: songs, Index: 2, PositionMs: 133_000, Ordered: true, Continues: albumULID(1),
-		ClientID: aClientID, Device: "phone", UpdatedAt: ts.Clock.Now().UnixMilli(),
+		Repeat: repeatOff, ClientID: aClientID, Device: "phone", UpdatedAt: ts.Clock.Now().UnixMilli(),
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("GET = %+v, want %+v", got, want)
 	}
 	other := ts.tokenFor(t, store.RoleUser)
 	ts.send(t, call{method: http.MethodGet, path: playbackPath, header: bearer(other)}).problem(t, http.StatusNotFound)
+}
+
+func TestPlaybackKeepsRepeatAndShuffled(t *testing.T) {
+	t.Parallel()
+	ts, sess := playbackFixture(t)
+	save := albumSave()
+	save.Ordered, save.Repeat = false, repeatOne
+	save.Tracks = []string{songAt(1, 1), songAt(1, 4), songAt(1, 2), songAt(1, 5), songAt(1, 3)}
+	save.Shuffled = &api.PlaybackShuffledSave{Seed: 4_294_967_295, Order: []string{songAt(1, 2), songAt(1, 3), songAt(1, 4)}}
+	wantNoContent(t, ts.putPlayback(t, sess.token, save))
+	got := ts.playback(t, sess.token)
+	order := []api.PlaybackSong{
+		{ID: songAt(1, 2), AlbumID: albumULID(1)}, {ID: songAt(1, 3), AlbumID: albumULID(1)}, {ID: songAt(1, 4), AlbumID: albumULID(1)},
+	}
+	if got.Repeat != repeatOne || got.Shuffled == nil || got.Shuffled.Seed != save.Shuffled.Seed || !reflect.DeepEqual(got.Shuffled.Order, order) {
+		t.Errorf("GET = %+v, want repeat one and the shuffle's order", got)
+	}
+
+	// Its order gone from the library, the shuffle has nothing to go back to: it comes back off.
+	gone := []int64{ts.rowOf(t, songAt(1, 3)), ts.rowOf(t, songAt(1, 4))}
+	if err := ts.Store.MarkMissing(t.Context(), gone, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	save.Shuffled.Order = []string{songAt(1, 3), songAt(1, 4)}
+	wantNoContent(t, ts.putPlayback(t, sess.token, save))
+	if got = ts.playback(t, sess.token); got.Shuffled != nil {
+		t.Errorf("GET with its order gone = %+v, want no shuffled", got.Shuffled)
+	}
 }
 
 func TestPlaybackLastWriteWins(t *testing.T) {
@@ -113,6 +143,14 @@ func TestPlaybackRefusesABadRecord(t *testing.T) {
 		"shuffle on an album":     {func(s *api.PlaybackSave) { s.Shuffle = &api.PlaybackShuffleSave{ID: albumULID(9)} }, false},
 		"a bad device":            {func(s *api.PlaybackSave) { s.Device = "watch" }, true},
 		"a bad ULID":              {func(s *api.PlaybackSave) { s.Tracks[0] = strings.Repeat("u", 26) }, false},
+		"a bad repeat":            {func(s *api.PlaybackSave) { s.Repeat = "twice" }, true},
+		"over the cap with the order": {func(s *api.PlaybackSave) {
+			s.Shuffled = &api.PlaybackShuffledSave{Seed: 1, Order: many[:996]}
+		}, false},
+		"shuffled with a session": {func(s *api.PlaybackSave) {
+			s.Kind, s.Continues, s.Shuffle = kindShuffle, "", &api.PlaybackShuffleSave{ID: albumULID(9)}
+			s.Shuffled = &api.PlaybackShuffledSave{Order: s.Tracks}
+		}, false},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {

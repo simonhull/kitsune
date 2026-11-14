@@ -5,7 +5,8 @@ import {
 	ratingsSentence,
 	ratingsWord,
 	settingsLine,
-	songsLine
+	songsLine,
+	upNextLine
 } from './words.ts';
 
 describe('shuffle words', () => {
@@ -61,5 +62,13 @@ describe('shuffle words', () => {
 		expect(songsLine(9812)).toBe('9,812 SONGS · ENDLESS');
 		expect(songsLine(1)).toBe('1 SONG · ENDLESS');
 		expect(songsLine(0)).toBe('0 SONGS · ENDLESS');
+	});
+
+	it("says what's next under Now playing's controls, and how it goes on", () => {
+		expect(upNextLine(false, 'off')).toBe('UP NEXT');
+		expect(upNextLine('Demon Days', 'all')).toBe('UP NEXT · SHUFFLED FROM DEMON DAYS · THEN AGAIN');
+		expect(upNextLine(true, 'off')).toBe('UP NEXT · SHUFFLED');
+		expect(upNextLine(false, 'all')).toBe('UP NEXT · THEN AGAIN');
+		expect(upNextLine('Demon Days', 'one')).toBe('REPEATING THIS SONG');
 	});
 });

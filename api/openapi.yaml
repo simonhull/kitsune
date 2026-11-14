@@ -581,7 +581,8 @@ paths:
       summary: Remember where the caller is.
       description: >-
         Replaces the record. Last write wins, and no event is published. At most
-        1,000 songs across `tracks` and `later`, and a body of at most 64 KiB.
+        1,000 songs across `tracks`, `later` and `shuffled.order`, and a body
+        of at most 64 KiB.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
       requestBody:
@@ -2782,6 +2783,13 @@ components:
             For `album` and `songs`, the album it goes on from, down the Library
             list.
         shuffle: { $ref: "#/components/schemas/PlaybackShuffleSave" }
+        repeat:
+          type: string
+          enum: ["off", all, one]
+          description: >-
+            What the player does at the end of the queue (`all` goes round
+            again) or of a song (`one` plays it again). Absent is `off`.
+        shuffled: { $ref: "#/components/schemas/PlaybackShuffledSave" }
         clientId:
           type: string
           pattern: "^[0-9a-f]{16,64}$"
@@ -2798,13 +2806,40 @@ components:
       properties:
         id: { type: string, minLength: 26, maxLength: 26 }
         after: { type: integer, format: int64, minimum: 0 }
+    PlaybackShuffledSave:
+      type: object
+      additionalProperties: false
+      description: >-
+        Set while the player's own Shuffle is on, for any kind but `shuffle`,
+        whose session is its shuffle: the seed it reordered with, and the
+        queue's own order from the current song on, which turning it off goes
+        back to.
+      required: [seed, order]
+      properties:
+        seed: { type: integer, format: int64, minimum: 0, maximum: 4294967295 }
+        order:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string, minLength: 26, maxLength: 26 }
+    PlaybackShuffled:
+      type: object
+      additionalProperties: false
+      description: The player's own shuffle, its order as the library has it now.
+      required: [seed, order]
+      properties:
+        seed: { type: integer, format: int64, minimum: 0, maximum: 4294967295 }
+        order:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/PlaybackSong" }
     Playback:
       type: object
       additionalProperties: false
       description: >-
         Where the caller left off, as `GET /me/playback` gives it: gone songs
         left out, each with its album as it is now.
-      required: [kind, tracks, index, positionMs, ordered, moved, clientId, device, updatedAt]
+      required: [kind, tracks, index, positionMs, ordered, moved, repeat, clientId, device, updatedAt]
       properties:
         kind: { type: string, enum: [album, songs, list, shuffle] }
         tracks:
@@ -2823,6 +2858,12 @@ components:
             and `positionMs` is 0.
         continues: { type: string }
         shuffle: { $ref: "#/components/schemas/PlaybackShuffle" }
+        repeat:
+          type: string
+          enum: ["off", all, one]
+          description: A record saved before repeat existed is `off`.
+        shuffled:
+          $ref: "#/components/schemas/PlaybackShuffled"
         clientId: { type: string }
         device: { type: string, enum: [phone, tablet, computer] }
         updatedAt: { type: integer, format: int64, description: When it was saved, Unix ms. }

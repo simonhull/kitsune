@@ -22,8 +22,16 @@
 		shuffle: {
 			path: 'M3 7h3.5c2 0 3.2 1 4.3 2.6l2.4 3.8c1.1 1.6 2.3 2.6 4.3 2.6H21M3 17h3.5c1.4 0 2.4-.5 3.2-1.3M14.3 8.3c.8-.8 1.8-1.3 3.2-1.3H21M18 4l3 3-3 3M18 14l3 3-3 3',
 			circle: false
+		},
+		// The Repeat and Shuffle board's: two arrows chasing round a loop.
+		repeat: {
+			path: 'M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4',
+			circle: false
 		}
 	} as const;
+
+	/** Outlines drawn with round ends, as their boards have them. */
+	const rounded: readonly string[] = ['shuffle', 'repeat'];
 
 	interface Props {
 		name: keyof typeof glyphs | keyof typeof outlines;
@@ -49,8 +57,8 @@
 		fill="none"
 		stroke="currentColor"
 		stroke-width="2"
-		stroke-linecap={name === 'shuffle' ? 'round' : undefined}
-		stroke-linejoin={name === 'shuffle' ? 'round' : undefined}
+		stroke-linecap={rounded.includes(name) ? 'round' : undefined}
+		stroke-linejoin={rounded.includes(name) ? 'round' : undefined}
 		aria-hidden="true"
 	>
 		{#if outline.circle}<circle cx="11" cy="11" r="7"></circle>{/if}

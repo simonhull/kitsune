@@ -22,6 +22,10 @@ export interface ContinuesHost {
 	 * of the list, or when `id` isn't in it any more.
 	 */
 	albumAfter(id: string): string | null;
+	/** The list's first album, as it shows now: `null` for none. */
+	firstAlbum(): string | null;
+	/** Whether the queue goes round again past the end of the list: Repeat on all. */
+	readonly wraps: boolean;
 }
 
 /** Finds the album after `id` in a list's albums: `null` past the last, or with `id` not there. */
@@ -51,7 +55,7 @@ export class LibraryContinues {
 		}
 		const ahead = pendingAlbum(queue);
 		const after = ahead?.after ?? queue.continues.album;
-		const want = this.#host.albumAfter(after);
+		const want = this.#after(after);
 		if (ahead === undefined && upcoming(queue) !== undefined) {
 			// Songs still to play before the end: the next album's record comes while they do.
 			if (want !== null) {
@@ -72,9 +76,15 @@ export class LibraryContinues {
 		this.#host.continueList(after, null);
 		void this.#host.loadAlbum(want).then(() => {
 			const late = this.#host.album(want);
-			if (late !== undefined && this.#host.albumAfter(after) === want) {
+			if (late !== undefined && this.#after(after) === want) {
 				this.#host.continueList(after, late);
 			}
 		});
+	}
+
+	/** The album the queue goes on to after `id`: past the list's end, its first again on all. */
+	#after(id: string): string | null {
+		const next = this.#host.albumAfter(id);
+		return next === null && this.#host.wraps ? this.#host.firstAlbum() : next;
 	}
 }

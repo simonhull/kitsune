@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/simonhull/kitsune/internal/playback"
@@ -26,7 +27,7 @@ const otherClient = "abcdef0123456789"
 func valid() playback.Record {
 	return playback.Record{
 		Kind: playback.Album, Tracks: ids(0, 3), Index: 1, PositionMs: 133_000, Ordered: true,
-		ClientID: "0123456789abcdef", Device: playback.Computer,
+		Repeat: playback.RepeatOff, ClientID: "0123456789abcdef", Device: playback.Computer,
 	}
 }
 
@@ -79,6 +80,39 @@ func TestCheck(t *testing.T) {
 		{"client ID upper case", func(r *playback.Record) { r.ClientID = "0123456789ABCDEF" }, false},
 		{"unknown device", func(r *playback.Record) { r.Device = "watch" }, false},
 		{"a phone", func(r *playback.Record) { r.Device = playback.Phone }, true},
+		{"repeat all", func(r *playback.Record) { r.Repeat = playback.RepeatAll }, true},
+		{"repeat one", func(r *playback.Record) { r.Repeat = playback.RepeatOne }, true},
+		{"unknown repeat", func(r *playback.Record) { r.Repeat = "twice" }, false},
+		{"no repeat", func(r *playback.Record) { r.Repeat = "" }, false},
+		{"shuffled on an album", func(r *playback.Record) {
+			r.Shuffled = &playback.Shuffled{Seed: 7, Order: ids(1, 2)}
+		}, true},
+		{"shuffled on a list", func(r *playback.Record) {
+			r.Kind, r.Later, r.Shuffled = playback.List, ids(3, 1), &playback.Shuffled{Order: ids(1, 3)}
+		}, true},
+		{"shuffled on a session's shuffle", func(r *playback.Record) {
+			r.Kind, r.Shuffle = playback.Shuffle, &playback.ShuffleAt{ID: id(9)}
+			r.Shuffled = &playback.Shuffled{Order: ids(1, 2)}
+		}, false},
+		{"shuffled with no order", func(r *playback.Record) { r.Shuffled = &playback.Shuffled{Seed: 1} }, false},
+		{"shuffled seed of 32 bits", func(r *playback.Record) {
+			r.Shuffled = &playback.Shuffled{Seed: playback.MaxSeed, Order: ids(1, 2)}
+		}, true},
+		{"shuffled seed past 32 bits", func(r *playback.Record) {
+			r.Shuffled = &playback.Shuffled{Seed: playback.MaxSeed + 1, Order: ids(1, 2)}
+		}, false},
+		{"shuffled seed negative", func(r *playback.Record) {
+			r.Shuffled = &playback.Shuffled{Seed: -1, Order: ids(1, 2)}
+		}, false},
+		{"a bad order", func(r *playback.Record) { r.Shuffled = &playback.Shuffled{Order: []string{"x"}} }, false},
+		{"1,000 songs with the order", func(r *playback.Record) {
+			r.Kind, r.Tracks, r.Later = playback.List, ids(0, 400), ids(400, 300)
+			r.Shuffled = &playback.Shuffled{Order: ids(1, 300)}
+		}, true},
+		{"1,001 songs counting the order", func(r *playback.Record) {
+			r.Kind, r.Tracks, r.Later = playback.List, ids(0, 400), ids(400, 300)
+			r.Shuffled = &playback.Shuffled{Order: ids(1, 301)}
+		}, false},
 		{"a tablet", func(r *playback.Record) { r.Device = playback.Tablet }, true},
 	}
 	for _, tt := range tests {
@@ -102,14 +136,22 @@ func TestEncodeDecode(t *testing.T) {
 	for _, rec := range []playback.Record{
 		valid(),
 		{
-			Kind: playback.List, Tracks: ids(0, 2), Later: ids(2, 2), Index: 1,
+			Kind: playback.List, Tracks: ids(0, 2), Later: ids(2, 2), Index: 1, Repeat: playback.RepeatAll,
 			ClientID: otherClient, Device: playback.Phone,
 		},
 		{
 			Kind: playback.Shuffle, Tracks: ids(0, 1), Shuffle: &playback.ShuffleAt{ID: id(7), After: 12},
-			ClientID: otherClient, Device: playback.Tablet,
+			Repeat: playback.RepeatOne, ClientID: otherClient, Device: playback.Tablet,
 		},
-		{Kind: playback.Album, Tracks: ids(0, 1), Continues: id(5), ClientID: otherClient, Device: playback.Phone},
+		{
+			Kind: playback.Album, Tracks: ids(0, 1), Continues: id(5), Repeat: playback.RepeatOff,
+			ClientID: otherClient, Device: playback.Phone,
+		},
+		{
+			Kind: playback.Songs, Tracks: ids(0, 3), Index: 1, Repeat: playback.RepeatAll,
+			Shuffled: &playback.Shuffled{Seed: playback.MaxSeed, Order: ids(1, 2)},
+			ClientID: otherClient, Device: playback.Computer,
+		},
 	} {
 		stored, err := playback.Encode(&rec)
 		if err != nil {
@@ -199,5 +241,41 @@ func TestResolveAttachesAlbums(t *testing.T) {
 	got, _ := playback.Resolve(&list, liveBut())
 	if got.Tracks[3] != (playback.Song{ID: id(3), AlbumID: album(1)}) || got.Later[1].AlbumID != album(1) {
 		t.Errorf("Resolve = %+v, want each song's album", got)
+	}
+}
+
+func TestDecodeReadsAnOlderRecordAsOffAndOff(t *testing.T) {
+	t.Parallel()
+	rec := valid()
+	stored, err := playback.Encode(&rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(stored.Queue), "repeat") {
+		t.Errorf("queue = %s, want off left out", stored.Queue)
+	}
+	stored.Queue = []byte(`{"tracks":["` + id(0) + `","` + id(1) + `","` + id(2) + `"]}`)
+	got, err := playback.Decode(&stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Repeat != playback.RepeatOff || got.Shuffled != nil {
+		t.Errorf("Decode of a record from before repeat = %+v, want off and not shuffled", got)
+	}
+}
+
+func TestResolveKeepsTheLiveOrder(t *testing.T) {
+	t.Parallel()
+	rec := playback.Record{
+		Kind: playback.Songs, Tracks: ids(0, 3), Index: 1,
+		Shuffled: &playback.Shuffled{Seed: 3, Order: []string{id(1), id(4), id(2), id(5)}},
+	}
+	got, _ := playback.Resolve(&rec, liveBut(4))
+	want := []playback.Song{{ID: id(1), AlbumID: album(0)}, {ID: id(2), AlbumID: album(0)}, {ID: id(5), AlbumID: album(1)}}
+	if !reflect.DeepEqual(got.Order, want) {
+		t.Errorf("Resolve order = %+v, want %+v", got.Order, want)
+	}
+	if plain, _ := playback.Resolve(&playback.Record{Tracks: ids(0, 1)}, liveBut()); plain.Order != nil {
+		t.Errorf("Resolve of an unshuffled record has order %+v", plain.Order)
 	}
 }

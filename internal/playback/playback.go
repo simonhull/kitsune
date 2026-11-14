@@ -14,8 +14,13 @@ import (
 	"github.com/simonhull/kitsune/internal/store"
 )
 
-// MaxSongs is the most songs a record holds, across its tracks and later.
+// MaxSongs is the most songs a record holds, across its tracks, later and the
+// order of a shuffle the player made.
 const MaxSongs = 1000
+
+// MaxSeed is the largest seed a shuffle the player made may have: the client's
+// generator takes 32 bits.
+const MaxSeed = 1<<32 - 1
 
 // MaxPositionMs is the furthest into a song a record may be: a day.
 const MaxPositionMs = 24 * 60 * 60 * 1000
@@ -55,6 +60,27 @@ type ShuffleAt struct {
 	After int64
 }
 
+// Repeat is what the player does at the end of the queue, or of a song.
+type Repeat string
+
+// The repeats there are.
+const (
+	// RepeatOff comes to rest at the end of the queue.
+	RepeatOff Repeat = "off"
+	// RepeatAll goes round again from the queue's first song.
+	RepeatAll Repeat = "all"
+	// RepeatOne plays the song again from the start.
+	RepeatOne Repeat = "one"
+)
+
+// Shuffled is a queue the player's Shuffle button reordered itself, with no
+// session: the seed it used, and the queue's own order from the current song
+// on, which turning it off goes back to.
+type Shuffled struct {
+	Seed  int64
+	Order []string
+}
+
 // Record is a person's remembered playback, as a client saved it.
 type Record struct {
 	Kind Kind
@@ -70,7 +96,12 @@ type Record struct {
 	// Ordered says album gain applies.
 	Ordered bool
 	// Shuffle is the session a shuffle queue plays in, nil for the others.
-	Shuffle  *ShuffleAt
+	Shuffle *ShuffleAt
+	// Repeat is off, all or one. A record saved before it is off.
+	Repeat Repeat
+	// Shuffled is set while the player's own shuffle is on, for any kind but
+	// shuffle, whose session is its shuffle.
+	Shuffled *Shuffled
 	ClientID string
 	Device   Device
 }
@@ -97,10 +128,14 @@ var (
 	errLater      = errors.New("later goes only with kind list")
 	errContinues  = errors.New("continues goes only with kind album or songs")
 	errShuffleNeg = errors.New("shuffle position is negative")
+	errRepeat     = errors.New("unknown repeat")
+	errShuffled   = errors.New("shuffled goes with any kind but shuffle")
+	errOrder      = errors.New("shuffled needs its order")
+	errSeed       = fmt.Errorf("shuffled seed outside 0 to %d", MaxSeed)
 )
 
 func check(rec *Record) error {
-	for _, step := range []func(*Record) error{checkLabels, checkPlace, checkPairs, checkIDs} {
+	for _, step := range []func(*Record) error{checkLabels, checkPlace, checkPairs, checkShuffled, checkIDs} {
 		if err := step(rec); err != nil {
 			return err
 		}
@@ -119,6 +154,25 @@ func checkLabels(rec *Record) error {
 	if !isClientID(rec.ClientID) {
 		return errClient
 	}
+	if !slices.Contains([]Repeat{RepeatOff, RepeatAll, RepeatOne}, rec.Repeat) {
+		return errRepeat
+	}
+	return nil
+}
+
+// checkShuffled checks the player's own shuffle: its kind, its seed and that it
+// names an order.
+func checkShuffled(rec *Record) error {
+	switch sh := rec.Shuffled; {
+	case sh == nil:
+		return nil
+	case rec.Kind == Shuffle:
+		return errShuffled
+	case len(sh.Order) == 0:
+		return errOrder
+	case sh.Seed < 0 || sh.Seed > MaxSeed:
+		return errSeed
+	}
 	return nil
 }
 
@@ -127,7 +181,7 @@ func checkPlace(rec *Record) error {
 	switch {
 	case len(rec.Tracks) == 0:
 		return errNoTracks
-	case len(rec.Tracks)+len(rec.Later) > MaxSongs:
+	case len(rec.IDs()) > MaxSongs:
 		return errTooMany
 	case rec.Index < 0 || rec.Index >= len(rec.Tracks):
 		return errIndex
@@ -208,6 +262,15 @@ type queue struct {
 	Tracks    []string `json:"tracks"`
 	Later     []string `json:"later,omitzero"`
 	Continues string   `json:"continues,omitzero"`
+	// Repeat is absent for off, as in every record saved before it.
+	Repeat   Repeat         `json:"repeat,omitzero"`
+	Shuffled *queueShuffled `json:"shuffled,omitzero"`
+}
+
+// queueShuffled is a record's [Shuffled] as the store keeps it.
+type queueShuffled struct {
+	Seed  int64    `json:"seed"`
+	Order []string `json:"order"`
 }
 
 // Encode returns rec as the store keeps it. Its UpdatedAt is the store's to set.
@@ -216,7 +279,14 @@ type queue struct {
 //
 // It fails only if the queue can't be encoded as JSON.
 func Encode(rec *Record) (store.Playback, error) {
-	q, err := json.Marshal(queue{Tracks: rec.Tracks, Later: rec.Later, Continues: rec.Continues})
+	kept := queue{Tracks: rec.Tracks, Later: rec.Later, Continues: rec.Continues}
+	if rec.Repeat != RepeatOff {
+		kept.Repeat = rec.Repeat
+	}
+	if rec.Shuffled != nil {
+		kept.Shuffled = &queueShuffled{Seed: rec.Shuffled.Seed, Order: rec.Shuffled.Order}
+	}
+	q, err := json.Marshal(kept)
 	if err != nil {
 		return store.Playback{}, fmt.Errorf("encode queue: %w", err)
 	}
@@ -243,11 +313,17 @@ func Decode(p *store.Playback) (Record, error) {
 	}
 	rec := Record{
 		Kind: Kind(p.Kind), Tracks: q.Tracks, Later: q.Later, Continues: q.Continues,
-		Index: p.At, PositionMs: p.PositionMs, Ordered: p.Ordered,
+		Index: p.At, PositionMs: p.PositionMs, Ordered: p.Ordered, Repeat: q.Repeat,
 		ClientID: p.ClientID, Device: Device(p.Device),
+	}
+	if rec.Repeat == "" {
+		rec.Repeat = RepeatOff
 	}
 	if p.ShuffleID != "" {
 		rec.Shuffle = &ShuffleAt{ID: p.ShuffleID, After: p.ShuffleAfter}
+	}
+	if q.Shuffled != nil {
+		rec.Shuffled = &Shuffled{Seed: q.Shuffled.Seed, Order: q.Shuffled.Order}
 	}
 	if err := Check(&rec); err != nil {
 		return Record{}, err
@@ -255,10 +331,15 @@ func Decode(p *store.Playback) (Record, error) {
 	return rec, nil
 }
 
-// IDs returns every track ULID rec names, tracks then later.
+// IDs returns every track ULID rec names, tracks then later, then a shuffle's
+// own order.
 func (rec *Record) IDs() []string {
-	out := make([]string, 0, len(rec.Tracks)+len(rec.Later))
-	return append(append(out, rec.Tracks...), rec.Later...)
+	var order []string
+	if rec.Shuffled != nil {
+		order = rec.Shuffled.Order
+	}
+	out := make([]string, 0, len(rec.Tracks)+len(rec.Later)+len(order))
+	return append(append(append(out, rec.Tracks...), rec.Later...), order...)
 }
 
 // Song is a song of a resolved record: its track and its album as they are now.
@@ -270,8 +351,11 @@ type Song struct {
 // song with its album.
 type Resolved struct {
 	Tracks, Later []Song
-	Index         int
-	PositionMs    int64
+	// Order is a shuffle's own order, as the library has it now: nil when the
+	// record has no [Shuffled], and when none of its order is left.
+	Order      []Song
+	Index      int
+	PositionMs int64
 	// Moved says the song saved as current is gone: Index is the next that
 	// exists, at 0 ms.
 	Moved bool
@@ -294,10 +378,9 @@ func Resolve(rec *Record, live map[string]string) (Resolved, bool) {
 		}
 		out.Tracks = append(out.Tracks, Song{ID: id, AlbumID: album})
 	}
-	for _, id := range rec.Later {
-		if album, ok := live[id]; ok {
-			out.Later = append(out.Later, Song{ID: id, AlbumID: album})
-		}
+	out.Later = liveSongs(rec.Later, live)
+	if rec.Shuffled != nil {
+		out.Order = liveSongs(rec.Shuffled.Order, live)
 	}
 	if out.Index < 0 {
 		return Resolved{}, false
@@ -306,4 +389,15 @@ func Resolve(rec *Record, live map[string]string) (Resolved, bool) {
 		out.PositionMs = 0
 	}
 	return out, true
+}
+
+// liveSongs returns those of ids live has, each with its album, in order.
+func liveSongs(ids []string, live map[string]string) []Song {
+	var out []Song
+	for _, id := range ids {
+		if album, ok := live[id]; ok {
+			out = append(out, Song{ID: id, AlbumID: album})
+		}
+	}
+	return out
 }

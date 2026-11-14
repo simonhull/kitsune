@@ -71,6 +71,7 @@ export function createPlaybackFixture({
 			}
 			const moved = tracks.at[index] !== save.index;
 			const later = live(save.later).songs;
+			const order = live(save.shuffled?.order).songs;
 			return {
 				kind: save.shuffle === undefined ? save.kind : 'songs',
 				tracks: tracks.songs,
@@ -83,6 +84,10 @@ export function createPlaybackFixture({
 					? { continues: save.continues }
 					: {}),
 				// The fixtures' shuffles live in the tab: after a reload, its session is gone.
+				repeat: save.repeat ?? 'off',
+				...(save.shuffled !== undefined && order.length > 0
+					? { shuffled: { seed: save.shuffled.seed, order } }
+					: {}),
 				clientId: save.clientId,
 				device: save.device,
 				updatedAt

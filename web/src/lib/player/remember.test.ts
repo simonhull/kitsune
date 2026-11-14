@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import type { Album, PlaybackRecord, Track } from '#lib/library/source.ts';
-import { inOrder, listed, picked, shuffled, throughList, type AlbumLookup } from './queue.ts';
+import {
+	inOrder,
+	listed,
+	picked,
+	shuffled,
+	shuffledOff,
+	throughList,
+	type AlbumLookup
+} from './queue.ts';
 import {
 	ageWords,
 	kindOf,
 	leftNote,
 	leftOf,
 	leftSpoken,
+	mostRemembered,
 	recordOf,
 	restored,
 	tagWords,
@@ -84,6 +93,8 @@ describe('recordOf', () => {
 			positionMs: 133_400,
 			ordered: false,
 			continues: 'a',
+			// Its own shuffle, from the song playing on: what turning it off goes back to.
+			shuffled: { seed: 3, order: ['a1', 'a2', 'a3'] },
 			clientId: here.id,
 			device: 'computer'
 		});
@@ -224,7 +235,77 @@ describe('restored', () => {
 			}),
 			both
 		);
-		expect(shuffle?.shuffle).toEqual({ id: 'S1' });
+		expect(shuffle?.shuffle).toEqual({ id: 'S1', endless: true });
+	});
+
+	it('comes back off and off from a record without repeat or shuffled', () => {
+		const queue = restored(record({ kind: 'album' }), both);
+		expect(queue?.shuffled).toBeUndefined();
+	});
+
+	it("keeps the player's own shuffle, with its order to go back to", () => {
+		const tracks = [
+			{ id: 'a2', albumId: 'a' },
+			{ id: 'a0', albumId: 'a' },
+			{ id: 'a1', albumId: 'a' },
+			{ id: 'a3', albumId: 'a' }
+		];
+		const order = [
+			{ id: 'a0', albumId: 'a' },
+			{ id: 'a1', albumId: 'a' },
+			{ id: 'a2', albumId: 'a' },
+			{ id: 'a3', albumId: 'a' }
+		];
+		const queue = restored(
+			record({ kind: 'album', tracks, index: 1, ordered: false, shuffled: { seed: 9, order } }),
+			both
+		);
+		expect(queue?.shuffled?.seed).toBe(9);
+		expect(queue?.shuffled?.ordered).toBe(true);
+		const off = queue === null || queue === undefined ? null : shuffledOff(queue);
+		// From a0, the album goes on in order: a1, then a3, since a2 has played.
+		expect(off?.tracks.slice((off.index ?? 0) + 1).map(({ id }) => id)).toEqual(['a1', 'a3']);
+		expect(off?.ordered).toBe(true);
+	});
+});
+
+describe('recordOf and restored', () => {
+	it('round-trips repeat and the shuffle', () => {
+		const queue = { ...shuffled(a, 5), index: 1 };
+		const save = recordOf(queue, 10, null, here, 'one');
+		expect(save.repeat).toBe('one');
+		const order = save.shuffled?.order.map((id) => ({ id, albumId: 'a' })) ?? [];
+		const back = restored(
+			record({
+				kind: save.kind,
+				tracks: save.tracks.map((id) => ({ id, albumId: 'a' })),
+				index: save.index,
+				ordered: save.ordered,
+				repeat: save.repeat ?? 'off',
+				...(save.shuffled === undefined ? {} : { shuffled: { seed: save.shuffled.seed, order } })
+			}),
+			both
+		);
+		expect(back?.tracks.map(({ id }) => id)).toEqual(queue.tracks.map(({ id }) => id));
+		expect(back?.shuffled?.order.map(({ trackId }) => trackId)).toEqual(
+			queue.shuffled?.order
+				.slice(queue.shuffled.order.findIndex(({ trackId }) => trackId === queue.tracks[1]?.id))
+				.map(({ trackId }) => trackId)
+		);
+	});
+
+	it('trims a shuffled queue and its order to the cap together', () => {
+		const big: Album = {
+			...a,
+			tracks: Array.from({ length: 900 }, (_, n) => ({ ...songOfA(0).track, id: `x${String(n)}` }))
+		};
+		const queue = shuffled(big, 1, 0);
+		const save = recordOf(queue, 0, null, here);
+		const count =
+			save.tracks.length + (save.later?.length ?? 0) + (save.shuffled?.order.length ?? 0);
+		expect(count).toBeLessThanOrEqual(mostRemembered);
+		expect(save.shuffled?.order.length).toBe(mostRemembered / 2);
+		expect(save.tracks.at(save.index)).toBe(queue.tracks.at(0)?.id);
 	});
 });
 
