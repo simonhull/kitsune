@@ -93,8 +93,7 @@ func (ts *testServer) seedHistory(tb testing.TB, tracks, albums int) {
 
 // TestHomeHistorySpeed times GET /me/home for a person with historyPlays
 // plays, of the large library.
-func TestHomeHistorySpeed(t *testing.T) {
-	t.Parallel()
+func TestHomeHistorySpeed(t *testing.T) { //nolint:paralleltest // Timed: a speed test measures a server alone, never beside another.
 	b, limit := speedBudget(t, "home-history")
 	ts := newTestServer(t)
 	shape := benchShapes[len(benchShapes)-1]
