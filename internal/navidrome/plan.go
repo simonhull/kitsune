@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store"
 	"github.com/simonhull/kitsune/internal/store/navidromedb"
@@ -28,7 +29,7 @@ var (
 	// ErrNoAccount means a -user KITSUNE names no Kitsune account.
 	ErrNoAccount = errors.New("no Kitsune account has that name")
 	// ErrGate means too few songs matched by path to trust the rest.
-	ErrGate = errors.New("fewer than half the songs with plays or marks match a Kitsune track by path; run with -dry-run -v and look at the pattern before importing")
+	ErrGate = errors.New("fewer than half the songs with plays, marks or playlists match a Kitsune track by path; run with -dry-run -v and look at the pattern before importing")
 )
 
 // Options steers a plan.
@@ -41,6 +42,9 @@ type Options struct {
 	// HeartStars is what a starred song with no rating is rated, -heart-stars:
 	// [rating.None] leaves it unrated.
 	HeartStars rating.Rating
+	// NewID makes the ULID of each playlist the plan brings over. Nil means
+	// [library.NewID].
+	NewID func(time.Time) (string, error)
 }
 
 // Account is a Kitsune account.
@@ -81,8 +85,9 @@ type Report struct {
 	ArtistRatings         int   // Rated artists without a star. Not imported.
 	AlbumRatings          int   // Dropped: Kitsune rates songs only.
 	NoDatePlays           int   // Dropped: a count with no time at all to stamp.
+	Playlists             Playlists
 	Left                  navidromedb.Left
-	Unmatched             []string // Paths of songs with plays or marks that matched nothing, relative.
+	Unmatched             []string // Paths of songs with plays, marks or in playlists that matched nothing, relative.
 }
 
 // Tally counts one kind of item and how each found its Kitsune match.
@@ -110,8 +115,9 @@ func (t *Tally) add(h how) {
 	}
 }
 
-// Gate is the check before writing: of the songs anybody played or marked,
-// at least half must match by path, or the rest is not to be trusted.
+// Gate is the check before writing: of the songs anybody played, marked or put
+// in a playlist, at least half must match by path, or the rest is not to be
+// trusted.
 type Gate struct{ Songs, ByPath int }
 
 // Check returns an error wrapping [ErrGate] if fewer than half matched by path.
@@ -145,6 +151,13 @@ func New(src *Source, targets *store.ImportTargets, opts *Options) (Plan, error)
 		if path {
 			plan.Gate.ByPath++
 		}
+	}
+	newID := opts.NewID
+	if newID == nil {
+		newID = library.NewID
+	}
+	if err = nameIDs(&plan, newID, opts.Now); err != nil {
+		return Plan{}, fmt.Errorf("playlist ID: %w", err)
 	}
 	return plan, nil
 }
@@ -269,6 +282,7 @@ func (p *planner) person(nd navidromedb.User, account Account, gate map[string]b
 		}
 	}
 	p.songMarks(&out, songs, note)
+	p.playlists(&out, &marks, note)
 	out.Report.Unmatched = slices.Sorted(maps.Keys(lost))
 	return out
 }

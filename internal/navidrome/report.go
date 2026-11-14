@@ -40,7 +40,7 @@ func Write(w io.Writer, plan *Plan, written []store.ImportCounts, verbose bool) 
 		unmapped = strings.Join(plan.Unmapped, ", ") + " (map one with -user NAVIDROME=KITSUNE)"
 	}
 	fmt.Fprintf(&b, "Navidrome users with no Kitsune account: %s\n", unmapped)
-	fmt.Fprintf(&b, "Matched by path: %d of %d songs with plays or marks\n", plan.Gate.ByPath, plan.Gate.Songs)
+	fmt.Fprintf(&b, "Matched by path: %d of %d songs with plays, marks or in playlists\n", plan.Gate.ByPath, plan.Gate.Songs)
 	if _, err := io.WriteString(w, b.String()); err != nil {
 		return fmt.Errorf("write report: %w", err)
 	}
@@ -68,6 +68,7 @@ func writePerson(b *strings.Builder, p *Person, counts *store.ImportCounts, verb
 		{label: "  undated", tally: &r.Undated, path: true, mbid: true, counts: &undated},
 		{label: "ratings", tally: &r.Ratings, path: true, mbid: true, counts: &c.Ratings, kept: true},
 		{label: "unrated hearts", tally: &r.UnratedHearts, path: true, mbid: true, counts: &c.HeartRatings, kept: true},
+		{label: "playlist songs", tally: &r.Playlists.Songs, path: true, mbid: true, counts: &c.PlaylistSongs},
 		{label: "album hearts", tally: &r.AlbumHearts},
 		{label: "artist hearts", tally: &r.ArtistHearts, mbid: true},
 	} {
@@ -82,12 +83,25 @@ func writePerson(b *strings.Builder, p *Person, counts *store.ImportCounts, verb
 		}
 		writeCells(b, rw.label, cells)
 	}
-	writeNotes(b, p, verbose)
+	writeNotes(b, p, counts, verbose)
+	b.WriteByte('\n')
+}
+
+// writePlaylists prints what becomes of a person's playlists.
+func writePlaylists(b *strings.Builder, p *Playlists, counts *store.ImportCounts) {
+	written := ""
+	if counts != nil {
+		written = fmt.Sprintf(" (%d new, %d already here and left as they are)", counts.Playlists.Added, counts.Playlists.There)
+	}
+	fmt.Fprintf(b, "Playlists: %d come over%s; smart playlists stay behind for now (plan 066): %d", p.Imported(), written, p.Smart)
+	if p.Cut > 0 {
+		fmt.Fprintf(b, "; %d songs past %d left off the end", p.Cut, store.MostPlaylistEntries)
+	}
 	b.WriteByte('\n')
 }
 
 // writeNotes prints what the table can't say about a person's import.
-func writeNotes(b *strings.Builder, p *Person, verbose bool) {
+func writeNotes(b *strings.Builder, p *Person, counts *store.ImportCounts, verbose bool) {
 	r := &p.Report
 	split := ""
 	if r.SplitAlbums > 0 {
@@ -105,12 +119,12 @@ func writeNotes(b *strings.Builder, p *Person, verbose bool) {
 	}
 	fmt.Fprintf(b, "Not imported, since Kitsune likes songs only, in stars: album hearts %d, artist hearts %d (%d of them rated, not starred)\n",
 		r.AlbumHearts.Source, r.ArtistHearts.Source, r.ArtistRatings)
-	fmt.Fprintf(b, "Not imported: album ratings %d, bookmarks %d, playlists %d (Kitsune has no playlists yet; keep the Navidrome file)\n",
-		r.AlbumRatings, r.Left.Bookmarks, r.Left.Playlists)
+	writePlaylists(b, &r.Playlists, counts)
+	fmt.Fprintf(b, "Not imported: album ratings %d, bookmarks %d\n", r.AlbumRatings, r.Left.Bookmarks)
 	if r.NoDatePlays > 0 {
 		fmt.Fprintf(b, "Not imported: %d plays with no time at all\n", r.NoDatePlays)
 	}
-	fmt.Fprintf(b, "Songs with plays or marks that matched nothing: %d\n", len(r.Unmatched))
+	fmt.Fprintf(b, "Songs with plays, marks or in playlists that matched nothing: %d\n", len(r.Unmatched))
 	if verbose {
 		for _, path := range r.Unmatched {
 			fmt.Fprintf(b, "  %s\n", path)

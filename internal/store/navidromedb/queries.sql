@@ -32,8 +32,24 @@ SELECT id, media_file_id, submission_time FROM scrobbles WHERE user_id = ? ORDER
 -- name: Artists :many
 SELECT id, name, mbz_artist_id FROM artist WHERE id IN (sqlc.slice(ids)) ORDER BY id;
 
--- name: CountPlaylists :one
-SELECT count(*) FROM playlist WHERE owner_id = ?;
+-- name: Playlists :many
+-- A smart playlist has rules; Navidrome leaves them NULL, empty or null JSON
+-- on one made by hand. Only whether there are any is read.
+SELECT
+    id,
+    name,
+    CAST(coalesce(created_at, '') AS TEXT) AS created_at,
+    CAST(coalesce(rules, '') NOT IN ('', 'null', '{}') AS INTEGER) AS smart
+FROM playlist
+WHERE owner_id = ?
+ORDER BY id;
+
+-- name: PlaylistTracks :many
+SELECT t.playlist_id, t.media_file_id
+FROM playlist_tracks AS t
+JOIN playlist AS p ON p.id = t.playlist_id
+WHERE p.owner_id = ?
+ORDER BY t.playlist_id, t.id;
 
 -- name: CountBookmarks :one
 SELECT count(*) FROM bookmark WHERE user_id = ?;

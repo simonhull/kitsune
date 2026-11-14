@@ -36,6 +36,10 @@ func sampleImport() *Import {
 			{TrackID: trackULID(2), Rating: 10, At: at(14)},
 		},
 		HeartRatings: []ImportedRating{{TrackID: trackULID(3), Rating: 8, At: at(10)}},
+		Playlists: []ImportedPlaylist{{
+			ID: "01PLAYLISTIMPORTED00000001", Key: "navidrome:p1", Name: "Falling Up", CreatedAt: at(5),
+			Tracks: []string{trackULID(2), trackULID(1), trackULID(2)},
+		}},
 	}
 }
 
@@ -57,6 +61,10 @@ func importedRows(t *testing.T, s *Store) []string {
 		rawRows(t, s.w, "SELECT 'album heart', a.ulid, h.hearted_at FROM album_hearts h JOIN albums a ON a.id = h.album_id WHERE h.user_id = 1"),
 		rawRows(t, s.w, "SELECT 'artist heart', a.ulid, h.hearted_at FROM artist_hearts h JOIN artists a ON a.id = h.artist_id WHERE h.user_id = 1"),
 		rawRows(t, s.w, "SELECT 'rating', t.ulid, r.halves, r.rated_at FROM track_ratings r JOIN tracks t ON t.id = r.track_id WHERE r.user_id = 1 ORDER BY t.ulid"),
+		rawRows(t, s.w, "SELECT 'playlist', ulid, name, source, import_key, created_at FROM playlists WHERE user_id = 1 ORDER BY id"),
+		rawRows(t, s.w, `SELECT 'entry', p.import_key, t.ulid FROM playlist_tracks e
+			JOIN playlists p ON p.id = e.playlist_id JOIN tracks t ON t.id = e.track_id
+			WHERE p.user_id = 1 ORDER BY p.id, e.position`),
 	)
 }
 
@@ -75,6 +83,10 @@ func TestApplyImportWritesEveryKindOnce(t *testing.T) {
 		"rating " + trackULID(1) + " 8 13000",
 		"rating " + trackULID(2) + " 10 14000",
 		"rating " + trackULID(3) + " 8 10000",
+		"playlist 01PLAYLISTIMPORTED00000001 Falling Up navidrome navidrome:p1 5000",
+		"entry navidrome:p1 " + trackULID(2),
+		"entry navidrome:p1 " + trackULID(1),
+		"entry navidrome:p1 " + trackULID(2),
 	}
 	if !slices.Equal(rows, want) {
 		t.Errorf("rows =\n%v\nwant\n%v: no hearts, ever", rows, want)
@@ -82,6 +94,7 @@ func TestApplyImportWritesEveryKindOnce(t *testing.T) {
 	wantFirst := ImportCounts{
 		Plays:   map[string]ImportCount{srcDated: {Added: 2}, srcUndated: {Added: 1}},
 		Ratings: ImportCount{Added: 2}, HeartRatings: ImportCount{Added: 1},
+		Playlists: ImportCount{Added: 1}, PlaylistSongs: ImportCount{Added: 3},
 	}
 	if !reflect.DeepEqual(first, wantFirst) {
 		t.Errorf("first run = %+v, want %+v", first, wantFirst)
@@ -89,12 +102,38 @@ func TestApplyImportWritesEveryKindOnce(t *testing.T) {
 	wantSecond := ImportCounts{
 		Plays:   map[string]ImportCount{srcDated: {There: 2}, srcUndated: {There: 1}},
 		Ratings: ImportCount{There: 2}, HeartRatings: ImportCount{There: 1},
+		Playlists: ImportCount{There: 1}, PlaylistSongs: ImportCount{There: 3},
 	}
 	if !reflect.DeepEqual(second, wantSecond) {
 		t.Errorf("second run = %+v, want %+v", second, wantSecond)
 	}
 	if again := importedRows(t, s); !slices.Equal(again, rows) {
 		t.Errorf("a second run changed rows:\n%v", again)
+	}
+}
+
+// A playlist imported once and changed here since stays as it is: a re-run
+// neither renames it nor adds to it.
+func TestApplyImportKeepsAnImportedPlaylistAsItIsNow(t *testing.T) {
+	t.Parallel()
+	s, _ := markedStore(t)
+	mustApply(t, s, sampleImport())
+	if err := s.RenamePlaylist(t.Context(), 1, "01PLAYLISTIMPORTED00000001", "Falling Down"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RemoveFromPlaylist(t.Context(), 1, "01PLAYLISTIMPORTED00000001", []int64{1}); err != nil {
+		t.Fatal(err)
+	}
+	rows := importedRows(t, s)
+	again := sampleImport()
+	again.Playlists[0].ID = "01PLAYLISTIMPORTED00000002" // A new run makes new IDs.
+	c := mustApply(t, s, again)
+	if c.Playlists != (ImportCount{There: 1}) {
+		t.Errorf("playlists = %+v, want the one already there", c.Playlists)
+	}
+	got := importedRows(t, s)
+	if !slices.Equal(got, rows) || !slices.Contains(got, "playlist 01PLAYLISTIMPORTED00000001 Falling Down navidrome navidrome:p1 5000") {
+		t.Errorf("rows after a re-run =\n%v\nwant\n%v", got, rows)
 	}
 }
 
@@ -146,6 +185,11 @@ func TestApplyImportIsAllOrNothing(t *testing.T) {
 		{"a track gone", func(imp *Import) { imp.Ratings[1].TrackID = trackULID(99) }, ErrNotFound},
 		{"a heart's track gone", func(imp *Import) { imp.HeartRatings[0].TrackID = trackULID(98) }, ErrNotFound},
 		{"no rating", func(imp *Import) { imp.Ratings[1].Rating = rating.None }, rating.ErrBad},
+		{"a playlist's track gone", func(imp *Import) { imp.Playlists[0].Tracks[2] = trackULID(97) }, ErrNotFound},
+		{"a playlist with no name", func(imp *Import) { imp.Playlists[0].Name = " " }, ErrBadPlaylistName},
+		{"a playlist too long", func(imp *Import) {
+			imp.Playlists[0].Tracks = slices.Repeat([]string{trackULID(1)}, MostPlaylistEntries+1)
+		}, ErrPlaylistFull},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -46,6 +46,7 @@ type world struct {
 	artists []navidromedb.Artist
 	tracks  []store.ImportTrack
 	kArts   []store.ImportArtist
+	lists   []navidromedb.Playlist
 	opts    navidrome.Options
 }
 
@@ -63,7 +64,7 @@ func (w *world) plan(t *testing.T) (navidrome.Plan, error) {
 		Libraries: []navidromedb.Library{{ID: 1, Path: root}},
 		Users:     []navidromedb.User{{ID: ndUser, Name: ndName}},
 		Songs:     w.songs,
-		Marks:     map[string]navidrome.Marks{ndUser: {Annotations: w.notes, Scrobbles: w.scrobs}},
+		Marks:     map[string]navidrome.Marks{ndUser: {Annotations: w.notes, Scrobbles: w.scrobs, Playlists: w.lists}},
 		Artists:   w.artists,
 	}
 	targets := store.ImportTargets{Tracks: w.tracks, Artists: w.kArts}

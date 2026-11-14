@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -133,6 +134,21 @@ type Import struct {
 	// HeartRatings are ratings the importer gave songs for a heart. They are
 	// written as Ratings are, after them, and counted apart.
 	HeartRatings []ImportedRating
+	// Playlists are written after the ratings, each whole or, when the person
+	// has one with its Key already, not at all.
+	Playlists []ImportedPlaylist
+}
+
+// ImportedPlaylist is a playlist from another server.
+type ImportedPlaylist struct {
+	ID   string // The ULID it takes if it is new.
+	Key  string // Where it came from, such as navidrome:<its ID>: a re-run finds it by this.
+	Name string // It must pass [PlaylistName].
+	// CreatedAt is when the other server made it.
+	CreatedAt time.Time
+	// Tracks are its songs by ULID, in order, a song as often as it is in it:
+	// at most [MostPlaylistEntries].
+	Tracks []string
 }
 
 // ImportCount says what became of one kind of an import's rows.
@@ -148,6 +164,9 @@ type ImportCounts struct {
 	Plays        map[string]ImportCount
 	Ratings      ImportCount
 	HeartRatings ImportCount
+	// Playlists counts playlists made now and those already here, which are
+	// left as they are; PlaylistSongs counts their entries the same way.
+	Playlists, PlaylistSongs ImportCount
 }
 
 // ApplyImport writes imp in one transaction, so a failure leaves the person's
@@ -157,25 +176,31 @@ type ImportCounts struct {
 // Plays already there, by client ID, are left alone. A rating already there
 // is kept, since it is the newer opinion.
 //
+// A playlist the person has with the same key already is left as it is, a
+// rename and every change since included.
+//
 // It returns an error wrapping [ErrNotFound] if an item's ULID is no longer in
-// the library, and [rating.ErrBad] for a rating that isn't one.
+// the library, [rating.ErrBad] for a rating that isn't one,
+// [ErrBadPlaylistName] for a playlist's name that isn't one and
+// [ErrPlaylistFull] for one with too many songs.
 func (s *Store) ApplyImport(ctx context.Context, imp *Import) (ImportCounts, error) {
-	for _, r := range slices.Concat(imp.Ratings, imp.HeartRatings) {
-		if !r.Rating.Valid() {
-			return ImportCounts{}, fmt.Errorf("apply import: track %s: %w", r.TrackID, rating.ErrBad)
-		}
+	if err := checkImport(imp); err != nil {
+		return ImportCounts{}, fmt.Errorf("apply import: %w", err)
 	}
 	var c ImportCounts
 	err := s.inPreparedTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
 		c = ImportCounts{Plays: map[string]ImportCount{}} // The writer may retry a transaction.
-		w := importWriter{q: q, user: imp.UserID}
+		w := importWriter{q: q, user: imp.UserID, now: ms(s.now())}
 		if err := w.plays(ctx, imp.Plays, c.Plays); err != nil {
 			return err
 		}
 		if err := w.ratings(ctx, imp.Ratings, &c.Ratings); err != nil {
 			return err
 		}
-		return w.ratings(ctx, imp.HeartRatings, &c.HeartRatings)
+		if err := w.ratings(ctx, imp.HeartRatings, &c.HeartRatings); err != nil {
+			return err
+		}
+		return w.playlists(ctx, imp.Playlists, &c)
 	})
 	if err != nil {
 		return ImportCounts{}, fmt.Errorf("apply import: %w", err)
@@ -183,10 +208,86 @@ func (s *Store) ApplyImport(ctx context.Context, imp *Import) (ImportCounts, err
 	return c, nil
 }
 
+// checkImport refuses an import whose ratings or playlists aren't ones.
+func checkImport(imp *Import) error {
+	for _, r := range slices.Concat(imp.Ratings, imp.HeartRatings) {
+		if !r.Rating.Valid() {
+			return fmt.Errorf("track %s: %w", r.TrackID, rating.ErrBad)
+		}
+	}
+	for i := range imp.Playlists {
+		p := &imp.Playlists[i]
+		if name, err := PlaylistName(p.Name); err != nil || name != p.Name {
+			return fmt.Errorf("playlist %s: %w", p.Key, ErrBadPlaylistName)
+		}
+		if len(p.Tracks) > MostPlaylistEntries {
+			return fmt.Errorf("playlist %s: %w", p.Key, ErrPlaylistFull)
+		}
+	}
+	return nil
+}
+
 // importWriter writes one person's import inside a transaction.
 type importWriter struct {
 	q    *sqlcdb.Queries
 	user int64
+	now  int64 // Unix ms: what a new playlist was last updated at.
+}
+
+// playlists makes each playlist the person has none with its key of, with its
+// songs spaced as the store spaces them.
+func (w importWriter) playlists(ctx context.Context, playlists []ImportedPlaylist, c *ImportCounts) error {
+	for i := range playlists {
+		p := &playlists[i]
+		key := p.Key
+		_, err := w.q.PlaylistByImportKey(ctx, sqlcdb.PlaylistByImportKeyParams{UserID: w.user, ImportKey: &key})
+		if err == nil {
+			c.Playlists.There++
+			c.PlaylistSongs.There += len(p.Tracks)
+			continue
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("playlist %s: %w", p.Key, err)
+		}
+		if err = w.playlist(ctx, p); err != nil {
+			return fmt.Errorf("playlist %s: %w", p.Key, err)
+		}
+		c.Playlists.Added++
+		c.PlaylistSongs.Added += len(p.Tracks)
+	}
+	return nil
+}
+
+// playlist makes one new playlist with its songs.
+func (w importWriter) playlist(ctx context.Context, p *ImportedPlaylist) error {
+	key := p.Key
+	row, err := w.q.InsertPlaylist(ctx, sqlcdb.InsertPlaylistParams{
+		Ulid: p.ID, UserID: w.user, Name: p.Name, Source: PlaylistImported, ImportKey: &key,
+		CreatedAt: ms(p.CreatedAt), UpdatedAt: w.now,
+	})
+	if err != nil {
+		return fmt.Errorf("insert: %w", err)
+	}
+	if len(p.Tracks) == 0 {
+		return nil
+	}
+	pairs := make([][2]int64, len(p.Tracks))
+	for i, id := range p.Tracks {
+		rowID, rowErr := rowIDOf(ctx, w.q, KindTrack, id)
+		if rowErr != nil {
+			return fmt.Errorf("track %s: %w", id, rowErr)
+		}
+		pairs[i] = [2]int64{int64(i+1) * positionStep, rowID}
+	}
+	encoded, err := json.Marshal(pairs)
+	if err != nil {
+		return fmt.Errorf("encode entries: %w", err)
+	}
+	_, err = w.q.InsertPlaylistEntries(ctx, sqlcdb.InsertPlaylistEntriesParams{PlaylistID: row, AddedAt: ms(p.CreatedAt), Entries: string(encoded)})
+	if err != nil {
+		return fmt.Errorf("insert entries: %w", err)
+	}
+	return nil
 }
 
 // plays inserts plays, counting them by source.

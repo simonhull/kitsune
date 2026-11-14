@@ -34,6 +34,12 @@ var navidromeFixture = []string{ //nolint:gochecknoglobals // Read-only fixture 
 		('u1', 'm3', 'media_file', 0, NULL, 0, true, '2025-04-01 00:00:00+00:00'),
 		('u1', 'al1', 'album', 0, NULL, 0, true, '2025-03-09 01:36:00+00:00')`,
 	`INSERT INTO scrobbles (id, media_file_id, user_id, submission_time) VALUES (1, 'm1', 'u1', 1767323045)`,
+	// Falling Up holds the moved song twice around one.flac, and a song Kitsune
+	// doesn't have; Recent is a smart one.
+	`INSERT INTO media_file (id, path, album_id) VALUES ('m4', 'B/gone.flac', 'al2')`,
+	`INSERT INTO playlist (id, name, owner_id, created_at, rules) VALUES
+		('p1', 'Falling Up', 'u1', '2025-03-09 01:36:00+00:00', NULL), ('p2', 'Recent', 'u1', NULL, '{"all":[]}')`,
+	`INSERT INTO playlist_tracks (id, playlist_id, media_file_id) VALUES (1, 'p1', 'm2'), (2, 'p1', 'm1'), (3, 'p1', 'm4'), (4, 'p1', 'm2')`,
 }
 
 // mapMoved maps the fixture's moved song onto its file in Kitsune.
@@ -145,6 +151,8 @@ func TestImportNavidrome(t *testing.T) { //nolint:paralleltest // overrides auth
 		"  plays                 5        5        5        0          0      5              0     -\n",
 		"  unrated hearts        1        1        1        0          0      1              0     0\n",
 		"Starred songs with no rating are rated 4★ (-heart-stars 8)\n",
+		"  playlist songs        4        3        3        0          1      3              0     -\n",
+		"Playlists: 1 come over (1 new, 0 already here and left as they are); smart playlists stay behind for now (plan 066): 1\n",
 		"Navidrome users with no Kitsune account: Guest",
 		afterImport,
 	} {
@@ -152,8 +160,46 @@ func TestImportNavidrome(t *testing.T) { //nolint:paralleltest // overrides auth
 			t.Errorf("first run's report lacks %q:\n%s", line, first.stdout)
 		}
 	}
-	if !strings.Contains(second.stdout, "  plays                 5        5        5        0          0      0              5     -\n") {
-		t.Errorf("second run's report says it added plays:\n%s", second.stdout)
+	checkSecondRun(t, second)
+	checkImportedPlaylist(t, e)
+}
+
+// checkSecondRun checks a run after the first said it added nothing.
+func checkSecondRun(t *testing.T, second cliResult) {
+	t.Helper()
+	for _, line := range []string{
+		"  plays                 5        5        5        0          0      0              5     -\n",
+		"(0 new, 1 already here and left as they are)",
+	} {
+		if !strings.Contains(second.stdout, line) {
+			t.Errorf("second run's report lacks %q: it added something:\n%s", line, second.stdout)
+		}
+	}
+}
+
+// checkImportedPlaylist checks simon has the fixture's Falling Up once, in
+// Navidrome's order with its repeat, less the song Kitsune doesn't have.
+func checkImportedPlaylist(t *testing.T, e userEnv) {
+	t.Helper()
+	st := e.openStore(t)
+	u, err := st.UserByName(t.Context(), simonName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lists, err := st.Playlists(t.Context(), u.ID, nil)
+	if err != nil || len(lists) != 1 || lists[0].Name != "Falling Up" || lists[0].Source != store.PlaylistImported {
+		t.Fatalf("Playlists = %+v, %v; want Falling Up from Navidrome, once", lists, err)
+	}
+	d, err := st.Playlist(t.Context(), u.ID, lists[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, len(d.Entries))
+	for i, entry := range d.Entries {
+		got[i] = entry.Track.ID
+	}
+	if want := []string{fmt.Sprintf("T%025d", 2), fmt.Sprintf("T%025d", 1), fmt.Sprintf("T%025d", 2)}; !slices.Equal(got, want) {
+		t.Errorf("Falling Up = %v, want %v", got, want)
 	}
 }
 

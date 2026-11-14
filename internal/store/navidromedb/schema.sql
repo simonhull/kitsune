@@ -50,13 +50,24 @@ CREATE TABLE artist (
     mbz_artist_id varchar      NOT NULL
 );
 
--- Optional, and only counted: Kitsune has no playlists or resume points yet,
--- so the report says what stays behind.
+-- Optional: a person's playlists, in their order. rules is set only on a smart
+-- playlist, which is counted and not imported. Neither table holds a secret.
 CREATE TABLE playlist (
-    id       varchar(255) NOT NULL PRIMARY KEY,
-    owner_id varchar(255) NOT NULL
+    id         varchar(255) NOT NULL PRIMARY KEY,
+    name       varchar(255) NOT NULL,
+    owner_id   varchar(255) NOT NULL,
+    created_at datetime,
+    rules      varchar      NULL
 );
 
+CREATE TABLE playlist_tracks (
+    id            INTEGER      NOT NULL, -- its place in the playlist
+    playlist_id   varchar(255) NOT NULL,
+    media_file_id varchar(255) NOT NULL
+);
+
+-- Optional, and only counted: Kitsune keeps no resume points yet, so the
+-- report says what stays behind.
 CREATE TABLE bookmark (
     user_id varchar(255) NOT NULL,
     item_id varchar(255) NOT NULL

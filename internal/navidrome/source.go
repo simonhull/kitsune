@@ -21,10 +21,11 @@ type Source struct {
 	Artists   []navidromedb.Artist // The ones somebody starred or rated.
 }
 
-// Marks is one Navidrome user's plays and marks.
+// Marks is one Navidrome user's plays, marks and playlists.
 type Marks struct {
 	Annotations []navidromedb.Annotation
 	Scrobbles   []navidromedb.Scrobble
+	Playlists   []navidromedb.Playlist
 	Left        navidromedb.Left
 }
 
@@ -64,7 +65,7 @@ func Load(ctx context.Context, db *navidromedb.DB) (Source, error) {
 	return src, nil
 }
 
-// loadMarks reads one user's plays and marks.
+// loadMarks reads one user's plays, marks and playlists.
 func loadMarks(ctx context.Context, db *navidromedb.DB, userID string) (Marks, error) {
 	var (
 		m   Marks
@@ -74,6 +75,9 @@ func loadMarks(ctx context.Context, db *navidromedb.DB, userID string) (Marks, e
 		return Marks{}, err //nolint:wrapcheck // navidromedb names the table; Load wraps once.
 	}
 	if m.Scrobbles, err = db.Scrobbles(ctx, userID); err != nil {
+		return Marks{}, err //nolint:wrapcheck // As above.
+	}
+	if m.Playlists, err = db.Playlists(ctx, userID); err != nil {
 		return Marks{}, err //nolint:wrapcheck // As above.
 	}
 	if m.Left, err = db.Left(ctx, userID); err != nil {

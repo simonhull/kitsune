@@ -60,10 +60,22 @@ CREATE TABLE artist (
     mbz_artist_id varchar      NOT NULL DEFAULT ''
 );
 
+-- As Navidrome declares them: rules is set only on a smart playlist.
 CREATE TABLE playlist (
-    id       varchar(255) NOT NULL PRIMARY KEY,
-    name     varchar(255) NOT NULL DEFAULT '',
-    owner_id varchar(255) NOT NULL
+    id         varchar(255) NOT NULL PRIMARY KEY,
+    name       varchar(255) NOT NULL DEFAULT '',
+    comment    varchar(255) DEFAULT '' NOT NULL,
+    owner_id   varchar(255) NOT NULL,
+    created_at datetime,
+    updated_at datetime,
+    rules      varchar      NULL,
+    song_count INTEGER      DEFAULT 0 NOT NULL
+);
+
+CREATE TABLE playlist_tracks (
+    id            INTEGER DEFAULT 0 NOT NULL, -- its place in the playlist
+    playlist_id   varchar(255) NOT NULL,
+    media_file_id varchar(255) NOT NULL
 );
 
 CREATE TABLE bookmark (
