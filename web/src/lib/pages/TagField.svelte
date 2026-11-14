@@ -1,31 +1,25 @@
 <script lang="ts">
-	import type { AlbumTags } from '#lib/library/source.ts';
-	import {
-		fieldId,
-		isChanged,
-		isMulti,
-		valueOf,
-		wasOf,
-		type FieldSpec
-	} from '#lib/library/tags.ts';
+	import { isChanged, valueOf, wasOf, type EditTrack } from '#lib/library/edit.ts';
+	import { fieldId, isMulti, type FieldSpec } from '#lib/library/tags.ts';
 	import ChipField from './ChipField.svelte';
-	import type { TagSession } from './tagEdits.svelte.ts';
+	import type { EditSession } from './tagEditor.svelte.ts';
 
 	interface Props {
 		spec: FieldSpec;
-		trackId: string;
-		tags: AlbumTags;
-		session: TagSession;
+		track: EditTrack;
+		session: EditSession;
 	}
 
-	let { spec, trackId, tags, session }: Props = $props();
+	let { spec, track, session }: Props = $props();
 
 	const { field } = $derived(spec);
-	const id = $derived(fieldId(trackId, field));
-	const values = $derived(valueOf(tags, session.draft, trackId, field));
-	const was = $derived(wasOf(tags, trackId, field));
-	const changed = $derived(isChanged(tags, session.draft, trackId, field));
-	const problem = $derived(session.problem(id));
+	/** The problem's key. The title's row holds that ID, so the open song's own title takes another. */
+	const key = $derived(fieldId(track.id, field));
+	const id = $derived(field === 'title' ? `open-${key}` : key);
+	const values = $derived(valueOf(track, session.draft, session.ticked, field));
+	const was = $derived(wasOf(track, field));
+	const changed = $derived(isChanged(track, session.draft, session.ticked, field));
+	const problem = $derived(session.problem(key));
 	const multi = $derived(isMulti(field));
 	const shown = $derived(spec.locked && field === 'compilation' ? [compiled(values)] : values);
 	/** A value with lines in it would lose them in a one-line input. */
@@ -37,7 +31,7 @@
 	}
 
 	function set(value: string): void {
-		session.setField(trackId, field, [value]);
+		session.setField(track.id, field, [value]);
 	}
 </script>
 
@@ -81,7 +75,7 @@
 			bind:values={
 				() => values,
 				(next) => {
-					session.setField(trackId, field, next);
+					session.setField(track.id, field, next);
 				}
 			}
 		/>
@@ -110,7 +104,7 @@
 	.field {
 		grid-column: span var(--span);
 		min-width: 0;
-		padding-bottom: 4px;
+		padding-bottom: 2px;
 		border-bottom: 1px solid var(--edge-field);
 		transition: border-color var(--morph-fast) var(--curve-morph);
 	}
@@ -184,9 +178,10 @@
 		resize: none;
 	}
 
-	input::placeholder {
-		font-weight: 500;
-		color: var(--text-label);
+	.field :global(input::placeholder) {
+		font-style: italic;
+		font-weight: 400;
+		color: var(--text-meta);
 	}
 
 	.fixed {
@@ -201,11 +196,13 @@
 		font-size: var(--type-body);
 		font-weight: 600;
 		color: var(--text-secondary);
+		overflow-wrap: anywhere;
 	}
 
 	.fixed.empty {
-		font-weight: 500;
-		color: var(--text-label);
+		font-style: italic;
+		font-weight: 400;
+		color: var(--text-meta);
 	}
 
 	.problem {
