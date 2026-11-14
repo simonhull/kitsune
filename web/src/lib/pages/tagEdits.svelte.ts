@@ -230,8 +230,9 @@ export class TagSession {
 }
 
 /**
- * Every album being edited. It outlives the album page, so unsaved edits are still there on a
- * return, for as long as the session lasts.
+ * Every album being edited. An editor lives as long as its album page: Back, Leave it and leaving
+ * the page all drop its edits (`editorHistory`). It sits outside the page so that another page can
+ * open one just before going to the album.
  */
 export class TagEdits {
 	readonly #tagger: Tagger;
@@ -259,18 +260,6 @@ export class TagEdits {
 	/** Drops an album's edits, whatever they hold. */
 	close(albumId: string): void {
 		this.#sessions.delete(albumId);
-	}
-
-	/** Takes someone back to edits left behind: the files may have moved on since. */
-	arrive(albumId: string): void {
-		void this.#sessions.get(albumId)?.read();
-	}
-
-	/** Lets go of an album left with nothing to lose. */
-	depart(albumId: string): void {
-		if (this.#sessions.get(albumId)?.dirty === false) {
-			this.close(albumId);
-		}
 	}
 
 	/** The next user must not inherit a draft. */

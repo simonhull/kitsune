@@ -11,6 +11,7 @@
 	import TagBar from '#lib/pages/TagBar.svelte';
 	import TagRows from '#lib/pages/TagRows.svelte';
 	import { tagEdits } from '#lib/pages/tagEdits.svelte.ts';
+	import { editorHistory } from '#lib/pages/editorHistory.svelte.ts';
 	import AlbumSongs from '#lib/pages/AlbumSongs.svelte';
 	import { rowsOf } from '#lib/pages/albumSongs.ts';
 	import { clock, discLabel, discOf } from '#lib/library/format.ts';
@@ -173,16 +174,28 @@
 		untrack(() => void library.loadAlbum(wanted));
 	});
 
-	// Edits outlive the page. Only a page left with something unsaved comes back to them.
+	// Edits live as long as the page: another album, or another page, drops them.
 	$effect(() => {
 		const wanted = id;
-		untrack(() => {
-			tagEdits.arrive(wanted);
-		});
 		return () => {
-			tagEdits.depart(wanted);
+			tagEdits.close(wanted);
 		};
 	});
+
+	/** Either editor has a history entry of its own: Back closes it, and the album stays. */
+	const editors = editorHistory(
+		() => (session !== undefined ? `tags:${id}` : bulk !== null ? `bulk:${id}` : null),
+		(editor, how) => {
+			if (editor.startsWith('bulk:')) {
+				bulkEdits.close();
+			} else {
+				tagEdits.close(editor.slice('tags:'.length));
+			}
+			if (how === 'back') {
+				void leftEditor('');
+			}
+		}
+	);
 
 	async function openEditor(): Promise<void> {
 		tagEdits.open(id);
@@ -207,6 +220,8 @@
 		if (to === undefined || to === id) {
 			return false;
 		}
+		// The editor's entry comes off first, so the album gone takes its place, not the entry.
+		await editors.settled();
 		await goto(resolve('/album/[id]', { id: to }), { replaceState: true });
 		return true;
 	}
