@@ -8,6 +8,7 @@ import { shuffles } from '#lib/shuffle/session.svelte.ts';
 import { selectionSource } from '#lib/shuffle/sources.ts';
 import type { Queued } from '#lib/player/queue.ts';
 import { tagEdits } from './tagEdits.svelte.ts';
+import { trashBin } from './trashBin.svelte.ts';
 
 /** Where each song in the index is: its album, by track ID. */
 export function albumsByTrack({ artists }: LibraryIndex): Map<string, string> {
@@ -114,16 +115,23 @@ export type RowMenuItem =
 	| 'remove'
 	| 'goToAlbum'
 	| 'goToArtist'
-	| 'fileInfo';
+	| 'fileInfo'
+	| 'trash';
 
 /**
  * What a song's ⋯ menu holds, in order. One song: Play next and Add to queue, never Play, which a
  * click on the row does. Songs picked: Play first. Then the marks and Edit tags…, Remove from queue
- * in Up next, and where to go, less the page it's opened on.
+ * in Up next, and where to go, less the page it's opened on. Last, after a rule, Move to Trash, for
+ * an administrator on a server that may change its files.
  */
 export function rowMenuItems(
 	target: Pick<MenuTarget, 'kind'> & { artistId?: string | undefined },
-	context: { here?: 'album' | 'artist' | undefined; editable: boolean; removable: boolean }
+	context: {
+		here?: 'album' | 'artist' | undefined;
+		editable: boolean;
+		removable: boolean;
+		trashable?: boolean;
+	}
 ): RowMenuItem[] {
 	const items: RowMenuItem[] = [];
 	if (target.kind === 'picked') {
@@ -145,7 +153,20 @@ export function rowMenuItems(
 		}
 		items.push('fileInfo');
 	}
+	if (context.trashable === true) {
+		items.push('trash');
+	}
 	return items;
+}
+
+/** A song's title, from whatever this browser holds of its album. */
+function titleOf(trackId: string, albumId: string | undefined): string | undefined {
+	if (albumId === undefined) {
+		return undefined;
+	}
+	const find = (tracks: readonly { id: string; title: string }[] | undefined) =>
+		tracks?.find(({ id }) => id === trackId)?.title;
+	return find(library.album(albumId)?.tracks) ?? find(library.albumRows(albumId, [])?.tracks);
 }
 
 /** What can be done with songs, one or picked: the bar's actions and the ⋯ menu's. */
@@ -158,6 +179,8 @@ export interface SongActions {
 	rate(stars: number | null): void;
 	/** Set when they're all on one album the person may edit. */
 	editTags: (() => void) | undefined;
+	/** Moves them to Trash. Set for an administrator on a server that may change its files. */
+	trash: (() => void) | undefined;
 }
 
 /**
@@ -199,6 +222,16 @@ export function actionsFor(
 			? () => {
 					tagEdits.open(only);
 					void goto(resolve('/album/[id]', { id: only }));
+				}
+			: undefined,
+		trash: trashBin.can
+			? () => {
+					const [first] = trackIds;
+					const title =
+						trackIds.length === 1 && first !== undefined
+							? titleOf(first, albumOf.get(first))
+							: undefined;
+					trashBin.moveSongs(trackIds, (id) => albumOf.get(id), title);
 				}
 			: undefined
 	};

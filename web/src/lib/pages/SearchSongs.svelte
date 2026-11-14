@@ -47,7 +47,13 @@
 		tracks: readonly TrackHit[];
 	}
 
-	let { tracks }: Props = $props();
+	let { tracks: found }: Props = $props();
+	/** What the search found, less what's on its way to Trash. */
+	const tracks = $derived(
+		library.trashed.empty
+			? found
+			: found.filter(({ id, albumId }) => !library.trashed.hides(id, albumId))
+	);
 
 	const parts: RowParts = { handle: false, cover: true, number: false };
 	const now = Date.now();
@@ -108,6 +114,9 @@
 		order: () => ids,
 		reveal: (trackId) => {
 			focusRow(root, trackId);
+		},
+		trash: (trackIds) => {
+			actionsFor(trackIds, albumOf).trash?.();
 		}
 	});
 	const picked = $derived(selection.inOrder(ids));

@@ -30,7 +30,12 @@ class AlbumsView {
 	genre = $state<string | null>(null);
 
 	readonly order = $derived(sorts.albums.value);
-	readonly #keyed = $derived(library.albums.map(keyed));
+	readonly #keyed = $derived(
+		(library.trashed.empty
+			? library.albums
+			: library.albums.filter(({ id }) => !library.trashed.hidesAlbum(id))
+		).map(keyed)
+	);
 	/** Each album's plays and stars, off the index, for the orders that need them. */
 	readonly #standing: ReadonlyMap<string, Standing> = $derived.by(() => {
 		if (!needsIndex(this.order) || library.index.kind !== 'ready') {

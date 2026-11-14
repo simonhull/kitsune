@@ -9,6 +9,7 @@
 	import SettingsSection from '#lib/pages/SettingsSection.svelte';
 	import MatchingSettings from '#lib/matching/MatchingSettings.svelte';
 	import PeopleCard from '#lib/pages/PeopleCard.svelte';
+	import { trashBin } from '#lib/pages/trashBin.svelte.ts';
 	import {
 		afterSave,
 		changeFor,
@@ -98,6 +99,25 @@
 	$effect(() => {
 		if (library.settingsHeard > 0) {
 			untrack(() => void follow());
+		}
+	});
+
+	/** Trash's count, for its link: it follows what moves in and out, here or elsewhere. */
+	const trashNote = $derived.by(() => {
+		const contents = trashBin.contents;
+		if (contents.kind !== 'ready') {
+			return 'Trash';
+		}
+		const { count } = contents.value;
+		return count === 0
+			? 'Empty'
+			: `${count.toLocaleString('en-US')} ${count === 1 ? 'song' : 'songs'} in Trash`;
+	});
+
+	$effect(() => {
+		void library.libraryHeard;
+		if (trashBin.can) {
+			untrack(() => void trashBin.read());
 		}
 	});
 
@@ -215,6 +235,11 @@
 					>
 				</p>
 			{/if}
+			{#if trashBin.can}
+				<p class="mono compact">
+					<a href={resolve('/server/trash')}>{trashNote.toUpperCase()}</a>
+				</p>
+			{/if}
 		{/if}
 		<dl>
 			{#if facts !== null}
@@ -227,6 +252,10 @@
 					<dd>
 						<a href={resolve('/health')}>{healthNote(facts.issues, facts.issueCounts)}</a>
 					</dd>
+				{/if}
+				{#if trashBin.can}
+					<dt class="mono">TRASH</dt>
+					<dd><a href={resolve('/server/trash')}>{trashNote}</a></dd>
 				{/if}
 			{/if}
 			{#if settings !== null}
@@ -334,8 +363,8 @@
 					<span class="words">
 						<span class="name">Let Kitsune write tags to your files</span>
 						<span class="hint"
-							>Off: editing tags is turned off and nothing in your folders ever changes. On: the tag
-							editor saves into the files.</span
+							>Off: editing tags is turned off and nothing in your folders ever changes, so Trash is
+							off too. On: the tag editor saves into the files.</span
 						>
 						{#if fromLine(s['library.tag_writes']) !== null}
 							<span class="from mono">{fromLine(s['library.tag_writes'])}</span>

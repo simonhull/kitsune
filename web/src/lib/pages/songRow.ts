@@ -97,6 +97,19 @@ export interface ListOrder {
 	order(): readonly string[];
 	/** Puts a song's row on screen, if it isn't, and gives it the focus. */
 	reveal(trackId: string): void;
+	/** Moves songs to Trash, for Delete. Left out where nobody may. */
+	trash?: ((trackIds: readonly string[]) => void) | undefined;
+}
+
+/** Delete, or Cmd+Backspace as a Mac's Finder has it: move to Trash. */
+export function isTrashKey(event: KeyboardEvent): boolean {
+	if (event.altKey || event.shiftKey) {
+		return false;
+	}
+	return (
+		(event.key === 'Delete' && !event.ctrlKey && !event.metaKey) ||
+		(event.key === 'Backspace' && event.metaKey && !event.ctrlKey)
+	);
 }
 
 /** Whether a key went to something that takes text, where Ctrl+A is the field's own. */
@@ -106,6 +119,17 @@ function typing(target: EventTarget | null): boolean {
 		target instanceof HTMLElement &&
 		(target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
 	);
+}
+
+/** Inputs that take no text: Delete on one of them, a song's box, is the list's. */
+const noText = ['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file'];
+
+/** Whether a key went to a field you type in, where Delete is the field's own. */
+function takesText(target: EventTarget | null): boolean {
+	if (typeof HTMLInputElement !== 'undefined' && target instanceof HTMLInputElement) {
+		return !noText.includes(target.type);
+	}
+	return typing(target);
 }
 
 /**
@@ -136,6 +160,23 @@ export class SongList {
 		if (event.key === ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
 			event.preventDefault();
 			this.selection.toggle(trackId);
+			return;
+		}
+		if (isTrashKey(event) && this.#list.trash !== undefined) {
+			// The songs picked, when this is one of them; else the song focused.
+			event.preventDefault();
+			const order = this.#list.order();
+			const picked = this.selection.has(trackId) ? this.selection.inOrder(order) : [];
+			const going = picked.length > 0 ? picked : [trackId];
+			// The focus goes on to the song after the last of them, or before, so the keys go on.
+			const last = Math.max(...going.map((id) => order.indexOf(id)));
+			const next = order.slice(last + 1).find((id) => !going.includes(id));
+			const before = order.slice(0, last).findLast((id) => !going.includes(id));
+			this.#list.trash(going);
+			const to = next ?? before;
+			if (to !== undefined) {
+				this.#list.reveal(to);
+			}
 			return;
 		}
 		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
@@ -171,6 +212,16 @@ export class SongList {
 		}
 		if (event.key === 'Escape' && this.selection.any) {
 			this.selection.clear();
+			return;
+		}
+		if (
+			isTrashKey(event) &&
+			this.selection.any &&
+			this.#list.trash !== undefined &&
+			!takesText(event.target)
+		) {
+			event.preventDefault();
+			this.#list.trash(this.selection.inOrder(this.#list.order()));
 			return;
 		}
 		if (

@@ -4,6 +4,20 @@ import { SvelteSet } from 'svelte/reactivity';
 export type BoxState = 'all' | 'some' | 'none';
 
 /**
+ * Every selection a page holds, so songs that leave every list leave every selection. Weak: a page
+ * gone takes its selection with it. Not state: nothing reads it to draw.
+ */
+let selections: WeakRef<Selection>[] = [];
+
+/** Lets go of songs in every selection: they've left every list, as a move to Trash does. */
+export function dropEverywhere(ids: readonly string[]): void {
+	selections = selections.filter((held) => held.deref() !== undefined);
+	for (const held of selections) {
+		held.deref()?.drop(ids);
+	}
+}
+
+/**
  * The songs a person has picked, by track ID: not by row, so it lasts through scrolling, the
  * virtual list's recycling and a change of filter. A song a filter hides stays picked.
  */
@@ -11,6 +25,10 @@ export class Selection {
 	readonly #ids = new SvelteSet<string>();
 	/** Where a Shift range starts: the last song picked on its own. */
 	#anchor: string | null = null;
+
+	constructor() {
+		selections.push(new WeakRef(this));
+	}
 
 	get ids(): ReadonlySet<string> {
 		return this.#ids;
@@ -88,6 +106,16 @@ export class Selection {
 	clear(): void {
 		this.#ids.clear();
 		this.#anchor = null;
+	}
+
+	/** Lets go of songs that have left every list, as a move to Trash does. */
+	drop(ids: readonly string[]): void {
+		for (const id of ids) {
+			this.#ids.delete(id);
+			if (this.#anchor === id) {
+				this.#anchor = null;
+			}
+		}
 	}
 
 	boxFor(shown: readonly string[]): BoxState {

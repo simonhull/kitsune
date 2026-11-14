@@ -265,6 +265,9 @@
 		order: () => ids,
 		reveal: (trackId) => {
 			reveal(trackId);
+		},
+		trash: (trackIds) => {
+			actionsFor(trackIds, albumOf, indexNow).trash?.();
 		}
 	});
 	const picked = $derived(selection.inOrder(ids));

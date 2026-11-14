@@ -17,6 +17,7 @@ import {
 } from './fixtures.ts';
 import { healthFixture } from './healthFixtures.ts';
 import { patchIndex } from './indexPatch.ts';
+import { Trashed } from './trashed.svelte.ts';
 import type { PlaybackFixture } from './playbackFixture.ts';
 import { eventsUrl, Live, type EventStream } from './live.ts';
 import { Marks } from './marks.svelte.ts';
@@ -68,7 +69,11 @@ import {
 	type ShufflePage,
 	type ShuffleRules,
 	type ShuffleStart,
-	type TracksEdit
+	type TracksEdit,
+	type Trash,
+	type TrashChange,
+	type TrashEmpty,
+	type TrashMove
 } from './source.ts';
 
 /** The grid's page: 60 divides evenly into every column count, so pages stack with no seam. */
@@ -236,8 +241,20 @@ export class Library {
 	artists = $state.raw<Load<ListedArtist[]>>({ kind: 'loading' });
 	/** What scans had trouble with, for administrators. */
 	issues = $state.raw<Load<ScanIssues>>({ kind: 'loading' });
-	/** Every song, for the Library page. Nothing asks until it opens. */
-	index = $state.raw<Load<LibraryIndex>>({ kind: 'loading' });
+	/** Every song as the server last said, songs on their way to Trash included. */
+	#index = $state.raw<Load<LibraryIndex>>({ kind: 'loading' });
+	/** Songs moved to Trash here, which every list leaves out before the server has answered. */
+	readonly trashed = new Trashed();
+	readonly #listed = $derived(this.trashed.index(this.#index));
+
+	/** Every song, for the Library page, less what's on its way to Trash. Nothing asks until it opens. */
+	get index(): Load<LibraryIndex> {
+		return this.#listed;
+	}
+
+	set index(load: Load<LibraryIndex>) {
+		this.#index = load;
+	}
 	/**
 	 * The signed-in person's Last.fm connection, read with the shell and after every change. Null
 	 * until it's known, and when it can't be: nothing waits on it.
@@ -261,6 +278,8 @@ export class Library {
 	indexFields = $state('');
 	/** Moves on whenever the server says its settings changed, so an open Server page reads them. */
 	settingsHeard = $state(0);
+	/** Moves on whenever the server says albums changed, so an open Trash count reads again. */
+	libraryHeard = $state(0);
 
 	readonly #source: LibrarySource;
 	readonly #entries = new SvelteMap<string, AlbumEntry>();
@@ -406,8 +425,10 @@ export class Library {
 		return this.#albums.get(id) ?? this.#entries.get(id);
 	}
 
+	/** An album as read, less its songs on their way to Trash. */
 	album(id: string): Album | undefined {
-		return this.#albums.get(id);
+		const album = this.#albums.get(id);
+		return album === undefined ? undefined : this.trashed.album(album);
 	}
 
 	/** Reports whether the server says this album doesn't exist. */
@@ -1243,33 +1264,39 @@ export class Library {
 		if (this.deck) {
 			return; // A first scan's deck follows the library its own way.
 		}
+		this.libraryHeard += 1;
 		void this.#refreshHome();
 		// An album in the history may have changed: the next look at Home reads it again.
 		this.#historyAt = 0;
 		// An artist's songs can gain an album nobody has read yet, so any change reads them again.
 		this.#artistSongsChanged();
+		const reads: Promise<void>[] = [];
 		const held = all ? [...this.#albums.keys()] : albums.filter((id) => this.#albums.has(id));
 		for (const id of held) {
-			void this.#refreshAlbum(id);
+			reads.push(this.#refreshAlbum(id));
 		}
 		for (const id of all ? [...this.#rows.keys()] : albums) {
 			const read = this.#rows.get(id);
 			if (read !== undefined) {
-				void this.loadAlbumRows(
-					[id],
-					read.fields === '' ? [] : (read.fields.split(',') as IndexField[])
+				reads.push(
+					this.loadAlbumRows(
+						[id],
+						read.fields === '' ? [] : (read.fields.split(',') as IndexField[])
+					)
 				);
 			}
 		}
-		if (this.index.kind !== 'ready') {
-			return;
+		if (this.index.kind === 'ready') {
+			if (all) {
+				reads.push(this.loadIndex(this.#fields()));
+			} else {
+				this.#patching = this.#patching.then(() => this.#patchIndex(albums));
+				reads.push(this.#patching);
+			}
 		}
-		if (all) {
-			await this.loadIndex(this.#fields());
-			return;
-		}
-		this.#patching = this.#patching.then(() => this.#patchIndex(albums));
-		await this.#patching;
+		// What every list holds now is the server's word on these albums: Trash's own can go.
+		await Promise.allSettled(reads);
+		this.trashed.settled(albums, all);
 	}
 
 	/** Reads just the albums that changed, and puts them in the index where they go. */
@@ -1285,7 +1312,10 @@ export class Library {
 			if (epoch !== this.#epoch || this.index.kind !== 'ready' || fields !== this.indexFields) {
 				return; // A new read is coming, with what's wanted now.
 			}
-			const patched = patchIndex(this.index.value, ids, part);
+			if (this.#index.kind !== 'ready') {
+				return;
+			}
+			const patched = patchIndex(this.#index.value, ids, part);
 			if (patched === null) {
 				await this.loadIndex(this.#fields());
 				return;
@@ -1419,7 +1449,7 @@ export class Library {
 
 	/** Returns how far an artist's songs have got. Nothing asked for yet is on its way. */
 	artistSongs(id: string): Load<LibraryIndex> {
-		return this.#artistSongs.get(id)?.load ?? { kind: 'loading' };
+		return this.trashed.index(this.#artistSongs.get(id)?.load ?? { kind: 'loading' });
 	}
 
 	/**
@@ -1526,17 +1556,17 @@ export class Library {
 	albumRows(id: string, fields: readonly IndexField[]): LibraryAlbum | undefined {
 		const read = this.#rows.get(id);
 		if (read !== undefined && read.fields === fields.join(',')) {
-			return read.album;
+			return this.trashed.rows(read.album);
 		}
-		if (this.index.kind === 'ready' && fields.every((field) => this.#fields().includes(field))) {
-			for (const artist of this.index.value.artists) {
+		if (this.#index.kind === 'ready' && fields.every((field) => this.#fields().includes(field))) {
+			for (const artist of this.#index.value.artists) {
 				const found = artist.albums.find((album) => album.id === id);
 				if (found !== undefined) {
-					return found;
+					return this.trashed.rows(found);
 				}
 			}
 		}
-		return read?.album;
+		return read === undefined ? undefined : this.trashed.rows(read.album);
 	}
 
 	/** Whether the index holds an album's songs with `fields` already, so nothing need be read. */
@@ -1645,6 +1675,26 @@ export class Library {
 				this.markIndexStale();
 			}
 		}
+	}
+
+	/** Moves songs to Trash on the server. Rejects with `TrashError`. */
+	trash(move: TrashMove): Promise<TrashChange> {
+		return this.#source.trash(move);
+	}
+
+	/** What's in Trash, for administrators. */
+	trashList(): Promise<Trash> {
+		return this.#source.trashList();
+	}
+
+	/** Puts songs back from Trash, all or none. Rejects with `TrashError`. */
+	restoreTrash(trackIds: readonly string[]): Promise<TrashChange> {
+		return this.#source.restoreTrash(trackIds);
+	}
+
+	/** Deletes songs in Trash for good. Rejects with `TrashError`. */
+	emptyTrash(target: TrashEmpty): Promise<number> {
+		return this.#source.emptyTrash(target);
 	}
 
 	/** Starts a shuffle on the server, with its first page. Rejects with `ServerError`. */
@@ -1758,6 +1808,7 @@ export class Library {
 		clearTimeout(this.#progressPoll);
 		this.#progressPoll = undefined;
 		this.#stopFollowing();
+		this.trashed.clear();
 		this.#epoch += 1;
 		this.#waited = false;
 		this.user = null;
@@ -1810,6 +1861,8 @@ function fromQuery(): Library {
 	const setup = setupFixture(query.get('setup'));
 	const playback = playbackFixture(query.get('playback'));
 	const history = query.get('history') === 'none' ? 'none' : undefined;
+	const tagWrites = query.get('tagWrites') === 'off' ? 'off' : undefined;
+	const trash = query.get('trash') === 'board' ? 'board' : undefined;
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
@@ -1823,7 +1876,9 @@ function fromQuery(): Library {
 				lastfm,
 				setup,
 				playback,
-				history
+				history,
+				tagWrites,
+				trash
 			}),
 			{
 				readyMemory,

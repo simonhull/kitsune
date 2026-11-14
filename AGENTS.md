@@ -76,6 +76,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   shows, from the files. The validator is the album's `etag` field in the body, a hash of
   `ulid:size:mtime_ms` per track, and not a response header. Clients send it back verbatim as
   `If-Match`; comparison is strong and happens under the library lock.
+- The Trash is four admin routes: `GET /admin/trash` lists it by album, newest first; `POST
+  /admin/trash` takes `tracks` or `albums`, `POST /admin/trash/restore` and `POST /admin/trash/empty`
+  (`tracks` or `all`). Trash and restore are all or nothing and run through the scanner under the
+  library lock (`ErrBusy` is a 409 with Retry-After, as an edit's); both publish `library` events for
+  the albums touched, and emptying publishes nothing. With `library.tag_writes` off every write is a
+  409 saying so, and `Me.canTrash` is false, so the client shows no control. A problem names songs,
+  never a path.
 - A canceled query fails with `sqlite3: interrupted`, not `context.Canceled`: check
   `r.Context().Err()` before logging an error from a handler a client can abandon.
 - Responses carry `api` types built field by field (`toAPIUser`); never marshal a
@@ -347,6 +354,20 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   passes messages through `StripRoot`; `GET /library` gives everyone counts by kind.
 - Scans remove audiometa's temp files (`isWriteTemp`), and only with `library.tag_writes` on: off,
   nothing under a root ever changes.
+- A trashed track (`trash.go`) keeps its row, ULID and everything people did with it; its file moves
+  to `<root>/.kitsune-trash/<ULID>/<relative path>` (`TrashDir`), a rename under `os.Root` on the
+  root's own filesystem. Its `missing_since` is its `trashed_at`, so every live read leaves it out
+  with no rule of its own (`TestTrashedTrackIsInNoRead` holds every read to it); what reads missing
+  tracks to follow, hold or delete them (`FileStates`, `MissingByDigest`, `KnownRoots`,
+  `DeleteMissingBefore`, imports) adds `trashed_at IS NULL`, so the outage rules never count one.
+  `rel_path` always names where the file is (in the Trash while trashed) and `restore_path` where it
+  goes back. Every walker skips the folder through `SkipsFolder`. A trash marks the rows, then moves
+  the files; a restore moves them back, then clears the rows, so a server stopped midway leaves the
+  file in the library. A restore never overwrites: it refuses, restoring nothing, when a file or a
+  song is at an old path (`PathTakenError`), and links before it removes so nothing slips in. Thirty
+  days on (`TrashRetention`) `PurgeTrash` deletes the file, then the row through `deleteTracks`, the
+  one way a track leaves the store, after each scheduled scan and the start's, in batches like the
+  fingerprint pass, and never with tag writes off.
 - Loudness is measured where ReplayGain is missing (`loudness.go`, `Scanner.RunLoudness`): every file
   of an album with a song that has no gain tagged, then the album from its files' gated blocks pooled
   (`loudness.Pool`), never their mean. `internal/loudness` is the pure BS.1770-4 / R 128 meter, held
@@ -462,6 +483,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - An editor over a page (the album's tag editor, Edit N songs) has a shallow history entry of its own
   (`editorHistory`): Back closes it and drops its edits, as Leave it does; closing it any other way
   takes the entry back off; leaving the page drops the edits too. Edits never outlive their page.
+- The Trash's controls (the row and album menus' last item, the selection bar's button, Delete, the
+  Server page's link and Server › Trash) show only when `library.user?.canTrash`. Trashing is
+  optimistic (`trashBin.svelte.ts`): the rows fold and leave every list and the queue (not the song
+  playing, which plays out) before `POST /admin/trash` is sent, and come back if it fails; the
+  toast's Undo restores exactly what it moved. Every list reads through `Library.trashed`
+  (`trashed.svelte.ts`), which hides those songs until the `library` event's reads land, and with
+  nothing on its way hands back the server's own object. Nothing on the play path waits on any of it.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.

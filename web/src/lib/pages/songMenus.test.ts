@@ -49,6 +49,15 @@ describe('rowMenuItems', () => {
 		expect(queue).not.toContain('editTags');
 	});
 
+	it('ends with Move to Trash only for someone who may, for one song or songs picked', () => {
+		expect(rowMenuItems(song, everywhere)).not.toContain('trash');
+		expect(rowMenuItems(song, { ...everywhere, trashable: false })).not.toContain('trash');
+		expect(rowMenuItems(song, { ...everywhere, trashable: true }).at(-1)).toBe('trash');
+		expect(rowMenuItems({ kind: 'picked' }, { ...everywhere, trashable: true }).at(-1)).toBe(
+			'trash'
+		);
+	});
+
 	it('has no Go to artist for a song with nobody to go to', () => {
 		expect(rowMenuItems({ kind: 'song' }, everywhere)).not.toContain('goToArtist');
 	});

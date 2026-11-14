@@ -14,7 +14,51 @@ export interface User {
 export interface Me extends User {
 	/** An administrator, on a server with tag writes on. */
 	canEditTags: boolean;
+	/** May move songs to Trash: an administrator, on a server with tag writes on. */
+	canTrash: boolean;
 }
+
+/** What `POST /admin/trash` moves: songs, or whole albums. */
+export type TrashMove = { tracks: readonly string[] } | { albums: readonly string[] };
+
+/** What a move to Trash, or out of it, changed: the songs, and the albums they were on. */
+export interface TrashChange {
+	tracks: string[];
+	albums: string[];
+}
+
+/** A song waiting in Trash. */
+export interface TrashedTrack {
+	id: string;
+	title: string;
+	/** Its file's size, in bytes. */
+	size: number;
+	trashedAt: string;
+	/** When it goes for good: 30 days after it came. */
+	purgeAt: string;
+	/** Who moved it, by name. Absent when that account is gone. */
+	trashedBy?: string;
+}
+
+/** An album's songs in Trash. */
+export interface TrashAlbum {
+	id: string;
+	title: string;
+	artist: string;
+	artwork?: Artwork;
+	tracks: TrashedTrack[];
+}
+
+/** `GET /admin/trash`: the albums, the one moved to most lately first. */
+export interface Trash {
+	count: number;
+	bytes: number;
+	retentionDays: number;
+	albums: TrashAlbum[];
+}
+
+/** What `POST /admin/trash/empty` deletes for good. */
+export type TrashEmpty = { tracks: readonly string[] } | { all: true };
 
 export interface Artwork {
 	/** Names the cover for `GET /artwork/{hash}`. */
@@ -1018,6 +1062,28 @@ export interface LibrarySource {
 	changeSettings(change: SettingsChange): Promise<ServerSettings>;
 	/** Administrators only. Rejects with a 404 `ServerError` for a folder the server can't read. */
 	folders(path: string): Promise<FolderListing>;
+	/** Moves songs to Trash, all or none. Rejects with {@link TrashError}. */
+	trash(move: TrashMove): Promise<TrashChange>;
+	/** What's in Trash. Administrators only. */
+	trashList(): Promise<Trash>;
+	/** Puts songs back where they were, all or none. Rejects with {@link TrashError}. */
+	restoreTrash(trackIds: readonly string[]): Promise<TrashChange>;
+	/** Deletes songs in Trash for good. Rejects with {@link TrashError}. */
+	emptyTrash(target: TrashEmpty): Promise<number>;
+}
+
+/** Trash refused a move, a restore or an empty. `detail` is the server's, ready to show. */
+export class TrashError extends Error {
+	override name = 'TrashError';
+	readonly status: number;
+	readonly detail: string;
+
+	/** `status` 0 means no answer came. */
+	constructor(status: number, detail: string) {
+		super(detail === '' ? `trash: the server answered ${String(status)}` : detail);
+		this.status = status;
+		this.detail = detail;
+	}
 }
 
 export class AlbumNotFoundError extends Error {

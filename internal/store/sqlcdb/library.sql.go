@@ -10,7 +10,7 @@ import (
 )
 
 const anyMissingWithDigest = `-- name: AnyMissingWithDigest :one
-SELECT EXISTS (SELECT 1 FROM tracks WHERE missing_since IS NOT NULL AND audio_digest IS NOT NULL) AS found
+SELECT EXISTS (SELECT 1 FROM tracks WHERE missing_since IS NOT NULL AND trashed_at IS NULL AND audio_digest IS NOT NULL) AS found
 `
 
 func (q *Queries) AnyMissingWithDigest(ctx context.Context) (bool, error) {
@@ -29,18 +29,6 @@ func (q *Queries) CountUndigested(ctx context.Context) (int64, error) {
 	var count int64
 	err := row.Scan(&count)
 	return count, err
-}
-
-const deleteMissingBefore = `-- name: DeleteMissingBefore :execrows
-DELETE FROM tracks WHERE missing_since < ?
-`
-
-func (q *Queries) DeleteMissingBefore(ctx context.Context, missingSince *int64) (int64, error) {
-	result, err := q.exec(ctx, q.deleteMissingBeforeStmt, deleteMissingBefore, missingSince)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
 }
 
 const deleteScanIssue = `-- name: DeleteScanIssue :exec
@@ -249,7 +237,7 @@ func (q *Queries) IssueStates(ctx context.Context, root string) ([]IssueStatesRo
 }
 
 const knownRoots = `-- name: KnownRoots :many
-SELECT root FROM tracks UNION SELECT root FROM scan_issues
+SELECT root FROM tracks WHERE trashed_at IS NULL UNION SELECT root FROM scan_issues
 `
 
 func (q *Queries) KnownRoots(ctx context.Context) ([]string, error) {
@@ -292,7 +280,7 @@ func (q *Queries) MarkMissing(ctx context.Context, arg MarkMissingParams) error 
 const missingByDigest = `-- name: MissingByDigest :many
 SELECT id, root, rel_path
 FROM tracks
-WHERE missing_since IS NOT NULL AND audio_digest = ?
+WHERE missing_since IS NOT NULL AND trashed_at IS NULL AND audio_digest = ?
 ORDER BY id
 `
 
@@ -416,7 +404,7 @@ func (q *Queries) TrackAlbumULID(ctx context.Context, id int64) (string, error) 
 const trackStates = `-- name: TrackStates :many
 SELECT id, rel_path, size, mtime, missing_since IS NOT NULL AS missing
 FROM tracks
-WHERE root = ?
+WHERE root = ? AND trashed_at IS NULL
 `
 
 type TrackStatesRow struct {

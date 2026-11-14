@@ -219,6 +219,9 @@ type Track struct {
 	AddedAt      int64
 	MissingSince *int64
 	DiscSubtitle *string
+	TrashedAt    *int64
+	TrashedBy    *int64
+	RestorePath  *string
 }
 
 type TrackArtist struct {

@@ -27,11 +27,18 @@
 		repeat: {
 			path: 'M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4',
 			circle: false
-		}
+		},
+		// The Trash board's: a bin, its lid and two lines.
+		trash: {
+			path: 'M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3',
+			circle: false
+		},
+		// The Trash phone board's Restore: an arrow turning back.
+		restore: { path: 'M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11', circle: false }
 	} as const;
 
 	/** Outlines drawn with round ends, as their boards have them. */
-	const rounded: readonly string[] = ['shuffle', 'repeat'];
+	const rounded: readonly string[] = ['shuffle', 'repeat', 'trash', 'restore'];
 
 	interface Props {
 		name: keyof typeof glyphs | keyof typeof outlines;

@@ -15,6 +15,7 @@ import {
 	ResetError,
 	ServerError,
 	SetupError,
+	TrashError,
 	UnauthorizedError,
 	type Album,
 	type AlbumEdit,
@@ -51,7 +52,12 @@ import {
 	type TagField,
 	type Track,
 	type TrackHit,
-	type TrackTags
+	type TrackTags,
+	type Trash,
+	type TrashChange,
+	type TrashEmpty,
+	type TrashMove,
+	type TrashedTrack
 } from './source';
 
 // The slugs are chosen so FNV-1a lands each album on the cover its board shows.
@@ -466,7 +472,8 @@ const user: Me = {
 	name: 'Simon',
 	role: 'admin',
 	createdAt: '2026-01-01T00:00:00Z',
-	canEditTags: true
+	canEditTags: true,
+	canTrash: true
 };
 
 /** The boards' counts, the real library's: the fake one is only a window onto it. */
@@ -890,7 +897,30 @@ export interface FixtureOptions {
 	playbackStore?: () => Storage;
 	/** `none`: a person who has played nothing yet, so Home has no history rows. */
 	history?: 'none' | undefined;
+	/** `off`: a server with tag writes off, so nobody may edit or move anything to Trash. */
+	tagWrites?: 'off' | undefined;
+	/** `board`: Trash opens with the board's six songs in it, gone from the lists. */
+	trash?: 'board' | undefined;
 }
+
+/** A song in a fixture Trash: where it came from, and when. */
+interface Binned {
+	albumId: string;
+	trashedAt: number;
+}
+
+/** The Trash board's songs, as days before now: one today, three three days ago, two nearly gone. */
+const boardTrash: readonly (readonly [string, number])[] = [
+	['night-ferry-94-3', 0],
+	['tidewrack-41-5', 3],
+	['tidewrack-41-6', 3],
+	['tidewrack-41-4', 3],
+	['orbitals-14-6', 26],
+	['orbitals-14-7', 26]
+];
+
+/** How long a song waits in Trash before it goes for good. */
+const trashDays = 30;
 
 /** Builds a {@link LibrarySource} from the boards' fake library. */
 /** Why a fixture song came up: its stars, and nothing learned. */
@@ -916,7 +946,20 @@ function neutralWhy(stars: number | null): ShuffleWhy {
 
 export function createFixtureSource(options: FixtureOptions = {}): LibrarySource {
 	const { latencyMs = 0, health = 'idle', role = 'admin' } = options;
-	const signedIn: Me = { ...user, role, canEditTags: role === 'admin' };
+	const writes = role === 'admin' && options.tagWrites !== 'off';
+	const signedIn: Me = { ...user, role, canEditTags: writes, canTrash: writes };
+	/** Songs in Trash, by ID, and songs deleted from it for good. */
+	const bin = new Map<string, Binned>();
+	const deleted = new Set<string>();
+	if (options.trash === 'board') {
+		const at = Date.now();
+		for (const [id, daysAgo] of boardTrash) {
+			const albumId = id.slice(0, id.lastIndexOf('-'));
+			bin.set(id, { albumId, trashedAt: at - daysAgo * dayMs - 60_000 });
+		}
+	}
+	/** Whether a song is out of the library: in Trash, or deleted from it. */
+	const gone = (trackId: string): boolean => bin.has(trackId) || deleted.has(trackId);
 	const scans = createHealthFixture(health, role);
 	let fault = options.editFault;
 	// Each source has its own: an edit is for this tab, until a reload.
@@ -1050,7 +1093,145 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	}
 
 	function marked(album: Album): Album {
-		return { ...album, tracks: album.tracks.map(markedTrack) };
+		return { ...album, tracks: album.tracks.filter(({ id }) => !gone(id)).map(markedTrack) };
+	}
+
+	/** An album as the server reads it: its songs out of the library left out, none if all are. */
+	function liveAlbum(id: string): Album | undefined {
+		const album = held.get(id) ?? listOnly.get(id);
+		return album === undefined || album.tracks.every((track) => gone(track.id))
+			? undefined
+			: marked(album);
+	}
+
+	/** Leaves out of an index what's out of the library, with albums and headings left empty. */
+	function withoutGone(index: LibraryIndex): LibraryIndex {
+		if (bin.size === 0 && deleted.size === 0) {
+			return index;
+		}
+		return {
+			artists: index.artists
+				.map((artist) => ({
+					...artist,
+					albums: artist.albums
+						.map((album) => ({ ...album, tracks: album.tracks.filter(({ id }) => !gone(id)) }))
+						.filter(({ tracks }) => tracks.length > 0)
+				}))
+				.filter(({ albums: left }) => left.length > 0)
+		};
+	}
+
+	function refuseUnlessTrash(): void {
+		if (signedIn.role !== 'admin') {
+			throw new TrashError(403, 'administrators only');
+		}
+		if (!signedIn.canTrash) {
+			throw new TrashError(409, 'tag writes are off: library.tag_writes');
+		}
+	}
+
+	/** Moves songs to Trash, as `POST /admin/trash` does: all of them or none. */
+	function moveToTrash(move: TrashMove): TrashChange {
+		refuseUnlessTrash();
+		const songs: { albumId: string; trackId: string }[] = [];
+		if ('albums' in move) {
+			for (const albumId of move.albums) {
+				const album = liveAlbum(albumId);
+				if (album === undefined) {
+					throw new TrashError(404, 'no such album');
+				}
+				songs.push(...album.tracks.map(({ id }) => ({ albumId, trackId: id })));
+			}
+		} else {
+			for (const trackId of move.tracks) {
+				const album = [...held.values(), ...listOnly.values()].find(({ tracks }) =>
+					tracks.some(({ id }) => id === trackId)
+				);
+				if (album === undefined || gone(trackId)) {
+					throw new TrashError(404, 'no such song');
+				}
+				songs.push({ albumId: album.id, trackId });
+			}
+		}
+		const at = Date.now();
+		for (const { albumId, trackId } of songs) {
+			bin.set(trackId, { albumId, trashedAt: at });
+		}
+		return {
+			tracks: songs.map(({ trackId }) => trackId),
+			albums: [...new Set(songs.map(({ albumId }) => albumId))]
+		};
+	}
+
+	/** What's in Trash, as `GET /admin/trash` says it. */
+	function trashed(): Trash {
+		const groups = new Map<string, { album: Album; tracks: TrashedTrack[]; newest: number }>();
+		for (const [trackId, { albumId, trashedAt }] of bin) {
+			const album = held.get(albumId) ?? listOnly.get(albumId);
+			const track = album?.tracks.find(({ id }) => id === trackId);
+			if (album === undefined || track === undefined) {
+				continue;
+			}
+			const group = groups.get(albumId) ?? { album, tracks: [], newest: 0 };
+			group.newest = Math.max(group.newest, trashedAt);
+			group.tracks.push({
+				id: trackId,
+				title: track.title,
+				// About what a FLAC of that length weighs.
+				size: Math.round(track.durationMs * 112),
+				trashedAt: new Date(trashedAt).toISOString(),
+				purgeAt: new Date(trashedAt + trashDays * dayMs).toISOString(),
+				trashedBy: signedIn.name
+			});
+			groups.set(albumId, group);
+		}
+		const albumsIn = [...groups.values()]
+			.toSorted((a, b) => b.newest - a.newest)
+			.map(({ album, tracks }) => ({
+				id: album.id,
+				title: album.title,
+				artist: album.artist,
+				...(album.artwork === undefined ? {} : { artwork: album.artwork }),
+				tracks: tracks.toSorted(
+					(a, b) =>
+						album.tracks.findIndex(({ id }) => id === a.id) -
+						album.tracks.findIndex(({ id }) => id === b.id)
+				)
+			}));
+		const all = albumsIn.flatMap(({ tracks }) => tracks);
+		return {
+			count: all.length,
+			bytes: all.reduce((sum, { size }) => sum + size, 0),
+			retentionDays: trashDays,
+			albums: albumsIn
+		};
+	}
+
+	/** Puts songs back, as `POST /admin/trash/restore` does: all of them or none. */
+	function restoreFromTrash(trackIds: readonly string[]): TrashChange {
+		refuseUnlessTrash();
+		const albumIds = trackIds.map((id) => {
+			const binned = bin.get(id);
+			if (binned === undefined) {
+				throw new TrashError(404, 'no such song in Trash');
+			}
+			return binned.albumId;
+		});
+		for (const id of trackIds) {
+			bin.delete(id);
+		}
+		return { tracks: [...trackIds], albums: [...new Set(albumIds)] };
+	}
+
+	/** Deletes songs in Trash for good, as `POST /admin/trash/empty` does. */
+	function emptyBin(target: TrashEmpty): number {
+		refuseUnlessTrash();
+		const ids = 'all' in target ? [...bin.keys()] : target.tracks.filter((id) => bin.has(id));
+		for (const id of ids) {
+			bin.delete(id);
+			deleted.add(id);
+		}
+		return ids.length;
 	}
 
 	function shuffleMarkOf(trackId: string): ShuffleMark | undefined {
@@ -1076,7 +1257,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			const mark = asked.has('shuffle') ? shuffleMarkOf(track.id) : undefined;
 			return mark === undefined ? shown : { ...shown, shuffle: mark };
 		};
-		return {
+		return withoutGone({
 			artists: indexFixture().artists.map((artist) => ({
 				...artist,
 				albums: artist.albums.map((album) => ({
@@ -1084,7 +1265,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 					tracks: album.tracks.map((track) => markedTrack(extra(album, track)))
 				}))
 			}))
-		};
+		});
 	}
 
 	function tagsIn(album: Album): AlbumTags {
@@ -1312,14 +1493,18 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			}),
 		ready: () => respond(() => true),
 		albumsPage: (sort, _cursor, limit) =>
-			respond(() => ({ albums: (sort === 'added' ? newestFirst : byName).slice(0, limit) })),
+			respond(() => ({
+				albums: (sort === 'added' ? newestFirst : byName)
+					.filter(({ id }) => !(held.has(id) || listOnly.has(id)) || liveAlbum(id) !== undefined)
+					.slice(0, limit)
+			})),
 		album: (id) =>
 			respond(() => {
-				const album = held.get(id) ?? listOnly.get(id);
+				const album = liveAlbum(id);
 				if (album === undefined) {
 					throw new AlbumNotFoundError(id);
 				}
-				return marked(album);
+				return album;
 			}),
 		artists: () => respond(() => owners),
 		artist: (id) =>
@@ -1484,6 +1669,14 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				}
 				return listing;
 			}),
+		trash: (move) => respond(() => moveToTrash(move)),
+		trashList: () =>
+			respond(() => {
+				adminOnly();
+				return trashed();
+			}),
+		restoreTrash: (trackIds) => respond(() => restoreFromTrash(trackIds)),
+		emptyTrash: (target) => respond(() => emptyBin(target)),
 		changeSettings: (change) =>
 			respond(() => {
 				adminOnly();

@@ -20,6 +20,11 @@
 	/* A value the server would refuse. */
 	--problem: #ff8fa3;
 	--problem-edge: #e04f6a;
+	/* What can't be taken back lightly: Move to Trash, Delete for good. 8:1 on ground and card. */
+	--danger: #ff8a75;
+	--danger-ink: #1a0705;
+	--danger-wash: rgb(255 138 117 / 10%);
+	--danger-edge: rgb(255 138 117 / 40%);
 
 	/* Text. */
 	--text: #f5f1ec;
@@ -109,6 +114,11 @@
 
 	--problem: #b0263f;
 	--problem-edge: #c43a55;
+	/* 5.7:1 on ground, 6.2:1 on card. */
+	--danger: #b3261e;
+	--danger-ink: #fbf8f3;
+	--danger-wash: rgb(179 38 30 / 8%);
+	--danger-edge: rgb(179 38 30 / 40%);
 
 	--text: #16120e;
 	--text-secondary: #3f3832;

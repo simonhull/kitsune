@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -287,7 +288,7 @@ func TestSurveyFindsAudio(t *testing.T) {
 	}
 	other := []string{
 		coverJPG, ".hidden.flac", "._x.flac", "@eaDir/x.flac", ".cache/x.flac", "notes.txt", "m.mp4", "n.m4p",
-		"sub/@eaDir/y.flac", "flac", "sub/.hidden/z.flac",
+		"sub/@eaDir/y.flac", "flac", "sub/.hidden/z.flac", TrashDir + "/01J0000000000000000000TRSH/sub/t.flac",
 	}
 	for _, rel := range slices.Concat(audio, other) {
 		l.touch(root, rel)
@@ -501,6 +502,7 @@ func TestSurveyEmptyRootIsSkipped(t *testing.T) {
 		{"live tracks", false, true, 1},
 		{"missing tracks", true, true, 1},
 		{"nothing stored", false, false, 0},
+		{"only trashed tracks", false, true, 0}, // A Trash is no outage: the root is simply empty.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -511,6 +513,9 @@ func TestSurveyEmptyRootIsSkipped(t *testing.T) {
 				l.seed(root, aFLAC)
 				if tt.missing {
 					l.markMissing(root, l.clock.Now(), aFLAC)
+				}
+				if tt.wantSkipped == 0 {
+					l.trashFiles(root, aFLAC)
 				}
 			}
 			sv := l.survey(Quick)
@@ -553,6 +558,46 @@ func TestSurveyMassDisappearance(t *testing.T) {
 			l.touch(root, bystander)
 			checkMass(t, l.survey(Quick), tt.wantSkipped, tt.stored-tt.kept)
 		})
+	}
+}
+
+// Songs moved to the Trash never count as vanished: trashing most of a root
+// marks nothing and skips nothing.
+func TestSurveyTrashIsNoMassDisappearance(t *testing.T) {
+	t.Parallel()
+	l := newTestLib(t, 1)
+	root := l.roots[0]
+	rels := make([]string, 90)
+	for i := range rels {
+		rels[i] = fmt.Sprintf("old/%03d.flac", i)
+		l.touch(root, rels[i])
+	}
+	l.seed(root, rels...)
+	l.trashFiles(root, rels[30:]...)
+	checkMass(t, l.survey(Quick), false, 0)
+}
+
+// trashFiles moves the files at rels under root into the Trash, where they
+// are there, and marks their tracks trashed, as [Scanner.Trash] does.
+func (l *testLib) trashFiles(root string, rels ...string) {
+	l.t.Helper()
+	marks := make([]store.Trashing, len(rels))
+	for i, rel := range rels {
+		id := l.id(root, rel)
+		to := filepath.Join(TrashDir, strconv.FormatInt(id, 10), rel)
+		from := filepath.Join(root, rel)
+		if _, err := os.Stat(from); err == nil {
+			if err = os.MkdirAll(filepath.Dir(filepath.Join(root, to)), dirMode); err != nil {
+				l.t.Fatal(err)
+			}
+			if err = os.Rename(from, filepath.Join(root, to)); err != nil {
+				l.t.Fatal(err)
+			}
+		}
+		marks[i] = store.Trashing{ID: id, TrashPath: to}
+	}
+	if err := l.st.MarkTrashed(l.t.Context(), marks, 0, l.clock.Now()); err != nil {
+		l.t.Fatal(err)
 	}
 }
 

@@ -1785,6 +1785,151 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           $ref: "#/components/responses/Problem"
+  /admin/trash:
+    get:
+      operationId: getTrash
+      summary: List the Trash.
+      description: >-
+        For administrators. The songs moved to the Trash, by album, the album
+        with the latest one first, each with when and by whom, its size and when
+        it goes for good: `retentionDays` after it came. A song in the Trash is
+        in no list, search, shuffle or stream.
+      responses:
+        "200":
+          description: The Trash.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trash" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: postTrash
+      summary: Move songs, or whole albums, to the Trash.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on: with it
+        off nothing under a root may change, and this is a 409. Each file moves
+        to `.kitsune-trash` in its own library folder, and each song leaves the
+        library at once, keeping its ID, plays, ratings and listens for a
+        restore. All or nothing: an ID that names no song in the library is a
+        404, and a file that won't move undoes the rest, a 409 naming the song.
+        So is a scan or an edit holding the library, with a Retry-After. The
+        albums touched get a `library` event.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrashRequest" }
+      responses:
+        "200":
+          description: What moved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrashChange" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/LibraryConflict"
+  /admin/trash/restore:
+    post:
+      operationId: postTrashRestore
+      summary: Put songs back from the Trash.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on, else a
+        409. Each file goes back where it was, and each song comes back as it
+        left. All or nothing, and it never overwrites: when a file or a song is
+        at a song's old path now, nothing is restored, and the 409 names the
+        songs that can't go back. An ID that names no song in the Trash is a
+        404. The albums touched get a `library` event.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrashRestore" }
+      responses:
+        "200":
+          description: What came back.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrashChange" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/LibraryConflict"
+  /admin/trash/empty:
+    post:
+      operationId: postTrashEmpty
+      summary: Delete songs in the Trash for good.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on, else a
+        409. Deletes the files, then the songs with every person's plays,
+        ratings and listens, as a song missing past its grace is deleted. A
+        song whose library folder can't be reached now stays, for a later try,
+        and isn't counted. Nothing is published: no list shows these songs.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrashEmpty" }
+      responses:
+        "200":
+          description: How many went.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrashEmptied" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/LibraryConflict"
   /library:
     get:
       operationId: getLibrary
@@ -2093,6 +2238,17 @@ components:
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
+    LibraryConflict:
+      description: >-
+        An RFC 9457 problem: tag writes are off, a file won't move, or a scan or
+        an edit holds the library, when Retry-After says how long to wait.
+      headers:
+        Retry-After:
+          description: Seconds to wait before trying again, while the library is busy.
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
     EditFailure:
       description: >-
         An RFC 9457 problem. When a tag edit was refused or stopped, it says
@@ -2143,7 +2299,7 @@ components:
       description: A user's properties, repeated (allOf does not mix with additionalProperties false), plus what the user may do.
       type: object
       additionalProperties: false
-      required: [id, name, role, createdAt, canEditTags]
+      required: [id, name, role, createdAt, canEditTags, canTrash]
       properties:
         id: { type: integer, format: int64 }
         name: { type: string }
@@ -2152,6 +2308,11 @@ components:
         canEditTags:
           type: boolean
           description: True for an administrator on a server with `library.tag_writes` on.
+        canTrash:
+          type: boolean
+          description: >-
+            True for an administrator on a server with `library.tag_writes` on:
+            the Trash moves files, so it is off with tag writes.
     ListenReport:
       type: object
       additionalProperties: false
@@ -3843,6 +4004,104 @@ components:
       required: [mode]
       properties:
         mode: { type: string, enum: [quick, full] }
+    TrashRequest:
+      type: object
+      additionalProperties: false
+      description: Songs, or whole albums, by ID; exactly one of the two.
+      properties:
+        tracks:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string }
+        albums:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string }
+    TrashRestore:
+      type: object
+      additionalProperties: false
+      required: [tracks]
+      properties:
+        tracks:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string }
+    TrashEmpty:
+      type: object
+      additionalProperties: false
+      description: Songs in the Trash by ID, or `all`; exactly one of the two.
+      properties:
+        tracks:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string }
+        all: { type: boolean, enum: [true] }
+    TrashChange:
+      type: object
+      additionalProperties: false
+      required: [tracks, albums]
+      properties:
+        tracks:
+          type: array
+          description: The songs that moved, every one asked for.
+          items: { type: string }
+        albums:
+          type: array
+          description: The albums they are on, each once.
+          items: { type: string }
+    TrashEmptied:
+      type: object
+      additionalProperties: false
+      required: [deleted]
+      properties:
+        deleted: { type: integer, description: Songs deleted for good. }
+    Trash:
+      type: object
+      additionalProperties: false
+      required: [count, bytes, retentionDays, albums]
+      properties:
+        count: { type: integer, description: Songs in the Trash. }
+        bytes: { type: integer, format: int64, description: What their files hold. }
+        retentionDays:
+          type: integer
+          description: How many days after it came each song goes for good.
+        albums:
+          type: array
+          description: By album, the album with the latest song first.
+          items: { $ref: "#/components/schemas/TrashAlbum" }
+    TrashAlbum:
+      type: object
+      additionalProperties: false
+      required: [id, title, artist, tracks]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        artwork: { $ref: "#/components/schemas/Artwork" }
+        tracks:
+          type: array
+          description: In album order.
+          items: { $ref: "#/components/schemas/TrashedTrack" }
+    TrashedTrack:
+      type: object
+      additionalProperties: false
+      required: [id, title, size, trashedAt, purgeAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        size: { type: integer, format: int64, description: Bytes. }
+        trashedAt: { type: string, format: date-time }
+        trashedBy:
+          type: string
+          description: The administrator who moved it; absent once their account is gone.
+        purgeAt:
+          type: string
+          format: date-time
+          description: When it goes for good, by the server's clock.
     ScanStatus:
       type: object
       additionalProperties: false

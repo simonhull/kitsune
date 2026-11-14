@@ -300,6 +300,8 @@ type Me struct {
 
 	// CanEditTags is true for an administrator on a server with tag writes on.
 	CanEditTags bool `json:"canEditTags"`
+	// CanTrash is too: the Trash moves files, so it is off with tag writes.
+	CanTrash bool `json:"canTrash"`
 }
 
 // Session is the response to a successful login.
@@ -894,6 +896,65 @@ type TrackWarned struct {
 // ScanRequest is the body of POST /admin/library/scan. Mode is quick or full.
 type ScanRequest struct {
 	Mode string `json:"mode"`
+}
+
+// TrashRequest is the body of POST /admin/trash: songs or whole albums, by
+// ID, exactly one of the two.
+type TrashRequest struct {
+	Tracks []string `json:"tracks,omitzero"`
+	Albums []string `json:"albums,omitzero"`
+}
+
+// TrashRestore is the body of POST /admin/trash/restore.
+type TrashRestore struct {
+	Tracks []string `json:"tracks"`
+}
+
+// TrashEmpty is the body of POST /admin/trash/empty: songs in the Trash by
+// ID, or All, exactly one of the two.
+type TrashEmpty struct {
+	Tracks []string `json:"tracks,omitzero"`
+	All    bool     `json:"all,omitzero"`
+}
+
+// TrashChange is what a trash or a restore moved: the songs, and the albums
+// they are on, each once.
+type TrashChange struct {
+	Tracks []string `json:"tracks"`
+	Albums []string `json:"albums"`
+}
+
+// TrashEmptied is the response to POST /admin/trash/empty.
+type TrashEmptied struct {
+	Deleted int `json:"deleted"`
+}
+
+// Trash is the response to GET /admin/trash.
+type Trash struct {
+	Count         int          `json:"count"`
+	Bytes         int64        `json:"bytes"`
+	RetentionDays int          `json:"retentionDays"`
+	Albums        []TrashAlbum `json:"albums"`
+}
+
+// TrashAlbum is one album's songs in the Trash.
+type TrashAlbum struct {
+	ID      string         `json:"id"`
+	Title   string         `json:"title"`
+	Artist  string         `json:"artist"`
+	Artwork *Artwork       `json:"artwork,omitzero"`
+	Tracks  []TrashedTrack `json:"tracks"`
+}
+
+// TrashedTrack is one song in the Trash. TrashedBy is empty once the
+// administrator's account is gone.
+type TrashedTrack struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Size      int64     `json:"size"`
+	TrashedAt time.Time `json:"trashedAt"`
+	TrashedBy string    `json:"trashedBy,omitzero"`
+	PurgeAt   time.Time `json:"purgeAt"`
 }
 
 // The values of ScanStatus.State.

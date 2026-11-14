@@ -9,11 +9,13 @@ import (
 
 // Run scans [Quick] at once, calls ready when that scan ends, whatever its
 // outcome, then scans again every day at [Options.QuickScan] local time, or the
-// time [Scanner.SetDaily] last set, until ctx ends. A failed scan is logged and
-// does not stop the schedule: a broken scan should not take down a library that
-// plays fine.
+// time [Scanner.SetDaily] last set, until ctx ends. After each scan, and after
+// ready for the first, it purges the Trash ([Scanner.PurgeTrash]). A failed scan
+// or purge is logged and does not stop the schedule: a broken scan should not
+// take down a library that plays fine.
 func (s *Scanner) Run(ctx context.Context, ready func()) {
-	runDaily(ctx, s.now, func() Daily { return *s.daily.Load() }, s.redaily, s.scheduled, ready)
+	purge := func(ctx context.Context) { _, _ = s.PurgeTrash(ctx) } // It logs how it went.
+	runDaily(ctx, s.now, func() Daily { return *s.daily.Load() }, s.redaily, s.scheduled, ready, purge)
 }
 
 // ScanWhenFree runs one Quick scan now, or, when one is running, once that one
@@ -55,11 +57,13 @@ func (s *Scanner) logScan(ctx context.Context, mode Mode, stats *Stats, err erro
 }
 
 // runDaily calls scan, then ready, then scan again every day at the time at
-// gives, until ctx ends. A receive on moved means at has changed: the wait
-// starts over for the new time.
-func runDaily(ctx context.Context, now func() time.Time, at func() Daily, moved <-chan struct{}, scan func(context.Context), ready func()) {
+// gives, until ctx ends, calling then after each scan (and after ready, for the
+// first), so readiness never waits for it. A receive on moved means at has
+// changed: the wait starts over for the new time.
+func runDaily(ctx context.Context, now func() time.Time, at func() Daily, moved <-chan struct{}, scan func(context.Context), ready func(), then func(context.Context)) {
 	scan(ctx)
 	ready()
+	then(ctx)
 	for {
 		t, d := now(), at()
 		timer := time.NewTimer(nextDaily(t, d.Hour, d.Minute).Sub(t))
@@ -71,6 +75,7 @@ func runDaily(ctx context.Context, now func() time.Time, at func() Daily, moved 
 			timer.Stop()
 		case <-timer.C:
 			scan(ctx)
+			then(ctx)
 		}
 	}
 }

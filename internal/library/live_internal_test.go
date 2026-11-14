@@ -65,7 +65,7 @@ func TestRunDailyMoves(t *testing.T) {
 		defer cancel()
 		utc := func() time.Time { return time.Now().UTC() } // The bubble starts at midnight UTC.
 		go runDaily(ctx, utc, func() Daily { return *at.Load() }, moved,
-			func(context.Context) { scans.Add(1) }, func() {})
+			func(context.Context) { scans.Add(1) }, func() {}, func(context.Context) {})
 		synctest.Wait() // The first scan, at 00:00 in the bubble.
 		at.Store(&Daily{Hour: 1, Minute: 0})
 		moved <- struct{}{}

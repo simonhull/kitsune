@@ -268,7 +268,10 @@
 	/** The list's rules for picking: its order, and how a row is brought into view. */
 	const list = new SongList(selection, {
 		order: () => order,
-		reveal: (trackId) => void focusRow(trackId)
+		reveal: (trackId) => void focusRow(trackId),
+		trash: (trackIds) => {
+			actionsFor(trackIds, albumOf).trash?.();
+		}
 	});
 
 	/** Opens the ⋯ menu: on the picked songs, when it's opened on one of them. */

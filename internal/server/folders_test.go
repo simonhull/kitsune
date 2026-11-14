@@ -29,6 +29,7 @@ func folderTree(t *testing.T) string {
 	outside := filepath.Join(top, "outside")
 	for _, dir := range []string{
 		"root/music", "root/audiobooks/Dune/CD1", "root/audiobooks/@eaDir", "root/.hidden", "root/data", "outside/secret",
+		"root/audiobooks/.kitsune-trash/01J0000000000000000000TRSH",
 	} {
 		if err := os.MkdirAll(filepath.Join(top, dir), 0o700); err != nil {
 			t.Fatal(err)
@@ -37,6 +38,7 @@ func folderTree(t *testing.T) string {
 	for _, file := range []string{
 		"root/notes.txt", "root/audiobooks/Dune/01.m4b", "root/audiobooks/Dune/CD1/02.mp3",
 		"root/audiobooks/Dune/cover.jpg", "root/audiobooks/@eaDir/x.mp3", "outside/secret/hidden.flac",
+		"root/audiobooks/.kitsune-trash/01J0000000000000000000TRSH/t.flac",
 	} {
 		if err := os.WriteFile(filepath.Join(top, file), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
@@ -107,7 +109,7 @@ func TestFoldersCountAudioAsAScanWould(t *testing.T) {
 	sess := ts.sessionFor(t)
 	got := decodeListing(t, ts.folders(t, sess.token, booksPath))
 	if got.Audio != (api.AudioCount{Files: 2, Folders: 2, Complete: true}) || got.Parent != "/" || got.Kind != api.FolderFree {
-		t.Errorf("listing = %+v, want 2 audio files in 2 folders, @eaDir left out", got)
+		t.Errorf("listing = %+v, want 2 audio files in 2 folders, @eaDir and the Trash left out", got)
 	}
 	if len(got.Folders) != 1 || got.Folders[0] != (api.Folder{Name: "Dune", Path: "/audiobooks/Dune", Kind: api.FolderFree}) {
 		t.Errorf("folders = %+v, want Dune alone", got.Folders)

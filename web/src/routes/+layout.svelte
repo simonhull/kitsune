@@ -37,6 +37,7 @@
 	import Bloom from '#lib/shell/Bloom.svelte';
 	import Nav from '#lib/shell/Nav.svelte';
 	import PlayerIsland from '#lib/shell/PlayerIsland.svelte';
+	import TrashToast from '#lib/shell/TrashToast.svelte';
 	import { albumOn, navOf, routeIds } from '#lib/shell/routes.ts';
 	import type { LayoutProps } from './$types';
 
@@ -264,6 +265,7 @@
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
 	<AlbumMenu />
+	{#if !atDoor}<TrashToast />{/if}
 	{#if library.admin && !atDoor}<MatchSheet />{/if}
 	{#if import.meta.env.DEV}<Hud />{/if}
 </div>

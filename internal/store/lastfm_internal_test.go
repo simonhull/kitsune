@@ -385,6 +385,40 @@ func TestDisconnectClearsTheOutbox(t *testing.T) {
 	}
 }
 
+// A trash is not an unlove and a restore not a love: neither, nor emptying
+// the Trash, queues anything for Last.fm.
+func TestTrashQueuesNothingForLastfm(t *testing.T) {
+	t.Parallel()
+	s, now := lastfmStore(t)
+	if err := s.Rate(t.Context(), 1, firstTrack, rating.Max); err != nil {
+		t.Fatal(err)
+	}
+	queued := outbox(t, s)
+	tracks, err := s.TrashableTracks(t.Context(), []string{firstTrack})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trashing := []Trashing{{ID: tracks[0].ID, TrashPath: ".kitsune-trash/" + firstTrack + "/" + tracks[0].RelPath}}
+	if err = s.MarkTrashed(t.Context(), trashing, 1, *now); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.UnmarkTrashed(t.Context(), []int64{tracks[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if got := outbox(t, s); !slices.Equal(got, queued) {
+		t.Errorf("outbox after a trash and a restore = %q, want %q as it was", got, queued)
+	}
+	if err = s.MarkTrashed(t.Context(), trashing, 1, *now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.DeleteTrashed(t.Context(), []int64{tracks[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if got := outbox(t, s); len(got) != 0 {
+		t.Errorf("outbox after emptying the Trash = %q, want only the song's own rows gone, and nothing new", got)
+	}
+}
+
 func TestDeletingATrackDeletesItsOutboxRows(t *testing.T) {
 	t.Parallel()
 	s, _ := lastfmStore(t)

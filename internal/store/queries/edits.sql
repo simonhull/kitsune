@@ -37,12 +37,12 @@ ON CONFLICT (user_id, album_id) DO UPDATE SET hearted_at = min(album_hearts.hear
 UPDATE albums SET
     year = (
         SELECT t.year FROM tracks t WHERE t.album_id = albums.id
-        ORDER BY t.missing_since IS NOT NULL, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.root || '/' || t.rel_path
+        ORDER BY t.trashed_at IS NOT NULL, t.missing_since IS NOT NULL, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.root || '/' || t.rel_path
         LIMIT 1
     ),
     compilation = coalesce((
         SELECT t.compilation FROM tracks t WHERE t.album_id = albums.id
-        ORDER BY t.missing_since IS NOT NULL, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.root || '/' || t.rel_path
+        ORDER BY t.trashed_at IS NOT NULL, t.missing_since IS NOT NULL, t.disc_no NULLS LAST, t.track_no NULLS LAST, t.title, t.root || '/' || t.rel_path
         LIMIT 1
     ), albums.compilation)
 WHERE albums.id = ?;

@@ -8,7 +8,10 @@ import {
 	ServerError,
 	SettingsError,
 	SetupError,
+	TrashError,
 	UnauthorizedError,
+	type Trash,
+	type TrashChange,
 	type Album,
 	type AlbumEdit,
 	type AlbumPage,
@@ -238,6 +241,31 @@ export function createApiSource({
 			throw new ServerError(response.status);
 		}
 		return (response.status === 204 ? undefined : await response.json()) as T;
+	}
+
+	/** A write to Trash: its answer, or a {@link TrashError} with the server's detail. */
+	async function toTrash<T>(path: string, body: unknown): Promise<T> {
+		let response: Response;
+		try {
+			response = await call(path, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(body)
+			});
+		} catch {
+			throw new TrashError(0, '');
+		}
+		if (response.status === 401) {
+			onUnauthorized();
+			throw new UnauthorizedError();
+		}
+		if (!response.ok) {
+			const { detail = '' } = ((await response.json().catch(() => null)) ?? {}) as {
+				detail?: string;
+			};
+			throw new TrashError(response.status, detail);
+		}
+		return (await response.json()) as T;
 	}
 
 	/** Work in the background mustn't take the music away: the next thing asked for finds out. */
@@ -670,6 +698,17 @@ export function createApiSource({
 
 		folders: (path) =>
 			read<FolderListing>(`/admin/folders?${new URLSearchParams({ path }).toString()}`),
+
+		trash: (move) => toTrash<TrashChange>('/admin/trash', move),
+
+		trashList: () => read<Trash>('/admin/trash'),
+
+		restoreTrash: (trackIds) => toTrash<TrashChange>('/admin/trash/restore', { tracks: trackIds }),
+
+		async emptyTrash(target) {
+			const { deleted } = await toTrash<{ deleted: number }>('/admin/trash/empty', target);
+			return deleted;
+		},
 
 		async changeSettings(change) {
 			const response = await call('/admin/settings', {

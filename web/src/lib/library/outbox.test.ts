@@ -213,7 +213,7 @@ describe('Library plays', () => {
 	function library(overrides: Partial<LibrarySource> = {}, simulated = false) {
 		const store = new MemoryStorage();
 		const fake = server();
-		const me = { ...simon, canEditTags: false };
+		const me = { ...simon, canEditTags: false, canTrash: false };
 		const source = { ...createFixtureSource(), me: () => Promise.resolve(me) };
 		const subject = new Library(
 			{ ...source, ...fake, ...overrides },

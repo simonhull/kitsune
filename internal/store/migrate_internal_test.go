@@ -1027,3 +1027,38 @@ func TestRereadEditorKeysMarksOnlyTracksThatReadDifferently(t *testing.T) {
 	}
 	expectFacts(t, d.w, facts)
 }
+
+// TestTrashLeavesEveryTrackLive runs 0019 over a v18 library: every track stays
+// as it was and none is trashed, a trashed track names its administrator until
+// their account goes, and the Trash's queries find their index.
+func TestTrashLeavesEveryTrackLive(t *testing.T) {
+	t.Parallel()
+	steps := shippedSteps(t)
+	at := slices.IndexFunc(steps, func(m migration) bool { return m.name == "0019_trash.sql" })
+	if at < 0 {
+		t.Fatal("0019_trash.sql is not shipped")
+	}
+	d := newScratchDB(t)
+	d.mustSettle(t, steps[:at])
+	seedLibrary(t, d.w)
+	facts := libraryFacts(t, d.w)
+
+	d.mustSettle(t, steps[:at+1])
+
+	expectFacts(t, d.w, facts)
+	if got := rawRows(t, d.w, "SELECT count(*) FROM tracks WHERE trashed_at IS NOT NULL OR trashed_by IS NOT NULL OR restore_path IS NOT NULL"); !slices.Equal(got, []string{"0"}) {
+		t.Errorf("trashed tracks = %q, want none", got)
+	}
+	for _, q := range []string{
+		"UPDATE tracks SET trashed_at = 5, trashed_by = 1, missing_since = 5, restore_path = rel_path WHERE id = 1",
+		"DELETE FROM sessions",
+		"DELETE FROM users WHERE id = 1",
+	} {
+		if _, err := d.w.ExecContext(t.Context(), q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if got := rawRows(t, d.w, "SELECT id, trashed_by IS NULL FROM tracks INDEXED BY tracks_trashed WHERE trashed_at IS NOT NULL"); !slices.Equal(got, []string{"1 1"}) {
+		t.Errorf("trashed tracks after their admin left = %q, want track 1, by nobody", got)
+	}
+}
