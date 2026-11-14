@@ -18,6 +18,7 @@ describe('rowMenuItems', () => {
 		expect(rowMenuItems(song, everywhere)).toEqual([
 			'playNext',
 			'addToQueue',
+			'addToPlaylist',
 			'rating',
 			'editTags',
 			'goToAlbum',
@@ -31,6 +32,7 @@ describe('rowMenuItems', () => {
 			'play',
 			'playNext',
 			'addToQueue',
+			'addToPlaylist',
 			'rating',
 			'editTags'
 		]);
@@ -56,6 +58,13 @@ describe('rowMenuItems', () => {
 		expect(rowMenuItems({ kind: 'picked' }, { ...everywhere, trashable: true }).at(-1)).toBe(
 			'trash'
 		);
+	});
+
+	it("takes a song out of the playlist on a playlist's page, before Move to Trash", () => {
+		expect(rowMenuItems(song, everywhere)).not.toContain('takeOut');
+		const listed = rowMenuItems(song, { ...everywhere, takeOut: true, trashable: true });
+		expect(listed.slice(-2)).toEqual(['takeOut', 'trash']);
+		expect(rowMenuItems({ kind: 'picked' }, { ...everywhere, takeOut: true })).toContain('takeOut');
 	});
 
 	it('has no Go to artist for a song with nobody to go to', () => {

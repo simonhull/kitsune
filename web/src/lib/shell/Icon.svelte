@@ -34,11 +34,23 @@
 			circle: false
 		},
 		// The Trash phone board's Restore: an arrow turning back.
-		restore: { path: 'M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11', circle: false }
+		restore: { path: 'M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11', circle: false },
+		// The Playlists boards': New playlist's plus, a submenu's chevron and the tick of one that has the songs.
+		plus: { path: 'M12 5v14M5 12h14', circle: false },
+		'chevron-right': { path: 'M9 6l6 6-6 6', circle: false },
+		tick: { path: 'M5 12l5 5 9-10', circle: false }
 	} as const;
 
 	/** Outlines drawn with round ends, as their boards have them. */
-	const rounded: readonly string[] = ['shuffle', 'repeat', 'trash', 'restore'];
+	const rounded: readonly string[] = [
+		'shuffle',
+		'repeat',
+		'trash',
+		'restore',
+		'plus',
+		'chevron-right',
+		'tick'
+	];
 
 	interface Props {
 		name: keyof typeof glyphs | keyof typeof outlines;

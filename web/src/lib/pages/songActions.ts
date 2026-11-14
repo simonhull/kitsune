@@ -108,19 +108,22 @@ export type RowMenuItem =
 	| 'play'
 	| 'playNext'
 	| 'addToQueue'
+	| 'addToPlaylist'
 	| 'rating'
 	| 'editTags'
 	| 'remove'
 	| 'goToAlbum'
 	| 'goToArtist'
 	| 'fileInfo'
+	| 'takeOut'
 	| 'trash';
 
 /**
  * What a song's ⋯ menu holds, in order. One song: Play next and Add to queue, never Play, which a
- * click on the row does. Songs picked: Play first. Then the marks and Edit tags…, Remove from queue
- * in Up next, and where to go, less the page it's opened on. Last, after a rule, Move to Trash, for
- * an administrator on a server that may change its files.
+ * click on the row does. Songs picked: Play first. Then Add to playlist, the marks and Edit tags…,
+ * Remove from queue in Up next, and where to go, less the page it's opened on. Last, after a rule,
+ * Take out of playlist on a playlist's page, and Move to Trash, for an administrator on a server
+ * that may change its files.
  */
 export function rowMenuItems(
 	target: Pick<MenuTarget, 'kind'> & { artistId?: string | undefined },
@@ -129,13 +132,15 @@ export function rowMenuItems(
 		editable: boolean;
 		removable: boolean;
 		trashable?: boolean;
+		/** On a playlist's page, whose songs can be taken out of it. */
+		takeOut?: boolean;
 	}
 ): RowMenuItem[] {
 	const items: RowMenuItem[] = [];
 	if (target.kind === 'picked') {
 		items.push('play');
 	}
-	items.push('playNext', 'addToQueue', 'rating');
+	items.push('playNext', 'addToQueue', 'addToPlaylist', 'rating');
 	if (context.editable) {
 		items.push('editTags');
 	}
@@ -150,6 +155,9 @@ export function rowMenuItems(
 			items.push('goToArtist');
 		}
 		items.push('fileInfo');
+	}
+	if (context.takeOut === true) {
+		items.push('takeOut');
 	}
 	if (context.trashable === true) {
 		items.push('trash');
@@ -169,6 +177,8 @@ function titleOf(trackId: string, albumId: string | undefined): string | undefin
 
 /** What can be done with songs, one or picked: the bar's actions and the ⋯ menu's. */
 export interface SongActions {
+	/** The songs they act on, in order: what Add to playlist adds. */
+	trackIds: readonly string[];
 	play(): void;
 	/** Shuffles them, each once, by the person's rules: the first plays at once. */
 	shuffle(): void;
@@ -200,6 +210,7 @@ export function actionsFor(
 		};
 	};
 	return {
+		trackIds,
 		play: queued((songs) => {
 			player.playSongs(songs);
 		}),

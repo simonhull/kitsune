@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlaylistAlbum, PlaylistSummary } from '#lib/library/source.ts';
 import {
+	addHeading,
 	addedWords,
 	againWords,
 	byLastAdded,
@@ -93,6 +94,11 @@ describe('holdsWords', () => {
 	it('says nothing when it holds none, or while that is not known', () => {
 		expect(holdsWords(0, 3)).toBeNull();
 		expect(holdsWords(undefined, 3)).toBeNull();
+	});
+
+	it('heads a popover or a sheet with how many songs go in', () => {
+		expect(addHeading(3)).toBe('ADD 3 SONGS TO');
+		expect(addHeading(1)).toBe('ADD 1 SONG TO');
 	});
 
 	it('is shorter on the phone sheet, after the playlist’s size', () => {

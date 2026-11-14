@@ -38,7 +38,8 @@ export class Playlists {
 	readonly #details = new SvelteMap<string, Load<PlaylistDetail>>();
 	/** What the songs last asked about are held by: playlist IDs to how many of them each holds. */
 	readonly #holds = new SvelteMap<string, number>();
-	#holdsKey = '';
+	/** The songs asked about, joined: reactive, so a menu drawn before the question sees the answer. */
+	#holdsKey = $state('');
 	readonly #source: LibrarySource;
 	/** Each playlist's saves, one after another. */
 	readonly #saving = new SvelteMap<string, Promise<unknown>>();

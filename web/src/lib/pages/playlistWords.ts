@@ -123,6 +123,11 @@ export function sheetLine(
 		: `${size} · ${String(holds)} OF THE ${String(of)} IN IT`;
 }
 
+/** The line over Add to playlist's list, in a popover or a sheet: "ADD 3 SONGS TO". */
+export function addHeading(songs: number): string {
+	return `ADD ${count(songs, 'SONG', 'SONGS')} TO`;
+}
+
 /** The order Add to playlist lists them in: most recently added to first, then the newest made. */
 export function byLastAdded(playlists: readonly PlaylistSummary[]): PlaylistSummary[] {
 	const at = (p: PlaylistSummary): number => Date.parse(p.addedAt ?? p.createdAt);
