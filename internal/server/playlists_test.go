@@ -221,6 +221,25 @@ func TestTakeOutAndMoveInPlaylist(t *testing.T) {
 		problem(t, http.StatusNotFound)
 }
 
+// Every playlist route needs credentials.
+func TestPlaylistsNeedCredentials(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	h := jsonHeader("nope")
+	for _, c := range []call{
+		{method: http.MethodGet, path: playlistsPath, header: bearer("nope")},
+		{method: http.MethodPost, path: playlistsPath, body: `{"name":"Mix"}`, header: h},
+		{method: http.MethodGet, path: playlistPath("x"), header: bearer("nope")},
+		{method: http.MethodPatch, path: playlistPath("x"), body: `{"name":"Mix"}`, header: h},
+		{method: http.MethodDelete, path: playlistPath("x"), header: bearer("nope")},
+		{method: http.MethodPost, path: playlistPath("x", "tracks"), body: tracksBody("t"), header: h},
+		{method: http.MethodDelete, path: playlistPath("x", "entries"), body: `{"entries":["1"]}`, header: h},
+		{method: http.MethodPost, path: playlistPath("x", "move"), body: `{"entry":"1","after":"2"}`, header: h},
+	} {
+		ts.send(t, c).problem(t, http.StatusUnauthorized)
+	}
+}
+
 // What a playlist request can't be is a 400.
 func TestPlaylistBadRequests(t *testing.T) {
 	t.Parallel()
