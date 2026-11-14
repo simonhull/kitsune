@@ -1,7 +1,6 @@
 package library
 
 import (
-	"slices"
 	"strings"
 	"unicode"
 
@@ -33,13 +32,22 @@ func MatchKey(s string) string {
 // ("IGNR") and AIFF chunk IDs ("NAME"). Each field therefore has one candidate
 // list for every format, tried in order.
 // TestRawKeysPerFormat checks every name against real files written by audiometa.
+// A field the tag editor has a row for is read through its row's scan list
+// ([scanKeys]), which the editor reads too, so a scan and the editor see the same
+// value; TestScanReadsEveryEditorKey holds every list to its row's keys.
 //
 //nolint:gochecknoglobals // Fixed lookup tables, never written.
 var (
-	keysTitleSort       = []string{"TITLESORT", "TSOT", "sonm"}
-	keysArtistSort      = []string{"ARTISTSORT", "TSOP", "soar"}
-	keysAlbumSort       = []string{"ALBUMSORT", "TSOA", "soal"}
-	keysAlbumArtist     = []string{"ALBUMARTIST", "ALBUM ARTIST", "TPE2", "aART"}
+	keysTitleSort  = []string{"TITLESORT", "TSOT", "sonm"}
+	keysArtistSort = []string{"ARTISTSORT", "TSOP", "soar"}
+	keysAlbumSort  = []string{"ALBUMSORT", "TSOA", "soal"}
+	// keysArtists are audiometa's keys of the typed artists, in its order (a
+	// WAV or AIFF file's native text after its ID3 frame), then ARTISTS, the
+	// mirror the editor keeps in step: a file holding only that has artists too.
+	keysArtists = []string{"ARTIST", "TPE1", "\xA9ART", "IART", "AUTH", "ARTISTS"}
+	// keysAlbumArtist ends with the mirrors the editor keeps in step, read only
+	// when nothing else holds one.
+	keysAlbumArtist     = []string{"ALBUMARTIST", "ALBUM ARTIST", "TPE2", "aART", "ALBUM_ARTIST", "ALBUMARTISTS", "ALBUM_ARTISTS"}
 	keysAlbumArtistSort = []string{"ALBUMARTISTSORT", "TSO2", "soaa"}
 	keysArtistMBID      = []string{"MUSICBRAINZ_ARTISTID", "MUSICBRAINZ ARTIST ID"}
 	keysAlbumArtistMBID = []string{"MUSICBRAINZ_ALBUMARTISTID", "MUSICBRAINZ ALBUM ARTIST ID"}
@@ -54,6 +62,7 @@ var (
 	keysReleaseGroupMBID = []string{"MUSICBRAINZ_RELEASEGROUPID", "MUSICBRAINZ RELEASE GROUP ID"}
 	keysReleaseTrackMBID = []string{"MUSICBRAINZ_RELEASETRACKID", "MUSICBRAINZ RELEASE TRACK ID"}
 	keysGenre            = []string{"GENRE", "TCON", "\xA9gen", "IGNR"}
+	keysComposer         = []string{"COMPOSER", "TCOM", "\xA9wrt"}
 	keysDate             = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day", keyICRD}
 	keysOriginalDate     = []string{"TDOR", "TORY", "ORIGINALDATE"}
 	// keysDiscSubtitle hold a disc's name. ID3v2.4 has a frame for it, which
@@ -64,47 +73,55 @@ var (
 	keysID3v2Names = []string{"TIT2", "TPE1"}
 )
 
-// GenreKeys returns the raw tag keys that hold genres, as the store keeps them.
-func GenreKeys() []string {
-	out := make([]string, len(keysGenre))
-	for i, k := range keysGenre {
-		out[i] = tagKey(k)
-	}
-	return out
-}
+// GenreKeys returns the raw tag keys that hold genres, as the store keeps them:
+// the tag editor's, so a genre reads where it is written.
+func GenreKeys() []string { return storedKeys(FieldGenres) }
 
 // ComposerKeys returns the raw tag keys that hold composers, as the store keeps
 // them: the tag editor's, so a composer reads where it is written.
-func ComposerKeys() []string {
-	i := slices.IndexFunc(fields, func(f field) bool { return f.name == FieldComposers })
-	row := &fields[i] // The table always has composers: TestComposerKeys checks.
-	var out []string
-	for _, k := range slices.Concat(row.flac, row.mp3, row.m4a) {
-		if key := tagKey(k); !slices.Contains(out, key) {
-			out = append(out, key)
-		}
-	}
-	return out
-}
+func ComposerKeys() []string { return storedKeys(FieldComposers) }
 
 // TrackMBIDKeys returns the raw tag keys that hold a track's MusicBrainz ID,
 // as the store keeps them.
-func TrackMBIDKeys() []string {
-	out := make([]string, len(keysTrackMBID))
-	for i, k := range keysTrackMBID {
+func TrackMBIDKeys() []string { return storedKeys(FieldMusicBrainzRecordingID) }
+
+// ReleaseTrackMBIDKeys returns the raw tag keys that hold the MusicBrainz ID
+// of a track on its release, as the store keeps them.
+func ReleaseTrackMBIDKeys() []string { return storedKeys(FieldMusicBrainzTrackID) }
+
+// storedKeys returns the scan list of the field, as the store keeps its keys.
+func storedKeys(name Field) []string {
+	list := scanKeys(name)
+	out := make([]string, len(list))
+	for i, k := range list {
 		out[i] = tagKey(k)
 	}
 	return out
 }
 
-// ReleaseTrackMBIDKeys returns the raw tag keys that hold the MusicBrainz ID
-// of a track on its release, as the store keeps them.
-func ReleaseTrackMBIDKeys() []string {
-	out := make([]string, len(keysReleaseTrackMBID))
-	for i, k := range keysReleaseTrackMBID {
-		out[i] = tagKey(k)
+// fieldRows indexes the editor's table by field.
+//
+//nolint:gochecknoglobals // Built once from the fixed table, never written.
+var fieldRows = func() map[Field]*field {
+	out := make(map[Field]*field, len(fields))
+	for i := range fields {
+		out[fields[i].name] = &fields[i]
 	}
 	return out
+}()
+
+// scanKeys returns the keys a scan reads the field from, which the editor reads
+// too. Every field a scan reads has them: TestScanReadsEveryEditorKey checks.
+func scanKeys(name Field) []string { return fieldRows[name].scan }
+
+// scanValues returns the field's values as a scan reads them, and as the editor
+// shows them: cleaned, and nil for none.
+func scanValues(t *audiometa.Tags, name Field) []string {
+	row := fieldRows[name]
+	if row.read != nil {
+		return row.read(t)
+	}
+	return firstValues(t, row.scan)
 }
 
 // multi returns the values of the first key in keys that has any.

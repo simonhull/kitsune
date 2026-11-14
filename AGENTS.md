@@ -286,6 +286,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   keys per format, its mirrors and its dependents, and in `rawtags.go`'s allow rule for raw edits.
   Add a key there, never inline. A key the table owns in any format can't be edited raw: a scan reads
   candidates in every format, so a raw tag could otherwise move a track to another album.
+  A field the editor has a row for is read by a scan and by the editor through the row's `scan` list
+  (after audiometa's typed field, for the scan), so the two never disagree;
+  `TestScanReadsEveryEditorKey` holds each list to every key the row has in any format.
 - audiometa reports tags as stored; display fallbacks (title from file name, sort name
   from name, disc folders) are Kitsune's and live here.
 - The scanner is the only library writer: one goroutine resolves identity and writes. Tag edits go

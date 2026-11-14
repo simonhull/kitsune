@@ -124,12 +124,12 @@ func TestEditLandsInEveryOwnedKey(t *testing.T) {
 		{
 			name: formatFLAC, sample: sampleFLAC,
 			seed: map[string][]string{
-				keyDate: {oldDate}, "YEAR": {"2001"}, keysTitleSort[0]: {oldSort}, keyGenre: {rock, pop},
-				"ALBUM ARTIST": {otherName}, keyTotalTracks: {"12"}, keyTotalDiscs: {"2"}, "ARTISTS": {otherName},
+				keyDate: {oldDate}, keyYear: {"2001"}, keysTitleSort[0]: {oldSort}, keyGenre: {rock, pop},
+				"ALBUM ARTIST": {otherName}, keyTotalTracks: {"12"}, keyTotalDiscs: {"2"}, keyArtists: {otherName},
 			},
 			want: ownedKeys{
-				year: []string{keyDate, "YEAR"}, genre: keyGenre, gone: keysTitleSort[0],
-				kept: []string{"ALBUM ARTIST", keyTotalTracks, keyTotalDiscs, "ARTISTS"},
+				year: []string{keyDate, keyYear}, genre: keyGenre, gone: keysTitleSort[0],
+				kept: []string{"ALBUM ARTIST", keyTotalTracks, keyTotalDiscs, keyArtists},
 			},
 		},
 		{
@@ -175,16 +175,16 @@ func TestEditLandsInEveryOwnedKey(t *testing.T) {
 func TestEditUpdatesNumbersRepeatedUnderOtherKeys(t *testing.T) {
 	t.Parallel()
 	path := copySample(t, sampleFLAC)
-	seed(t, path, map[string][]string{"TRACK": {"3"}, "DISC": {"1"}})
+	seed(t, path, map[string][]string{keyTrack: {"3"}, keyDisc: {"1"}})
 	edit := Edit{Fields: map[Field][]string{FieldTrack: {"7"}, FieldDisc: {"2"}}}
 	if err := audiometa.Write(path, edit.apply); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 	got := reread(t, path)
-	if v := rawValues(&got, "TRACK"); !slices.Equal(v, []string{"7"}) {
+	if v := rawValues(&got, keyTrack); !slices.Equal(v, []string{"7"}) {
 		t.Errorf("TRACK = %q, want the new number", v)
 	}
-	if v := rawValues(&got, "DISC"); !slices.Equal(v, []string{"2"}) {
+	if v := rawValues(&got, keyDisc); !slices.Equal(v, []string{"2"}) {
 		t.Errorf("DISC = %q, want the new number", v)
 	}
 }
@@ -487,10 +487,10 @@ func TestMirrorsStayInStepAndDependentsGo(t *testing.T) {
 	}{
 		{
 			name: "totals", sample: sampleFLAC,
-			seed: map[string][]string{keyTotalTracks: {"9"}, keyTrackC: {"9"}, keyTotalDiscs: {"1"}, "DISCC": {"1"}, keyTrackTotal: {"9"}},
+			seed: map[string][]string{keyTotalTracks: {"9"}, keyTrackC: {"9"}, keyTotalDiscs: {"1"}, keyDiscC: {"1"}, keyTrackTotal: {"9"}},
 			edit: map[Field][]string{FieldTrackTotal: {"12"}, FieldDiscTotal: {"2"}},
 			want: map[string][]string{
-				keyTrackTotal: {"12"}, keyTotalTracks: {"12"}, keyTrackC: {"12"}, "DISCTOTAL": {"2"}, keyTotalDiscs: {"2"}, "DISCC": {"2"},
+				keyTrackTotal: {"12"}, keyTotalTracks: {"12"}, keyTrackC: {"12"}, "DISCTOTAL": {"2"}, keyTotalDiscs: {"2"}, keyDiscC: {"2"},
 			},
 		},
 		{
