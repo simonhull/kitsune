@@ -13,8 +13,6 @@
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsShown from '#lib/shell/StarsShown.svelte';
 	import { albumMenu } from './albumMenu.svelte.ts';
-	import TagFields from './TagFields.svelte';
-	import type { TagSession } from './tagEdits.svelte.ts';
 
 	interface Props {
 		albumId: string;
@@ -22,38 +20,11 @@
 		entry: AlbumEntry | undefined;
 		/** The full album, once it has streamed in. */
 		album: Album | undefined;
-		/** Opens the editor. Left out for anyone who can't edit. */
+		/** Opens the tag editor. Left out for anyone who can't edit. */
 		edit: (() => void) | undefined;
-		editButton?: HTMLButtonElement | undefined;
-		/** The edit under way on this album, if any. */
-		session: TagSession | undefined;
-		/** Where focus goes when the editor opens. */
-		eyebrow?: HTMLElement | undefined;
-		/** Many tracks at once are being edited: this many of them picked. */
-		picking?: { picked: number; of: number } | undefined;
-		/** Goes from the album page's editor to many tracks at once. */
-		many?: (() => void) | undefined;
 	}
 
-	let {
-		albumId,
-		entry,
-		album,
-		edit,
-		editButton = $bindable(),
-		session,
-		eyebrow = $bindable(),
-		picking,
-		many
-	}: Props = $props();
-
-	/** Editing of either kind: the page draws up the same way for both. */
-	const editing = $derived(session !== undefined || picking !== undefined);
-
-	const files = $derived(session?.tags?.tracks.length ?? album?.tracks.length ?? 0);
-	const fileCount = $derived(`${String(files)} ${files === 1 ? 'FILE' : 'FILES'}`);
-	const open = $derived(session?.open ?? null);
-	const place = $derived((session?.tags?.tracks.findIndex(({ id }) => id === open) ?? -1) + 1);
+	let { albumId, entry, album, edit }: Props = $props();
 
 	/** Until the album streams in, and on a compilation, the name is plain text. */
 	const owners = $derived(album?.artists ?? []);
@@ -87,7 +58,7 @@
 	}
 </script>
 
-<section aria-label="Album" class="hero stepped" class:editing class:one={open !== null}>
+<section aria-label="Album" class="hero stepped">
 	<div
 		class="art"
 		data-morph-part="art"
@@ -96,22 +67,7 @@
 		<Cover {albumId} {entry} place="stage" />
 	</div>
 	<div class="words" data-morph-part="words">
-		{#if picking !== undefined}
-			<span class="meta ready eyebrow" tabindex="-1" bind:this={eyebrow}>
-				EDITING TAGS · {picking.picked} OF {picking.of}
-				{picking.of === 1 ? 'TRACK' : 'TRACKS'} PICKED
-			</span>
-		{:else if session === undefined}
-			<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>
-		{:else}
-			<span class="meta ready eyebrow" tabindex="-1" bind:this={eyebrow}>
-				{#if open === null}
-					EDITING TAGS · <span class="writes">WRITES TO&nbsp;</span>{fileCount}
-				{:else}
-					EDITING TAGS · TRACK {place} OF {files}
-				{/if}
-			</span>
-		{/if}
+		<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>
 		<!-- The fit divides by the words' width, known before layout: the first frame is final. -->
 		<h1
 			title={entry?.title}
@@ -121,17 +77,15 @@
 			{entry?.title ?? ''}
 		</h1>
 		<div class="actions">
-			{#if !editing}
-				<button
-					type="button"
-					class="play"
-					aria-label={`${sounding ? 'Pause' : 'Play'} ${entry?.title ?? 'album'}`}
-					disabled={!playable}
-					onclick={play}
-				>
-					<Icon name={sounding ? 'pause' : 'play'} size={28} />
-				</button>
-			{/if}
+			<button
+				type="button"
+				class="play"
+				aria-label={`${sounding ? 'Pause' : 'Play'} ${entry?.title ?? 'album'}`}
+				disabled={!playable}
+				onclick={play}
+			>
+				<Icon name={sounding ? 'pause' : 'play'} size={28} />
+			</button>
 			<span class="artist">
 				<span class="name" use:morph={{ id: `artist:${albumId}`, slot: 'hero', kind: 'title' }}>
 					{#if owners.length === 1}
@@ -148,52 +102,38 @@
 					{/if}
 				</span>
 			</span>
-			{#if many !== undefined}
-				<button type="button" class="ghost many" onclick={many}>Many at once</button>
+			<button type="button" class="ghost" disabled={!playable} onclick={shuffle}>Shuffle</button>
+			{#if edit !== undefined}
+				<button type="button" class="ghost" disabled={!playable} onclick={edit}>Edit tags</button>
 			{/if}
-			{#if !editing}
-				<button type="button" class="ghost" disabled={!playable} onclick={shuffle}>Shuffle</button>
-				{#if edit !== undefined}
-					<button
-						type="button"
-						class="ghost"
-						disabled={!playable}
-						bind:this={editButton}
-						onclick={edit}>Edit tags</button
+			{#if entry !== undefined}
+				{@const held = entry}
+				<button
+					type="button"
+					class="ghost round"
+					aria-label={`More for ${held.title}`}
+					aria-haspopup="menu"
+					onclick={(event) => {
+						const { left, bottom } = event.currentTarget.getBoundingClientRect();
+						albumMenu.open(held, left, bottom + 6);
+					}}
+					><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
+						><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"
+						></circle><circle cx="19" cy="12" r="1.8"></circle></svg
+					></button
+				>
+			{/if}
+			{#if stars !== null}
+				<!-- Worked out from the songs, never set: so it reads, and doesn't press. -->
+				<span class="rating">
+					<span class="glyphs"><StarsShown {stars} empty="dim" /></span>
+					<span class="from" aria-hidden="true"
+						>{stars.mean} · FROM {stars.rated} OF {stars.of}
+						{stars.of === 1 ? 'SONG' : 'SONGS'}</span
 					>
-				{/if}
-				{#if entry !== undefined}
-					{@const held = entry}
-					<button
-						type="button"
-						class="ghost round"
-						aria-label={`More for ${held.title}`}
-						aria-haspopup="menu"
-						onclick={(event) => {
-							const { left, bottom } = event.currentTarget.getBoundingClientRect();
-							albumMenu.open(held, left, bottom + 6);
-						}}
-						><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
-							><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"
-							></circle><circle cx="19" cy="12" r="1.8"></circle></svg
-						></button
-					>
-				{/if}
-				{#if stars !== null}
-					<!-- Worked out from the songs, never set: so it reads, and doesn't press. -->
-					<span class="rating">
-						<span class="glyphs"><StarsShown {stars} empty="dim" /></span>
-						<span class="from" aria-hidden="true"
-							>{stars.mean} · FROM {stars.rated} OF {stars.of}
-							{stars.of === 1 ? 'SONG' : 'SONGS'}</span
-						>
-					</span>
-				{/if}
+				</span>
 			{/if}
 		</div>
-		{#if session?.wide != null && open === null}
-			<TagFields {session} wide={session.wide} />
-		{/if}
 	</div>
 </section>
 
@@ -208,14 +148,6 @@
 		position: relative;
 		height: var(--hero-height);
 		transition: height var(--morph-slow) var(--curve-settle);
-	}
-
-	/* Editing takes the page in hand: the stage draws up, and the tracks rise to meet it. */
-	.hero.editing {
-		--hero-cover: 260px;
-
-		transition-duration: var(--morph);
-		transition-timing-function: var(--curve-morph);
 	}
 
 	.art {
@@ -233,25 +165,6 @@
 			top var(--morph-slow) var(--curve-settle);
 	}
 
-	.editing .art {
-		top: 104px;
-		transition-duration: var(--morph);
-		transition-timing-function: var(--curve-morph);
-	}
-
-	/* One track has the stage: its cover has flown down to the panel, so the words have the room. */
-	.one {
-		--hero-cover: 0px;
-	}
-
-	.one .art {
-		visibility: hidden;
-	}
-
-	.one .actions {
-		display: none;
-	}
-
 	.words {
 		position: absolute;
 		left: var(--hero-pad);
@@ -261,17 +174,6 @@
 		flex-direction: column;
 		gap: calc(18px * var(--step));
 		transition: bottom var(--morph-slow) var(--curve-settle);
-	}
-
-	.editing .words {
-		bottom: 70px;
-		gap: 0;
-		transition-duration: var(--morph);
-		transition-timing-function: var(--curve-morph);
-	}
-
-	.one .words {
-		bottom: 119px;
 	}
 
 	.meta {
@@ -284,13 +186,6 @@
 
 	.meta.ready {
 		opacity: 1;
-	}
-
-	.eyebrow {
-		margin-bottom: 8px;
-		font-size: var(--type-mono);
-		letter-spacing: 0.08em;
-		outline: none;
 	}
 
 	/*
@@ -316,29 +211,6 @@
 		line-height: 0.92;
 		text-wrap: balance;
 		transition: font-size var(--morph-slow) var(--curve-settle);
-	}
-
-	.editing h1 {
-		--hero-type: 120px;
-
-		line-height: 0.9;
-		transition-duration: var(--morph);
-		transition-timing-function: var(--curve-morph);
-	}
-
-	.one h1 {
-		--hero-type: 88px;
-
-		letter-spacing: -0.06em;
-	}
-
-	.editing .actions {
-		margin: 18px 0 26px;
-	}
-
-	.editing .artist {
-		font-size: 20px;
-		margin-right: 0;
 	}
 
 	.actions {
@@ -479,43 +351,6 @@
 		.play {
 			width: 56px;
 			height: 56px;
-		}
-
-		/* A phone edits the words alone: there's no room for the cover, and the fields need it. */
-		.hero.editing {
-			display: block;
-			height: var(--hero-height);
-			padding: 0;
-		}
-
-		.editing .art {
-			display: none;
-		}
-
-		.editing .words {
-			position: absolute;
-			left: var(--hero-pad);
-			right: var(--hero-pad);
-			bottom: 44px;
-		}
-
-		.editing h1 {
-			--hero-type: 56px;
-
-			font-size: max(min(var(--hero-type), var(--fit)), clamp(22px, var(--fit) * 2, 30px));
-		}
-
-		.editing .actions {
-			margin: 12px 0 16px;
-		}
-
-		.editing .artist {
-			flex-basis: auto;
-			font-size: 15px;
-		}
-
-		.writes {
-			display: none;
 		}
 
 		.artist {
