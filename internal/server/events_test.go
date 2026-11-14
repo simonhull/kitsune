@@ -369,6 +369,8 @@ func TestNoEventHoldsASecret(t *testing.T) {
 	fx.send(t, call{method: http.MethodPost, path: nowPlayingPath, body: `{"trackId":"` + fx.album.Tracks[0].ID + `"}`, header: jsonHeader(token)})
 	fx.send(t, fx.postCall(fx.editsPath(), fx.album.Etag, `{"all":{"set":{"title":["Renamed"]}}}`))
 	fx.startShuffle(t, token, &api.ShuffleStart{Scope: api.ShuffleScope{Kind: scopeLibrary}, Mode: modeEndless})
+	fx.send(t, fx.trashCall(trashPath, tracksBody(fx.album.Tracks[0].ID)))
+	fx.send(t, fx.trashCall(restorePath, tracksBody(fx.album.Tracks[0].ID)))
 	if _, err := fx.Scanner.Scan(t.Context(), library.Full); err != nil {
 		t.Fatal(err)
 	}

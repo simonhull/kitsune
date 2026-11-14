@@ -15,9 +15,13 @@ import (
 	"github.com/simonhull/kitsune/internal/store"
 )
 
-// TrashRetention is how long a song waits in the Trash before it is deleted
-// for good: [Scanner.PurgeTrash] deletes it this long after it was trashed.
-const TrashRetention = 30 * 24 * time.Hour
+// TrashRetentionDays is how many days a song waits in the Trash before it is
+// deleted for good, and TrashRetention the same as a duration:
+// [Scanner.PurgeTrash] deletes it this long after it was trashed.
+const (
+	TrashRetentionDays = 30
+	TrashRetention     = TrashRetentionDays * 24 * time.Hour
+)
 
 // trashDirMode is the mode of the folders a trash or a restore makes. The
 // umask has the last word.

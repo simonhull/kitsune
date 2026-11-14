@@ -61,6 +61,7 @@ func TestMeWithBearer(t *testing.T) {
 		"createdAt": u.CreatedAt.Format(time.RFC3339Nano),
 
 		"canEditTags": false,
+		"canTrash":    false,
 	}
 	if len(got) != len(want) {
 		t.Errorf("body = %v, want exactly the fields of %v", got, want)
