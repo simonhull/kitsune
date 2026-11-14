@@ -36,6 +36,7 @@ const (
 	Listening    Kind = "listening"     // What a person's devices are playing.
 	Lastfm       Kind = "lastfm"        // A person's Last.fm connection changed.
 	Settings     Kind = "settings"      // Server settings changed, by key: admins.
+	Playlists    Kind = "playlists"     // A person's playlists changed, by ID.
 	// Resync tells a subscriber it missed events the hub no longer has: it
 	// must fetch everything again. The hub sends it; nothing publishes it.
 	Resync Kind = "resync"

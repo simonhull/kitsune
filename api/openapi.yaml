@@ -844,6 +844,284 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
+  /me/playlists:
+    get:
+      operationId: getPlaylists
+      summary: List the caller's playlists, by name.
+      description: >-
+        A playlist is its person's alone: nobody else sees or changes it. Its
+        counts, time and mosaic are of songs in the library, so one in Trash
+        leaves them until it comes back. `holding` names up to 1,000 songs,
+        joined by commas, in one parameter or several: each playlist then says
+        how many of them it holds, each once (`holds`), which is how a client
+        marks one that has them already.
+      parameters:
+        - name: holding
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: The playlists.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Playlists" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    post:
+      operationId: postPlaylist
+      summary: Make a playlist, empty or with songs.
+      description: >-
+        The name is 1 to 200 characters once trimmed, and need not be unique.
+        Songs go in as `POST /me/playlists/{id}/tracks` puts them, each once.
+        Songs or albums not in the library (unknown, missing or in Trash) are a
+        422 naming them, and then nothing is made; so is more than 10,000
+        songs.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaylistCreate" }
+      responses:
+        "201":
+          description: The playlist, and what went in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistAdded" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          $ref: "#/components/responses/PlaylistProblem"
+  /me/playlists/{id}:
+    get:
+      operationId: getPlaylist
+      summary: Return one of the caller's playlists with its songs in order.
+      description: >-
+        Each entry has its own ID, which a move or a take-out names (a song in
+        twice is two entries), and its song as the library index has it, with
+        the caller's stars. Only songs in the library are listed: one in Trash
+        comes back with Restore, in its place. Another person's playlist is a
+        404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The playlist.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+            Content-Encoding:
+              schema: { type: string }
+            Vary:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistDetail" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: patchPlaylist
+      summary: Rename one of the caller's playlists.
+      description: The name is 1 to 200 characters once trimmed. Another person's playlist is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaylistRename" }
+      responses:
+        "200":
+          description: The playlist, renamed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Playlist" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deletePlaylist
+      summary: Delete one of the caller's playlists.
+      description: Its songs stay in the library. Another person's playlist is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+  /me/playlists/{id}/tracks:
+    post:
+      operationId: postPlaylistTracks
+      summary: Put songs in one of the caller's playlists.
+      description: >-
+        The albums' songs go in first, each album's in the order the Library
+        lists them, then the tracks, in the order named: at the end, or just
+        before the entry `before`. A song the playlist holds already, or one
+        named twice, is skipped and listed in `skipped`, unless `again`, which
+        adds it anyway. Songs or albums not in the library (unknown, missing or
+        in Trash) are a 422 naming them, and so is taking the playlist past
+        10,000 songs; then nothing is added. Another person's playlist, or a
+        `before` it doesn't hold, is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaylistAdd" }
+      responses:
+        "200":
+          description: What went in, what was skipped, and the playlist after.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistAdded" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/PlaylistProblem"
+  /me/playlists/{id}/entries:
+    delete:
+      operationId: deletePlaylistEntries
+      summary: Take entries out of one of the caller's playlists.
+      description: >-
+        The songs stay in the library. An entry the playlist doesn't hold is
+        left alone, and the response lists only those taken out. Another
+        person's playlist is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaylistEntries" }
+      responses:
+        "200":
+          description: The entries taken out.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistEntries" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+  /me/playlists/{id}/move:
+    post:
+      operationId: postPlaylistMove
+      summary: Move an entry of one of the caller's playlists.
+      description: >-
+        The entry goes just before `before`, or just after `after`: exactly one
+        of them. Only that entry is written. Another person's playlist, or an
+        entry it doesn't hold, is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaylistMove" }
+      responses:
+        "204":
+          description: Moved.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
   /me/lastfm:
     get:
       operationId: getLastfm
@@ -1035,7 +1313,8 @@ paths:
         (`LoudnessStatus`) and `settings` (`EventSettings`) to administrators; `marks` (`EventMarks`), `prefs`
         (`EventPrefs`), `shuffle-rules` (`EventShuffleRules`), `shuffle`
         (`EventShuffle`), `listening`
-        (`EventListening`) and `lastfm` (`EventLastfm`) to the person they are
+        (`EventListening`), `lastfm` (`EventLastfm`) and `playlists`
+        (`EventPlaylists`) to the person they are
         about, on every device. The stream opens with `ready`, whose id is
         where it stands. Sent back as `Last-Event-ID`, an id gets what was
         missed since, while the server still has it (5 minutes, or 10,000
@@ -2256,6 +2535,13 @@ components:
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/EditProblem" }
+    PlaylistProblem:
+      description: >-
+        An RFC 9457 problem: an add named songs or albums not in the library,
+        which it names, or would take the playlist past 10,000 songs.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/PlaylistProblem" }
   schemas:
     Problem:
       type: object
@@ -2608,6 +2894,162 @@ components:
       required: [keys]
       properties:
         keys: { type: array, items: { type: string } }
+    EventPlaylists:
+      type: object
+      additionalProperties: false
+      description: >-
+        The person's playlists made, changed or deleted on any device, by id;
+        `GET /me/playlists` and `GET /me/playlists/{id}` read them.
+      required: [ids]
+      properties:
+        ids: { type: array, items: { type: string } }
+    Playlists:
+      type: object
+      additionalProperties: false
+      required: [playlists]
+      properties:
+        playlists:
+          type: array
+          items: { $ref: "#/components/schemas/Playlist" }
+    Playlist:
+      type: object
+      additionalProperties: false
+      required: [id, name, source, songCount, albumCount, durationMs, mosaic, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        source: { type: string, enum: [kitsune, navidrome], description: "`navidrome` for one an import brought over." }
+        songCount: { type: integer, minimum: 0, description: Its entries in the library; a song in twice counts twice. }
+        albumCount: { type: integer, minimum: 0 }
+        durationMs: { type: integer, format: int64, minimum: 0 }
+        mosaic:
+          type: array
+          maxItems: 4
+          description: Its first albums in its order, each once.
+          items: { $ref: "#/components/schemas/PlaylistAlbum" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        addedAt: { type: string, format: date-time, description: When songs were last added; absent before any were. }
+        holds: { type: integer, minimum: 0, description: "With `holding`: how many of those songs it holds, each once." }
+    PlaylistDetail:
+      type: object
+      additionalProperties: false
+      description: A Playlist's properties, repeated (allOf does not mix with additionalProperties false), plus its entries and their albums.
+      required: [id, name, source, songCount, albumCount, durationMs, mosaic, createdAt, updatedAt, entries, albums]
+      properties:
+        id: { type: string }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        source: { type: string, enum: [kitsune, navidrome] }
+        songCount: { type: integer, minimum: 0 }
+        albumCount: { type: integer, minimum: 0 }
+        durationMs: { type: integer, format: int64, minimum: 0 }
+        mosaic:
+          type: array
+          maxItems: 4
+          items: { $ref: "#/components/schemas/PlaylistAlbum" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        addedAt: { type: string, format: date-time }
+        entries:
+          type: array
+          maxItems: 10000
+          items: { $ref: "#/components/schemas/PlaylistEntry" }
+        albums:
+          type: array
+          description: Every album of the entries, in the order they first appear.
+          items: { $ref: "#/components/schemas/PlaylistAlbum" }
+    PlaylistEntry:
+      type: object
+      additionalProperties: false
+      required: [id, albumId, track]
+      properties:
+        id: { type: string, description: The entry's own ID, never reused. }
+        albumId: { type: string }
+        track: { $ref: "#/components/schemas/LibraryTrack" }
+    PlaylistAlbum:
+      type: object
+      additionalProperties: false
+      required: [id, title, artist, compilation]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        year: { type: integer }
+        compilation: { type: boolean }
+        artwork: { $ref: "#/components/schemas/Artwork" }
+    PlaylistCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string }
+        albums: { type: array, maxItems: 1000, items: { type: string, minLength: 1 } }
+        tracks: { type: array, maxItems: 10000, items: { type: string, minLength: 1 } }
+    PlaylistRename:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string }
+    PlaylistAdd:
+      type: object
+      additionalProperties: false
+      properties:
+        albums: { type: array, maxItems: 1000, items: { type: string, minLength: 1 } }
+        tracks: { type: array, maxItems: 10000, items: { type: string, minLength: 1 } }
+        again: { type: boolean, default: false, description: Add songs the playlist holds already. }
+        before: { type: string, minLength: 1, description: The entry the songs go just before; absent for the end. }
+    PlaylistAdded:
+      type: object
+      additionalProperties: false
+      required: [playlist, added, skipped]
+      properties:
+        playlist: { $ref: "#/components/schemas/Playlist" }
+        added:
+          type: array
+          description: The entries made, in order.
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, track]
+            properties:
+              id: { type: string }
+              track: { type: string }
+        skipped:
+          type: array
+          description: Songs left out as already there, each once, in the order named.
+          items: { type: string }
+    PlaylistEntries:
+      type: object
+      additionalProperties: false
+      required: [entries]
+      properties:
+        entries: { type: array, maxItems: 10000, items: { type: string } }
+    PlaylistMove:
+      type: object
+      additionalProperties: false
+      required: [entry]
+      properties:
+        entry: { type: string, minLength: 1 }
+        before: { type: string, minLength: 1 }
+        after: { type: string, minLength: 1 }
+    PlaylistProblem:
+      type: object
+      required: [type, title, status, tracks, albums]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        requestId: { type: string }
+        tracks:
+          type: array
+          description: Songs named that aren't in the library.
+          items: { type: string }
+        albums:
+          type: array
+          description: Albums named with no song in the library.
+          items: { type: string }
     LoginRequest:
       type: object
       additionalProperties: false

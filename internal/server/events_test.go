@@ -36,6 +36,7 @@ var eventSchemas = map[string]string{ //nolint:gochecknoglobals // A read-only t
 	string(events.Listening):    "EventListening",
 	string(events.Lastfm):       "EventLastfm",
 	string(events.Settings):     "EventSettings",
+	string(events.Playlists):    "EventPlaylists",
 	string(events.Ready):        "EventStream",
 	string(events.Resync):       "EventStream",
 }
@@ -371,6 +372,7 @@ func TestNoEventHoldsASecret(t *testing.T) {
 	fx.startShuffle(t, token, &api.ShuffleStart{Scope: api.ShuffleScope{Kind: scopeLibrary}, Mode: modeEndless})
 	fx.send(t, fx.trashCall(trashPath, tracksBody(fx.album.Tracks[0].ID)))
 	fx.send(t, fx.trashCall(restorePath, tracksBody(fx.album.Tracks[0].ID)))
+	fx.makePlaylist(t, token, &api.PlaylistCreate{Name: mixName, Tracks: []string{fx.album.Tracks[0].ID}})
 	if _, err := fx.Scanner.Scan(t.Context(), library.Full); err != nil {
 		t.Fatal(err)
 	}
