@@ -11,10 +11,20 @@
 	import { setMatchState } from '#lib/matching/api.ts';
 	import { matchSheet } from '#lib/matching/sheet.svelte.ts';
 	import { editorHistory } from './editorHistory.svelte.ts';
-	import TagEditor from './TagEditor.svelte';
+	import type TagEditorView from './TagEditor.svelte';
 	import { tagEditor, type Written } from './tagEditor.svelte.ts';
 
 	let announcement = $state('');
+	/** The editor's code, fetched the first time it opens: no page load pays for it. */
+	let TagEditor = $state.raw<typeof TagEditorView | null>(null);
+
+	$effect(() => {
+		if (tagEditor.current !== null && TagEditor === null) {
+			void import('./TagEditor.svelte').then((loaded) => {
+				TagEditor = loaded.default;
+			});
+		}
+	});
 
 	const editors = editorHistory(
 		() => tagEditor.current?.key ?? null,
@@ -55,7 +65,7 @@
 	}
 </script>
 
-{#if tagEditor.current !== null}
+{#if tagEditor.current !== null && TagEditor !== null}
 	{#key tagEditor.current.key}
 		<TagEditor session={tagEditor.current} {leave} done={(written) => void done(written)} />
 	{/key}
