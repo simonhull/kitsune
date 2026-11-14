@@ -17,6 +17,7 @@
 		"search": { "interaction": "Search, keystroke to results", "p95Ms": 65 },
 		"columns-menu": { "interaction": "Open the columns menu", "p95Ms": 30 },
 		"row-menu": { "interaction": "Open a song's ⋯ menu", "p95Ms": 25 },
+		"trash-song": { "interaction": "Move to Trash from a song's ⋯ menu, press to its row folding", "p95Ms": 36 },
 		"play-shuffle": { "interaction": "Shuffle the library, press to sound", "p95Ms": 50 },
 		"next-shuffle": { "interaction": "Next, in a shuffle", "p95Ms": 30 },
 		"sort-library": { "interaction": "Turn the Library's order round, click to rows", "p95Ms": 150 },

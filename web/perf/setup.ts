@@ -4,13 +4,44 @@
  * stops them and writes the report.
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+	existsSync,
+	mkdirSync,
+	openSync,
+	readdirSync,
+	renameSync,
+	rmSync,
+	writeFileSync
+} from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { writeLibrary } from './library.ts';
 import { writeReport } from './report.ts';
 import { libraries, libraryDir, perfDir, resultsDir, serverBinary, user } from './servers.ts';
 
 const readyTimeoutMs = 10 * 60_000;
+
+/**
+ * Puts back every file a run stopped midway left in the library's Trash
+ * (`.kitsune-trash/<song>/<path>`), so the library is whole again: each run starts on a fresh
+ * database, which would otherwise never see those songs.
+ */
+function untrash(music: string): void {
+	const trash = join(music, '.kitsune-trash');
+	if (!existsSync(trash)) {
+		return;
+	}
+	for (const entry of readdirSync(trash, { recursive: true, withFileTypes: true })) {
+		if (!entry.isFile()) {
+			continue;
+		}
+		const from = join(entry.parentPath, entry.name);
+		const [, ...rest] = relative(trash, from).split('/'); // The song's own folder, then its path.
+		const to = join(music, ...rest);
+		mkdirSync(dirname(to), { recursive: true });
+		renameSync(from, to);
+	}
+	rmSync(trash, { recursive: true, force: true });
+}
 
 async function ready(url: string, server: ChildProcess, log: string): Promise<void> {
 	const deadline = Date.now() + readyTimeoutMs;
@@ -87,6 +118,7 @@ export default async function setup(): Promise<() => Promise<void>> {
 		const music = join(dir, 'music');
 		const started = performance.now();
 		const manifest = writeLibrary(music, join(perfDir, 'templates'), library);
+		untrash(music);
 		const wrote = performance.now();
 		const data = join(dir, 'data');
 		rmSync(data, { recursive: true, force: true });
@@ -98,6 +130,8 @@ export default async function setup(): Promise<() => Promise<void>> {
 				`listen = "127.0.0.1:${String(library.port)}"`,
 				'[library]',
 				`roots = [${JSON.stringify(music)}]`,
+				// trash-song moves a file and its Undo moves it back: the Trash needs tag writes.
+				'tag_writes = true',
 				'[storage]',
 				`data_dir = ${JSON.stringify(data)}`,
 				'[log]',
