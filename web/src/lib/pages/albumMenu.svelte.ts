@@ -1,5 +1,6 @@
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
+import { page } from '$app/state';
 import { library } from '#lib/library/library.svelte.ts';
 import type { Album, AlbumEntry } from '#lib/library/source.ts';
 import { matchAlbum } from '#lib/matching/hooks.ts';
@@ -7,6 +8,7 @@ import { player } from '#lib/player/player.svelte.ts';
 import { shuffles } from '#lib/shuffle/session.svelte.ts';
 import { albumSource } from '#lib/shuffle/sources.ts';
 import { tagEdits } from './tagEdits.svelte.ts';
+import { trashBin } from './trashBin.svelte.ts';
 
 /** What can be done with a whole album, in album order: its ⋯ menu's actions. */
 export interface AlbumActions {
@@ -20,6 +22,8 @@ export interface AlbumActions {
 	findMatches: (() => void) | undefined;
 	/** Set once the album says who it's by. */
 	goToArtist: (() => void) | undefined;
+	/** Moves every song on it to Trash. Set for an administrator on a server that may change files. */
+	trash: (() => void) | undefined;
 }
 
 /** The songs of an album, ready to queue. */
@@ -31,7 +35,8 @@ function songsOf(album: Album): { album: Album; track: Album['tracks'][number] }
  * The actions on an album. `album` is the album itself, once it's here: each action fetches it if
  * it isn't, and acts when it comes.
  */
-export function albumActions(id: string, album: Album | undefined): AlbumActions {
+export function albumActions(entry: AlbumEntry, album: Album | undefined): AlbumActions {
+	const { id } = entry;
 	const withAlbum = (then: (held: Album) => void): (() => void) => {
 		return () => {
 			if (album !== undefined) {
@@ -78,7 +83,16 @@ export function albumActions(id: string, album: Album | undefined): AlbumActions
 				? undefined
 				: () => {
 						void goto(resolve('/artists/[id]', { id: artistId }));
+					},
+		trash: trashBin.can
+			? () => {
+					trashBin.moveAlbum(id, entry.title, album?.tracks.length ?? entry.trackCount);
+					// The album's own page has nothing left to show: the grid it's gone from.
+					if (page.route.id === '/album/[id]' && page.params['id'] === id) {
+						void goto(resolve('/albums'));
 					}
+				}
+			: undefined
 	};
 }
 

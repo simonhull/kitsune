@@ -240,7 +240,8 @@
 						</button>
 					</div>
 				{/if}
-				{#each group.indexes as index (index)}
+				<!-- Keyed by ID, so a song moved to Trash folds out itself and the rest close up. -->
+				{#each group.indexes as index (rows.tracks.at(index)?.id ?? index)}
 					{@const track = rows.tracks.at(index)}
 					{#if track !== undefined}
 						<SongRow

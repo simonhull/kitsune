@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { library } from '#lib/library/library.svelte.ts';
+	import Icon from '#lib/shell/Icon.svelte';
 	import StarsInput from '#lib/shell/StarsInput.svelte';
 	import FileInfo from './FileInfo.svelte';
 	import Floating from './Floating.svelte';
@@ -27,7 +28,8 @@
 			rowMenuItems(target, {
 				here,
 				editable: actions.editTags !== undefined,
-				removable: remove !== undefined
+				removable: remove !== undefined,
+				trashable: actions.trash !== undefined
 			})
 		)
 	);
@@ -144,6 +146,21 @@
 				}}>File info</button
 			>
 		{/if}
+		{#if items.has('trash') && actions.trash !== undefined}
+			<div class="rule"></div>
+			<button
+				type="button"
+				role="menuitem"
+				class="item danger"
+				data-menu-item
+				aria-keyshortcuts="Delete"
+				onclick={then(actions.trash)}
+				><Icon name="trash" size={16} /><span class="grow">Move to Trash</span><span
+					class="key"
+					aria-hidden="true">DEL</span
+				></button
+			>
+		{/if}
 	{/if}
 </Floating>
 
@@ -191,6 +208,28 @@
 
 	.quiet {
 		color: var(--text-secondary);
+	}
+
+	.danger {
+		color: var(--danger);
+	}
+
+	.grow {
+		flex: 1;
+	}
+
+	.key {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-weight: 400;
+		color: var(--text-meta);
+	}
+
+	/* A finger has no Delete key to be told of. */
+	@media (pointer: coarse) {
+		.key {
+			display: none;
+		}
 	}
 
 	.rule {

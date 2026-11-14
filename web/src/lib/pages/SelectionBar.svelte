@@ -25,6 +25,10 @@
 		`Edit ${count.toLocaleString('en-US')} ${count === 1 ? 'song' : 'songs'}`
 	);
 
+	const trashLabel = $derived(
+		`Move ${count.toLocaleString('en-US')} ${count === 1 ? 'song' : 'songs'} to Trash`
+	);
+
 	let rating = $state(false);
 	let more = $state(false);
 
@@ -108,6 +112,18 @@
 		{#if edit !== undefined}
 			<button type="button" class="primary" onclick={edit}>{editLabel}</button>
 		{/if}
+		{#if actions.trash !== undefined}
+			{@const trash = actions.trash}
+			<button
+				type="button"
+				class="text danger"
+				aria-label={trashLabel}
+				aria-keyshortcuts="Delete"
+				onclick={() => {
+					trash();
+				}}><Icon name="trash" size={16} />Trash</button
+			>
+		{/if}
 		<button
 			type="button"
 			class="text"
@@ -153,6 +169,18 @@
 						more = false;
 						edit();
 					}}>{editLabel}</button
+				>
+			{/if}
+			{#if actions.trash !== undefined}
+				{@const trash = actions.trash}
+				<button
+					type="button"
+					role="menuitem"
+					class="sheet-item danger"
+					onclick={() => {
+						more = false;
+						trash();
+					}}><Icon name="trash" size={16} />{trashLabel}</button
 				>
 			{/if}
 			{@render stars()}
@@ -230,6 +258,13 @@
 
 	.text:hover {
 		background: var(--hover);
+	}
+
+	.danger {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		color: var(--danger);
 	}
 
 	.clear {

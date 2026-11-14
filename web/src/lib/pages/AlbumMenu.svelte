@@ -4,12 +4,13 @@
 -->
 <script lang="ts">
 	import { library } from '#lib/library/library.svelte.ts';
+	import Icon from '#lib/shell/Icon.svelte';
 	import { albumActions, albumMenu } from './albumMenu.svelte.ts';
 	import Floating from './Floating.svelte';
 
 	const open = $derived(albumMenu.current);
 	const album = $derived(open === null ? undefined : library.album(open.entry.id));
-	const actions = $derived(open === null ? null : albumActions(open.entry.id, album));
+	const actions = $derived(open === null ? null : albumActions(open.entry, album));
 	const line = $derived.by(() => {
 		if (open === null) {
 			return '';
@@ -98,6 +99,16 @@
 				onclick={then(actions.goToArtist)}>Go to artist</button
 			>
 		{/if}
+		{#if actions.trash !== undefined}
+			<div class="rule"></div>
+			<button
+				type="button"
+				role="menuitem"
+				class="item danger"
+				data-menu-item
+				onclick={then(actions.trash)}><Icon name="trash" size={16} />Move album to Trash</button
+			>
+		{/if}
 	</Floating>
 {/if}
 
@@ -144,6 +155,16 @@
 
 	.quiet {
 		color: var(--text-secondary);
+	}
+
+	.danger {
+		gap: 10px;
+		color: var(--danger);
+	}
+
+	.danger:hover,
+	.danger:focus-visible {
+		background: var(--danger-wash);
 	}
 
 	.rule {

@@ -70,6 +70,9 @@
 		order: () => order,
 		reveal: (trackId) => {
 			focusRow(songsElement, trackId);
+		},
+		trash: (trackIds) => {
+			actionsFor(trackIds, albumOf).trash?.();
 		}
 	});
 	// Another album is another list.

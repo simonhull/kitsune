@@ -23,7 +23,13 @@
 	/** Under a deck that's dealing, Home is already there. */
 	const showsHome = $derived(!library.deck || library.dealing !== 'no');
 	const rows = $derived(
-		homeRows(library.recent, library.history, library.playing?.album.id ?? null)
+		homeRows(
+			library.trashed.empty
+				? library.recent
+				: library.recent.filter(({ id }) => !library.trashed.hidesAlbum(id)),
+			library.history,
+			library.playing?.album.id ?? null
+		)
 	);
 	const artists = $derived(library.artists.kind === 'ready' ? library.artists.value.length : null);
 

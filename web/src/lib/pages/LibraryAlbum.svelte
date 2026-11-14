@@ -171,7 +171,8 @@
 		data-morph-key={`songs:${album.id}`}
 		style:top={`${String(head)}px`}
 	>
-		{#each rows as row (row.kind === 'song' ? row.trackIndex : `disc-${String(row.disc)}`)}
+		<!-- A song keyed by its ID, so one moved to Trash folds out itself and the rest close up. -->
+		{#each rows as row (row.kind === 'song' ? (album.tracks.at(row.trackIndex)?.id ?? row.trackIndex) : `disc-${String(row.disc)}`)}
 			{@const at = `${String(row.top - block.top - head)}px`}
 			{#if row.kind === 'disc'}
 				{@const disc = discs.get(row.disc)}
@@ -259,6 +260,14 @@
 		position: absolute;
 		left: 0;
 		right: 0;
+	}
+
+	/* A song folding out on its way to Trash: the albums after it close up with its rows. */
+	:global(:root[data-folding]) .album,
+	:global(:root[data-folding]) .disc {
+		transition:
+			top var(--morph-room) var(--curve-room),
+			height var(--morph-room) var(--curve-room);
 	}
 
 	.side {

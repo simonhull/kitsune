@@ -23,6 +23,7 @@
 		type RowParts
 	} from './columns.ts';
 	import PickBox from './PickBox.svelte';
+	import { foldOut } from './trashBin.svelte.ts';
 
 	interface Props {
 		track: LibraryTrack;
@@ -229,6 +230,7 @@
 	data-album={album.id}
 	style:top={top === undefined ? undefined : `${String(top)}px`}
 	style:height={height === undefined ? undefined : `${String(height)}px`}
+	out:foldOut
 >
 	{#if joins !== undefined && mark?.run !== undefined}
 		<span class="bracket" class:start={!joins.up} class:end={!joins.down} aria-hidden="true"></span>
@@ -320,6 +322,11 @@
 		position: absolute;
 		left: 0;
 		right: 0;
+	}
+
+	/* While a song folds out on its way to Trash, the rows after it glide up into its room. */
+	:global(:root[data-folding]) .row.placed {
+		transition: top var(--morph-room) var(--curve-room);
 	}
 
 	/*
