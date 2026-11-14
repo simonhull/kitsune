@@ -171,6 +171,8 @@ export type RouteName =
 	| 'health'
 	| 'library'
 	| 'server'
+	| 'playlists'
+	| 'playlist'
 	| 'you';
 
 export type ChoreographyName =

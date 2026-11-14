@@ -5,7 +5,7 @@ import type { RouteName } from '#lib/morph/choreography.ts';
 export type NavLook = 'home' | 'album' | 'gone' | 'door';
 
 /** A place in the nav a route can belong to. */
-export type NavItem = 'home' | 'library' | 'albums' | 'artists';
+export type NavItem = 'home' | 'library' | 'albums' | 'artists' | 'playlists';
 
 /** Three things about a route that only look like one: they change on their own. */
 export interface RouteFacts {
@@ -29,6 +29,8 @@ const table = {
 	'/library': { look: 'home', current: 'library', journey: 'library' },
 	'/login': { look: 'door', current: 'home', journey: 'login' },
 	'/now-playing': { look: 'gone', current: null, journey: 'now-playing' },
+	'/playlists': { look: 'home', current: 'playlists', journey: 'playlists' },
+	'/playlists/[id]': { look: 'home', current: 'playlists', journey: 'playlist' },
 	'/search': { look: 'home', current: null, journey: 'search' },
 	'/server': { look: 'home', current: null, journey: 'server' },
 	'/server/trash': { look: 'home', current: null, journey: 'server' },
