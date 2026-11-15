@@ -106,6 +106,20 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   add. Moves name an entry and the one it goes `before` or `after`. A name is 1 to 200 characters
   trimmed, a playlist at most 10,000 entries; songs not live are a 422 naming them. Every change
   publishes `playlists` (ids only) to the owner.
+- A smart playlist is a playlist with `rules` (`internal/smartlist`'s JSON) and no entries, worked out
+  on every read, so a song joins or leaves as it is rated, played, added or trashed with no event of
+  its own. `POST /me/playlists` with `rules` (and the `seed` its preview showed) makes one; `PATCH`
+  changes `name`, `rules` or both, and rules on a regular playlist are a 409, as are a smart one's
+  adds, take-outs and moves. `GET /me/playlists/{id}` is the regular shape plus `smart` and `rules`,
+  its entry IDs only places (1 to N), each track with what rules read (`plays`, `lastPlayedAt`,
+  `addedAt`, `year`, `format`, `bitrate`). `GET /me/playlists` works each one out as it lists it, and
+  with `holding` leaves them out, since nothing is added to one. `POST /me/playlists/preview` is the
+  rules editor's live card: the count, time and albums, the count before the limit, and the first 40
+  songs, never a path; it follows the stored seed of the playlist named by `id`, else the `seed` sent.
+  `POST /me/playlists/{id}/seed` is Pick again; `POST /me/playlists/{id}/copy` makes a regular
+  "<name> (copy)" of what any playlist holds now (a 422 past 10,000). Rules a smart playlist can't
+  have, rules with songs, a cycle (`cycle` names it) and nesting past `store.MostSmartDepth` are 422
+  `SmartProblem`s. Rule changes, seeds and copies publish `playlists`.
 - `GET /me/home` is Home's history, 25 albums each as `GET /albums` lists them: `recent`, by latest
   play, and `onRepeat`, by plays in the last 90 days (`onRepeatWindow`, the server's clock). Both
   count `plays` (imports included, but undated ones never on repeat, `store.SourceUndated`), never
@@ -216,6 +230,22 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   with their track only when it is truly deleted (`deleteTracks`, by ON DELETE CASCADE): a trashed
   track keeps them, every read of a playlist is through live tracks, so Restore brings them back in
   place.
+- `internal/smartlist` alone says what smart rules are: the field and operator table, the limits, and
+  their JSON; `Parse` is the only way to a `Rules`, as `ParseSearch` is to a search. `store/smartlist.go`
+  compiles a `Rules` to one statement over `smartColumns`, the allow-list, with every value bound;
+  `TestNoRuleValueReachesTheStatement` feeds every field SQL punctuation and holds the text unchanged.
+  What SQL can't say is worked out in Go first and bound as a JSON array of rows (`json_each`): text
+  rules, folded by `FoldText` (a search's folding) against what `libraryrows.go` keeps; genre rules
+  through `GenreAlbums` (the server's `library.Genres.AlbumsWhere`); the person's stars, plays, last
+  plays and skips (`personFacts`, read once per request, so a rule on them needs no join); and playlist
+  rules, a regular playlist through its entries and a smart one by evaluating it, at most
+  `MostSmartDepth` (3) smart playlists down. One gone, another person's or past the depth matches
+  nothing; a save that names its way back is a `CycleError`. The statement returns only rows (and
+  sizes for a GB limit); the limit and the order are applied in Go, ties in the Library's order
+  (`libraryOrder`, from `orderIndex`), random choices by a hash of the stored `seed` and each song's
+  ULID. What it works out of the library (that order, folded names, details) is kept beside the
+  index's rows (`libraryRows.smart`). The `playlist_tracks_not_smart` trigger refuses entries for a
+  smart playlist, as `ownEntries` does.
 
 ## Matching
 - `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
@@ -260,10 +290,17 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   Navidrome files with `navidromedbtest`; none ever reads a real one.
 - Playlists come over: each non-smart playlist of a matched person becomes theirs, source
   `navidrome`, its songs matched as plays are, in Navidrome's order with its repeats, unmatched ones
-  counted and left out, and past 10,000 cut and counted. Smart playlists (`rules` set) are counted for
-  plan 066. The import key `navidrome:<id>` makes a re-run skip a playlist it brought before, so one
-  renamed or edited here stays as it is; one deleted here comes back on the next run. `navidromedb`
-  reads only whether `rules` is set, never the rules.
+  counted and left out, and past 10,000 cut and counted. A smart playlist (`rules` set) comes over as
+  Kitsune rules when every criterion maps (`internal/navidrome/smart.go`, checked by
+  `smartlist.Parse`), with a seed of its own and no entries; one with any criterion that doesn't map
+  (startsWith, endsWith, fixed dates, a field Kitsune lacks, nesting past one group, a playlist rule
+  naming one that isn't coming over, a limit by a sort no chooser keeps) stays behind whole, never half,
+  and the report names it with what stopped it. `loved` is the person's love line (`love_from`, 4★
+  without Last.fm); `gt`/`lt` are one step over or under, half a star for ratings; durations round
+  inward to minutes. Smart playlists naming each other in a cycle, and any naming one left out, stay
+  behind too. The import key `navidrome:<id>` makes a re-run skip a playlist it brought before, smart
+  ones included, so one renamed or edited here stays as it is; one deleted here comes back on the next
+  run.
 
 ## Settings
 - Server settings live in the database's `settings` table, one JSON value per key with its source.
@@ -419,7 +456,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   stars are 4★ or more. A session or playback record saved with the old `hearted` scope goes on as
   `rated` (`shuffler.ParseScope`, which both read it through).
 - The `playlist` scope is one of the person's playlists: its songs, each once however often it holds
-  them, live ones only, with the usual marks and rules; another person's is a 404.
+  them, live ones only, with the usual marks and rules; another person's is a 404. A smart playlist's
+  are the songs its rules choose when the session starts, the limit applied, its genre rules through
+  the shuffler's `Genres`.
 - The web client starts every shuffle without waiting: it picks the first song from what it holds
   and plays it, and asks `POST /me/shuffles` with it as `first` at the same time.
 
@@ -530,6 +569,21 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   phone a sheet. A playlist's rows (`PlaylistSongs.svelte`) are keyed by entry, placed in a window
   over the list, and a grip moves one (held first by a finger). Play is a `list` queue
   (`player.playList`). The nav has no room for Playlists under 431 px: the You page links to them.
+- A smart playlist's page reads `GET /me/playlists/{id}` as a regular page does and reads its rules
+  back as a sentence from `lib/library/smartlist.ts`, the client's twin of `internal/smartlist`'s table
+  and its words. Its songs come in the order the rules give: no grip, Alt+arrows, Del or Take out, and
+  after the album up to three columns the rules, limit and order read (`ruleColumns`). Add to playlist
+  never lists a smart one. After a `library` or `marks` event, or this browser's own play, smart pages
+  and the list read again 400 ms later (`Playlists.smartMoved`); the server sends no event for that.
+- The rules editor (`SmartEditor`) opens in place of the head and the songs, never a modal. Its draft
+  (`smartRules.svelte.ts`) has a history entry of its own through `editorHistory`: Back and Esc are
+  Leave it, and the draft never outlives the editor. `editorHistory` leaves another live editor's
+  entry alone (`claimed`), so the tag editor and the rules editor share a page. A new smart playlist is
+  `/playlists/smart`, a fresh draft that makes nothing until Save rules. The live card asks
+  `POST /me/playlists/preview` through `LivePreview`, 120 ms after the last change, aborting the one
+  before and keeping its last answer until the next arrives, so it never blanks. A new draft sends a
+  seed it drew itself and an edit the playlist's `id`, so the card shows what saving would. The
+  fixtures work smart playlists out in `lib/library/smartEval.ts`, so e2e needs no server.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
@@ -545,7 +599,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
   suite (`web/perf`, Playwright) times clicks, keys and page loads in a release build against generated
   libraries of 1,000 and 50,000 songs, 20 runs each; `internal/server`'s `*Speed` tests time the
-  stream's first byte, `GET /library/index`, `GET /me/home` and a 10,000-entry `GET /me/playlists/{id}`. Each fails past its budget, and CI's `perf` job runs
+  stream's first byte, `GET /library/index`, `GET /me/home`, a 10,000-entry `GET /me/playlists/{id}`,
+  a smart playlist's preview and a `GET /me/playlists` of ten smart ones. Each fails past its budget, and CI's `perf` job runs
   both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
   they were set; on CI they are multiplied by `ciMultiplier`, which comes from CI's own numbers.
 - `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes
