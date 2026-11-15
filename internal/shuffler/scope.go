@@ -112,10 +112,11 @@ func (m Mode) valid() bool { return m == Finite || m == Endless }
 // keep says whether a song is in scope.
 type keep func(song *store.ShuffleSong) bool
 
-// keeper works out which songs sc holds, from the store. It returns an error
-// wrapping [store.ErrNotFound] for an album or artist that isn't there, or a
-// playlist the person doesn't have.
-func keeper(ctx context.Context, st *store.Store, userID int64, sc *Scope) (keep, error) {
+// keeper works out which songs sc holds, from the store, a smart playlist's
+// genre rules through genres. It returns an error wrapping [store.ErrNotFound]
+// for an album or artist that isn't there, or a playlist the person doesn't
+// have.
+func keeper(ctx context.Context, st *store.Store, userID int64, sc *Scope, genres store.GenreAlbums) (keep, error) {
 	switch sc.Kind {
 	case Library:
 		return func(*store.ShuffleSong) bool { return true }, nil
@@ -129,7 +130,7 @@ func keeper(ctx context.Context, st *store.Store, userID int64, sc *Scope) (keep
 		on := setOf(rows)
 		return func(s *store.ShuffleSong) bool { return on[s.ID] }, err //nolint:wrapcheck // The store names it.
 	case Playlist:
-		rows, err := st.PlaylistTrackRows(ctx, userID, sc.ID)
+		rows, err := st.PlaylistTrackRows(ctx, userID, sc.ID, genres)
 		in := setOf(rows)
 		return func(s *store.ShuffleSong) bool { return in[s.ID] }, err //nolint:wrapcheck // The store names it.
 	case Tracks:

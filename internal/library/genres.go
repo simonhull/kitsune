@@ -136,6 +136,23 @@ func (g *Genres) Refresh(ctx context.Context) error {
 	return nil
 }
 
+// AlbumsWhere returns the public IDs of the albums with a genre keep accepts, in
+// no particular order: what a smart playlist's genre rule reads
+// ([store.GenreAlbums]). Keep sees each genre as it is spelled, once per album.
+func (g *Genres) AlbumsWhere(keep func(genre string) bool) []string {
+	state := g.state.Load()
+	if state == nil {
+		return nil
+	}
+	var out []string
+	for id, genres := range state.albums {
+		if slices.ContainsFunc(genres, keep) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // Of returns the genres of the album with the public ID id, the ones on most of
 // its tracks first. Nil means none. The caller must not change the slice.
 func (g *Genres) Of(id string) []string {

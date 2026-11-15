@@ -33,9 +33,11 @@ var (
 // seedBits keeps seeds within what a JSON number carries exactly.
 const seedBits = 1<<53 - 1
 
-// Genres says an album's genres, by its ULID.
+// Genres says an album's genres, by its ULID, and which albums have a genre
+// that keep accepts: what a smart playlist's genre rule reads.
 type Genres interface {
 	Of(albumID string) []string
+	AlbumsWhere(keep func(genre string) bool) []string
 }
 
 // Service runs shuffles. It is safe for concurrent use.
@@ -196,6 +198,15 @@ func (s *Service) Next(ctx context.Context, userID int64, id string, after int64
 	page, err := s.page(ctx, &sess, &g, st.Songs, done(st, mode, g.To))
 	page.Moved = g.To > was
 	return page, err
+}
+
+// genreAlbums is how a smart playlist's genre rule reads the genres; nil when
+// the service knows none.
+func (s *Service) genreAlbums() store.GenreAlbums {
+	if s.genres == nil {
+		return nil
+	}
+	return s.genres.AlbumsWhere
 }
 
 // load reads the user's session id, with its state and scope.
@@ -372,7 +383,7 @@ func (s *Service) build(ctx context.Context, userID int64, sc *Scope, now time.T
 	if err != nil {
 		return nil, err //nolint:wrapcheck // The store names it.
 	}
-	in, err := keeper(ctx, s.st, userID, sc)
+	in, err := keeper(ctx, s.st, userID, sc, s.genreAlbums())
 	if err != nil {
 		return nil, err
 	}

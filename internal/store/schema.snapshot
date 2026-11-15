@@ -296,6 +296,14 @@ CREATE TABLE playlist_tracks (
 --   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 --   foreign key id=1 seq=0 table=playlists from=playlist_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 
+-- trigger playlist_tracks_not_smart
+CREATE TRIGGER playlist_tracks_not_smart
+BEFORE INSERT ON playlist_tracks
+WHEN (SELECT rules FROM playlists WHERE id = NEW.playlist_id) IS NOT NULL
+BEGIN
+	SELECT RAISE(ABORT, 'a smart playlist has no entries');
+END;
+
 -- index playlist_tracks_track
 CREATE INDEX playlist_tracks_track ON playlist_tracks (track_id);
 --   key seqno=0 cid=3 name=track_id desc=0 coll=BINARY key=1
@@ -311,7 +319,7 @@ CREATE TABLE playlists (
 	import_key TEXT,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL,
-	added_at   INTEGER,
+	added_at   INTEGER, rules TEXT CHECK (rules IS NULL OR json_valid(rules)), seed INTEGER,
 	UNIQUE (user_id, import_key)
 ) STRICT;
 --   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
@@ -323,6 +331,8 @@ CREATE TABLE playlists (
 --   column cid=6 name=created_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=7 name=updated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=8 name=added_at type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=9 name=rules type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=10 name=seed type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
 --   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 
 -- table plays

@@ -19,7 +19,7 @@ func BenchmarkMovePlaylistEntry(b *testing.B) {
 				is[i] = i % len(l.tracks)
 			}
 			id := l.make(b, "Long", is...)
-			d, err := l.s.Playlist(b.Context(), l.user, id)
+			d, err := l.s.Playlist(b.Context(), l.user, id, nil)
 			if err != nil {
 				b.Fatal(err)
 			}

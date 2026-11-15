@@ -68,7 +68,7 @@ func (l *playlistLib) make(tb testing.TB, name string, is ...int) string {
 // library's songs, in its order.
 func (l *playlistLib) order(t *testing.T, id string) []int {
 	t.Helper()
-	d := must(l.s.Playlist(t.Context(), l.user, id))(t)
+	d := must(l.s.Playlist(t.Context(), l.user, id, nil))(t)
 	out := make([]int, len(d.Entries))
 	for i, e := range d.Entries {
 		out[i] = slices.IndexFunc(l.tracks, func(w store.TrackWrite) bool { return w.ULID == e.Track.ID })
@@ -79,7 +79,7 @@ func (l *playlistLib) order(t *testing.T, id string) []int {
 // entries returns the entry IDs of the person's playlist, in its order.
 func (l *playlistLib) entries(t *testing.T, id string) []int64 {
 	t.Helper()
-	d := must(l.s.Playlist(t.Context(), l.user, id))(t)
+	d := must(l.s.Playlist(t.Context(), l.user, id, nil))(t)
 	out := make([]int64, len(d.Entries))
 	for i, e := range d.Entries {
 		out[i] = e.ID
@@ -119,7 +119,7 @@ func TestPlaylists(t *testing.T) {
 	if _, err := l.s.CreatePlaylist(t.Context(), l.other, "01PLAYLISTOTHER00000000000", "Theirs", &store.PlaylistAdd{}); err != nil {
 		t.Fatal(err)
 	}
-	got := must(l.s.Playlists(t.Context(), l.user, []string{l.id(4), l.id(2), l.id(0)}))(t)
+	got := must(l.s.Playlists(t.Context(), l.user, []string{l.id(4), l.id(2), l.id(0)}, nil))(t)
 	shapes := make([]string, len(got))
 	for i := range got {
 		shapes[i] = shapeOf(&got[i])
@@ -131,7 +131,7 @@ func TestPlaylists(t *testing.T) {
 	if !slices.Equal(shapes, want) {
 		t.Errorf("Playlists =\n%s\nwant\n%s", strings.Join(shapes, "\n"), strings.Join(want, "\n"))
 	}
-	if one := must(l.s.PlaylistSummary(t.Context(), l.user, falling))(t); shapeOf(&one) != strings.Replace(want[1], "holds 2", "holds 0", 1) {
+	if one := must(l.s.PlaylistSummary(t.Context(), l.user, falling, nil))(t); shapeOf(&one) != strings.Replace(want[1], "holds 2", "holds 0", 1) {
 		t.Errorf("PlaylistSummary = %s, want Falling Up as listed", shapeOf(&one))
 	}
 }
@@ -156,7 +156,7 @@ func TestPlaylistDetail(t *testing.T) {
 	t.Parallel()
 	l := newPlaylistLib(t)
 	id := l.make(t, "Falling Up", 1, 3, 1)
-	d := must(l.s.Playlist(t.Context(), l.user, id))(t)
+	d := must(l.s.Playlist(t.Context(), l.user, id, nil))(t)
 	got := make([]string, len(d.Entries))
 	for i, e := range d.Entries {
 		got[i] = fmt.Sprintf("%s %s #%d %v by %d", e.Album, e.Track.Title, e.Track.TrackNo, e.Track.Duration, len(e.Track.Artists))
@@ -174,7 +174,7 @@ func TestPlaylistDetail(t *testing.T) {
 	if wantAlbums := []string{albumID(1) + " Album 1", albumID(2) + " Album 2"}; !slices.Equal(albums, wantAlbums) {
 		t.Errorf("albums = %q, want %q", albums, wantAlbums)
 	}
-	if _, err := l.s.Playlist(t.Context(), l.other, id); !errors.Is(err, store.ErrNotFound) {
+	if _, err := l.s.Playlist(t.Context(), l.other, id, nil); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("another person's playlist: err = %v, want ErrNotFound", err)
 	}
 }
@@ -385,7 +385,7 @@ func TestRenameAndDeletePlaylist(t *testing.T) {
 	if err := l.s.RenamePlaylist(t.Context(), l.user, id, "Falling Down"); err != nil {
 		t.Fatal(err)
 	}
-	if got := must(l.s.PlaylistSummary(t.Context(), l.user, id))(t); got.Name != "Falling Down" {
+	if got := must(l.s.PlaylistSummary(t.Context(), l.user, id, nil))(t); got.Name != "Falling Down" {
 		t.Errorf("name = %q, want Falling Down", got.Name)
 	}
 	if err := l.s.DeletePlaylist(t.Context(), l.other, id); !errors.Is(err, store.ErrNotFound) {
@@ -394,7 +394,7 @@ func TestRenameAndDeletePlaylist(t *testing.T) {
 	if err := l.s.DeletePlaylist(t.Context(), l.user, id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := l.s.Playlist(t.Context(), l.user, id); !errors.Is(err, store.ErrNotFound) {
+	if _, err := l.s.Playlist(t.Context(), l.user, id, nil); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("after delete: err = %v, want ErrNotFound", err)
 	}
 	if _, err := l.s.TrashableTracks(t.Context(), []string{l.id(0)}); err != nil {
@@ -412,7 +412,7 @@ func TestPlaylistKeepsTrashedEntriesUntilTheyGo(t *testing.T) {
 	if got := l.order(t, id); !slices.Equal(got, []int{0, 2}) {
 		t.Errorf("with song 1 in Trash the playlist shows %v, want [0 2]", got)
 	}
-	if p := must(l.s.PlaylistSummary(t.Context(), l.user, id))(t); p.Songs != 2 {
+	if p := must(l.s.PlaylistSummary(t.Context(), l.user, id, nil))(t); p.Songs != 2 {
 		t.Errorf("counted %d songs, want 2", p.Songs)
 	}
 	if err := l.s.UnmarkTrashed(t.Context(), []int64{trashed[0].ID}); err != nil {
@@ -425,7 +425,7 @@ func TestPlaylistKeepsTrashedEntriesUntilTheyGo(t *testing.T) {
 	if _, err := l.s.DeleteTrashed(t.Context(), []int64{trashed[0].ID}); err != nil {
 		t.Fatal(err)
 	}
-	rows := must(l.s.PlaylistTrackRows(t.Context(), l.user, id))(t)
+	rows := must(l.s.PlaylistTrackRows(t.Context(), l.user, id, nil))(t)
 	if len(rows) != 2 {
 		t.Errorf("after the purge the playlist holds %d songs, live or not, want 2", len(rows))
 	}
