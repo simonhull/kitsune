@@ -41,9 +41,10 @@ const (
 
 // The tables the import can do without.
 const (
-	scrobblesTable = "scrobbles"
-	playlistTable  = "playlist"
-	bookmarkTable  = "bookmark"
+	scrobblesTable      = "scrobbles"
+	playlistTable       = "playlist"
+	playlistTracksTable = "playlist_tracks"
+	bookmarkTable       = "bookmark"
 
 	// userIDColumn is how the tables that hold a person's rows name them.
 	userIDColumn = "user_id"
@@ -62,7 +63,8 @@ var required = []struct { //nolint:gochecknoglobals // Read-only table of what O
 	{table: "annotation", columns: []string{userIDColumn, "item_id", "item_type", "play_count", "play_date", "rating", "starred", "starred_at", "rated_at"}},
 	{table: scrobblesTable, columns: []string{"id", "media_file_id", userIDColumn, "submission_time"}, optional: true},
 	{table: "artist", columns: []string{"id", "name", "mbz_artist_id"}},
-	{table: playlistTable, columns: []string{"id", "owner_id"}, optional: true},
+	{table: playlistTable, columns: []string{"id", "name", "owner_id", "created_at", "rules"}, optional: true},
+	{table: playlistTracksTable, columns: []string{"id", "playlist_id", "media_file_id"}, optional: true},
 	{table: bookmarkTable, columns: []string{userIDColumn, "item_id"}, optional: true},
 }
 
@@ -249,23 +251,62 @@ func (d *DB) Artists(ctx context.Context, ids []string) ([]Artist, error) {
 	return out, nil
 }
 
+// Playlist is one of a person's Navidrome playlists, with its songs in order.
+type Playlist struct {
+	ID        string
+	Name      string
+	CreatedAt time.Time // Zero when unknown.
+	// Smart is a playlist of rules, whose songs Navidrome works out; Songs is
+	// then whatever it last worked out.
+	Smart bool
+	Songs []string // media_file IDs, in order, a song as often as it is in it.
+}
+
+// Playlists returns the user's playlists by ID, each with its songs in order;
+// none when the database has no playlist table, and none of their songs when
+// it has no playlist_tracks.
+func (d *DB) Playlists(ctx context.Context, userID string) ([]Playlist, error) {
+	if !d.has[playlistTable] {
+		return nil, nil
+	}
+	rows, err := d.q.Playlists(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("read playlist: %w", err)
+	}
+	out := make([]Playlist, len(rows))
+	at := make(map[string]int, len(rows))
+	for i, r := range rows {
+		created, timeErr := parseTime("playlist.created_at", r.CreatedAt)
+		if timeErr != nil {
+			return nil, timeErr
+		}
+		out[i] = Playlist{ID: r.ID, Name: r.Name, CreatedAt: created, Smart: r.Smart != 0}
+		at[r.ID] = i
+	}
+	if !d.has[playlistTracksTable] {
+		return out, nil
+	}
+	tracks, err := d.q.PlaylistTracks(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("read playlist_tracks: %w", err)
+	}
+	for _, t := range tracks {
+		if i, ok := at[t.PlaylistID]; ok {
+			out[i].Songs = append(out[i].Songs, t.MediaFileID)
+		}
+	}
+	return out, nil
+}
+
 // Left is what of a person's the import leaves behind, counted.
 type Left struct {
-	Playlists int // Owned; Kitsune has no playlists yet.
 	Bookmarks int // Resume points in songs; Kitsune keeps none.
 }
 
-// Left counts the user's playlists and bookmarks; none for a table the
-// database lacks.
+// Left counts the user's bookmarks; none when the database has no bookmark
+// table.
 func (d *DB) Left(ctx context.Context, userID string) (Left, error) {
 	var l Left
-	if d.has[playlistTable] {
-		n, err := d.q.CountPlaylists(ctx, userID)
-		if err != nil {
-			return Left{}, fmt.Errorf("count playlist: %w", err)
-		}
-		l.Playlists = int(n)
-	}
 	if d.has[bookmarkTable] {
 		n, err := d.q.CountBookmarks(ctx, userID)
 		if err != nil {

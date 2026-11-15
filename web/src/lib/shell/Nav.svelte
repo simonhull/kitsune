@@ -51,6 +51,11 @@
 			href={resolve('/artists')}
 			aria-current={current === 'artists' ? 'page' : undefined}>Artists</a
 		>
+		<a
+			class="item playlists"
+			href={resolve('/playlists')}
+			aria-current={current === 'playlists' ? 'page' : undefined}>Playlists</a
+		>
 		<span class="fold wide home-only" inert={look === 'album'}>
 			<span class="fold-in">
 				<a class="item health" href={resolve('/health')}>
@@ -310,8 +315,15 @@
 		}
 	}
 
-	/* Everything left must still fit a phone: the targets stay 44px tall. */
+	/*
+	 * Everything left must still fit a phone: the targets stay 44px tall. Playlists goes the way
+	 * Health does, and the You page, which the fox opens, links to them there.
+	 */
 	@media (max-width: 430px) {
+		.playlists {
+			display: none;
+		}
+
 		.item,
 		.item[aria-current='page'] {
 			padding: 0 7px;

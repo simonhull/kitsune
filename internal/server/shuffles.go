@@ -62,11 +62,11 @@ func (s *Server) shuffleFailed(w http.ResponseWriter, r *http.Request, err error
 	case err == nil:
 		return false
 	case errors.Is(err, shuffler.ErrBadScope):
-		writeProblem(w, r, http.StatusBadRequest, "scope must be library or rated alone, an album or artist with its id, or 1 to 10000 tracks; mode finite or endless")
+		writeProblem(w, r, http.StatusBadRequest, "scope must be library or rated alone, an album, artist or playlist with its id, or 1 to 10000 tracks; mode finite or endless")
 	case errors.Is(err, shuffler.ErrBadAfter):
 		writeProblem(w, r, http.StatusBadRequest, "the shuffle hasn't got that far")
 	case errors.Is(err, store.ErrNotFound):
-		writeProblem(w, r, http.StatusNotFound, "no such shuffle, album or artist")
+		writeProblem(w, r, http.StatusNotFound, "no such shuffle, album, artist or playlist")
 	case r.Context().Err() == nil:
 		s.internalError(w, r, "shuffle", err)
 	}

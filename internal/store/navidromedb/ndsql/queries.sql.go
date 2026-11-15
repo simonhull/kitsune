@@ -116,17 +116,6 @@ func (q *Queries) CountBookmarks(ctx context.Context, userID string) (int64, err
 	return count, err
 }
 
-const countPlaylists = `-- name: CountPlaylists :one
-SELECT count(*) FROM playlist WHERE owner_id = ?
-`
-
-func (q *Queries) CountPlaylists(ctx context.Context, ownerID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countPlaylists, ownerID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const libraries = `-- name: Libraries :many
 
 SELECT id, path FROM library ORDER BY id
@@ -144,6 +133,90 @@ func (q *Queries) Libraries(ctx context.Context) ([]Library, error) {
 	for rows.Next() {
 		var i Library
 		if err := rows.Scan(&i.ID, &i.Path); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const playlistTracks = `-- name: PlaylistTracks :many
+SELECT t.playlist_id, t.media_file_id
+FROM playlist_tracks AS t
+JOIN playlist AS p ON p.id = t.playlist_id
+WHERE p.owner_id = ?
+ORDER BY t.playlist_id, t.id
+`
+
+type PlaylistTracksRow struct {
+	PlaylistID  string
+	MediaFileID string
+}
+
+func (q *Queries) PlaylistTracks(ctx context.Context, ownerID string) ([]PlaylistTracksRow, error) {
+	rows, err := q.db.QueryContext(ctx, playlistTracks, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PlaylistTracksRow
+	for rows.Next() {
+		var i PlaylistTracksRow
+		if err := rows.Scan(&i.PlaylistID, &i.MediaFileID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const playlists = `-- name: Playlists :many
+SELECT
+    id,
+    name,
+    CAST(coalesce(created_at, '') AS TEXT) AS created_at,
+    CAST(coalesce(rules, '') NOT IN ('', 'null', '{}') AS INTEGER) AS smart
+FROM playlist
+WHERE owner_id = ?
+ORDER BY id
+`
+
+type PlaylistsRow struct {
+	ID        string
+	Name      string
+	CreatedAt string
+	Smart     int64
+}
+
+// A smart playlist has rules; Navidrome leaves them NULL, empty or null JSON
+// on one made by hand. Only whether there are any is read.
+func (q *Queries) Playlists(ctx context.Context, ownerID string) ([]PlaylistsRow, error) {
+	rows, err := q.db.QueryContext(ctx, playlists, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PlaylistsRow
+	for rows.Next() {
+		var i PlaylistsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.Smart,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

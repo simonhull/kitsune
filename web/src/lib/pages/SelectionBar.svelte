@@ -3,6 +3,8 @@
 	import Icon from '#lib/shell/Icon.svelte';
 	import type { StarsBy } from '#lib/library/stars.ts';
 	import StarsInput from '#lib/shell/StarsInput.svelte';
+	import PlaylistPicker from './PlaylistPicker.svelte';
+	import { addHeading } from './playlistWords.ts';
 	import { factsLine, type SongActions } from './songActions.ts';
 
 	interface Props {
@@ -31,6 +33,10 @@
 
 	let rating = $state(false);
 	let more = $state(false);
+	/** Add to…: a popover over its button, or on a phone a sheet, from More. */
+	let adding = $state<{ x: number; y: number; mode: 'popover' | 'sheet' } | null>(null);
+	let addButton: HTMLButtonElement | undefined = $state();
+	let closedAt = -Infinity;
 
 	const label = $derived(
 		`${count.toLocaleString('en-US')} selected${hidden > 0 ? `, ${hidden.toLocaleString('en-US')} hidden` : ''}`
@@ -83,6 +89,25 @@
 			actions.shuffle();
 		}}>Shuffle</button
 	>
+	{#if !compact}
+		<button
+			type="button"
+			class="text"
+			class:on={adding !== null}
+			aria-haspopup="menu"
+			aria-expanded={adding !== null}
+			bind:this={addButton}
+			onclick={(event) => {
+				// A press on it while it's open has closed it already, on the way down.
+				if (adding !== null || performance.now() - closedAt < 400) {
+					adding = null;
+					return;
+				}
+				const box = event.currentTarget.getBoundingClientRect();
+				adding = { x: box.left, y: box.top - 10, mode: 'popover' };
+			}}>Add to…</button
+		>
+	{/if}
 	{#if !compact}
 		<button
 			type="button"
@@ -160,6 +185,15 @@
 					more = false;
 				}}>Add to queue</button
 			>
+			<button
+				type="button"
+				role="menuitem"
+				class="sheet-item"
+				onclick={() => {
+					more = false;
+					adding = { x: 0, y: 0, mode: 'sheet' };
+				}}>Add to playlist…</button
+			>
 			{#if edit !== undefined}
 				<button
 					type="button"
@@ -187,6 +221,24 @@
 		</div>
 	{/if}
 </div>
+<!-- Outside the bar: its transform would hold a fixed popover inside it. -->
+{#if adding !== null}
+	<PlaylistPicker
+		trackIds={actions.trackIds}
+		{count}
+		mode={adding.mode}
+		x={adding.x}
+		y={adding.y}
+		heading={addHeading(count)}
+		onclose={(_done, refocus) => {
+			adding = null;
+			closedAt = performance.now();
+			if (refocus) {
+				addButton?.focus();
+			}
+		}}
+	/>
+{/if}
 
 <style>
 	.bar {
@@ -195,7 +247,10 @@
 		left: 50%;
 		bottom: calc(var(--bar-bottom, 24px) + env(safe-area-inset-bottom));
 		transform: translateX(-50%);
-		width: min(1024px, calc(100% - 32px));
+		/* As wide as its buttons need, from the 1024 drawn: Add to… made them one more. */
+		width: max-content;
+		min-width: min(1024px, calc(100% - 32px));
+		max-width: calc(100% - 32px);
 		height: 76px;
 		box-sizing: border-box;
 		padding: 10px 10px 10px 24px;
@@ -256,7 +311,8 @@
 		padding: 0 14px;
 	}
 
-	.text:hover {
+	.text:hover,
+	.text.on {
 		background: var(--hover);
 	}
 
@@ -299,6 +355,7 @@
 	}
 
 	.compact {
+		width: calc(100% - 32px);
 		height: 64px;
 		padding: 6px 6px 6px 16px;
 		gap: 2px;

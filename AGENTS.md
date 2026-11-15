@@ -96,6 +96,16 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   alone says what a record holds and resolves it against live tracks on the way out (gone songs
   dropped, albums as they are now). It publishes no event. `PruneShuffleSessions` keeps the session a
   record names.
+- Playlists are `/me/playlists`, each person's own: another person's is a 404 to every route, never a
+  403. `GET /me/playlists` lists them by name with counts, time and a mosaic (their first four albums,
+  each once), and with `holding=` (at most 1,000 songs) says how many of those each holds, which is
+  how Add to playlist marks ALREADY IN IT. `GET /me/playlists/{id}` gives its entries in order, each
+  with its own entry ID (the row's, never reused) and its song in the index's shape; a song in twice is
+  two entries. Adds take `tracks` and `albums` (an album's songs in the index's order), skip what the
+  playlist holds unless `again`, and land at the end or `before` an entry; Undo of a take-out is that
+  add. Moves name an entry and the one it goes `before` or `after`. A name is 1 to 200 characters
+  trimmed, a playlist at most 10,000 entries; songs not live are a 422 naming them. Every change
+  publishes `playlists` (ids only) to the owner.
 - `GET /me/home` is Home's history, 25 albums each as `GET /albums` lists them: `recent`, by latest
   play, and `onRepeat`, by plays in the last 90 days (`onRepeatWindow`, the server's clock). Both
   count `plays` (imports included, but undated ones never on repeat, `store.SourceUndated`), never
@@ -199,6 +209,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Nothing reaches `MATCH` except a `SearchQuery`, and `ParseSearch` is the only way to make one. Its
   caps are what stop a long query taking down a read connection; never hand-build an FTS expression.
   The `tracks_fts` table is contentless: it can rank, but can't say which column matched.
+- A playlist's entries (`playlist_tracks`, `playlists.go`) are spaced `positionStep` (65,536) apart:
+  a move writes one row, at the midpoint of its new neighbors, and the playlist is renumbered only
+  when a gap runs out (parked below zero first, so the UNIQUE place never collides). Adds go in as one
+  statement from a JSON array of `[position, track]`. Entries go with their playlist and person, and
+  with their track only when it is truly deleted (`deleteTracks`, by ON DELETE CASCADE): a trashed
+  track keeps them, every read of a playlist is through live tracks, so Restore brings them back in
+  place.
 
 ## Matching
 - `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
@@ -238,9 +255,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   Ratings arrive as `halves = 2r` and never replace one Kitsune has.
 - Nothing an import writes reaches Last.fm: it never goes through `RecordPlay` or `Rate`, and
   `TestApplyImportQueuesNothingForLastfm` holds `lastfm_outbox` empty.
-- Below half the played or marked songs matching by path, it writes nothing (the gate); `-dry-run`
-  prints the same table and writes nothing either. Playlists and bookmarks are only counted. Tests
-  build Navidrome files with `navidromedbtest`; none ever reads a real one.
+- Below half the played, marked or listed songs matching by path, it writes nothing (the gate);
+  `-dry-run` prints the same table and writes nothing either. Bookmarks are only counted. Tests build
+  Navidrome files with `navidromedbtest`; none ever reads a real one.
+- Playlists come over: each non-smart playlist of a matched person becomes theirs, source
+  `navidrome`, its songs matched as plays are, in Navidrome's order with its repeats, unmatched ones
+  counted and left out, and past 10,000 cut and counted. Smart playlists (`rules` set) are counted for
+  plan 066. The import key `navidrome:<id>` makes a re-run skip a playlist it brought before, so one
+  renamed or edited here stays as it is; one deleted here comes back on the next run. `navidromedb`
+  reads only whether `rules` is set, never the rules.
 
 ## Settings
 - Server settings live in the database's `settings` table, one JSON value per key with its source.
@@ -395,6 +418,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Weights come from stars alone: the engine has no heart factor. The `rated` scope is songs whose own
   stars are 4★ or more. A session or playback record saved with the old `hearted` scope goes on as
   `rated` (`shuffler.ParseScope`, which both read it through).
+- The `playlist` scope is one of the person's playlists: its songs, each once however often it holds
+  them, live ones only, with the usual marks and rules; another person's is a 404.
 - The web client starts every shuffle without waiting: it picks the first song from what it holds
   and plays it, and asks `POST /me/shuffles` with it as `first` at the same time.
 
@@ -495,6 +520,16 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   toast's Undo restores exactly what it moved. Every list reads through `Library.trashed`
   (`trashed.svelte.ts`), which hides those songs until the `library` event's reads land, and with
   nothing on its way hands back the server's own object. Nothing on the play path waits on any of it.
+- `library.playlists` (`playlists.svelte.ts`) holds the person's playlists: the list read with the
+  shell, each one as its page opens, and what they hold of songs being added (`askHolds`). Every
+  change is optimistic (`playlistEdits.ts` works it out, pure) and each playlist's saves go one after
+  another; a `playlists` event reads again what it names once nothing of this browser's is in flight,
+  and a read begun before a change made here is let go. `playlistActions` is the one way songs go in
+  and out from a menu or a page, with its toast (Add it again, Undo exactly what it did). The picker
+  (`PlaylistPicker.svelte`) is a submenu beside a ⋯ menu, a popover over the selection bar, and on a
+  phone a sheet. A playlist's rows (`PlaylistSongs.svelte`) are keyed by entry, placed in a window
+  over the list, and a grip moves one (held first by a finger). Play is a `list` queue
+  (`player.playList`). The nav has no room for Playlists under 431 px: the You page links to them.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
@@ -510,7 +545,7 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
   suite (`web/perf`, Playwright) times clicks, keys and page loads in a release build against generated
   libraries of 1,000 and 50,000 songs, 20 runs each; `internal/server`'s `*Speed` tests time the
-  stream's first byte, `GET /library/index` and `GET /me/home`. Each fails past its budget, and CI's `perf` job runs
+  stream's first byte, `GET /library/index`, `GET /me/home` and a 10,000-entry `GET /me/playlists/{id}`. Each fails past its budget, and CI's `perf` job runs
   both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
   they were set; on CI they are multiplied by `ciMultiplier`, which comes from CI's own numbers.
 - `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes

@@ -366,7 +366,7 @@ export interface ShuffleRules {
 /** What a shuffle draws from: the library, a Library filter, an album, an artist, or songs named. */
 export type ShuffleScope =
 	| { kind: 'library' | 'rated' }
-	| { kind: 'album' | 'artist'; id: string }
+	| { kind: 'album' | 'artist' | 'playlist'; id: string }
 	| { kind: 'tracks'; tracks: string[] };
 
 /** Finite plays every unit once; endless goes on, page by page. */
@@ -714,9 +714,75 @@ export interface ServerEvents {
 	listening: { trackId: string; clientId?: string };
 	lastfm: Record<string, never>;
 	settings: { keys: string[] };
+	playlists: { ids: string[] };
 }
 
 export type ServerEventKind = keyof ServerEvents;
+
+/** An album as a playlist shows it: in its mosaic, or beside its songs. */
+export interface PlaylistAlbum {
+	id: string;
+	title: string;
+	artist: string;
+	year?: number;
+	compilation: boolean;
+	artwork?: Artwork;
+}
+
+/**
+ * One of the person's playlists, as `GET /me/playlists` lists it. Its counts are of songs in the
+ * library: one in Trash leaves them until it comes back.
+ */
+export interface PlaylistSummary {
+	id: string;
+	name: string;
+	/** `navidrome` for one an import brought over. */
+	source: 'kitsune' | 'navidrome';
+	/** Entries: a song in twice counts twice. */
+	songCount: number;
+	albumCount: number;
+	durationMs: number;
+	/** Its first albums in its order, each once, at most four. */
+	mosaic: PlaylistAlbum[];
+	createdAt: string;
+	updatedAt: string;
+	/** When songs were last added; absent before any were. */
+	addedAt?: string;
+	/** With `holding`: how many of those songs it holds, each once. */
+	holds?: number;
+}
+
+/** One place in a playlist: a song in twice is two entries, each with its own ID. */
+export interface PlaylistEntry {
+	id: string;
+	albumId: string;
+	track: LibraryTrack;
+}
+
+/** `GET /me/playlists/{id}`: the playlist, its entries in order and their albums. */
+export interface PlaylistDetail extends PlaylistSummary {
+	entries: PlaylistEntry[];
+	albums: PlaylistAlbum[];
+}
+
+/** What to put in a playlist: at the end, or just before the entry `before`. */
+export interface PlaylistAdd {
+	tracks: readonly string[];
+	/** Adds songs the playlist holds already; without it they're skipped. */
+	again?: boolean;
+	before?: string;
+}
+
+/** What an add or a make did, and the playlist after it. */
+export interface PlaylistAdded {
+	playlist: PlaylistSummary;
+	added: { id: string; track: string }[];
+	/** Songs left out as already there, each once, in the order given. */
+	skipped: string[];
+}
+
+/** Where a moved entry goes: just before one, or just after one. */
+export type PlaylistPlace = { before: string } | { after: string };
 
 /** `GET /admin/settings`. */
 export interface ServerSettings {
@@ -1070,6 +1136,25 @@ export interface LibrarySource {
 	restoreTrash(trackIds: readonly string[]): Promise<TrashChange>;
 	/** Deletes songs in Trash for good. Rejects with {@link TrashError}. */
 	emptyTrash(target: TrashEmpty): Promise<number>;
+	/**
+	 * The caller's playlists, by name. With `holding`, each says how many of those songs it holds.
+	 * Rejects with {@link ServerError}.
+	 */
+	playlists(holding?: readonly string[]): Promise<PlaylistSummary[]>;
+	/** One of the caller's playlists, its songs in order. Rejects with {@link ServerError}: 404. */
+	playlist(id: string): Promise<PlaylistDetail>;
+	/** Makes a playlist, with songs or none. Rejects with {@link ServerError}: 422 for gone songs. */
+	createPlaylist(name: string, tracks: readonly string[]): Promise<PlaylistAdded>;
+	/** Rejects with {@link ServerError}: 400 for a name it won't take, 404. */
+	renamePlaylist(id: string, name: string): Promise<PlaylistSummary>;
+	/** Its songs stay in the library. Rejects with {@link ServerError}: 404. */
+	deletePlaylist(id: string): Promise<void>;
+	/** Puts songs in a playlist. Rejects with {@link ServerError}: 404, 422. */
+	addToPlaylist(id: string, add: PlaylistAdd): Promise<PlaylistAdded>;
+	/** Takes entries out, never the songs, and answers those it took. Rejects with {@link ServerError}. */
+	removeFromPlaylist(id: string, entries: readonly string[]): Promise<string[]>;
+	/** Moves an entry. Rejects with {@link ServerError}: 404 for one gone. */
+	movePlaylistEntry(id: string, entry: string, place: PlaylistPlace): Promise<void>;
 }
 
 /** Trash refused a move, a restore or an empty. `detail` is the server's, ready to show. */

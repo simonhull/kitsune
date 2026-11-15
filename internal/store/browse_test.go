@@ -36,14 +36,14 @@ func (c *browseClock) Advance(d time.Duration) {
 
 const titleD1T2 = "d1t2"
 
-func openBrowse(t *testing.T) (*store.Store, *browseClock) {
-	t.Helper()
+func openBrowse(tb testing.TB) (*store.Store, *browseClock) {
+	tb.Helper()
 	clock := &browseClock{now: time.UnixMilli(1_762_000_000_000).UTC()}
-	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "kitsune.db"), store.Options{Now: clock.Now})
+	s, err := store.Open(tb.Context(), filepath.Join(tb.TempDir(), "kitsune.db"), store.Options{Now: clock.Now})
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
-	t.Cleanup(func() { _ = s.Close() })
+	tb.Cleanup(func() { _ = s.Close() })
 	return s, clock
 }
 

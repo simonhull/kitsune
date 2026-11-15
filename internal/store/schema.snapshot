@@ -279,6 +279,52 @@ CREATE TABLE playback (
 --   column cid=10 name=updated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 
+-- table playlist_tracks
+CREATE TABLE playlist_tracks (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	playlist_id INTEGER NOT NULL REFERENCES playlists (id) ON DELETE CASCADE,
+	position    INTEGER NOT NULL,
+	track_id    INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+	added_at    INTEGER NOT NULL,
+	UNIQUE (playlist_id, position)
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=playlist_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=position type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=added_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+--   foreign key id=1 seq=0 table=playlists from=playlist_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index playlist_tracks_track
+CREATE INDEX playlist_tracks_track ON playlist_tracks (track_id);
+--   key seqno=0 cid=3 name=track_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- table playlists
+CREATE TABLE playlists (
+	id         INTEGER PRIMARY KEY,
+	ulid       TEXT    NOT NULL UNIQUE CHECK (length(ulid) = 26),
+	user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	name       TEXT    NOT NULL CHECK (length(name) BETWEEN 1 AND 200), -- not unique
+	source     TEXT    NOT NULL CHECK (source IN ('kitsune', 'navidrome')),
+	import_key TEXT,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL,
+	added_at   INTEGER,
+	UNIQUE (user_id, import_key)
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=ulid type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=name type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=source type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=import_key type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=created_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=updated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=8 name=added_at type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
 -- table plays
 CREATE TABLE plays (
 	user_id   INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,

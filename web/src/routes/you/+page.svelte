@@ -212,6 +212,9 @@
 					{listening === null ? ' ' : countsLine(listening)}
 				</p>
 				<div class="who-actions">
+					<a class="ghost phone-only" href={resolve('/playlists')}
+						>Your playlists <span class="chevron" aria-hidden="true">›</span></a
+					>
 					{#if library.admin}
 						<a class="ghost" href={resolve('/server')}
 							>Server settings <span class="chevron" aria-hidden="true">›</span></a
@@ -438,6 +441,17 @@
 {/if}
 
 <style>
+	/* The nav has no room for Playlists on a phone: they are reached from here. */
+	a.ghost.phone-only {
+		display: none;
+	}
+
+	@media (max-width: 430px) {
+		a.ghost.phone-only {
+			display: inline-flex;
+		}
+	}
+
 	.you {
 		--frame-top: 120px;
 		--frame-bottom: 160px;

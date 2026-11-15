@@ -37,7 +37,11 @@ var fixture = []string{ //nolint:gochecknoglobals // Read-only fixture shared by
 	`INSERT INTO annotation (user_id, item_id, item_type, starred, starred_at) VALUES ('u1', 'al1', 'album', true, '2025-03-09 01:36:00+00:00')`,
 	`INSERT INTO annotation (user_id, item_id, item_type, rating) VALUES ('u1', 'ar1', 'artist', 5)`,
 	`INSERT INTO scrobbles (id, media_file_id, user_id, submission_time) VALUES (1, 'm1', 'u1', 1767323045), (2, 'm1', 'u1', 1767323000)`,
-	`INSERT INTO playlist (id, owner_id) VALUES ('p1', 'u1'), ('p2', 'u2')`,
+	`INSERT INTO playlist (id, name, owner_id, created_at, rules) VALUES
+		('p1', 'Falling Up', 'u1', '2025-03-09 01:36:00+00:00', NULL),
+		('p2', 'Theirs', 'u2', NULL, NULL),
+		('p3', 'Recent', 'u1', NULL, '{"all":[{"inTheLast":{"lastPlayed":30}}]}')`,
+	`INSERT INTO playlist_tracks (id, playlist_id, media_file_id) VALUES (2, 'p1', 'm1'), (1, 'p1', 'm2'), (3, 'p1', 'm1'), (1, 'p2', 'm1')`,
 	`INSERT INTO bookmark (user_id, item_id) VALUES ('u1', 'm1'), ('u1', 'm2')`,
 }
 
@@ -104,6 +108,42 @@ func TestReadsAnnotationsAndScrobbles(t *testing.T) {
 	}
 	if err != nil || !slices.Equal(scrobbles, wantScrobbles) {
 		t.Errorf("Scrobbles = %+v, %v", scrobbles, err)
+	}
+}
+
+// A person's playlists come with their songs in Navidrome's order, a song as
+// often as it is in one, and a smart one says so.
+func TestReadsPlaylists(t *testing.T) {
+	t.Parallel()
+	got, err := open(t, navidromedbtest.New(t, fixture...)).Playlists(t.Context(), user1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"p1 Falling Up 2025-03-09 01:36:00 +0000 UTC smart=false [m2 m1 m1]",
+		"p3 Recent 0001-01-01 00:00:00 +0000 UTC smart=true []",
+	}
+	shown := make([]string, len(got))
+	for i, p := range got {
+		shown[i] = fmt.Sprintf("%s %s %v smart=%v %v", p.ID, p.Name, p.CreatedAt, p.Smart, p.Songs)
+	}
+	if !slices.Equal(shown, want) {
+		t.Errorf("Playlists = %q, want %q", shown, want)
+	}
+}
+
+// A database with no playlists table has no playlists, and one with no
+// playlist_tracks has empty ones.
+func TestPlaylistTablesAreOptional(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		drop string
+		want int
+	}{{"DROP TABLE playlist", 0}, {"DROP TABLE playlist_tracks", 2}} {
+		got, err := open(t, navidromedbtest.New(t, append(slices.Clone(fixture), tt.drop)...)).Playlists(t.Context(), user1)
+		if err != nil || len(got) != tt.want || (len(got) > 0 && len(got[0].Songs) != 0) {
+			t.Errorf("after %s: Playlists = %+v, %v; want %d with no songs", tt.drop, got, err, tt.want)
+		}
 	}
 }
 
@@ -247,8 +287,8 @@ func TestLeftCountsWhatStaysBehind(t *testing.T) {
 		extra []string
 		want  navidromedb.Left
 	}{
-		{name: "both tables", want: navidromedb.Left{Playlists: 1, Bookmarks: 2}},
-		{name: "neither table", extra: []string{"DROP TABLE playlist", "DROP TABLE bookmark"}},
+		{name: "the table", want: navidromedb.Left{Bookmarks: 2}},
+		{name: "no table", extra: []string{"DROP TABLE bookmark"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -276,6 +316,9 @@ func TestNothingReturnedHoldsASecret(t *testing.T) {
 		{"Scrobbles", func() (any, error) { return db.Scrobbles(ctx, user1) }},
 		{"Artists", func() (any, error) { return db.Artists(ctx, []string{artist1, "ar2"}) }},
 		{"Left", func() (any, error) { return db.Left(ctx, user1) }},
+		// A playlist's name, time, rules and songs hold no secret; they are here
+		// so a column that does can never join them unseen.
+		{"Playlists", func() (any, error) { return db.Playlists(ctx, user1) }},
 	}
 	for _, c := range calls {
 		got, err := c.call()

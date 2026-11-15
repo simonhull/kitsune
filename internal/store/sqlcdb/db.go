@@ -75,6 +75,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countLoudnessWaitingStmt, err = db.PrepareContext(ctx, countLoudnessWaiting); err != nil {
 		return nil, fmt.Errorf("error preparing query CountLoudnessWaiting: %w", err)
 	}
+	if q.countPlaylistEntriesStmt, err = db.PrepareContext(ctx, countPlaylistEntries); err != nil {
+		return nil, fmt.Errorf("error preparing query CountPlaylistEntries: %w", err)
+	}
 	if q.countScanIssuesByKindStmt, err = db.PrepareContext(ctx, countScanIssuesByKind); err != nil {
 		return nil, fmt.Errorf("error preparing query CountScanIssuesByKind: %w", err)
 	}
@@ -126,6 +129,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteOtherSessionsOfStmt, err = db.PrepareContext(ctx, deleteOtherSessionsOf); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteOtherSessionsOf: %w", err)
 	}
+	if q.deletePlaylistStmt, err = db.PrepareContext(ctx, deletePlaylist); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePlaylist: %w", err)
+	}
+	if q.deletePlaylistEntriesStmt, err = db.PrepareContext(ctx, deletePlaylistEntries); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePlaylistEntries: %w", err)
+	}
 	if q.deleteRunStmt, err = db.PrepareContext(ctx, deleteRun); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteRun: %w", err)
 	}
@@ -158,6 +167,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.enqueueLastfmStmt, err = db.PrepareContext(ctx, enqueueLastfm); err != nil {
 		return nil, fmt.Errorf("error preparing query EnqueueLastfm: %w", err)
+	}
+	if q.entryPositionStmt, err = db.PrepareContext(ctx, entryPosition); err != nil {
+		return nil, fmt.Errorf("error preparing query EntryPosition: %w", err)
 	}
 	if q.getAlbumStmt, err = db.PrepareContext(ctx, getAlbum); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAlbum: %w", err)
@@ -225,6 +237,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertPlayStmt, err = db.PrepareContext(ctx, insertPlay); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPlay: %w", err)
 	}
+	if q.insertPlaylistStmt, err = db.PrepareContext(ctx, insertPlaylist); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertPlaylist: %w", err)
+	}
+	if q.insertPlaylistEntriesStmt, err = db.PrepareContext(ctx, insertPlaylistEntries); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertPlaylistEntries: %w", err)
+	}
 	if q.insertRunStmt, err = db.PrepareContext(ctx, insertRun); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertRun: %w", err)
 	}
@@ -254,6 +272,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.knownRootsStmt, err = db.PrepareContext(ctx, knownRoots); err != nil {
 		return nil, fmt.Errorf("error preparing query KnownRoots: %w", err)
+	}
+	if q.lastPlaylistPositionStmt, err = db.PrepareContext(ctx, lastPlaylistPosition); err != nil {
+		return nil, fmt.Errorf("error preparing query LastPlaylistPosition: %w", err)
 	}
 	if q.leaveRunStmt, err = db.PrepareContext(ctx, leaveRun); err != nil {
 		return nil, fmt.Errorf("error preparing query LeaveRun: %w", err)
@@ -291,6 +312,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAlbumTracksStmt, err = db.PrepareContext(ctx, listAlbumTracks); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumTracks: %w", err)
 	}
+	if q.listAlbumTracksToAddStmt, err = db.PrepareContext(ctx, listAlbumTracksToAdd); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAlbumTracksToAdd: %w", err)
+	}
 	if q.listAlbumsByAddedStmt, err = db.PrepareContext(ctx, listAlbumsByAdded); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAlbumsByAdded: %w", err)
 	}
@@ -311,6 +335,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listArtistTrackIDsStmt, err = db.PrepareContext(ctx, listArtistTrackIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListArtistTrackIDs: %w", err)
+	}
+	if q.listEntryRowsStmt, err = db.PrepareContext(ctx, listEntryRows); err != nil {
+		return nil, fmt.Errorf("error preparing query ListEntryRows: %w", err)
 	}
 	if q.listExcludedOfStmt, err = db.PrepareContext(ctx, listExcludedOf); err != nil {
 		return nil, fmt.Errorf("error preparing query ListExcludedOf: %w", err)
@@ -399,6 +426,30 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listOwningArtistsStmt, err = db.PrepareContext(ctx, listOwningArtists); err != nil {
 		return nil, fmt.Errorf("error preparing query ListOwningArtists: %w", err)
 	}
+	if q.listPlaylistAlbumsStmt, err = db.PrepareContext(ctx, listPlaylistAlbums); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPlaylistAlbums: %w", err)
+	}
+	if q.listPlaylistEntriesStmt, err = db.PrepareContext(ctx, listPlaylistEntries); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPlaylistEntries: %w", err)
+	}
+	if q.listPlaylistRatingsStmt, err = db.PrepareContext(ctx, listPlaylistRatings); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPlaylistRatings: %w", err)
+	}
+	if q.listPlaylistSongsStmt, err = db.PrepareContext(ctx, listPlaylistSongs); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPlaylistSongs: %w", err)
+	}
+	if q.listPlaylistSongsOfStmt, err = db.PrepareContext(ctx, listPlaylistSongsOf); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPlaylistSongsOf: %w", err)
+	}
+	if q.listPlaylistTrackArtistsStmt, err = db.PrepareContext(ctx, listPlaylistTrackArtists); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPlaylistTrackArtists: %w", err)
+	}
+	if q.listPlaylistTrackRowsStmt, err = db.PrepareContext(ctx, listPlaylistTrackRows); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPlaylistTrackRows: %w", err)
+	}
+	if q.listPlaylistsStmt, err = db.PrepareContext(ctx, listPlaylists); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPlaylists: %w", err)
+	}
 	if q.listRunsOfStmt, err = db.PrepareContext(ctx, listRunsOf); err != nil {
 		return nil, fmt.Errorf("error preparing query ListRunsOf: %w", err)
 	}
@@ -440,6 +491,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTrackRowIDsStmt, err = db.PrepareContext(ctx, listTrackRowIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackRowIDs: %w", err)
+	}
+	if q.listTracksToAddStmt, err = db.PrepareContext(ctx, listTracksToAdd); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTracksToAdd: %w", err)
 	}
 	if q.listTrashStmt, err = db.PrepareContext(ctx, listTrash); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrash: %w", err)
@@ -486,8 +540,23 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.moveAlbumHeartsStmt, err = db.PrepareContext(ctx, moveAlbumHearts); err != nil {
 		return nil, fmt.Errorf("error preparing query MoveAlbumHearts: %w", err)
 	}
+	if q.parkPositionsStmt, err = db.PrepareContext(ctx, parkPositions); err != nil {
+		return nil, fmt.Errorf("error preparing query ParkPositions: %w", err)
+	}
+	if q.playlistByImportKeyStmt, err = db.PrepareContext(ctx, playlistByImportKey); err != nil {
+		return nil, fmt.Errorf("error preparing query PlaylistByImportKey: %w", err)
+	}
+	if q.playlistRowStmt, err = db.PrepareContext(ctx, playlistRow); err != nil {
+		return nil, fmt.Errorf("error preparing query PlaylistRow: %w", err)
+	}
 	if q.poolTrackLoudnessStmt, err = db.PrepareContext(ctx, poolTrackLoudness); err != nil {
 		return nil, fmt.Errorf("error preparing query PoolTrackLoudness: %w", err)
+	}
+	if q.positionAfterStmt, err = db.PrepareContext(ctx, positionAfter); err != nil {
+		return nil, fmt.Errorf("error preparing query PositionAfter: %w", err)
+	}
+	if q.positionBeforeStmt, err = db.PrepareContext(ctx, positionBefore); err != nil {
+		return nil, fmt.Errorf("error preparing query PositionBefore: %w", err)
 	}
 	if q.pruneAlbumsStmt, err = db.PrepareContext(ctx, pruneAlbums); err != nil {
 		return nil, fmt.Errorf("error preparing query PruneAlbums: %w", err)
@@ -516,6 +585,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.renameArtistStmt, err = db.PrepareContext(ctx, renameArtist); err != nil {
 		return nil, fmt.Errorf("error preparing query RenameArtist: %w", err)
 	}
+	if q.renamePlaylistStmt, err = db.PrepareContext(ctx, renamePlaylist); err != nil {
+		return nil, fmt.Errorf("error preparing query RenamePlaylist: %w", err)
+	}
 	if q.resetLastfmOutboxStmt, err = db.PrepareContext(ctx, resetLastfmOutbox); err != nil {
 		return nil, fmt.Errorf("error preparing query ResetLastfmOutbox: %w", err)
 	}
@@ -540,6 +612,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setDigestStmt, err = db.PrepareContext(ctx, setDigest); err != nil {
 		return nil, fmt.Errorf("error preparing query SetDigest: %w", err)
 	}
+	if q.setEntryPositionStmt, err = db.PrepareContext(ctx, setEntryPosition); err != nil {
+		return nil, fmt.Errorf("error preparing query SetEntryPosition: %w", err)
+	}
 	if q.setLastfmStateStmt, err = db.PrepareContext(ctx, setLastfmState); err != nil {
 		return nil, fmt.Errorf("error preparing query SetLastfmState: %w", err)
 	}
@@ -554,6 +629,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.settleAlbumStmt, err = db.PrepareContext(ctx, settleAlbum); err != nil {
 		return nil, fmt.Errorf("error preparing query SettleAlbum: %w", err)
+	}
+	if q.touchPlaylistStmt, err = db.PrepareContext(ctx, touchPlaylist); err != nil {
+		return nil, fmt.Errorf("error preparing query TouchPlaylist: %w", err)
+	}
+	if q.touchPlaylistAddedStmt, err = db.PrepareContext(ctx, touchPlaylistAdded); err != nil {
+		return nil, fmt.Errorf("error preparing query TouchPlaylistAdded: %w", err)
 	}
 	if q.touchSessionStmt, err = db.PrepareContext(ctx, touchSession); err != nil {
 		return nil, fmt.Errorf("error preparing query TouchSession: %w", err)
@@ -726,6 +807,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countLoudnessWaitingStmt: %w", cerr)
 		}
 	}
+	if q.countPlaylistEntriesStmt != nil {
+		if cerr := q.countPlaylistEntriesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countPlaylistEntriesStmt: %w", cerr)
+		}
+	}
 	if q.countScanIssuesByKindStmt != nil {
 		if cerr := q.countScanIssuesByKindStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countScanIssuesByKindStmt: %w", cerr)
@@ -811,6 +897,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteOtherSessionsOfStmt: %w", cerr)
 		}
 	}
+	if q.deletePlaylistStmt != nil {
+		if cerr := q.deletePlaylistStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePlaylistStmt: %w", cerr)
+		}
+	}
+	if q.deletePlaylistEntriesStmt != nil {
+		if cerr := q.deletePlaylistEntriesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePlaylistEntriesStmt: %w", cerr)
+		}
+	}
 	if q.deleteRunStmt != nil {
 		if cerr := q.deleteRunStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteRunStmt: %w", cerr)
@@ -864,6 +960,11 @@ func (q *Queries) Close() error {
 	if q.enqueueLastfmStmt != nil {
 		if cerr := q.enqueueLastfmStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing enqueueLastfmStmt: %w", cerr)
+		}
+	}
+	if q.entryPositionStmt != nil {
+		if cerr := q.entryPositionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing entryPositionStmt: %w", cerr)
 		}
 	}
 	if q.getAlbumStmt != nil {
@@ -976,6 +1077,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertPlayStmt: %w", cerr)
 		}
 	}
+	if q.insertPlaylistStmt != nil {
+		if cerr := q.insertPlaylistStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertPlaylistStmt: %w", cerr)
+		}
+	}
+	if q.insertPlaylistEntriesStmt != nil {
+		if cerr := q.insertPlaylistEntriesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertPlaylistEntriesStmt: %w", cerr)
+		}
+	}
 	if q.insertRunStmt != nil {
 		if cerr := q.insertRunStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertRunStmt: %w", cerr)
@@ -1024,6 +1135,11 @@ func (q *Queries) Close() error {
 	if q.knownRootsStmt != nil {
 		if cerr := q.knownRootsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing knownRootsStmt: %w", cerr)
+		}
+	}
+	if q.lastPlaylistPositionStmt != nil {
+		if cerr := q.lastPlaylistPositionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing lastPlaylistPositionStmt: %w", cerr)
 		}
 	}
 	if q.leaveRunStmt != nil {
@@ -1086,6 +1202,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAlbumTracksStmt: %w", cerr)
 		}
 	}
+	if q.listAlbumTracksToAddStmt != nil {
+		if cerr := q.listAlbumTracksToAddStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAlbumTracksToAddStmt: %w", cerr)
+		}
+	}
 	if q.listAlbumsByAddedStmt != nil {
 		if cerr := q.listAlbumsByAddedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAlbumsByAddedStmt: %w", cerr)
@@ -1119,6 +1240,11 @@ func (q *Queries) Close() error {
 	if q.listArtistTrackIDsStmt != nil {
 		if cerr := q.listArtistTrackIDsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listArtistTrackIDsStmt: %w", cerr)
+		}
+	}
+	if q.listEntryRowsStmt != nil {
+		if cerr := q.listEntryRowsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listEntryRowsStmt: %w", cerr)
 		}
 	}
 	if q.listExcludedOfStmt != nil {
@@ -1266,6 +1392,46 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listOwningArtistsStmt: %w", cerr)
 		}
 	}
+	if q.listPlaylistAlbumsStmt != nil {
+		if cerr := q.listPlaylistAlbumsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPlaylistAlbumsStmt: %w", cerr)
+		}
+	}
+	if q.listPlaylistEntriesStmt != nil {
+		if cerr := q.listPlaylistEntriesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPlaylistEntriesStmt: %w", cerr)
+		}
+	}
+	if q.listPlaylistRatingsStmt != nil {
+		if cerr := q.listPlaylistRatingsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPlaylistRatingsStmt: %w", cerr)
+		}
+	}
+	if q.listPlaylistSongsStmt != nil {
+		if cerr := q.listPlaylistSongsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPlaylistSongsStmt: %w", cerr)
+		}
+	}
+	if q.listPlaylistSongsOfStmt != nil {
+		if cerr := q.listPlaylistSongsOfStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPlaylistSongsOfStmt: %w", cerr)
+		}
+	}
+	if q.listPlaylistTrackArtistsStmt != nil {
+		if cerr := q.listPlaylistTrackArtistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPlaylistTrackArtistsStmt: %w", cerr)
+		}
+	}
+	if q.listPlaylistTrackRowsStmt != nil {
+		if cerr := q.listPlaylistTrackRowsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPlaylistTrackRowsStmt: %w", cerr)
+		}
+	}
+	if q.listPlaylistsStmt != nil {
+		if cerr := q.listPlaylistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPlaylistsStmt: %w", cerr)
+		}
+	}
 	if q.listRunsOfStmt != nil {
 		if cerr := q.listRunsOfStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listRunsOfStmt: %w", cerr)
@@ -1334,6 +1500,11 @@ func (q *Queries) Close() error {
 	if q.listTrackRowIDsStmt != nil {
 		if cerr := q.listTrackRowIDsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTrackRowIDsStmt: %w", cerr)
+		}
+	}
+	if q.listTracksToAddStmt != nil {
+		if cerr := q.listTracksToAddStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTracksToAddStmt: %w", cerr)
 		}
 	}
 	if q.listTrashStmt != nil {
@@ -1411,9 +1582,34 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing moveAlbumHeartsStmt: %w", cerr)
 		}
 	}
+	if q.parkPositionsStmt != nil {
+		if cerr := q.parkPositionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing parkPositionsStmt: %w", cerr)
+		}
+	}
+	if q.playlistByImportKeyStmt != nil {
+		if cerr := q.playlistByImportKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing playlistByImportKeyStmt: %w", cerr)
+		}
+	}
+	if q.playlistRowStmt != nil {
+		if cerr := q.playlistRowStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing playlistRowStmt: %w", cerr)
+		}
+	}
 	if q.poolTrackLoudnessStmt != nil {
 		if cerr := q.poolTrackLoudnessStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing poolTrackLoudnessStmt: %w", cerr)
+		}
+	}
+	if q.positionAfterStmt != nil {
+		if cerr := q.positionAfterStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing positionAfterStmt: %w", cerr)
+		}
+	}
+	if q.positionBeforeStmt != nil {
+		if cerr := q.positionBeforeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing positionBeforeStmt: %w", cerr)
 		}
 	}
 	if q.pruneAlbumsStmt != nil {
@@ -1461,6 +1657,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing renameArtistStmt: %w", cerr)
 		}
 	}
+	if q.renamePlaylistStmt != nil {
+		if cerr := q.renamePlaylistStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing renamePlaylistStmt: %w", cerr)
+		}
+	}
 	if q.resetLastfmOutboxStmt != nil {
 		if cerr := q.resetLastfmOutboxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing resetLastfmOutboxStmt: %w", cerr)
@@ -1501,6 +1702,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setDigestStmt: %w", cerr)
 		}
 	}
+	if q.setEntryPositionStmt != nil {
+		if cerr := q.setEntryPositionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setEntryPositionStmt: %w", cerr)
+		}
+	}
 	if q.setLastfmStateStmt != nil {
 		if cerr := q.setLastfmStateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setLastfmStateStmt: %w", cerr)
@@ -1524,6 +1730,16 @@ func (q *Queries) Close() error {
 	if q.settleAlbumStmt != nil {
 		if cerr := q.settleAlbumStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing settleAlbumStmt: %w", cerr)
+		}
+	}
+	if q.touchPlaylistStmt != nil {
+		if cerr := q.touchPlaylistStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing touchPlaylistStmt: %w", cerr)
+		}
+	}
+	if q.touchPlaylistAddedStmt != nil {
+		if cerr := q.touchPlaylistAddedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing touchPlaylistAddedStmt: %w", cerr)
 		}
 	}
 	if q.touchSessionStmt != nil {
@@ -1717,6 +1933,7 @@ type Queries struct {
 	countHeartedTracksByRatingStmt         *sql.Stmt
 	countLiveAlbumsStmt                    *sql.Stmt
 	countLoudnessWaitingStmt               *sql.Stmt
+	countPlaylistEntriesStmt               *sql.Stmt
 	countScanIssuesByKindStmt              *sql.Stmt
 	countUndigestedStmt                    *sql.Stmt
 	countUserListeningStmt                 *sql.Stmt
@@ -1734,6 +1951,8 @@ type Queries struct {
 	deleteLastfmAccountStmt                *sql.Stmt
 	deleteLastfmItemStmt                   *sql.Stmt
 	deleteOtherSessionsOfStmt              *sql.Stmt
+	deletePlaylistStmt                     *sql.Stmt
+	deletePlaylistEntriesStmt              *sql.Stmt
 	deleteRunStmt                          *sql.Stmt
 	deleteScanIssueStmt                    *sql.Stmt
 	deleteSessionStmt                      *sql.Stmt
@@ -1745,6 +1964,7 @@ type Queries struct {
 	deleteTrackTagsStmt                    *sql.Stmt
 	dropOldLastfmScrobblesStmt             *sql.Stmt
 	enqueueLastfmStmt                      *sql.Stmt
+	entryPositionStmt                      *sql.Stmt
 	getAlbumStmt                           *sql.Stmt
 	getArtistStmt                          *sql.Stmt
 	getLastfmAccountStmt                   *sql.Stmt
@@ -1767,6 +1987,8 @@ type Queries struct {
 	insertArtistHeartStmt                  *sql.Stmt
 	insertExcludedStmt                     *sql.Stmt
 	insertPlayStmt                         *sql.Stmt
+	insertPlaylistStmt                     *sql.Stmt
+	insertPlaylistEntriesStmt              *sql.Stmt
 	insertRunStmt                          *sql.Stmt
 	insertRunTrackStmt                     *sql.Stmt
 	insertSettingIfAbsentStmt              *sql.Stmt
@@ -1777,6 +1999,7 @@ type Queries struct {
 	insertTrackTagStmt                     *sql.Stmt
 	issueStatesStmt                        *sql.Stmt
 	knownRootsStmt                         *sql.Stmt
+	lastPlaylistPositionStmt               *sql.Stmt
 	leaveRunStmt                           *sql.Stmt
 	listAlbumCoverFilesStmt                *sql.Stmt
 	listAlbumFilesStmt                     *sql.Stmt
@@ -1789,6 +2012,7 @@ type Queries struct {
 	listAlbumTrackArtistsStmt              *sql.Stmt
 	listAlbumTrackRatingsStmt              *sql.Stmt
 	listAlbumTracksStmt                    *sql.Stmt
+	listAlbumTracksToAddStmt               *sql.Stmt
 	listAlbumsByAddedStmt                  *sql.Stmt
 	listAlbumsByNameStmt                   *sql.Stmt
 	listArtistAlbumsStmt                   *sql.Stmt
@@ -1796,6 +2020,7 @@ type Queries struct {
 	listArtistLinksByIDStmt                *sql.Stmt
 	listArtistNamesStmt                    *sql.Stmt
 	listArtistTrackIDsStmt                 *sql.Stmt
+	listEntryRowsStmt                      *sql.Stmt
 	listExcludedOfStmt                     *sql.Stmt
 	listIndexAlbumsStmt                    *sql.Stmt
 	listIndexPlaysStmt                     *sql.Stmt
@@ -1825,6 +2050,14 @@ type Queries struct {
 	listLiveTracksByULIDStmt               *sql.Stmt
 	listOwningArtistPlaysStmt              *sql.Stmt
 	listOwningArtistsStmt                  *sql.Stmt
+	listPlaylistAlbumsStmt                 *sql.Stmt
+	listPlaylistEntriesStmt                *sql.Stmt
+	listPlaylistRatingsStmt                *sql.Stmt
+	listPlaylistSongsStmt                  *sql.Stmt
+	listPlaylistSongsOfStmt                *sql.Stmt
+	listPlaylistTrackArtistsStmt           *sql.Stmt
+	listPlaylistTrackRowsStmt              *sql.Stmt
+	listPlaylistsStmt                      *sql.Stmt
 	listRunsOfStmt                         *sql.Stmt
 	listScanIssuesStmt                     *sql.Stmt
 	listSettingsStmt                       *sql.Stmt
@@ -1839,6 +2072,7 @@ type Queries struct {
 	listTrackHitsStmt                      *sql.Stmt
 	listTrackRatingsStmt                   *sql.Stmt
 	listTrackRowIDsStmt                    *sql.Stmt
+	listTracksToAddStmt                    *sql.Stmt
 	listTrashStmt                          *sql.Stmt
 	listUnratedHeartedTracksStmt           *sql.Stmt
 	listUsersStmt                          *sql.Stmt
@@ -1854,7 +2088,12 @@ type Queries struct {
 	mergeAlbumIntoStmt                     *sql.Stmt
 	missingByDigestStmt                    *sql.Stmt
 	moveAlbumHeartsStmt                    *sql.Stmt
+	parkPositionsStmt                      *sql.Stmt
+	playlistByImportKeyStmt                *sql.Stmt
+	playlistRowStmt                        *sql.Stmt
 	poolTrackLoudnessStmt                  *sql.Stmt
+	positionAfterStmt                      *sql.Stmt
+	positionBeforeStmt                     *sql.Stmt
 	pruneAlbumsStmt                        *sql.Stmt
 	pruneArtistsStmt                       *sql.Stmt
 	pruneArtworkStmt                       *sql.Stmt
@@ -1864,6 +2103,7 @@ type Queries struct {
 	recentListensStmt                      *sql.Stmt
 	recentPlaysStmt                        *sql.Stmt
 	renameArtistStmt                       *sql.Stmt
+	renamePlaylistStmt                     *sql.Stmt
 	resetLastfmOutboxStmt                  *sql.Stmt
 	rootStatsStmt                          *sql.Stmt
 	runExistsStmt                          *sql.Stmt
@@ -1872,11 +2112,14 @@ type Queries struct {
 	setAlbumArtworkStmt                    *sql.Stmt
 	setAlbumGroupKeyStmt                   *sql.Stmt
 	setDigestStmt                          *sql.Stmt
+	setEntryPositionStmt                   *sql.Stmt
 	setLastfmStateStmt                     *sql.Stmt
 	setMatchStateStmt                      *sql.Stmt
 	setPasswordHashStmt                    *sql.Stmt
 	setTrackLoudnessStmt                   *sql.Stmt
 	settleAlbumStmt                        *sql.Stmt
+	touchPlaylistStmt                      *sql.Stmt
+	touchPlaylistAddedStmt                 *sql.Stmt
 	touchSessionStmt                       *sql.Stmt
 	trackAlbumRowStmt                      *sql.Stmt
 	trackAlbumULIDStmt                     *sql.Stmt
@@ -1927,6 +2170,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countHeartedTracksByRatingStmt:         q.countHeartedTracksByRatingStmt,
 		countLiveAlbumsStmt:                    q.countLiveAlbumsStmt,
 		countLoudnessWaitingStmt:               q.countLoudnessWaitingStmt,
+		countPlaylistEntriesStmt:               q.countPlaylistEntriesStmt,
 		countScanIssuesByKindStmt:              q.countScanIssuesByKindStmt,
 		countUndigestedStmt:                    q.countUndigestedStmt,
 		countUserListeningStmt:                 q.countUserListeningStmt,
@@ -1944,6 +2188,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteLastfmAccountStmt:                q.deleteLastfmAccountStmt,
 		deleteLastfmItemStmt:                   q.deleteLastfmItemStmt,
 		deleteOtherSessionsOfStmt:              q.deleteOtherSessionsOfStmt,
+		deletePlaylistStmt:                     q.deletePlaylistStmt,
+		deletePlaylistEntriesStmt:              q.deletePlaylistEntriesStmt,
 		deleteRunStmt:                          q.deleteRunStmt,
 		deleteScanIssueStmt:                    q.deleteScanIssueStmt,
 		deleteSessionStmt:                      q.deleteSessionStmt,
@@ -1955,6 +2201,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteTrackTagsStmt:                    q.deleteTrackTagsStmt,
 		dropOldLastfmScrobblesStmt:             q.dropOldLastfmScrobblesStmt,
 		enqueueLastfmStmt:                      q.enqueueLastfmStmt,
+		entryPositionStmt:                      q.entryPositionStmt,
 		getAlbumStmt:                           q.getAlbumStmt,
 		getArtistStmt:                          q.getArtistStmt,
 		getLastfmAccountStmt:                   q.getLastfmAccountStmt,
@@ -1977,6 +2224,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertArtistHeartStmt:                  q.insertArtistHeartStmt,
 		insertExcludedStmt:                     q.insertExcludedStmt,
 		insertPlayStmt:                         q.insertPlayStmt,
+		insertPlaylistStmt:                     q.insertPlaylistStmt,
+		insertPlaylistEntriesStmt:              q.insertPlaylistEntriesStmt,
 		insertRunStmt:                          q.insertRunStmt,
 		insertRunTrackStmt:                     q.insertRunTrackStmt,
 		insertSettingIfAbsentStmt:              q.insertSettingIfAbsentStmt,
@@ -1987,6 +2236,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTrackTagStmt:                     q.insertTrackTagStmt,
 		issueStatesStmt:                        q.issueStatesStmt,
 		knownRootsStmt:                         q.knownRootsStmt,
+		lastPlaylistPositionStmt:               q.lastPlaylistPositionStmt,
 		leaveRunStmt:                           q.leaveRunStmt,
 		listAlbumCoverFilesStmt:                q.listAlbumCoverFilesStmt,
 		listAlbumFilesStmt:                     q.listAlbumFilesStmt,
@@ -1999,6 +2249,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAlbumTrackArtistsStmt:              q.listAlbumTrackArtistsStmt,
 		listAlbumTrackRatingsStmt:              q.listAlbumTrackRatingsStmt,
 		listAlbumTracksStmt:                    q.listAlbumTracksStmt,
+		listAlbumTracksToAddStmt:               q.listAlbumTracksToAddStmt,
 		listAlbumsByAddedStmt:                  q.listAlbumsByAddedStmt,
 		listAlbumsByNameStmt:                   q.listAlbumsByNameStmt,
 		listArtistAlbumsStmt:                   q.listArtistAlbumsStmt,
@@ -2006,6 +2257,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listArtistLinksByIDStmt:                q.listArtistLinksByIDStmt,
 		listArtistNamesStmt:                    q.listArtistNamesStmt,
 		listArtistTrackIDsStmt:                 q.listArtistTrackIDsStmt,
+		listEntryRowsStmt:                      q.listEntryRowsStmt,
 		listExcludedOfStmt:                     q.listExcludedOfStmt,
 		listIndexAlbumsStmt:                    q.listIndexAlbumsStmt,
 		listIndexPlaysStmt:                     q.listIndexPlaysStmt,
@@ -2035,6 +2287,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listLiveTracksByULIDStmt:               q.listLiveTracksByULIDStmt,
 		listOwningArtistPlaysStmt:              q.listOwningArtistPlaysStmt,
 		listOwningArtistsStmt:                  q.listOwningArtistsStmt,
+		listPlaylistAlbumsStmt:                 q.listPlaylistAlbumsStmt,
+		listPlaylistEntriesStmt:                q.listPlaylistEntriesStmt,
+		listPlaylistRatingsStmt:                q.listPlaylistRatingsStmt,
+		listPlaylistSongsStmt:                  q.listPlaylistSongsStmt,
+		listPlaylistSongsOfStmt:                q.listPlaylistSongsOfStmt,
+		listPlaylistTrackArtistsStmt:           q.listPlaylistTrackArtistsStmt,
+		listPlaylistTrackRowsStmt:              q.listPlaylistTrackRowsStmt,
+		listPlaylistsStmt:                      q.listPlaylistsStmt,
 		listRunsOfStmt:                         q.listRunsOfStmt,
 		listScanIssuesStmt:                     q.listScanIssuesStmt,
 		listSettingsStmt:                       q.listSettingsStmt,
@@ -2049,6 +2309,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listTrackHitsStmt:                      q.listTrackHitsStmt,
 		listTrackRatingsStmt:                   q.listTrackRatingsStmt,
 		listTrackRowIDsStmt:                    q.listTrackRowIDsStmt,
+		listTracksToAddStmt:                    q.listTracksToAddStmt,
 		listTrashStmt:                          q.listTrashStmt,
 		listUnratedHeartedTracksStmt:           q.listUnratedHeartedTracksStmt,
 		listUsersStmt:                          q.listUsersStmt,
@@ -2064,7 +2325,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		mergeAlbumIntoStmt:                     q.mergeAlbumIntoStmt,
 		missingByDigestStmt:                    q.missingByDigestStmt,
 		moveAlbumHeartsStmt:                    q.moveAlbumHeartsStmt,
+		parkPositionsStmt:                      q.parkPositionsStmt,
+		playlistByImportKeyStmt:                q.playlistByImportKeyStmt,
+		playlistRowStmt:                        q.playlistRowStmt,
 		poolTrackLoudnessStmt:                  q.poolTrackLoudnessStmt,
+		positionAfterStmt:                      q.positionAfterStmt,
+		positionBeforeStmt:                     q.positionBeforeStmt,
 		pruneAlbumsStmt:                        q.pruneAlbumsStmt,
 		pruneArtistsStmt:                       q.pruneArtistsStmt,
 		pruneArtworkStmt:                       q.pruneArtworkStmt,
@@ -2074,6 +2340,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		recentListensStmt:                      q.recentListensStmt,
 		recentPlaysStmt:                        q.recentPlaysStmt,
 		renameArtistStmt:                       q.renameArtistStmt,
+		renamePlaylistStmt:                     q.renamePlaylistStmt,
 		resetLastfmOutboxStmt:                  q.resetLastfmOutboxStmt,
 		rootStatsStmt:                          q.rootStatsStmt,
 		runExistsStmt:                          q.runExistsStmt,
@@ -2082,11 +2349,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setAlbumArtworkStmt:                    q.setAlbumArtworkStmt,
 		setAlbumGroupKeyStmt:                   q.setAlbumGroupKeyStmt,
 		setDigestStmt:                          q.setDigestStmt,
+		setEntryPositionStmt:                   q.setEntryPositionStmt,
 		setLastfmStateStmt:                     q.setLastfmStateStmt,
 		setMatchStateStmt:                      q.setMatchStateStmt,
 		setPasswordHashStmt:                    q.setPasswordHashStmt,
 		setTrackLoudnessStmt:                   q.setTrackLoudnessStmt,
 		settleAlbumStmt:                        q.settleAlbumStmt,
+		touchPlaylistStmt:                      q.touchPlaylistStmt,
+		touchPlaylistAddedStmt:                 q.touchPlaylistAddedStmt,
 		touchSessionStmt:                       q.touchSessionStmt,
 		trackAlbumRowStmt:                      q.trackAlbumRowStmt,
 		trackAlbumULIDStmt:                     q.trackAlbumULIDStmt,

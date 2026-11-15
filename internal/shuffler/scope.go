@@ -29,6 +29,8 @@ const (
 	Album Kind = "album"
 	// Artist is the songs an artist is on, as an artist or an album artist.
 	Artist Kind = "artist"
+	// Playlist is the songs of one of the person's playlists, each once.
+	Playlist Kind = "playlist"
 	// Tracks is songs named one by one, such as a selection.
 	Tracks Kind = "tracks"
 )
@@ -43,7 +45,7 @@ const MostTracks = 10_000
 // Scope is what a shuffle draws from, as a request names it.
 type Scope struct {
 	Kind Kind `json:"kind"`
-	// ID is the album's or the artist's ULID.
+	// ID is the album's, the artist's or the playlist's ULID.
 	ID string `json:"id,omitzero"`
 	// Tracks are the songs' ULIDs, for [Tracks].
 	Tracks []string `json:"tracks,omitzero"`
@@ -85,7 +87,7 @@ func (sc *Scope) fits() bool {
 	switch sc.Kind {
 	case Library, Rated:
 		return !named && !listed
-	case Album, Artist:
+	case Album, Artist, Playlist:
 		return named && !listed
 	case Tracks:
 		return !named && len(sc.Tracks) > 0 && len(sc.Tracks) <= MostTracks && !slices.Contains(sc.Tracks, "")
@@ -111,8 +113,9 @@ func (m Mode) valid() bool { return m == Finite || m == Endless }
 type keep func(song *store.ShuffleSong) bool
 
 // keeper works out which songs sc holds, from the store. It returns an error
-// wrapping [store.ErrNotFound] for an album or artist that isn't there.
-func keeper(ctx context.Context, st *store.Store, sc *Scope) (keep, error) {
+// wrapping [store.ErrNotFound] for an album or artist that isn't there, or a
+// playlist the person doesn't have.
+func keeper(ctx context.Context, st *store.Store, userID int64, sc *Scope) (keep, error) {
 	switch sc.Kind {
 	case Library:
 		return func(*store.ShuffleSong) bool { return true }, nil
@@ -125,6 +128,10 @@ func keeper(ctx context.Context, st *store.Store, sc *Scope) (keep, error) {
 		rows, err := st.ArtistTrackRows(ctx, sc.ID)
 		on := setOf(rows)
 		return func(s *store.ShuffleSong) bool { return on[s.ID] }, err //nolint:wrapcheck // The store names it.
+	case Playlist:
+		rows, err := st.PlaylistTrackRows(ctx, userID, sc.ID)
+		in := setOf(rows)
+		return func(s *store.ShuffleSong) bool { return in[s.ID] }, err //nolint:wrapcheck // The store names it.
 	case Tracks:
 		return keepNamed(ctx, st, sc.Tracks)
 	}

@@ -7,6 +7,9 @@
 	import Icon from '#lib/shell/Icon.svelte';
 	import { albumActions, albumMenu } from './albumMenu.svelte.ts';
 	import Floating from './Floating.svelte';
+	import { pickerBeside, type PickerPlace } from './pickerPlace.ts';
+	import PlaylistPicker from './PlaylistPicker.svelte';
+	import { addHeading } from './playlistWords.ts';
 
 	const open = $derived(albumMenu.current);
 	const album = $derived(open === null ? undefined : library.album(open.entry.id));
@@ -23,6 +26,21 @@
 		}
 		return parts.join(' · ');
 	});
+
+	/** Add to playlist, beside its item; the album's songs in album order. */
+	let picking = $state<PickerPlace | null>(null);
+	let addItem: HTMLButtonElement | undefined = $state();
+	const songIds = $derived(album?.tracks.map((track) => track.id) ?? []);
+
+	// A menu opened on another album starts with its list shut.
+	$effect(() => {
+		void open?.entry.id;
+		picking = null;
+	});
+
+	function pick(item: HTMLElement): void {
+		picking = pickerBeside(item.getBoundingClientRect(), innerWidth);
+	}
 
 	function then(action: () => void): () => void {
 		return () => {
@@ -70,6 +88,25 @@
 			data-menu-item
 			onclick={then(actions.shuffle)}>Shuffle</button
 		>
+		<button
+			type="button"
+			role="menuitem"
+			class="item"
+			class:open={picking !== null}
+			data-menu-item
+			aria-haspopup="menu"
+			aria-expanded={picking !== null}
+			bind:this={addItem}
+			onclick={(event) => {
+				pick(event.currentTarget);
+			}}
+			onkeydown={(event) => {
+				if (event.key === 'ArrowRight') {
+					event.preventDefault();
+					pick(event.currentTarget);
+				}
+			}}><span class="grow">Add to playlist</span><Icon name="chevron-right" size={14} /></button
+		>
 		{#if actions.editTags !== undefined}
 			<div class="rule"></div>
 			<button
@@ -110,6 +147,31 @@
 			>
 		{/if}
 	</Floating>
+	{#if picking !== null}
+		{@const id = open.entry.id}
+		<PlaylistPicker
+			trackIds={songIds}
+			resolveTracks={async () => {
+				await library.loadAlbum(id);
+				return library.album(id)?.tracks.map((track) => track.id) ?? [];
+			}}
+			count={album?.tracks.length ?? open.entry.trackCount}
+			mode={picking.mode}
+			x={picking.x}
+			y={picking.y}
+			heading={picking.mode === 'sheet'
+				? addHeading(album?.tracks.length ?? open.entry.trackCount)
+				: undefined}
+			onclose={(done, refocus) => {
+				picking = null;
+				if (done) {
+					albumMenu.close(true);
+				} else if (refocus) {
+					addItem?.focus();
+				}
+			}}
+		/>
+	{/if}
 {/if}
 
 <style>
@@ -149,8 +211,13 @@
 	}
 
 	.item:hover,
-	.item:focus-visible {
+	.item:focus-visible,
+	.item.open {
 		background: var(--hover);
+	}
+
+	.grow {
+		flex: 1;
 	}
 
 	.quiet {

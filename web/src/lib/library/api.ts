@@ -52,6 +52,9 @@ import {
 	type ShuffleRules,
 	type ShuffleRun,
 	type TracksEdit,
+	type PlaylistAdded,
+	type PlaylistDetail,
+	type PlaylistSummary,
 	type User
 } from './source.ts';
 
@@ -69,6 +72,11 @@ export interface ApiOptions {
 /** The URL of a cover rendition. */
 export function artworkUrl(hash: string, size: number): string {
 	return `${base}/artwork/${hash}?size=${String(size)}`;
+}
+
+/** A request with a JSON body. */
+function jsonBody(method: string, body: unknown): RequestInit {
+	return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 }
 
 /** What the server says about when to come back. */
@@ -709,6 +717,41 @@ export function createApiSource({
 			const { deleted } = await toTrash<{ deleted: number }>('/admin/trash/empty', target);
 			return deleted;
 		},
+
+		async playlists(holding) {
+			const query =
+				holding === undefined ? '' : `?holding=${holding.map(encodeURIComponent).join(',')}`;
+			const { playlists } = await read<{ playlists: PlaylistSummary[] }>(`/me/playlists${query}`);
+			return playlists;
+		},
+
+		playlist: (id) => read<PlaylistDetail>(`/me/playlists/${encodeURIComponent(id)}`),
+
+		createPlaylist: (name, tracks) =>
+			read<PlaylistAdded>('/me/playlists', jsonBody('POST', { name, tracks })),
+
+		renamePlaylist: (id, name) =>
+			read<PlaylistSummary>(`/me/playlists/${encodeURIComponent(id)}`, jsonBody('PATCH', { name })),
+
+		deletePlaylist: (id) =>
+			read<undefined>(`/me/playlists/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+		addToPlaylist: (id, add) =>
+			read<PlaylistAdded>(`/me/playlists/${encodeURIComponent(id)}/tracks`, jsonBody('POST', add)),
+
+		async removeFromPlaylist(id, entries) {
+			const answer = await read<{ entries: string[] }>(
+				`/me/playlists/${encodeURIComponent(id)}/entries`,
+				jsonBody('DELETE', { entries })
+			);
+			return answer.entries;
+		},
+
+		movePlaylistEntry: (id, entry, place) =>
+			read<undefined>(
+				`/me/playlists/${encodeURIComponent(id)}/move`,
+				jsonBody('POST', { entry, ...place })
+			),
 
 		async changeSettings(change) {
 			const response = await call('/admin/settings', {

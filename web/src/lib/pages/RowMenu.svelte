@@ -4,8 +4,11 @@
 	import { library } from '#lib/library/library.svelte.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import StarsInput from '#lib/shell/StarsInput.svelte';
+	import { pickerBeside, type PickerPlace } from './pickerPlace.ts';
 	import FileInfo from './FileInfo.svelte';
 	import Floating from './Floating.svelte';
+	import PlaylistPicker from './PlaylistPicker.svelte';
+	import { addHeading } from './playlistWords.ts';
 	import { rowMenuItems, type MenuTarget, type SongActions } from './songActions.ts';
 
 	interface Props {
@@ -17,22 +20,33 @@
 		here?: 'album' | 'artist' | undefined;
 		/** Takes the songs out of the queue, in Up next. */
 		remove?: (() => void) | undefined;
+		/** Takes the songs out of the playlist, on a playlist's page: Delete does it there. */
+		takeOut?: (() => void) | undefined;
 		onclose: (refocus: boolean) => void;
 	}
 
-	let { x, y, target, actions, here, remove, onclose }: Props = $props();
+	let { x, y, target, actions, here, remove, takeOut, onclose }: Props = $props();
 
 	let info = $state(false);
+	/** Add to playlist, open beside its item, or as a sheet on a phone. */
+	let picking = $state<PickerPlace | null>(null);
+	let addItem: HTMLButtonElement | undefined = $state();
 	const items = $derived(
 		new Set(
 			rowMenuItems(target, {
 				here,
 				editable: actions.editTags !== undefined,
 				removable: remove !== undefined,
-				trashable: actions.trash !== undefined
+				trashable: actions.trash !== undefined,
+				takeOut: takeOut !== undefined
 			})
 		)
 	);
+
+	/** Opens Add to playlist beside its item, on the side there's room. */
+	function pick(item: HTMLElement): void {
+		picking = pickerBeside(item.getBoundingClientRect(), innerWidth);
+	}
 
 	const ids = $derived(target.kind === 'song' ? [target.trackId] : target.trackIds);
 	/** A song's stars; for several, the stars they all share, if they do. */
@@ -84,6 +98,27 @@
 			data-menu-item
 			onclick={then(actions.addToQueue)}>Add to queue</button
 		>
+		{#if items.has('addToPlaylist')}
+			<button
+				type="button"
+				role="menuitem"
+				class="item"
+				class:open={picking !== null}
+				data-menu-item
+				aria-haspopup="menu"
+				aria-expanded={picking !== null}
+				bind:this={addItem}
+				onclick={(event) => {
+					pick(event.currentTarget);
+				}}
+				onkeydown={(event) => {
+					if (event.key === 'ArrowRight') {
+						event.preventDefault();
+						pick(event.currentTarget);
+					}
+				}}><span class="grow">Add to playlist</span><Icon name="chevron-right" size={14} /></button
+			>
+		{/if}
 		<div class="rule"></div>
 		<div class="rating">
 			<span class="rating-name" aria-hidden="true">Rating</span>
@@ -146,23 +181,54 @@
 				}}>File info</button
 			>
 		{/if}
-		{#if items.has('trash') && actions.trash !== undefined}
+		{#if items.has('takeOut') || items.has('trash')}
 			<div class="rule"></div>
+		{/if}
+		{#if items.has('takeOut') && takeOut !== undefined}
+			<button
+				type="button"
+				role="menuitem"
+				class="item"
+				data-menu-item
+				aria-keyshortcuts="Delete"
+				onclick={then(takeOut)}
+				><span class="grow">Take out of playlist</span><span class="key" aria-hidden="true"
+					>DEL</span
+				></button
+			>
+		{/if}
+		{#if items.has('trash') && actions.trash !== undefined}
 			<button
 				type="button"
 				role="menuitem"
 				class="item danger"
 				data-menu-item
-				aria-keyshortcuts="Delete"
+				aria-keyshortcuts={takeOut === undefined ? 'Delete' : undefined}
 				onclick={then(actions.trash)}
-				><Icon name="trash" size={16} /><span class="grow">Move to Trash</span><span
-					class="key"
-					aria-hidden="true">DEL</span
-				></button
+				><Icon name="trash" size={16} /><span class="grow">Move to Trash</span
+				>{#if takeOut === undefined}<span class="key" aria-hidden="true">DEL</span>{/if}</button
 			>
 		{/if}
 	{/if}
 </Floating>
+{#if picking !== null}
+	<PlaylistPicker
+		trackIds={ids}
+		count={ids.length}
+		mode={picking.mode}
+		x={picking.x}
+		y={picking.y}
+		heading={picking.mode === 'sheet' ? addHeading(ids.length) : undefined}
+		onclose={(done, refocus) => {
+			picking = null;
+			if (done) {
+				onclose(true);
+			} else if (refocus) {
+				addItem?.focus();
+			}
+		}}
+	/>
+{/if}
 
 <style>
 	.head {
@@ -202,7 +268,8 @@
 	}
 
 	.item:hover,
-	.item:focus-visible {
+	.item:focus-visible,
+	.item.open {
 		background: var(--hover);
 	}
 

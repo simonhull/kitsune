@@ -14,6 +14,9 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/store"
 )
 
 // budgetsFile holds every speed budget, the browser suite's included.
@@ -179,6 +182,30 @@ func TestArtistIndexSpeed(t *testing.T) { //nolint:paralleltest // Timed: a spee
 	token := ts.seedBench(t, shape.tracks-prolificSongs, shape.albums, shape.artists)
 	artist := ts.seedProlific(t, shape.albums)
 	holdSpeed(t, b, limit, ts.timeGets(t, token, indexPath+defaultIndexFields+"&artist="+artist))
+}
+
+// TestPlaylistSpeed times a playlist's page at its most: 10,000 entries, of a
+// library as large as the whole index's budget reads.
+func TestPlaylistSpeed(t *testing.T) { //nolint:paralleltest // Timed: a speed test measures a server alone, never beside another.
+	b, limit := speedBudget(t, "playlist")
+	ts := newTestServer(t)
+	shape := benchShapes[len(benchShapes)-1]
+	token := ts.seedBench(t, shape.tracks, shape.albums, shape.artists)
+	index, err := ts.Store.LibraryIndex(t.Context(), 0, &store.IndexOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tracks []string
+	for _, artist := range index.Artists {
+		for _, album := range artist.Albums {
+			for _, track := range album.Tracks {
+				tracks = append(tracks, track.ID)
+			}
+		}
+	}
+	tracks = tracks[:store.MostPlaylistEntries]
+	made := ts.makePlaylist(t, token, &api.PlaylistCreate{Name: "Everything at once", Tracks: tracks})
+	holdSpeed(t, b, limit, ts.timeGets(t, token, playlistPath(made.Playlist.ID)))
 }
 
 // timeGets times 20 gzipped GETs of path, after one to warm up.

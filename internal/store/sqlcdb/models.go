@@ -125,6 +125,26 @@ type Playback struct {
 	UpdatedAt    int64
 }
 
+type Playlist struct {
+	ID        int64
+	Ulid      string
+	UserID    int64
+	Name      string
+	Source    string
+	ImportKey *string
+	CreatedAt int64
+	UpdatedAt int64
+	AddedAt   *int64
+}
+
+type PlaylistTrack struct {
+	ID         int64
+	PlaylistID int64
+	Position   int64
+	TrackID    int64
+	AddedAt    int64
+}
+
 type ScanIssue struct {
 	Root    string
 	RelPath string

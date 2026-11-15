@@ -14,6 +14,8 @@ export interface ScopeHolds {
 	album(id: string): Album | undefined;
 	/** An artist page's songs. */
 	artistSongs(id: string): LibraryIndex | null;
+	/** A playlist's songs, in its order. */
+	playlist(id: string): ListEntry[] | null;
 	marks: MarksView;
 }
 
@@ -52,6 +54,8 @@ export function scopeOrder(scope: ShuffleScope, holds: ScopeHolds): ListEntry[] 
 			const songs = holds.artistSongs(scope.id);
 			return songs === null ? null : entriesOf(songs);
 		}
+		case 'playlist':
+			return holds.playlist(scope.id);
 	}
 }
 

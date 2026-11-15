@@ -9,9 +9,16 @@
 		width: number;
 		onclose: (refocus: boolean) => void;
 		children: Snippet;
+		/**
+		 * It opens from an item of another menu, beside it: a press inside it doesn't close that menu,
+		 * and ← takes it back.
+		 */
+		submenu?: boolean;
+		/** `y` is where its bottom goes, as a popover above a bar has it. */
+		above?: boolean;
 	}
 
-	let { x, y, label, width, onclose, children }: Props = $props();
+	let { x, y, label, width, onclose, children, submenu = false, above = false }: Props = $props();
 
 	/** Clear of the screen's edges by this much. */
 	const margin = 12;
@@ -28,7 +35,7 @@
 		}
 		const { height } = panel.getBoundingClientRect();
 		left = Math.max(margin, Math.min(x, innerWidth - width - margin));
-		top = Math.max(margin, Math.min(y, innerHeight - height - margin));
+		top = Math.max(margin, Math.min(above ? y - height : y, innerHeight - height - margin));
 		placed = true;
 	}
 
@@ -42,7 +49,12 @@
 	}
 
 	function onkeydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape') {
+		if (
+			event.key === 'Escape' ||
+			(submenu &&
+				event.key === 'ArrowLeft' &&
+				!(event.target instanceof HTMLInputElement && event.target.value !== ''))
+		) {
 			event.preventDefault();
 			event.stopPropagation();
 			onclose(true);
@@ -72,7 +84,14 @@
 		place();
 		void tick().then(() => items().at(0)?.focus());
 		function outside(event: PointerEvent): void {
-			if (panel !== undefined && event.target instanceof Node && !panel.contains(event.target)) {
+			const inSubmenu =
+				event.target instanceof Element && event.target.closest('[data-submenu]') !== null;
+			if (
+				panel !== undefined &&
+				event.target instanceof Node &&
+				!panel.contains(event.target) &&
+				!inSubmenu
+			) {
 				onclose(false);
 			}
 		}
@@ -91,6 +110,7 @@
 <div
 	class="floating"
 	class:placed
+	data-submenu={submenu ? '' : undefined}
 	role="menu"
 	aria-label={label}
 	tabindex="-1"

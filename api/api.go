@@ -294,6 +294,132 @@ type EventSettings struct {
 	Keys []string `json:"keys"`
 }
 
+// EventPlaylists is a playlists event: the person's playlists that were made,
+// changed or deleted, by ID.
+type EventPlaylists struct {
+	IDs []string `json:"ids"`
+}
+
+// Where a [Playlist] came from.
+const (
+	PlaylistMade     = "kitsune"
+	PlaylistImported = "navidrome"
+)
+
+// Playlist is one of the caller's playlists as a list shows it. Its counts are
+// of songs in the library: one in Trash leaves them until it comes back.
+type Playlist struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Source string `json:"source"` // kitsune, or navidrome for one imported.
+	// SongCount counts entries: a song in twice counts twice.
+	SongCount  int   `json:"songCount"`
+	AlbumCount int   `json:"albumCount"`
+	DurationMs int64 `json:"durationMs"`
+	// Mosaic is its first albums in its order, each once, at most four.
+	Mosaic    []PlaylistAlbum `json:"mosaic"`
+	CreatedAt time.Time       `json:"createdAt"`
+	UpdatedAt time.Time       `json:"updatedAt"`
+	// AddedAt is when songs were last added; absent before any were.
+	AddedAt time.Time `json:"addedAt,omitzero"`
+	// Holds is how many of the songs GET /me/playlists?holding= named it holds,
+	// each once; absent without holding.
+	Holds *int `json:"holds,omitzero"`
+}
+
+// PlaylistAlbum is an album as a playlist shows it.
+type PlaylistAlbum struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Artist      string   `json:"artist"`
+	Year        int      `json:"year,omitzero"`
+	Compilation bool     `json:"compilation"`
+	Artwork     *Artwork `json:"artwork,omitzero"`
+}
+
+// Playlists is the response to GET /me/playlists, by name.
+type Playlists struct {
+	Playlists []Playlist `json:"playlists"`
+}
+
+// PlaylistDetail is the response to GET /me/playlists/{id}: the [Playlist],
+// repeated, with its entries in order and their albums.
+type PlaylistDetail struct {
+	Playlist `json:",inline"`
+
+	Entries []PlaylistEntry `json:"entries"`
+	// Albums are every album of the entries, in the order they first appear.
+	Albums []PlaylistAlbum `json:"albums"`
+}
+
+// PlaylistEntry is one place in a playlist. ID is the entry's own, which a move
+// or a take-out names: a song in twice has two.
+type PlaylistEntry struct {
+	ID      string       `json:"id"`
+	AlbumID string       `json:"albumId"`
+	Track   LibraryTrack `json:"track"`
+}
+
+// PlaylistCreate is the body of POST /me/playlists.
+type PlaylistCreate struct {
+	Name   string   `json:"name"`
+	Albums []string `json:"albums,omitzero"`
+	Tracks []string `json:"tracks,omitzero"`
+}
+
+// PlaylistRename is the body of PATCH /me/playlists/{id}.
+type PlaylistRename struct {
+	Name string `json:"name"`
+}
+
+// PlaylistAdd is the body of POST /me/playlists/{id}/tracks. The albums' songs
+// go in first, each album's in its order, then the tracks, at the end or just
+// before the entry Before.
+type PlaylistAdd struct {
+	Albums []string `json:"albums,omitzero"`
+	Tracks []string `json:"tracks,omitzero"`
+	// Again adds songs the playlist holds already; without it they are skipped.
+	Again  bool   `json:"again,omitzero"`
+	Before string `json:"before,omitzero"`
+}
+
+// PlaylistAdded is what an add or a create did, and the playlist after it.
+type PlaylistAdded struct {
+	Playlist Playlist     `json:"playlist"`
+	Added    []AddedEntry `json:"added"`
+	// Skipped are the songs left out as already there, by track ID.
+	Skipped []string `json:"skipped"`
+}
+
+// AddedEntry is one entry an add made.
+type AddedEntry struct {
+	ID    string `json:"id"`
+	Track string `json:"track"`
+}
+
+// PlaylistEntries is the body of DELETE /me/playlists/{id}/entries, and its
+// response: the entries taken out.
+type PlaylistEntries struct {
+	Entries []string `json:"entries"`
+}
+
+// PlaylistMove is the body of POST /me/playlists/{id}/move: the entry, and the
+// one it goes just before or just after.
+type PlaylistMove struct {
+	Entry  string `json:"entry"`
+	Before string `json:"before,omitzero"`
+	After  string `json:"after,omitzero"`
+}
+
+// PlaylistProblem is the [Problem] of an add that names songs or albums not in
+// the library, which it names, or that would take a playlist past 10,000.
+type PlaylistProblem struct {
+	Problem `json:",inline"`
+
+	Tracks []string `json:"tracks"`
+	Albums []string `json:"albums"`
+}
+
 // Me is the response to GET /me: the [User], and what the user may do.
 type Me struct {
 	User `json:",inline"`
@@ -678,9 +804,9 @@ type ShuffleStart struct {
 
 // ShuffleScope is what a shuffle draws from.
 type ShuffleScope struct {
-	// Kind is library, rated, album, artist or tracks.
+	// Kind is library, rated, album, artist, playlist or tracks.
 	Kind string `json:"kind"`
-	// ID is the album's or artist's.
+	// ID is the album's, artist's or playlist's.
 	ID string `json:"id,omitzero"`
 	// Tracks are the songs, for tracks.
 	Tracks []string `json:"tracks,omitzero"`

@@ -47,8 +47,17 @@ type MediaFile struct {
 }
 
 type Playlist struct {
-	ID      string
-	OwnerID string
+	ID        string
+	Name      string
+	OwnerID   string
+	CreatedAt *time.Time
+	Rules     *string
+}
+
+type PlaylistTrack struct {
+	ID          int64
+	PlaylistID  string
+	MediaFileID string
 }
 
 type Scrobble struct {

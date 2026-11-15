@@ -1,5 +1,11 @@
 import { library } from '#lib/library/library.svelte.ts';
-import type { Album, LibraryIndex, ShuffleMode, ShuffleScope } from '#lib/library/source.ts';
+import type {
+	Album,
+	LibraryIndex,
+	PlaylistEntry,
+	ShuffleMode,
+	ShuffleScope
+} from '#lib/library/source.ts';
 import { keepFor, type LibraryFilter } from '#lib/pages/libraryRows.ts';
 import { candidatesOf, unitsOf, type Candidate, type Unit } from './pick.ts';
 import type { ShuffleSource } from './session.svelte.ts';
@@ -153,5 +159,43 @@ export function sourceOf(scope: ShuffleScope, mode: ShuffleMode): ShuffleSource 
 				},
 				units: none
 			};
+		case 'playlist':
+			return {
+				key: `playlist:${scope.id}`,
+				scope,
+				mode,
+				get label() {
+					return library.playlists.summary(scope.id)?.name.toUpperCase() ?? 'THIS PLAYLIST';
+				},
+				units: none
+			};
 	}
+}
+
+/**
+ * What a playlist's Shuffle shuffles: its songs, each once however often it holds them. The first
+ * is picked from the page's own list of them; their marks are what the person's stars say now.
+ */
+export function playlistSource(
+	id: string,
+	name: string,
+	entries: () => readonly PlaylistEntry[]
+): ShuffleSource {
+	return {
+		key: `playlist:${id}`,
+		scope: { kind: 'playlist', id },
+		mode: 'finite',
+		label: name.toUpperCase(),
+		units: () => {
+			const seen = new Set<string>();
+			const inScope: Candidate[] = [];
+			for (const { track, albumId } of entries()) {
+				if (!seen.has(track.id)) {
+					seen.add(track.id);
+					inScope.push({ id: track.id, albumId, ...marksOf(track.id) });
+				}
+			}
+			return unitsOf(inScope, inScope);
+		}
+	};
 }
