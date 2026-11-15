@@ -128,6 +128,14 @@
     "add-to-playlist": {
       "interaction": "Add a song to a playlist from its menu, press to the toast",
       "p95Ms": 26
+    },
+    "open-smart-playlist": {
+      "interaction": "Open a smart playlist of 500 songs (a text rule over 50k, the 500 least recently played) from its card, click to its rows",
+      "p95Ms": 160
+    },
+    "edit-rule": {
+      "interaction": "Rules editor: press a star, to the count changed",
+      "p95Ms": 200
     }
   },
   "server": {
@@ -150,6 +158,14 @@
     "home-history": {
       "interaction": "GET /me/home, 217k plays of 50k songs, 43k of them in the last 90 days",
       "p95Ms": 90
+    },
+    "smart-preview": {
+      "interaction": "POST /me/playlists/preview, 50k songs: six rules with a group, a genre rule and a limit by least recently played",
+      "p95Ms": 30
+    },
+    "smart-playlists": {
+      "interaction": "GET /me/playlists with 10 smart playlists, 50k songs",
+      "p95Ms": 220
     }
   }
 }
