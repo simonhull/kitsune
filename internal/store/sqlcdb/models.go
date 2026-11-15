@@ -135,6 +135,8 @@ type Playlist struct {
 	CreatedAt int64
 	UpdatedAt int64
 	AddedAt   *int64
+	Rules     *string
+	Seed      *int64
 }
 
 type PlaylistTrack struct {

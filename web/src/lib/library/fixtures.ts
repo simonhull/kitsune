@@ -6,6 +6,7 @@ import { discOf, discsOf } from './format.ts';
 import { partOf } from './indexPatch.ts';
 import { createPlaybackFixture, type PlaybackFixture } from './playbackFixture.ts';
 import { createPlaylistsFixture } from './playlistsFixture.ts';
+import type { SongFacts } from './smartEval.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
 	AlbumNotFoundError,
@@ -980,8 +981,47 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		albums: () => new Map([...held, ...listOnly]),
 		gone,
 		stars: (id) => stars.get(id),
+		facts: () => smartFacts(),
+		factsNow: () => fixtureNow,
 		...(options.playbackStore === undefined ? {} : { store: options.playbackStore })
 	});
+
+	/** Every live song in the Library's order, with what a smart rule reads of it. */
+	function smartFacts(): SongFacts[] {
+		const everything: IndexField[] = [
+			'genre',
+			'albumArtist',
+			'year',
+			'format',
+			'bitrate',
+			'added',
+			'plays',
+			'lastPlayed'
+		];
+		return markedIndex(everything).artists.flatMap(({ albums: listed }) =>
+			listed.flatMap((album) =>
+				album.tracks.map((track) => ({
+					id: track.id,
+					albumId: album.id,
+					title: track.title,
+					album: album.title,
+					artists: track.artists,
+					albumArtists: track.albumArtists ?? [],
+					genres: track.displayGenres ?? [],
+					...(track.year === undefined ? {} : { year: track.year }),
+					halves: Math.round((track.stars ?? 0) * 2),
+					plays: track.plays ?? 0,
+					skips: 0,
+					lastPlayed: track.lastPlayedAt === undefined ? null : Date.parse(track.lastPlayedAt),
+					added: Date.parse(track.addedAt ?? '2026-01-01T00:00:00Z'),
+					durationMs: track.durationMs,
+					format: track.format ?? 'FLAC',
+					...(track.bitrate === undefined ? {} : { bitrate: track.bitrate }),
+					bytes: Math.round((track.durationMs / 1000) * (track.bitrate ?? 900) * 125)
+				}))
+			)
+		);
+	}
 
 	/** The songs a scope holds, with their albums. */
 	function inScope(scope: ShuffleScope): { album: Album; track: Track }[] {
@@ -1703,6 +1743,12 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		addToPlaylist: (id, add) => after(() => lists.addToPlaylist(id, add)),
 		removeFromPlaylist: (id, entries) => after(() => lists.removeFromPlaylist(id, entries)),
 		movePlaylistEntry: (id, entry, place) => after(() => lists.movePlaylistEntry(id, entry, place)),
+		createSmartPlaylist: (name, rules, seed) =>
+			after(() => lists.createSmartPlaylist(name, rules, seed)),
+		changePlaylist: (id, change) => after(() => lists.changePlaylist(id, change)),
+		previewSmart: (request, signal) => after(() => lists.previewSmart(request, signal)),
+		reseedPlaylist: (id) => after(() => lists.reseedPlaylist(id)),
+		copyPlaylist: (id) => after(() => lists.copyPlaylist(id)),
 		changeSettings: (change) =>
 			respond(() => {
 				adminOnly();

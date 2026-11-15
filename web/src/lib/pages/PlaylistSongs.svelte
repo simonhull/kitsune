@@ -5,6 +5,9 @@
 	where it lands, and the move saves after the drop. Alt with an arrow moves the focused song; Del
 	takes the picked songs, or the focused one, out of the playlist and never out of the library.
 	Rows are placed in a window over the list, so 10,000 of them cost what a screenful does.
+
+	A smart playlist's songs come in the order its rules give: no grip, no Alt with an arrow, no Del
+	and no Take out of playlist, and after the album the columns its rules read, headed in the fox.
 -->
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
@@ -15,8 +18,11 @@
 		MovableId,
 		PlaylistAlbum,
 		PlaylistDetail,
-		PlaylistEntry
+		PlaylistEntry,
+		SmartRules
 	} from '#lib/library/source.ts';
+	import { ruleColumns } from '#lib/library/smartlist.ts';
+	import { smartFoot } from './playlistWords.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import { rowWindow } from './artistSongs.ts';
 	import type { RowWindow } from './libraryRows.ts';
@@ -25,6 +31,7 @@
 		columnsFrom,
 		fit,
 		largeFrom,
+		leadingCount,
 		monoAdvance,
 		template,
 		type RowParts
@@ -49,9 +56,14 @@
 		playlist: PlaylistDetail;
 		/** Plays from an entry, through the playlist to its end. */
 		onplay: (entryId: string) => void;
+		/** A smart playlist's rules: its order is theirs, so nothing moves or comes out. */
+		smartRules?: SmartRules | undefined;
 	}
 
-	let { playlist, onplay }: Props = $props();
+	let { playlist, onplay, smartRules }: Props = $props();
+
+	const smart = $derived(smartRules !== undefined);
+	const rulesRead = $derived(smartRules === undefined ? [] : ruleColumns(smartRules));
 
 	/** How long a finger holds the grip before the song comes up to be moved. */
 	const holdMs = 220;
@@ -67,11 +79,15 @@
 	const phone = $derived(windowWidth < columnsFrom);
 	const step = $derived(windowWidth >= largeFrom ? 'large' : 'columns');
 	/** A phone's rows have no number, as the board has them. */
-	const parts: RowParts = $derived({ handle: true, cover: true, number: !phone });
+	const parts: RowParts = $derived({ handle: !smart, cover: true, number: !phone });
 	const rowHeight = $derived(phone ? 58 : step === 'large' ? 56 : 46);
-	const order: MovableId[] = ['number', 'title', 'artist', 'album'];
+	const order: MovableId[] = $derived(
+		smart ? ['number', 'title', 'album', ...rulesRead] : ['number', 'title', 'artist', 'album']
+	);
 	/** What a phone's second line says: the album, then the time. */
-	const phoneOrder: MovableId[] = ['title', 'album'];
+	const phoneOrder: MovableId[] = $derived(
+		smart ? ['title', 'album', ...rulesRead] : ['title', 'album']
+	);
 	const fitted = $derived(fit(order, listWidth, step, parts));
 	const grid = $derived(template(fitted.shown, step, parts));
 	const lineChars = $derived(Math.floor((listWidth - 150) / monoAdvance));
@@ -83,6 +99,14 @@
 	const byEntry = $derived(new Map(entries.map((entry) => [entry.id, entry])));
 	const albums = $derived(new Map(playlist.albums.map((album) => [album.id, album])));
 	const albumOf = $derived(new Map(entries.map(({ track, albumId }) => [track.id, albumId])));
+
+	// The stars came with the songs: the rows show them even before any index is read.
+	$effect(() => {
+		const tracks = entries.map(({ track }) => track);
+		untrack(() => {
+			library.marks.seedTracks(tracks);
+		});
+	});
 
 	const selection = new Selection();
 	onMount(() => onScreen.show(selection));
@@ -152,16 +176,10 @@
 
 	/** A row's song, keyed by its entry: a song in twice is two rows. */
 	function rowTrack(entry: PlaylistEntry, at: number): LibraryTrack {
-		const { title, durationMs, artists, stars } = entry.track;
-		// The number is its place in the playlist, not on its album.
-		return {
-			id: entry.id,
-			title,
-			durationMs,
-			artists,
-			trackNo: at + 1,
-			...(stars === undefined ? {} : { stars })
-		};
+		// The number is its place in the playlist, not on its album: the rest is what the rules read.
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars -- The row's own number is its place.
+		const { id: _track, discNo: _disc, trackNo: _no, ...rest } = entry.track;
+		return { ...rest, id: entry.id, trackNo: at + 1 };
 	}
 
 	const noAlbum: PlaylistAlbum = { id: '', title: '', artist: '', compilation: false };
@@ -247,6 +265,10 @@
 			};
 		},
 		key: (event, key) => {
+			if (smart) {
+				list.key(event, key);
+				return;
+			}
 			if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
 				event.preventDefault();
 				nudge(key, event.key === 'ArrowUp' ? -1 : 1);
@@ -400,14 +422,18 @@
 >
 	{#if !phone}
 		<div class="header" data-song-header aria-hidden="true">
-			<span></span><span></span><span></span>
-			{#each heads as { id, head } (id)}<span class={['head', id]}>{head}</span>{/each}
+			{#each { length: leadingCount(parts) }, i (i)}<span></span>{/each}
+			{#each heads as { id, head } (id)}<span
+					class={['head', id, rulesRead.includes(id as never) && 'rule']}>{head}</span
+				>{/each}
 			<span class="head end">TIME</span><span></span>
 		</div>
 	{/if}
 	{#if entries.length === 0}
 		<p class="empty">
-			Nothing in it yet. Add songs from any ⋯ menu, or pick some and press Add to…
+			{smart
+				? 'No song matches its rules yet. Rate or play some, or edit the rules.'
+				: 'Nothing in it yet. Add songs from any ⋯ menu, or pick some and press Add to…'}
 		</p>
 	{/if}
 	<div
@@ -443,17 +469,21 @@
 					cued={cuedId === entry.track.id}
 					sounding={cuedId === entry.track.id && player.sounding}
 					picked={selection.has(entry.id)}
-					ondrag={startDrag}
-					onmove={nudge}
+					ondrag={smart ? undefined : startDrag}
+					onmove={smart ? undefined : nudge}
 				/>
 			</div>
 		{/each}
 	</div>
 	{#if entries.length > 0}
 		<p class="foot">
-			{phone
-				? 'HOLD A GRIP TO MOVE A SONG'
-				: 'DRAG A GRIP TO MOVE A SONG · DEL TAKES IT OUT OF THE PLAYLIST, NEVER THE LIBRARY'}
+			{smart
+				? phone
+					? 'LIVE: RATE OR PLAY A SONG AND IT JOINS OR LEAVES'
+					: smartFoot
+				: phone
+					? 'HOLD A GRIP TO MOVE A SONG'
+					: 'DRAG A GRIP TO MOVE A SONG · DEL TAKES IT OUT OF THE PLAYLIST, NEVER THE LIBRARY'}
 		</p>
 	{/if}
 </section>
@@ -464,7 +494,7 @@
 		y={rowMenu.y}
 		target={rowMenu.target}
 		actions={rowMenu.actions}
-		takeOut={rowMenu.takeOut}
+		takeOut={smart ? undefined : rowMenu.takeOut}
 		onclose={(refocus) => {
 			rowMenu = null;
 			if (refocus) {
@@ -520,6 +550,10 @@
 
 	.end {
 		text-align: right;
+	}
+
+	.rule {
+		color: var(--fox-text);
 	}
 
 	.rows {

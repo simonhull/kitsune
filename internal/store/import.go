@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/internal/rating"
+	"github.com/simonhull/kitsune/internal/smartlist"
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
 
@@ -149,6 +152,9 @@ type ImportedPlaylist struct {
 	// Tracks are its songs by ULID, in order, a song as often as it is in it:
 	// at most [MostPlaylistEntries].
 	Tracks []string
+	// Rules make it a smart playlist, which holds no Tracks; nil for a
+	// regular one.
+	Rules *smartlist.Rules
 }
 
 // ImportCount says what became of one kind of an import's rows.
@@ -181,8 +187,9 @@ type ImportCounts struct {
 //
 // It returns an error wrapping [ErrNotFound] if an item's ULID is no longer in
 // the library, [rating.ErrBad] for a rating that isn't one,
-// [ErrBadPlaylistName] for a playlist's name that isn't one and
-// [ErrPlaylistFull] for one with too many songs.
+// [ErrBadPlaylistName] for a playlist's name that isn't one,
+// [ErrPlaylistFull] for one with too many songs and [smartlist.ErrBad] for a
+// smart one that names songs.
 func (s *Store) ApplyImport(ctx context.Context, imp *Import) (ImportCounts, error) {
 	if err := checkImport(imp); err != nil {
 		return ImportCounts{}, fmt.Errorf("apply import: %w", err)
@@ -223,6 +230,9 @@ func checkImport(imp *Import) error {
 		if len(p.Tracks) > MostPlaylistEntries {
 			return fmt.Errorf("playlist %s: %w", p.Key, ErrPlaylistFull)
 		}
+		if p.Rules != nil && len(p.Tracks) > 0 {
+			return fmt.Errorf("playlist %s: a smart playlist holds no songs: %w", p.Key, smartlist.ErrBad)
+		}
 	}
 	return nil
 }
@@ -258,13 +268,27 @@ func (w importWriter) playlists(ctx context.Context, playlists []ImportedPlaylis
 	return nil
 }
 
-// playlist makes one new playlist with its songs.
+// playlist makes one new playlist with its songs, or a smart one with its
+// rules and a seed of its own.
 func (w importWriter) playlist(ctx context.Context, p *ImportedPlaylist) error {
 	key := p.Key
-	row, err := w.q.InsertPlaylist(ctx, sqlcdb.InsertPlaylistParams{
+	params := sqlcdb.InsertPlaylistParams{
 		Ulid: p.ID, UserID: w.user, Name: p.Name, Source: PlaylistImported, ImportKey: &key,
 		CreatedAt: ms(p.CreatedAt), UpdatedAt: w.now,
-	})
+	}
+	if p.Rules != nil {
+		encoded, err := p.Rules.MarshalJSON()
+		if err != nil {
+			return err //nolint:wrapcheck // It says "encode rules".
+		}
+		rules := string(encoded)
+		seed, err := importSeed()
+		if err != nil {
+			return err
+		}
+		params.Rules, params.Seed = &rules, &seed
+	}
+	row, err := w.q.InsertPlaylist(ctx, params)
 	if err != nil {
 		return fmt.Errorf("insert: %w", err)
 	}
@@ -352,3 +376,16 @@ func (c *ImportCount) count(n int64) {
 // errNoTrack would mean a tag named a track the same read didn't: impossible
 // inside one transaction, but checked rather than trusted.
 var errNoTrack = errors.New("tag of a track the read did not return")
+
+// mostImportSeed bounds an imported smart playlist's seed below 2⁵³, which a
+// client holds exactly.
+const mostImportSeed = 1 << 53
+
+// importSeed draws the seed an imported smart playlist's random choices follow.
+func importSeed() (int64, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return 0, fmt.Errorf("seed: %w", err)
+	}
+	return int64(binary.LittleEndian.Uint64(b[:]) % mostImportSeed), nil
+}

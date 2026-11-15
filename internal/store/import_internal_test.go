@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/internal/rating"
+	"github.com/simonhull/kitsune/internal/smartlist"
 )
 
 // importKeys are the tag keys the import tests keep MusicBrainz IDs under.
@@ -137,6 +138,40 @@ func TestApplyImportKeepsAnImportedPlaylistAsItIsNow(t *testing.T) {
 	}
 }
 
+// A smart playlist comes over with its rules and a seed, never an entry; a
+// re-run adds nothing, and queues nothing for Last.fm.
+func TestApplyImportWritesASmartPlaylistOnce(t *testing.T) {
+	t.Parallel()
+	s, _ := lastfmStore(t) // Scrobbles and loves on.
+	rules, err := smartlist.Parse([]byte(`{"match":"all","rules":[{"field":"rating","op":"atLeast","value":8}],"limit":{"count":20,"unit":"songs","by":"random"},"order":"chosen"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	imp := sampleImport()
+	imp.Playlists = append(imp.Playlists, ImportedPlaylist{
+		ID: "01PLAYLISTIMPORTED00000009", Key: "navidrome:p9", Name: "Loved", CreatedAt: at(6), Tracks: []string{}, Rules: &rules,
+	})
+	first := mustApply(t, s, imp)
+	const smartRows = `SELECT ulid, rules, seed IS NOT NULL AND seed >= 0 AND seed < 9007199254740992,
+		(SELECT count(*) FROM playlist_tracks e WHERE e.playlist_id = p.id) FROM playlists p WHERE rules IS NOT NULL`
+	want := []string{`01PLAYLISTIMPORTED00000009 {"match":"all","rules":[{"field":"rating","op":"atLeast","value":8}],` +
+		`"limit":{"count":20,"unit":"songs","by":"random"},"order":"chosen"} 1 0`}
+	if got := rawRows(t, s.w, smartRows); !slices.Equal(got, want) {
+		t.Errorf("smart playlists = %v, want %v", got, want)
+	}
+	imp.Playlists[1].ID = "01PLAYLISTIMPORTED00000010" // A new run makes new IDs.
+	second := mustApply(t, s, imp)
+	if first.Playlists != (ImportCount{Added: 2}) || second.Playlists != (ImportCount{There: 2}) {
+		t.Errorf("playlists = %+v then %+v, want 2 added, then 2 there", first.Playlists, second.Playlists)
+	}
+	if got := rawRows(t, s.w, smartRows); !slices.Equal(got, want) {
+		t.Errorf("after a re-run, smart playlists = %v, want %v", got, want)
+	}
+	if got := outbox(t, s); len(got) != 0 {
+		t.Errorf("outbox = %v, want nothing queued", got)
+	}
+}
+
 func TestApplyImportKeepsTheirRating(t *testing.T) {
 	t.Parallel()
 	s, now := markedStore(t)
@@ -177,6 +212,10 @@ func TestApplyImportQueuesNothingForLastfm(t *testing.T) {
 
 func TestApplyImportIsAllOrNothing(t *testing.T) {
 	t.Parallel()
+	everything, parseErr := smartlist.Parse([]byte(`{"match":"all","rules":[]}`))
+	if parseErr != nil {
+		t.Fatal(parseErr)
+	}
 	tests := []struct {
 		name    string
 		spoil   func(*Import)
@@ -190,6 +229,7 @@ func TestApplyImportIsAllOrNothing(t *testing.T) {
 		{"a playlist too long", func(imp *Import) {
 			imp.Playlists[0].Tracks = slices.Repeat([]string{trackULID(1)}, MostPlaylistEntries+1)
 		}, ErrPlaylistFull},
+		{"a smart playlist with songs", func(imp *Import) { imp.Playlists[0].Rules = &everything }, smartlist.ErrBad},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

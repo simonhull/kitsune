@@ -2,8 +2,10 @@ package navidrome_test
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -112,5 +114,101 @@ func TestPlaylistIDs(t *testing.T) {
 	w.opts.NewID = func(time.Time) (string, error) { return "", errBroken }
 	if _, err := w.plan(t); !errors.Is(err, errBroken) {
 		t.Errorf("err = %v, want the ID's", err)
+	}
+}
+
+// smartWorld is a playlist made by hand, a smart one that maps and names it,
+// and two smart ones that stay behind.
+func smartWorld() world {
+	w := playlistWorld()
+	var n atomic.Int32
+	w.opts.NewID = func(time.Time) (string, error) {
+		return fmt.Sprintf("01PLAYLIST%016d", n.Add(1)), nil
+	}
+	w.lists = []navidromedb.Playlist{
+		{ID: "p1", Name: "Falling Up", Songs: []string{"s1"}},
+		{
+			ID: "p2", Name: "Loved, and in Falling Up", Smart: true, CreatedAt: ts(4, 0),
+			Rules: `{"all":[{"is":{"loved":true}},{"inPlaylist":{"id":"p1"}}],"sort":"-playcount","limit":20}`,
+		},
+		{ID: "p3", Name: "The ones", Smart: true, Rules: `{"all":[{"startsWith":{"title":"The"}},{"contains":{"comment":"live"}}]}`},
+		{ID: "p4", Name: "Live", Smart: true, Rules: `{"any":[{"contains":{"comment":"live"}}]}`},
+	}
+	w.opts.Accounts = []navidrome.Account{{ID: account, Name: kName, LoveFrom: 9}}
+	return w
+}
+
+// A smart playlist whose criteria all map comes over as rules, with no songs,
+// loved meaning the person's own love line and its playlist rule naming the
+// regular one's new ID; one with any criterion that doesn't map stays behind
+// whole.
+func TestSmartPlaylistsComeOverOrStayBehindWhole(t *testing.T) {
+	t.Parallel()
+	w := smartWorld()
+	p := w.person(t)
+	got := p.Import.Playlists
+	if len(got) != 2 || got[0].Rules != nil || got[1].Rules == nil {
+		t.Fatalf("playlists = %+v, want the regular one and one smart one", got)
+	}
+	checkSmartPlaylist(t, &got[1])
+	r := p.Report.Playlists
+	wantLeft := []navidrome.LeftOut{{Name: "The ones", Why: []string{"startsWith", "comment"}}, {Name: "Live", Why: []string{"comment"}}}
+	if r.Source != 4 || r.Smart != 3 || r.Imported() != 2 ||
+		!slices.EqualFunc(r.LeftOut, wantLeft, func(a, b navidrome.LeftOut) bool { return a.Name == b.Name && slices.Equal(a.Why, b.Why) }) {
+		t.Errorf("report = %+v, want 4 playlists, 3 smart, 2 left out: %+v", r, wantLeft)
+	}
+}
+
+// checkSmartPlaylist checks smartWorld's smart playlist that comes over.
+func checkSmartPlaylist(t *testing.T, smart *store.ImportedPlaylist) {
+	t.Helper()
+	if smart.ID != "01PLAYLIST0000000000000002" || smart.Key != "navidrome:p2" || smart.Name != "Loved, and in Falling Up" ||
+		!smart.CreatedAt.Equal(ts(4, 0)) || len(smart.Tracks) != 0 {
+		t.Errorf("smart playlist = %+v", smart)
+	}
+	encoded, err := smart.Rules.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"match":"all","rules":[{"field":"rating","op":"atLeast","value":9},` +
+		`{"field":"playlist","op":"is","value":"01PLAYLIST0000000000000001"}],` +
+		`"limit":{"count":20,"unit":"songs","by":"mostPlayed"},"order":"chosen"}`
+	if string(encoded) != want {
+		t.Errorf("rules = %s\nwant %s", encoded, want)
+	}
+}
+
+// The report says how many smart playlists came over, how many stayed behind
+// and why, and names each one left out.
+func TestSmartPlaylistsReport(t *testing.T) {
+	t.Parallel()
+	w := smartWorld()
+	plan, err := w.plan(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err = navidrome.Write(&b, &plan, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Playlists: 2 playlists, 1 smart; 2 smart left out (startsWith, comment)\n",
+		"  Left out: The ones (startsWith, comment)\n",
+		"  Left out: Live (comment)\n",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("report lacks %q:\n%s", want, b.String())
+		}
+	}
+}
+
+// A smart playlist naming one that stays behind stays behind with it.
+func TestASmartPlaylistNamingOneLeftOutStaysBehind(t *testing.T) {
+	t.Parallel()
+	w := smartWorld()
+	w.lists = append(w.lists, navidromedb.Playlist{ID: "p5", Name: "Not live", Smart: true, Rules: `{"all":[{"notInPlaylist":{"id":"p4"}}]}`})
+	r := w.person(t).Report.Playlists
+	if last := r.LeftOut[len(r.LeftOut)-1]; last.Name != "Not live" || !slices.Equal(last.Why, []string{"notInPlaylist"}) {
+		t.Errorf("left out = %+v, want Not live, for naming Live", r.LeftOut)
 	}
 }

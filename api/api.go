@@ -312,6 +312,11 @@ type Playlist struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Source string `json:"source"` // kitsune, or navidrome for one imported.
+	// Smart says rules choose its songs, each time it is read.
+	Smart bool `json:"smart"`
+	// Rules are a smart playlist's, in internal/smartlist's form; absent for a
+	// regular one.
+	Rules jsontext.Value `json:"rules,omitzero"`
 	// SongCount counts entries: a song in twice counts twice.
 	SongCount  int   `json:"songCount"`
 	AlbumCount int   `json:"albumCount"`
@@ -360,16 +365,59 @@ type PlaylistEntry struct {
 	Track   LibraryTrack `json:"track"`
 }
 
-// PlaylistCreate is the body of POST /me/playlists.
+// PlaylistCreate is the body of POST /me/playlists. With Rules it makes a smart
+// playlist, and names no songs.
 type PlaylistCreate struct {
-	Name   string   `json:"name"`
-	Albums []string `json:"albums,omitzero"`
-	Tracks []string `json:"tracks,omitzero"`
+	Name   string         `json:"name"`
+	Albums []string       `json:"albums,omitzero"`
+	Tracks []string       `json:"tracks,omitzero"`
+	Rules  jsontext.Value `json:"rules,omitzero"`
+	// Seed is what a smart playlist's random choices follow; nil draws one.
+	Seed *int64 `json:"seed,omitzero"`
 }
 
-// PlaylistRename is the body of PATCH /me/playlists/{id}.
-type PlaylistRename struct {
-	Name string `json:"name"`
+// PlaylistChange is the body of PATCH /me/playlists/{id}: a new name, a smart
+// playlist's new rules, or both.
+type PlaylistChange struct {
+	Name  *string        `json:"name,omitzero"`
+	Rules jsontext.Value `json:"rules,omitzero"`
+}
+
+// SmartPreviewRequest is the body of POST /me/playlists/preview.
+type SmartPreviewRequest struct {
+	Rules jsontext.Value `json:"rules"`
+	// ID is the smart playlist being edited, whose seed a random choice follows.
+	ID   string `json:"id,omitzero"`
+	Seed *int64 `json:"seed,omitzero"`
+}
+
+// SmartPreview is what smart rules choose now: the response to POST
+// /me/playlists/preview.
+type SmartPreview struct {
+	SongCount  int             `json:"songCount"`  // The limit applied.
+	MatchCount int             `json:"matchCount"` // Before the limit.
+	AlbumCount int             `json:"albumCount"`
+	DurationMs int64           `json:"durationMs"`
+	Mosaic     []PlaylistAlbum `json:"mosaic"`
+	Songs      []SmartSong     `json:"songs"` // The first, at most 40.
+}
+
+// SmartSong is a song a preview shows.
+type SmartSong struct {
+	ID           string    `json:"id"`
+	AlbumID      string    `json:"albumId"`
+	Title        string    `json:"title"`
+	Stars        float64   `json:"stars,omitzero"`
+	Plays        int       `json:"plays,omitzero"`
+	LastPlayedAt time.Time `json:"lastPlayedAt,omitzero"`
+}
+
+// SmartProblem is the [Problem] of rules a smart playlist can't have. Cycle
+// lists the playlists that name each other, when that is the trouble.
+type SmartProblem struct {
+	Problem `json:",inline"`
+
+	Cycle []string `json:"cycle,omitzero"`
 }
 
 // PlaylistAdd is the body of POST /me/playlists/{id}/tracks. The albums' songs

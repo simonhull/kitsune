@@ -26,6 +26,11 @@ type libraryRows struct {
 	details      kept[sqlcdb.ListIndexTrackDetailsRow]
 	albumArtists kept[sqlcdb.ListIndexTrackAlbumArtistsRow]
 	tags         kept[sqlcdb.ListIndexTrackTagsRow]
+
+	// smart is what evaluating smart rules works out of those rows: the
+	// Library's order and folded names (smartlist.go). Like them, it holds after
+	// the library write it was read after, and nobody changes it.
+	smart atomic.Pointer[smartBasis]
 }
 
 // kept holds one query's rows as they stood after some number of library

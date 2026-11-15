@@ -4,12 +4,12 @@
 -- entries wait, unseen, for Restore.
 
 -- name: InsertPlaylist :one
-INSERT INTO playlists (ulid, user_id, name, source, import_key, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO playlists (ulid, user_id, name, source, import_key, created_at, updated_at, rules, seed)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id;
 
 -- name: PlaylistRow :one
-SELECT id, ulid, name, source, created_at, updated_at, added_at
+SELECT id, ulid, name, source, created_at, updated_at, added_at, rules, seed
 FROM playlists
 WHERE user_id = ? AND ulid = ?;
 
@@ -17,7 +17,7 @@ WHERE user_id = ? AND ulid = ?;
 SELECT id FROM playlists WHERE user_id = ? AND import_key = ?;
 
 -- name: ListPlaylists :many
-SELECT id, ulid, name, source, created_at, updated_at, added_at
+SELECT id, ulid, name, source, created_at, updated_at, added_at, rules, seed
 FROM playlists
 WHERE user_id = ?
 ORDER BY name COLLATE NOCASE, id;
@@ -122,6 +122,27 @@ UPDATE playlist_tracks SET position = -1 - position WHERE playlist_id = ?;
 DELETE FROM playlist_tracks
 WHERE playlist_id = sqlc.arg(playlist_id) AND id IN (SELECT value FROM json_each(CAST(sqlc.arg(ids) AS TEXT)))
 RETURNING id;
+
+-- name: SetPlaylistRules :exec
+UPDATE playlists SET rules = ?, seed = ?, updated_at = ? WHERE id = ?;
+
+-- name: SetPlaylistSeed :exec
+UPDATE playlists SET seed = ?, updated_at = ? WHERE id = ?;
+
+-- name: ListSmartPlaylistRules :many
+-- A person's smart playlists' rules: what a check for a cycle walks.
+SELECT ulid, rules FROM playlists WHERE user_id = ? AND rules IS NOT NULL;
+
+-- name: ListSmartRatings :many
+-- A person's stars, by track row: what smart rules read of them.
+SELECT track_id, halves FROM track_ratings WHERE user_id = ?;
+
+-- name: ListSmartSkips :many
+-- How often a person skipped each song: listens that ended skipped.
+SELECT track_id, count(*) AS skips
+FROM listens
+WHERE user_id = ? AND ended = 'skipped'
+GROUP BY track_id;
 
 -- name: RenamePlaylist :exec
 UPDATE playlists SET name = ?, updated_at = ? WHERE id = ?;

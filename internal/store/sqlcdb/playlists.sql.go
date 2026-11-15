@@ -89,8 +89,8 @@ func (q *Queries) EntryPosition(ctx context.Context, arg EntryPositionParams) (i
 
 const insertPlaylist = `-- name: InsertPlaylist :one
 
-INSERT INTO playlists (ulid, user_id, name, source, import_key, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO playlists (ulid, user_id, name, source, import_key, created_at, updated_at, rules, seed)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id
 `
 
@@ -102,6 +102,8 @@ type InsertPlaylistParams struct {
 	ImportKey *string
 	CreatedAt int64
 	UpdatedAt int64
+	Rules     *string
+	Seed      *int64
 }
 
 // Playlists: each person's own songs in their own order. An entry's position is
@@ -117,6 +119,8 @@ func (q *Queries) InsertPlaylist(ctx context.Context, arg InsertPlaylistParams) 
 		arg.ImportKey,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.Rules,
+		arg.Seed,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -555,7 +559,7 @@ func (q *Queries) ListPlaylistTrackRows(ctx context.Context, playlistID int64) (
 }
 
 const listPlaylists = `-- name: ListPlaylists :many
-SELECT id, ulid, name, source, created_at, updated_at, added_at
+SELECT id, ulid, name, source, created_at, updated_at, added_at, rules, seed
 FROM playlists
 WHERE user_id = ?
 ORDER BY name COLLATE NOCASE, id
@@ -569,6 +573,8 @@ type ListPlaylistsRow struct {
 	CreatedAt int64
 	UpdatedAt int64
 	AddedAt   *int64
+	Rules     *string
+	Seed      *int64
 }
 
 func (q *Queries) ListPlaylists(ctx context.Context, userID int64) ([]ListPlaylistsRow, error) {
@@ -588,7 +594,111 @@ func (q *Queries) ListPlaylists(ctx context.Context, userID int64) ([]ListPlayli
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AddedAt,
+			&i.Rules,
+			&i.Seed,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSmartPlaylistRules = `-- name: ListSmartPlaylistRules :many
+SELECT ulid, rules FROM playlists WHERE user_id = ? AND rules IS NOT NULL
+`
+
+type ListSmartPlaylistRulesRow struct {
+	Ulid  string
+	Rules *string
+}
+
+// A person's smart playlists' rules: what a check for a cycle walks.
+func (q *Queries) ListSmartPlaylistRules(ctx context.Context, userID int64) ([]ListSmartPlaylistRulesRow, error) {
+	rows, err := q.query(ctx, q.listSmartPlaylistRulesStmt, listSmartPlaylistRules, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSmartPlaylistRulesRow
+	for rows.Next() {
+		var i ListSmartPlaylistRulesRow
+		if err := rows.Scan(&i.Ulid, &i.Rules); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSmartRatings = `-- name: ListSmartRatings :many
+SELECT track_id, halves FROM track_ratings WHERE user_id = ?
+`
+
+type ListSmartRatingsRow struct {
+	TrackID int64
+	Halves  int64
+}
+
+// A person's stars, by track row: what smart rules read of them.
+func (q *Queries) ListSmartRatings(ctx context.Context, userID int64) ([]ListSmartRatingsRow, error) {
+	rows, err := q.query(ctx, q.listSmartRatingsStmt, listSmartRatings, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSmartRatingsRow
+	for rows.Next() {
+		var i ListSmartRatingsRow
+		if err := rows.Scan(&i.TrackID, &i.Halves); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSmartSkips = `-- name: ListSmartSkips :many
+SELECT track_id, count(*) AS skips
+FROM listens
+WHERE user_id = ? AND ended = 'skipped'
+GROUP BY track_id
+`
+
+type ListSmartSkipsRow struct {
+	TrackID int64
+	Skips   int64
+}
+
+// How often a person skipped each song: listens that ended skipped.
+func (q *Queries) ListSmartSkips(ctx context.Context, userID int64) ([]ListSmartSkipsRow, error) {
+	rows, err := q.query(ctx, q.listSmartSkipsStmt, listSmartSkips, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSmartSkipsRow
+	for rows.Next() {
+		var i ListSmartSkipsRow
+		if err := rows.Scan(&i.TrackID, &i.Skips); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -665,7 +775,7 @@ func (q *Queries) PlaylistByImportKey(ctx context.Context, arg PlaylistByImportK
 }
 
 const playlistRow = `-- name: PlaylistRow :one
-SELECT id, ulid, name, source, created_at, updated_at, added_at
+SELECT id, ulid, name, source, created_at, updated_at, added_at, rules, seed
 FROM playlists
 WHERE user_id = ? AND ulid = ?
 `
@@ -683,6 +793,8 @@ type PlaylistRowRow struct {
 	CreatedAt int64
 	UpdatedAt int64
 	AddedAt   *int64
+	Rules     *string
+	Seed      *int64
 }
 
 func (q *Queries) PlaylistRow(ctx context.Context, arg PlaylistRowParams) (PlaylistRowRow, error) {
@@ -696,6 +808,8 @@ func (q *Queries) PlaylistRow(ctx context.Context, arg PlaylistRowParams) (Playl
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AddedAt,
+		&i.Rules,
+		&i.Seed,
 	)
 	return i, err
 }
@@ -767,6 +881,42 @@ func (q *Queries) SetEntryPosition(ctx context.Context, arg SetEntryPositionPara
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setPlaylistRules = `-- name: SetPlaylistRules :exec
+UPDATE playlists SET rules = ?, seed = ?, updated_at = ? WHERE id = ?
+`
+
+type SetPlaylistRulesParams struct {
+	Rules     *string
+	Seed      *int64
+	UpdatedAt int64
+	ID        int64
+}
+
+func (q *Queries) SetPlaylistRules(ctx context.Context, arg SetPlaylistRulesParams) error {
+	_, err := q.exec(ctx, q.setPlaylistRulesStmt, setPlaylistRules,
+		arg.Rules,
+		arg.Seed,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
+const setPlaylistSeed = `-- name: SetPlaylistSeed :exec
+UPDATE playlists SET seed = ?, updated_at = ? WHERE id = ?
+`
+
+type SetPlaylistSeedParams struct {
+	Seed      *int64
+	UpdatedAt int64
+	ID        int64
+}
+
+func (q *Queries) SetPlaylistSeed(ctx context.Context, arg SetPlaylistSeedParams) error {
+	_, err := q.exec(ctx, q.setPlaylistSeedStmt, setPlaylistSeed, arg.Seed, arg.UpdatedAt, arg.ID)
+	return err
 }
 
 const touchPlaylist = `-- name: TouchPlaylist :exec

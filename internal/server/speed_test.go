@@ -12,6 +12,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -208,29 +209,85 @@ func TestPlaylistSpeed(t *testing.T) { //nolint:paralleltest // Timed: a speed t
 	holdSpeed(t, b, limit, ts.timeGets(t, token, playlistPath(made.Playlist.ID)))
 }
 
+// smartSpeedRules are the preview the speed test times: six rules, one of them a
+// genre's and two in a group, with a limit by least recently played.
+const smartSpeedRules = `{"match":"all","rules":[` +
+	`{"field":"genre","op":"is","value":"genre 3"},{"field":"format","op":"is","value":"FLAC"},` +
+	`{"field":"length","op":"atLeast","value":3},{"field":"year","op":"atLeast","value":1965},` +
+	`{"match":"any","rules":[{"field":"plays","op":"atLeast","value":1},{"field":"added","op":"inLast","value":30}]}],` +
+	`"limit":{"count":50,"unit":"songs","by":"leastRecent"},"order":"chosen"}`
+
+// TestSmartPreviewSpeed times the rules editor's live count at 50,000 songs, so
+// it keeps up with typing.
+func TestSmartPreviewSpeed(t *testing.T) { //nolint:paralleltest // Timed: a speed test measures a server alone, never beside another.
+	b, limit := speedBudget(t, "smart-preview")
+	ts := newTestServer(t)
+	shape := benchShapes[len(benchShapes)-1]
+	token := ts.seedBench(t, shape.tracks, shape.albums, shape.artists)
+	if err := ts.Handle.genres.Refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	holdSpeed(t, b, limit, ts.timeCalls(t, token, http.MethodPost, previewPath, `{"rules":`+smartSpeedRules+`}`))
+}
+
+// TestSmartPlaylistsSpeed times the Playlists page's list with ten smart
+// playlists at 50,000 songs: each is worked out as it is listed.
+func TestSmartPlaylistsSpeed(t *testing.T) { //nolint:paralleltest // Timed: a speed test measures a server alone, never beside another.
+	b, limit := speedBudget(t, "smart-playlists")
+	ts := newTestServer(t)
+	shape := benchShapes[len(benchShapes)-1]
+	token := ts.seedBench(t, shape.tracks, shape.albums, shape.artists)
+	if err := ts.Handle.genres.Refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 10 {
+		rules := fmt.Sprintf(`{"match":"any","rules":[{"field":"genre","op":"is","value":"Genre %d"},`+
+			`{"field":"title","op":"contains","value":"track %d"},{"field":"plays","op":"atLeast","value":%d}]}`, i, i, i+1)
+		if i%2 == 1 {
+			rules = smartSpeedRules
+		}
+		ts.makeSmart(t, token, fmt.Sprintf("Smart %d", i), rules)
+	}
+	holdSpeed(t, b, limit, ts.timeGets(t, token, playlistsPath))
+}
+
 // timeGets times 20 gzipped GETs of path, after one to warm up.
 func (ts *testServer) timeGets(t *testing.T, token, path string) []time.Duration {
 	t.Helper()
+	return ts.timeCalls(t, token, http.MethodGet, path, "")
+}
+
+// timeCalls times 20 gzipped requests, with body when there is one, after one
+// to warm up.
+func (ts *testServer) timeCalls(t *testing.T, token, method, path, body string) []time.Duration {
+	t.Helper()
 	fetch := func() time.Duration {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+path, http.NoBody)
+		var sent io.Reader = http.NoBody
+		if body != "" {
+			sent = strings.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(t.Context(), method, ts.URL+path, sent)
 		if err != nil {
 			t.Fatal(err)
 		}
 		req.Header.Set(authorizationHeader, "Bearer "+token)
 		req.Header.Set("Accept-Encoding", "gzip")
+		if body != "" {
+			req.Header.Set(contentType, api.JSONMediaType)
+		}
 		start := time.Now()
 		resp, err := ts.Server.Client().Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var body bytes.Buffer
-		_, err = io.Copy(&body, resp.Body)
+		var got bytes.Buffer
+		_, err = io.Copy(&got, resp.Body)
 		if err = cmp.Or(err, resp.Body.Close()); err != nil {
 			t.Fatal(err)
 		}
 		took := time.Since(start)
-		if resp.StatusCode != http.StatusOK || body.Len() == 0 {
-			t.Fatalf("GET %s: %d", path, resp.StatusCode)
+		if resp.StatusCode != http.StatusOK || got.Len() == 0 {
+			t.Fatalf("%s %s: %d", method, path, resp.StatusCode)
 		}
 		return took
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/internal/rating"
+	"github.com/simonhull/kitsune/internal/smartlist"
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
 
@@ -25,6 +26,10 @@ import (
 // What a playlist holds is read through live tracks only, so a song in Trash
 // leaves every view of it and comes back with Restore; its entries go only when
 // the track is deleted for good, by ON DELETE CASCADE (see [deleteTracks]).
+//
+// A smart playlist has rules instead of entries, and is worked out each time it
+// is read (smartlist.go): its songs, counts and mosaic are what its rules
+// choose now, and a write to its entries is [ErrSmartPlaylist].
 
 // Where a playlist came from.
 const (
@@ -75,7 +80,8 @@ func (e *NotLiveError) Error() string {
 type Playlist struct {
 	ID                   string // The playlist's ULID.
 	Name                 string
-	Source               string // [PlaylistMade] or [PlaylistImported].
+	Source               string           // [PlaylistMade] or [PlaylistImported].
+	Rules                *smartlist.Rules // A smart playlist's; nil for a regular one.
 	CreatedAt, UpdatedAt time.Time
 	AddedAt              time.Time // When songs were last added; zero before.
 	Songs                int       // Live entries, a song in twice counted twice.
@@ -109,7 +115,7 @@ type PlaylistDetail struct {
 
 // PlaylistEntry is one place in a playlist.
 type PlaylistEntry struct {
-	ID    int64  // The entry's own ID, never reused.
+	ID    int64  // The entry's own ID, never reused; a smart playlist's place, from 1.
 	Album string // The song's album's ULID.
 	Track IndexTrack
 }
@@ -153,22 +159,24 @@ func PlaylistName(name string) (string, error) {
 }
 
 // Playlists returns the user's playlists by name, each saying how many of the
-// songs with the ULIDs holding it holds.
-func (s *Store) Playlists(ctx context.Context, userID int64, holding []string) ([]Playlist, error) {
-	out, err := s.playlists(ctx, userID, holding)
+// songs with the ULIDs holding it holds. A smart playlist is worked out as it is
+// listed, its genre rules through genres; a non-nil holding leaves smart ones
+// out, since nothing is added to one and working each out is most of the cost.
+func (s *Store) Playlists(ctx context.Context, userID int64, holding []string, genres GenreAlbums) ([]Playlist, error) {
+	out, err := s.playlists(ctx, userID, holding, genres)
 	if err != nil {
 		return nil, fmt.Errorf("playlists: %w", err)
 	}
 	return out, nil
 }
 
-func (s *Store) playlists(ctx context.Context, userID int64, holding []string) ([]Playlist, error) {
-	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+func (s *Store) playlists(ctx context.Context, userID int64, holding []string, genres GenreAlbums) ([]Playlist, error) {
+	e, err := s.newEvaluator(ctx, userID, genres)
 	if err != nil {
-		return nil, fmt.Errorf("begin: %w", err)
+		return nil, err
 	}
-	defer func() { _ = tx.Rollback() }() // Nothing was written: there is nothing to undo.
-	q := s.rq.WithTx(tx)
+	defer e.close()
+	q := e.q
 	rows, err := q.ListPlaylists(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list: %w", err)
@@ -177,11 +185,38 @@ func (s *Store) playlists(ctx context.Context, userID int64, holding []string) (
 	if err != nil {
 		return nil, fmt.Errorf("songs: %w", err)
 	}
+	tallies := songTallies(songs, holding)
+	out := make([]Playlist, 0, len(rows))
+	listed := make([]int64, 0, len(rows))
+	for i := range rows {
+		r := &rows[i]
+		if r.Rules != nil && holding != nil {
+			continue
+		}
+		p, listErr := e.listed(ctx, r, tallies)
+		if listErr != nil {
+			return nil, listErr
+		}
+		out, listed = append(out, p), append(listed, r.ID)
+	}
+	albums, err := mosaicAlbums(ctx, q, tallies)
+	if err != nil {
+		return nil, err
+	}
+	for i, row := range listed {
+		cmp.Or(tallies[row], newTally()).fill(&out[i], albums)
+	}
+	return out, nil
+}
+
+// songTallies counts the songs of each regular playlist, by row, and which of
+// them have the ULIDs holding.
+func songTallies(songs []sqlcdb.ListPlaylistSongsRow, holding []string) map[int64]*tally {
 	asked := make(map[string]bool, len(holding))
 	for _, id := range holding {
 		asked[id] = true
 	}
-	tallies := make(map[int64]*tally, len(rows))
+	tallies := map[int64]*tally{}
 	for i := range songs {
 		r := &songs[i]
 		t := tallies[r.PlaylistID]
@@ -191,17 +226,25 @@ func (s *Store) playlists(ctx context.Context, userID int64, holding []string) (
 		}
 		t.add(r.Ulid, r.AlbumID, r.DurationMs, asked)
 	}
-	albums, err := mosaicAlbums(ctx, q, tallies)
-	if err != nil {
-		return nil, err
+	return tallies
+}
+
+// listed returns the playlist r as a list shows it, with its rules; a smart
+// one's tally, of what its rules choose now, goes in tallies.
+func (e *evaluator) listed(ctx context.Context, r *sqlcdb.ListPlaylistsRow, tallies map[int64]*tally) (Playlist, error) {
+	p := playlistOf(r.Ulid, r.Name, r.Source, r.CreatedAt, r.UpdatedAt, r.AddedAt)
+	var err error
+	if p.Rules, err = parseStored(r.Ulid, r.Rules); err != nil {
+		return Playlist{}, err
 	}
-	out := make([]Playlist, len(rows))
-	for i := range rows {
-		r := &rows[i]
-		out[i] = playlistOf(r.Ulid, r.Name, r.Source, r.CreatedAt, r.UpdatedAt, r.AddedAt)
-		cmp.Or(tallies[r.ID], newTally()).fill(&out[i], albums)
+	if p.Rules != nil {
+		choice, evalErr := e.evaluate(ctx, p.Rules, seedOf(r.Seed), 0, []string{r.Ulid})
+		if evalErr != nil {
+			return Playlist{}, evalErr
+		}
+		tallies[r.ID] = e.tally(&choice)
 	}
-	return out, nil
+	return p, nil
 }
 
 // tally is what a list of playlists counts of one as its songs go by.
@@ -286,27 +329,48 @@ func playlistOf(id, name, source string, created, updated int64, added *int64) P
 }
 
 // Playlist returns the user's playlist with its live entries in order, each
-// with its song as the library index has it and the user's stars. It returns an
-// error wrapping [ErrNotFound] for a playlist the user doesn't have.
-func (s *Store) Playlist(ctx context.Context, userID int64, id string) (PlaylistDetail, error) {
-	d, err := s.playlistDetail(ctx, userID, id)
+// with its song as the library index has it and the user's stars. A smart
+// playlist's entries are what its rules choose now, its genre rules through
+// genres, each track with what its columns read ([IndexExtra]'s plays, last
+// play, year, format, bitrate and when it was added). It returns an error
+// wrapping [ErrNotFound] for a playlist the user doesn't have.
+func (s *Store) Playlist(ctx context.Context, userID int64, id string, genres GenreAlbums) (PlaylistDetail, error) {
+	d, err := s.playlistDetail(ctx, userID, id, genres)
 	if err != nil {
 		return PlaylistDetail{}, fmt.Errorf("playlist %s: %w", id, err)
 	}
 	return d, nil
 }
 
-func (s *Store) playlistDetail(ctx context.Context, userID int64, id string) (PlaylistDetail, error) {
-	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+func (s *Store) playlistDetail(ctx context.Context, userID int64, id string, genres GenreAlbums) (PlaylistDetail, error) {
+	e, err := s.newEvaluator(ctx, userID, genres)
 	if err != nil {
-		return PlaylistDetail{}, fmt.Errorf("begin: %w", err)
+		return PlaylistDetail{}, err
 	}
-	defer func() { _ = tx.Rollback() }() // Nothing was written: there is nothing to undo.
-	q := s.rq.WithTx(tx)
+	defer e.close()
+	q := e.q
 	row, err := q.PlaylistRow(ctx, sqlcdb.PlaylistRowParams{UserID: userID, Ulid: id})
 	if err != nil {
 		return PlaylistDetail{}, notFound(err)
 	}
+	rules, err := parseStored(id, row.Rules)
+	if err != nil {
+		return PlaylistDetail{}, err
+	}
+	if rules == nil {
+		return regularDetail(ctx, q, userID, &row)
+	}
+	d := PlaylistDetail{Playlist: playlistOf(row.Ulid, row.Name, row.Source, row.CreatedAt, row.UpdatedAt, row.AddedAt)}
+	d.Rules = rules
+	if detailErr := e.smartDetail(ctx, &d, seedOf(row.Seed)); detailErr != nil {
+		return PlaylistDetail{}, detailErr
+	}
+	return d, nil
+}
+
+// regularDetail returns the user's regular playlist row with its live entries
+// in order, read through q.
+func regularDetail(ctx context.Context, q *sqlcdb.Queries, userID int64, row *sqlcdb.PlaylistRowRow) (PlaylistDetail, error) {
 	entries, err := q.ListPlaylistEntries(ctx, row.ID)
 	if err != nil {
 		return PlaylistDetail{}, fmt.Errorf("entries: %w", err)
@@ -380,38 +444,49 @@ func playlistEntries(
 
 // PlaylistSummary returns the user's playlist as [Store.Playlists] lists it. It
 // returns an error wrapping [ErrNotFound] for a playlist the user doesn't have.
-func (s *Store) PlaylistSummary(ctx context.Context, userID int64, id string) (Playlist, error) {
-	p, err := s.playlistSummary(ctx, userID, id)
+func (s *Store) PlaylistSummary(ctx context.Context, userID int64, id string, genres GenreAlbums) (Playlist, error) {
+	p, err := s.playlistSummary(ctx, userID, id, genres)
 	if err != nil {
 		return Playlist{}, fmt.Errorf("playlist %s: %w", id, err)
 	}
 	return p, nil
 }
 
-func (s *Store) playlistSummary(ctx context.Context, userID int64, id string) (Playlist, error) {
-	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+func (s *Store) playlistSummary(ctx context.Context, userID int64, id string, genres GenreAlbums) (Playlist, error) {
+	e, err := s.newEvaluator(ctx, userID, genres)
 	if err != nil {
-		return Playlist{}, fmt.Errorf("begin: %w", err)
+		return Playlist{}, err
 	}
-	defer func() { _ = tx.Rollback() }() // Nothing was written: there is nothing to undo.
-	q := s.rq.WithTx(tx)
+	defer e.close()
+	q := e.q
 	row, err := q.PlaylistRow(ctx, sqlcdb.PlaylistRowParams{UserID: userID, Ulid: id})
 	if err != nil {
 		return Playlist{}, notFound(err)
 	}
-	songs, err := q.ListPlaylistSongsOf(ctx, row.ID)
-	if err != nil {
-		return Playlist{}, fmt.Errorf("songs: %w", err)
+	p := playlistOf(row.Ulid, row.Name, row.Source, row.CreatedAt, row.UpdatedAt, row.AddedAt)
+	if p.Rules, err = parseStored(id, row.Rules); err != nil {
+		return Playlist{}, err
 	}
 	t := newTally()
-	for i := range songs {
-		t.add(songs[i].Ulid, songs[i].AlbumID, songs[i].DurationMs, nil)
+	if p.Rules != nil {
+		choice, evalErr := e.evaluate(ctx, p.Rules, seedOf(row.Seed), 0, []string{id})
+		if evalErr != nil {
+			return Playlist{}, evalErr
+		}
+		t = e.tally(&choice)
+	} else {
+		songs, songsErr := q.ListPlaylistSongsOf(ctx, row.ID)
+		if songsErr != nil {
+			return Playlist{}, fmt.Errorf("songs: %w", songsErr)
+		}
+		for i := range songs {
+			t.add(songs[i].Ulid, songs[i].AlbumID, songs[i].DurationMs, nil)
+		}
 	}
 	albums, err := playlistAlbums(ctx, q, t.mosaic)
 	if err != nil {
 		return Playlist{}, err
 	}
-	p := playlistOf(row.Ulid, row.Name, row.Source, row.CreatedAt, row.UpdatedAt, row.AddedAt)
 	t.fill(&p, albums)
 	return p, nil
 }
@@ -483,7 +558,7 @@ func (s *Store) DeletePlaylist(ctx context.Context, userID int64, id string) err
 func (s *Store) AddToPlaylist(ctx context.Context, userID int64, id string, add *PlaylistAdd) (PlaylistAdded, error) {
 	var added PlaylistAdded
 	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
-		row, err := ownPlaylist(ctx, q, userID, id)
+		row, err := ownEntries(ctx, q, userID, id)
 		if err != nil {
 			return err
 		}
@@ -501,6 +576,20 @@ func ownPlaylist(ctx context.Context, q *sqlcdb.Queries, userID int64, id string
 	row, err := q.PlaylistRow(ctx, sqlcdb.PlaylistRowParams{UserID: userID, Ulid: id})
 	if err != nil {
 		return 0, notFound(err)
+	}
+	return row.ID, nil
+}
+
+// ownEntries returns the row of the user's regular playlist id, whose entries a
+// write changes: [ErrNotFound] for one the user doesn't have, and
+// [ErrSmartPlaylist] for a smart one.
+func ownEntries(ctx context.Context, q *sqlcdb.Queries, userID int64, id string) (int64, error) {
+	row, err := q.PlaylistRow(ctx, sqlcdb.PlaylistRowParams{UserID: userID, Ulid: id})
+	if err != nil {
+		return 0, notFound(err)
+	}
+	if row.Rules != nil {
+		return 0, ErrSmartPlaylist
 	}
 	return row.ID, nil
 }
@@ -763,7 +852,7 @@ func renumber(ctx context.Context, q *sqlcdb.Queries, playlist int64) error {
 func (s *Store) RemoveFromPlaylist(ctx context.Context, userID int64, id string, entries []int64) ([]int64, error) {
 	var removed []int64
 	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
-		row, err := ownPlaylist(ctx, q, userID, id)
+		row, err := ownEntries(ctx, q, userID, id)
 		if err != nil {
 			return err
 		}
@@ -794,7 +883,7 @@ func (s *Store) RemoveFromPlaylist(ctx context.Context, userID int64, id string,
 // have, and [ErrNoEntry] when entry or anchor isn't in it.
 func (s *Store) MovePlaylistEntry(ctx context.Context, userID int64, id string, entry, anchor int64, after bool) error {
 	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
-		row, err := ownPlaylist(ctx, q, userID, id)
+		row, err := ownEntries(ctx, q, userID, id)
 		if err != nil {
 			return err
 		}
@@ -850,16 +939,62 @@ func entryPosition(ctx context.Context, q *sqlcdb.Queries, playlist, entry int64
 }
 
 // PlaylistTrackRows returns the row of every track the user's playlist holds,
-// once each, live or not: a shuffle's scope. It returns an error wrapping
-// [ErrNotFound] for a playlist the user doesn't have.
-func (s *Store) PlaylistTrackRows(ctx context.Context, userID int64, id string) ([]int64, error) {
-	row, err := ownPlaylist(ctx, s.rq, userID, id)
+// once each, live or not: a shuffle's scope. A smart playlist's are the songs
+// its rules choose now, the limit applied, its genre rules through genres. It
+// returns an error wrapping [ErrNotFound] for a playlist the user doesn't have.
+func (s *Store) PlaylistTrackRows(ctx context.Context, userID int64, id string, genres GenreAlbums) ([]int64, error) {
+	row, err := s.rq.PlaylistRow(ctx, sqlcdb.PlaylistRowParams{UserID: userID, Ulid: id})
 	if err != nil {
-		return nil, fmt.Errorf("playlist %s: %w", id, err)
+		return nil, fmt.Errorf("playlist %s: %w", id, notFound(err))
 	}
-	rows, err := s.rq.ListPlaylistTrackRows(ctx, row)
+	rules, err := parseStored(id, row.Rules)
+	if err != nil {
+		return nil, err
+	}
+	if rules != nil {
+		rows, smartErr := s.smartRows(ctx, userID, id, rules, row.Seed, genres)
+		if smartErr != nil {
+			return nil, fmt.Errorf("playlist %s: %w", id, smartErr)
+		}
+		return rows, nil
+	}
+	rows, err := s.rq.ListPlaylistTrackRows(ctx, row.ID)
 	if err != nil {
 		return nil, fmt.Errorf("playlist %s: tracks: %w", id, err)
 	}
 	return rows, nil
+}
+
+// smartDetail fills d, a smart playlist with its rules, with what its rules
+// choose now: its entries numbered from 1, its counts, albums and mosaic.
+func (e *evaluator) smartDetail(ctx context.Context, d *PlaylistDetail, seed int64) error {
+	e.detailed = true
+	choice, err := e.evaluate(ctx, d.Rules, seed, 0, []string{d.ID})
+	if err != nil {
+		return err
+	}
+	t := e.tally(&choice)
+	order := make([]int64, 0, len(t.albums))
+	seen := make(map[int64]bool, len(t.albums))
+	for i := range choice.songs {
+		if a := choice.songs[i].album; !seen[a] {
+			seen[a] = true
+			order = append(order, a)
+		}
+	}
+	albums, err := playlistAlbums(ctx, e.q, order)
+	if err != nil {
+		return err
+	}
+	t.fill(&d.Playlist, albums)
+	d.Albums = make([]PlaylistAlbum, 0, len(order))
+	for _, a := range order {
+		d.Albums = append(d.Albums, albums[a])
+	}
+	d.Entries = make([]PlaylistEntry, len(choice.songs))
+	for i := range choice.songs {
+		s := &choice.songs[i]
+		d.Entries[i] = PlaylistEntry{ID: int64(i + 1), Album: albums[s.album].ID, Track: e.indexTrack(s)}
+	}
+	return nil
 }

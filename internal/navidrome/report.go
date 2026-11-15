@@ -3,6 +3,7 @@ package navidrome
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -93,11 +94,25 @@ func writePlaylists(b *strings.Builder, p *Playlists, counts *store.ImportCounts
 	if counts != nil {
 		written = fmt.Sprintf(" (%d new, %d already here and left as they are)", counts.Playlists.Added, counts.Playlists.There)
 	}
-	fmt.Fprintf(b, "Playlists: %d come over%s; smart playlists stay behind for now (plan 066): %d", p.Imported(), written, p.Smart)
+	fmt.Fprintf(b, "Playlists: %d playlists, %d smart%s", p.Imported(), p.Smart-len(p.LeftOut), written)
+	if len(p.LeftOut) > 0 {
+		var why []string
+		for i := range p.LeftOut {
+			for _, w := range p.LeftOut[i].Why {
+				if !slices.Contains(why, w) {
+					why = append(why, w)
+				}
+			}
+		}
+		fmt.Fprintf(b, "; %d smart left out (%s)", len(p.LeftOut), strings.Join(why, ", "))
+	}
 	if p.Cut > 0 {
 		fmt.Fprintf(b, "; %d songs past %d left off the end", p.Cut, store.MostPlaylistEntries)
 	}
 	b.WriteByte('\n')
+	for i := range p.LeftOut {
+		fmt.Fprintf(b, "  Left out: %s (%s)\n", p.LeftOut[i].Name, strings.Join(p.LeftOut[i].Why, ", "))
+	}
 }
 
 // writeNotes prints what the table can't say about a person's import.

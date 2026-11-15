@@ -55,6 +55,7 @@ describe('recount', () => {
 			id: 'p',
 			name: 'P',
 			source: 'kitsune',
+			smart: false,
 			songCount: 0,
 			albumCount: 0,
 			durationMs: 0,

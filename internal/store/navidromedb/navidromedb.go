@@ -259,6 +259,8 @@ type Playlist struct {
 	// Smart is a playlist of rules, whose songs Navidrome works out; Songs is
 	// then whatever it last worked out.
 	Smart bool
+	// Rules are a smart playlist's criteria, as Navidrome keeps them in JSON.
+	Rules string
 	Songs []string // media_file IDs, in order, a song as often as it is in it.
 }
 
@@ -281,6 +283,9 @@ func (d *DB) Playlists(ctx context.Context, userID string) ([]Playlist, error) {
 			return nil, timeErr
 		}
 		out[i] = Playlist{ID: r.ID, Name: r.Name, CreatedAt: created, Smart: r.Smart != 0}
+		if out[i].Smart {
+			out[i].Rules = r.Rules
+		}
 		at[r.ID] = i
 	}
 	if !d.has[playlistTracksTable] {

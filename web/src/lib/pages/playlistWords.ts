@@ -34,27 +34,45 @@ export function lengthOf(durationMs: number): string {
 		: `${String(hours)} H ${String(minutes % 60)} MIN`;
 }
 
-/** A card's line: "151 SONGS · 11 H 12 MIN", or what to do with an empty one. */
+/**
+ * A card's line: "151 SONGS · 11 H 12 MIN", or what to do with an empty one. A smart playlist's is
+ * "19 SONGS · 1 H 40 MIN · LIVE", since it's worked out as it's read.
+ */
 export function cardLine({
 	songCount,
-	durationMs
-}: Pick<PlaylistSummary, 'songCount' | 'durationMs'>): string {
+	durationMs,
+	smart = false
+}: Pick<PlaylistSummary, 'songCount' | 'durationMs'> & { smart?: boolean }): string {
+	if (smart) {
+		return songCount === 0
+			? 'NOTHING MATCHES YET · LIVE'
+			: `${count(songCount, 'SONG', 'SONGS')} · ${lengthOf(durationMs)} · LIVE`;
+	}
 	if (songCount === 0) {
 		return 'EMPTY · ADD SONGS FROM ANY ⋯ MENU';
 	}
 	return `${count(songCount, 'SONG', 'SONGS')} · ${lengthOf(durationMs)}`;
 }
 
-/** A playlist's head: "PLAYLIST · 151 SONGS · 14 ALBUMS · 11 H 12 MIN · FROM NAVIDROME". */
+/**
+ * A playlist's head: "PLAYLIST · 151 SONGS · 14 ALBUMS · 11 H 12 MIN · FROM NAVIDROME"; a smart
+ * one's "SMART PLAYLIST · 19 SONGS · 4 ALBUMS · 1 H 40 MIN · LIVE".
+ */
 export function headLine(
-	p: Pick<PlaylistSummary, 'songCount' | 'albumCount' | 'durationMs' | 'source'>
+	p: Pick<PlaylistSummary, 'songCount' | 'albumCount' | 'durationMs' | 'source'> & {
+		smart?: boolean;
+	}
 ): string {
-	const parts = ['PLAYLIST', count(p.songCount, 'SONG', 'SONGS')];
+	const smart = p.smart === true;
+	const parts = [smart ? 'SMART PLAYLIST' : 'PLAYLIST', count(p.songCount, 'SONG', 'SONGS')];
 	if (p.songCount > 0) {
 		parts.push(count(p.albumCount, 'ALBUM', 'ALBUMS'), lengthOf(p.durationMs));
 	}
 	if (p.source === 'navidrome') {
 		parts.push('FROM NAVIDROME');
+	}
+	if (smart) {
+		parts.push('LIVE');
 	}
 	return parts.join(' · ');
 }
@@ -62,19 +80,108 @@ export function headLine(
 /** A phone's head, which has less room: "PLAYLIST · 151 SONGS · 11 H". */
 export function phoneHeadLine({
 	songCount,
-	durationMs
-}: Pick<PlaylistSummary, 'songCount' | 'durationMs'>): string {
+	durationMs,
+	smart = false
+}: Pick<PlaylistSummary, 'songCount' | 'durationMs'> & { smart?: boolean }): string {
 	const hours = Math.floor(Math.round(durationMs / 60_000) / 60);
 	const length = hours === 0 ? lengthOf(durationMs) : `${String(hours)} H`;
+	if (smart) {
+		// The phone board: "SMART · 19 SONGS · 1 H 40 · LIVE".
+		const minutes = Math.round(durationMs / 60_000);
+		const short =
+			hours === 0 ? `${String(minutes)} MIN` : `${String(hours)} H ${String(minutes % 60)}`;
+		return `SMART · ${count(songCount, 'SONG', 'SONGS')} · ${short} · LIVE`;
+	}
 	return songCount === 0
 		? 'PLAYLIST · EMPTY'
 		: `PLAYLIST · ${count(songCount, 'SONG', 'SONGS')} · ${length}`;
 }
 
-/** The Playlists page's line: "3 PLAYLISTS · YOURS ALONE". */
-export function countLine(playlists: number): string {
-	return `${count(playlists, 'PLAYLIST', 'PLAYLISTS')} · YOURS ALONE`;
+/** The Playlists page's line: "3 PLAYLISTS · YOURS ALONE", or "2 PLAYLISTS · 1 SMART · YOURS ALONE". */
+export function countLine(playlists: number, smart = 0): string {
+	const parts = [count(playlists, 'PLAYLIST', 'PLAYLISTS')];
+	if (smart > 0) {
+		parts.push(`${smart.toLocaleString('en-US')} SMART`);
+	}
+	return `${parts.join(' · ')} · YOURS ALONE`;
 }
+
+/** How long ago something was, as the rules card says it: "11 DAYS AGO", "YESTERDAY", "NEVER". */
+export function agoWords(at: string | undefined, now: number): string {
+	if (at === undefined) {
+		return 'NEVER';
+	}
+	const days = Math.round((now - Date.parse(at)) / 86_400_000);
+	return days <= 0 ? 'TODAY' : days === 1 ? 'YESTERDAY' : `${String(days)} DAYS AGO`;
+}
+
+/** What the rules card's count says beside it. */
+export function matchWord(songs: number): string {
+	return songs === 1 ? 'SONG MATCHES' : 'SONGS MATCH';
+}
+
+/**
+ * The rules card's line: "1 H 40 MIN · 4 ALBUMS", with "· 23 MATCH, THE LIMIT KEEPS 19" when the
+ * limit cuts, and "· 7 FEWER THAN SAVED" against the saved rules.
+ */
+export function liveLine(
+	p: { songCount: number; matchCount: number; albumCount: number; durationMs: number },
+	saved: number | undefined
+): string {
+	const parts = [
+		p.songCount === 0 ? '0 MIN' : lengthOf(p.durationMs),
+		count(p.albumCount, 'ALBUM', 'ALBUMS')
+	];
+	if (p.matchCount > p.songCount) {
+		parts.push(
+			`${p.matchCount.toLocaleString('en-US')} MATCH, THE LIMIT KEEPS ${p.songCount.toLocaleString('en-US')}`
+		);
+	}
+	if (saved !== undefined && saved !== p.songCount) {
+		const by = Math.abs(p.songCount - saved);
+		parts.push(
+			`${by.toLocaleString('en-US')} ${p.songCount > saved ? 'MORE' : 'FEWER'} THAN SAVED`
+		);
+	}
+	return parts.join(' · ');
+}
+
+/** A rules card row's line: "CAPTIVA · 11 DAYS AGO · 6 PLAYS". */
+export function liveRowLine(
+	album: string,
+	lastPlayedAt: string | undefined,
+	plays: number,
+	now: number
+): string {
+	return [album.toUpperCase(), agoWords(lastPlayedAt, now), count(plays, 'PLAY', 'PLAYS')]
+		.filter((part) => part !== '')
+		.join(' · ');
+}
+
+/** The rules card's foot: "+ 6 MORE · COUNTED BY THE SERVER AS YOU TYPE". */
+export function liveFoot(songs: number, shown: number): string {
+	const more = songs - shown;
+	return `${more > 0 ? `+ ${more.toLocaleString('en-US')} MORE · ` : ''}COUNTED BY THE SERVER AS YOU TYPE`;
+}
+
+/** The dock's line: "4 rules · not saved yet", or "Nothing changed". */
+export function dockLine(rules: number, changed: boolean): string {
+	return changed
+		? `${String(rules)} ${rules === 1 ? 'rule' : 'rules'} · not saved yet`
+		: 'Nothing changed';
+}
+
+/** The phone's limit pill: "Limit · 50 songs ›", or "Limit · off ›". */
+export function limitPill(limit: { on: boolean; count: number; unit: string }): string {
+	if (!limit.on) {
+		return 'Limit · off';
+	}
+	return `Limit · ${limit.count.toLocaleString('en-US')} ${limit.unit === 'gb' ? 'GB' : limit.unit}`;
+}
+
+/** A smart playlist's foot, under its songs. */
+export const smartFoot =
+	'LIVE: RATE OR PLAY A SONG AND IT JOINS OR LEAVES · THE RULES SET THE ORDER, SO NOTHING DRAGS';
 
 /** What an empty name makes: "New playlist", or the first "New playlist N" nobody has. */
 export function nameFor(typed: string, taken: readonly string[]): string {
@@ -128,10 +235,15 @@ export function addHeading(songs: number): string {
 	return `ADD ${count(songs, 'SONG', 'SONGS')} TO`;
 }
 
-/** The order Add to playlist lists them in: most recently added to first, then the newest made. */
+/**
+ * What Add to playlist lists, in its order: most recently added to first, then the newest made. A
+ * smart playlist is left out, since nothing is added to one.
+ */
 export function byLastAdded(playlists: readonly PlaylistSummary[]): PlaylistSummary[] {
 	const at = (p: PlaylistSummary): number => Date.parse(p.addedAt ?? p.createdAt);
-	return playlists.toSorted((a, b) => at(b) - at(a) || a.name.localeCompare(b.name));
+	return playlists
+		.filter(({ smart }) => !smart)
+		.toSorted((a, b) => at(b) - at(a) || a.name.localeCompare(b.name));
 }
 
 /** The playlists whose names hold what's typed, ignoring case. */

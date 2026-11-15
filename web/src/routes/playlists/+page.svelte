@@ -1,17 +1,21 @@
 <!--
 	The Playlists page: the person's playlists as cards, each a mosaic of its first albums with its
-	name and size, and a dashed card that turns into a name field in place to make a new one.
+	name and size, and a dashed card that turns into a name field in place to make a new one. A smart
+	playlist's card wears the SMART stamp; after New playlist, a fox-dashed card opens the rules
+	editor on a fresh draft, which makes nothing until it's saved.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import Mosaic from '#lib/pages/Mosaic.svelte';
+	import SmartStamp from '#lib/pages/SmartStamp.svelte';
 	import { playlistActions } from '#lib/pages/playlistActions.svelte.ts';
 	import { cardLine, countLine, newPlaylistName } from '#lib/pages/playlistWords.ts';
 
 	const lists = $derived(library.playlists.list);
 	const all = $derived(library.playlists.all);
+	const smartCount = $derived(all.filter(({ smart }) => smart).length);
 
 	let naming = $state(false);
 	let draft = $state('');
@@ -50,7 +54,7 @@
 	<div class="intro">
 		<h1>Playlists<span class="dot" aria-hidden="true">.</span></h1>
 		{#if lists.kind === 'ready'}
-			<p class="facts">{countLine(all.length)}</p>
+			<p class="facts">{countLine(all.length, smartCount)}</p>
 		{/if}
 	</div>
 
@@ -74,7 +78,10 @@
 						early(p.id);
 					}}
 				>
-					<span class="cover"><Mosaic albums={p.mosaic} radius="var(--radius-24)" /></span>
+					<span class="cover"
+						><Mosaic albums={p.mosaic} radius="var(--radius-24)" />{#if p.smart}<SmartStamp
+							/>{/if}</span
+					>
 					<span class="name">{p.name}</span>
 					<span class="line">{cardLine(p)}</span>
 				</a>
@@ -130,6 +137,13 @@
 					>
 				{/if}
 			</div>
+			<a class="dashed smart" href={resolve('/playlists/smart')}>
+				<span class="dashed-in"
+					><Icon name="rules" size={28} /><span>New smart playlist</span><span class="sub"
+						>RULES CHOOSE THE SONGS</span
+					></span
+				>
+			</a>
 		</div>
 	{/if}
 </div>
@@ -240,6 +254,7 @@
 	}
 
 	.cover {
+		position: relative;
 		display: block;
 		border-radius: var(--radius-24);
 		box-shadow: 0 0 0 1px var(--edge);
@@ -297,6 +312,25 @@
 		outline: none;
 		border-color: var(--fox-line);
 		color: var(--text);
+	}
+
+	.smart {
+		border-color: color-mix(in srgb, var(--fox-line) 55%, transparent);
+		color: var(--fox-text);
+		text-decoration: none;
+	}
+
+	.smart:hover,
+	.smart:focus-visible {
+		color: var(--fox-text);
+	}
+
+	.sub {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-weight: 400;
+		letter-spacing: 0.08em;
+		color: var(--text-meta);
 	}
 
 	.dashed-in {

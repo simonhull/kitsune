@@ -477,6 +477,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listShuffleTracksStmt, err = db.PrepareContext(ctx, listShuffleTracks); err != nil {
 		return nil, fmt.Errorf("error preparing query ListShuffleTracks: %w", err)
 	}
+	if q.listSmartPlaylistRulesStmt, err = db.PrepareContext(ctx, listSmartPlaylistRules); err != nil {
+		return nil, fmt.Errorf("error preparing query ListSmartPlaylistRules: %w", err)
+	}
+	if q.listSmartRatingsStmt, err = db.PrepareContext(ctx, listSmartRatings); err != nil {
+		return nil, fmt.Errorf("error preparing query ListSmartRatings: %w", err)
+	}
+	if q.listSmartSkipsStmt, err = db.PrepareContext(ctx, listSmartSkips); err != nil {
+		return nil, fmt.Errorf("error preparing query ListSmartSkips: %w", err)
+	}
 	if q.listTrackArtistNamesStmt, err = db.PrepareContext(ctx, listTrackArtistNames); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTrackArtistNames: %w", err)
 	}
@@ -623,6 +632,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setPasswordHashStmt, err = db.PrepareContext(ctx, setPasswordHash); err != nil {
 		return nil, fmt.Errorf("error preparing query SetPasswordHash: %w", err)
+	}
+	if q.setPlaylistRulesStmt, err = db.PrepareContext(ctx, setPlaylistRules); err != nil {
+		return nil, fmt.Errorf("error preparing query SetPlaylistRules: %w", err)
+	}
+	if q.setPlaylistSeedStmt, err = db.PrepareContext(ctx, setPlaylistSeed); err != nil {
+		return nil, fmt.Errorf("error preparing query SetPlaylistSeed: %w", err)
 	}
 	if q.setTrackLoudnessStmt, err = db.PrepareContext(ctx, setTrackLoudness); err != nil {
 		return nil, fmt.Errorf("error preparing query SetTrackLoudness: %w", err)
@@ -1477,6 +1492,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listShuffleTracksStmt: %w", cerr)
 		}
 	}
+	if q.listSmartPlaylistRulesStmt != nil {
+		if cerr := q.listSmartPlaylistRulesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listSmartPlaylistRulesStmt: %w", cerr)
+		}
+	}
+	if q.listSmartRatingsStmt != nil {
+		if cerr := q.listSmartRatingsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listSmartRatingsStmt: %w", cerr)
+		}
+	}
+	if q.listSmartSkipsStmt != nil {
+		if cerr := q.listSmartSkipsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listSmartSkipsStmt: %w", cerr)
+		}
+	}
 	if q.listTrackArtistNamesStmt != nil {
 		if cerr := q.listTrackArtistNamesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTrackArtistNamesStmt: %w", cerr)
@@ -1720,6 +1750,16 @@ func (q *Queries) Close() error {
 	if q.setPasswordHashStmt != nil {
 		if cerr := q.setPasswordHashStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setPasswordHashStmt: %w", cerr)
+		}
+	}
+	if q.setPlaylistRulesStmt != nil {
+		if cerr := q.setPlaylistRulesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setPlaylistRulesStmt: %w", cerr)
+		}
+	}
+	if q.setPlaylistSeedStmt != nil {
+		if cerr := q.setPlaylistSeedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setPlaylistSeedStmt: %w", cerr)
 		}
 	}
 	if q.setTrackLoudnessStmt != nil {
@@ -2067,6 +2107,9 @@ type Queries struct {
 	listShuffleSittingsStmt                *sql.Stmt
 	listShuffleTrackArtistsStmt            *sql.Stmt
 	listShuffleTracksStmt                  *sql.Stmt
+	listSmartPlaylistRulesStmt             *sql.Stmt
+	listSmartRatingsStmt                   *sql.Stmt
+	listSmartSkipsStmt                     *sql.Stmt
 	listTrackArtistNamesStmt               *sql.Stmt
 	listTrackHitArtistsStmt                *sql.Stmt
 	listTrackHitsStmt                      *sql.Stmt
@@ -2116,6 +2159,8 @@ type Queries struct {
 	setLastfmStateStmt                     *sql.Stmt
 	setMatchStateStmt                      *sql.Stmt
 	setPasswordHashStmt                    *sql.Stmt
+	setPlaylistRulesStmt                   *sql.Stmt
+	setPlaylistSeedStmt                    *sql.Stmt
 	setTrackLoudnessStmt                   *sql.Stmt
 	settleAlbumStmt                        *sql.Stmt
 	touchPlaylistStmt                      *sql.Stmt
@@ -2304,6 +2349,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listShuffleSittingsStmt:                q.listShuffleSittingsStmt,
 		listShuffleTrackArtistsStmt:            q.listShuffleTrackArtistsStmt,
 		listShuffleTracksStmt:                  q.listShuffleTracksStmt,
+		listSmartPlaylistRulesStmt:             q.listSmartPlaylistRulesStmt,
+		listSmartRatingsStmt:                   q.listSmartRatingsStmt,
+		listSmartSkipsStmt:                     q.listSmartSkipsStmt,
 		listTrackArtistNamesStmt:               q.listTrackArtistNamesStmt,
 		listTrackHitArtistsStmt:                q.listTrackHitArtistsStmt,
 		listTrackHitsStmt:                      q.listTrackHitsStmt,
@@ -2353,6 +2401,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setLastfmStateStmt:                     q.setLastfmStateStmt,
 		setMatchStateStmt:                      q.setMatchStateStmt,
 		setPasswordHashStmt:                    q.setPasswordHashStmt,
+		setPlaylistRulesStmt:                   q.setPlaylistRulesStmt,
+		setPlaylistSeedStmt:                    q.setPlaylistSeedStmt,
 		setTrackLoudnessStmt:                   q.setTrackLoudnessStmt,
 		settleAlbumStmt:                        q.settleAlbumStmt,
 		touchPlaylistStmt:                      q.touchPlaylistStmt,

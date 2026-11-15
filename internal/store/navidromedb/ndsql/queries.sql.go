@@ -187,7 +187,8 @@ SELECT
     id,
     name,
     CAST(coalesce(created_at, '') AS TEXT) AS created_at,
-    CAST(coalesce(rules, '') NOT IN ('', 'null', '{}') AS INTEGER) AS smart
+    CAST(coalesce(rules, '') NOT IN ('', 'null', '{}') AS INTEGER) AS smart,
+    CAST(coalesce(rules, '') AS TEXT) AS rules
 FROM playlist
 WHERE owner_id = ?
 ORDER BY id
@@ -198,10 +199,11 @@ type PlaylistsRow struct {
 	Name      string
 	CreatedAt string
 	Smart     int64
+	Rules     string
 }
 
-// A smart playlist has rules; Navidrome leaves them NULL, empty or null JSON
-// on one made by hand. Only whether there are any is read.
+// A smart playlist has rules, its criteria as JSON; Navidrome leaves them
+// NULL, empty or null JSON on one made by hand.
 func (q *Queries) Playlists(ctx context.Context, ownerID string) ([]PlaylistsRow, error) {
 	rows, err := q.db.QueryContext(ctx, playlists, ownerID)
 	if err != nil {
@@ -216,6 +218,7 @@ func (q *Queries) Playlists(ctx context.Context, ownerID string) ([]PlaylistsRow
 			&i.Name,
 			&i.CreatedAt,
 			&i.Smart,
+			&i.Rules,
 		); err != nil {
 			return nil, err
 		}
