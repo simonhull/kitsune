@@ -13,6 +13,16 @@ import { onDestroy, tick, untrack } from 'svelte';
 import { pushState, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 
+/**
+ * The entries live editors have pushed and not yet taken off. More than one editor may watch one page
+ * (the shell's tag editor, and a smart playlist's rules editor): each leaves the others' entries
+ * alone, and only an entry nobody holds, reached by Forward or a reload, is taken back off.
+ */
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- Read inside effects only, never to draw.
+const claimed = new Set<string>();
+/** An entry being taken off, by whichever editor saw it first: the others wait for it. */
+let offing: Promise<void> | null = null;
+
 /** How an editor came to be closed by history: by Back, or by leaving the page with it open. */
 export type Closed = 'back' | 'left';
 
@@ -44,12 +54,22 @@ export function editorHistory(
 				'popstate',
 				() => {
 					leaving = null;
+					offing = null;
 					done();
 				},
 				{ once: true }
 			);
 		});
+		offing = leaving;
 		history.back();
+	}
+
+	/** Lets go of the entry this page pushed, in the page's state and among those claimed. */
+	function release(): void {
+		if (pushed !== null) {
+			claimed.delete(pushed.editor);
+			pushed = null;
+		}
 	}
 
 	$effect(() => {
@@ -60,7 +80,7 @@ export function editorHistory(
 			if (pushed !== null && pushed.path !== path) {
 				// Left by a link: the entry stays behind it, and the edits go.
 				const was = pushed.editor;
-				pushed = null;
+				release();
 				close(was, 'left');
 				// What this run read of the editor is from before it closed: the next run has it.
 				return;
@@ -70,7 +90,7 @@ export function editorHistory(
 			} else if (pushed?.shown === true) {
 				// Back took the entry: close as Leave it does, which a field has left first.
 				const was = pushed.editor;
-				pushed = null;
+				release();
 				if (document.activeElement instanceof HTMLElement) {
 					document.activeElement.blur();
 				}
@@ -82,17 +102,20 @@ export function editorHistory(
 			}
 			if (editor === null) {
 				if (pushed !== null) {
-					pushed = null;
+					release();
 					takeOff();
-				} else if (held !== undefined) {
+				} else if (held !== undefined && !claimed.has(held) && offing === null) {
 					takeOff(); // Forward or a reload onto an editor that has since closed.
 				}
 			} else if (pushed === null) {
 				pushed = { editor, path, shown: false };
+				claimed.add(editor);
 				void pushState('', { editor });
 			} else if (pushed.editor !== editor) {
 				// One editor for another, as the match sheet's Edit by hand can open: the same entry.
+				claimed.delete(pushed.editor);
 				pushed = { editor, path, shown: false };
+				claimed.add(editor);
 				void replaceState('', { editor });
 			}
 		});
@@ -100,8 +123,9 @@ export function editorHistory(
 
 	onDestroy(() => {
 		if (pushed !== null) {
-			close(pushed.editor, 'left');
-			pushed = null;
+			const was = pushed.editor;
+			release();
+			close(was, 'left');
 		}
 	});
 

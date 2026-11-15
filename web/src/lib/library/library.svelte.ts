@@ -368,7 +368,10 @@ export class Library {
 			events === null
 				? null
 				: new Live(events, {
-						library: (change) => void this.#heardLibrary(change),
+						library: (change) => {
+							this.playlists.smartMoved();
+							void this.#heardLibrary(change);
+						},
 						scan: (scan) => {
 							this.#heardScan(scan);
 						},
@@ -382,6 +385,7 @@ export class Library {
 						},
 						marks: (change) => {
 							this.marks.heard(change);
+							this.playlists.smartMoved();
 						},
 						prefs: ({ key }) => void this.#heardPref(key as PrefKey),
 						lastfm: () => void this.refreshLastfm(),
@@ -487,6 +491,7 @@ export class Library {
 		if (this.user !== null && !this.simulated) {
 			this.#outbox.add(this.user.id, trackId, startedAt);
 			this.flushPlays();
+			this.playlists.smartMoved();
 		}
 	}
 

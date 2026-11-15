@@ -31,6 +31,7 @@ const table = {
 	'/now-playing': { look: 'gone', current: null, journey: 'now-playing' },
 	'/playlists': { look: 'home', current: 'playlists', journey: 'playlists' },
 	'/playlists/[id]': { look: 'home', current: 'playlists', journey: 'playlist' },
+	'/playlists/smart': { look: 'home', current: 'playlists', journey: 'playlist' },
 	'/search': { look: 'home', current: null, journey: 'search' },
 	'/server': { look: 'home', current: null, journey: 'server' },
 	'/server/trash': { look: 'home', current: null, journey: 'server' },

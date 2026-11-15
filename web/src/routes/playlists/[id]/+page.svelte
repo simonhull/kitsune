@@ -2,6 +2,11 @@
 	One playlist: its mosaic, what it holds, its name as a heading that edits in place (saved on blur
 	or Enter, put back by Esc), Play, Shuffle and ⋯ (Rename, Delete with a confirm in place), and its
 	songs in its order, which a grip moves.
+
+	A smart playlist's page has its rules read back as a sentence under the name, Edit rules beside
+	Shuffle, and its songs in the order the rules give, with nothing to drag or take out. Edit rules
+	opens the rules editor in place of the head and the songs, with a history entry of its own: Back
+	and Esc leave it, and its draft goes with it.
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
@@ -12,6 +17,11 @@
 	import Mosaic from '#lib/pages/Mosaic.svelte';
 	import PlaylistSongs from '#lib/pages/PlaylistSongs.svelte';
 	import { headLine, phoneHeadLine } from '#lib/pages/playlistWords.ts';
+	import { editorHistory } from '#lib/pages/editorHistory.svelte.ts';
+	import SmartEditor from '#lib/pages/SmartEditor.svelte';
+	import SmartStamp from '#lib/pages/SmartStamp.svelte';
+	import { LivePreview, SmartDraft } from '#lib/pages/smartRules.svelte.ts';
+	import { phoneSentence, sentence, sentenceLead } from '#lib/library/smartlist.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import Icon from '#lib/shell/Icon.svelte';
 	import { shuffles } from '#lib/shuffle/session.svelte.ts';
@@ -28,6 +38,64 @@
 
 	let windowWidth = $state(1280);
 	const phone = $derived(windowWidth < 700);
+	const smart = $derived(known?.smart === true);
+	const rules = $derived(known?.rules);
+	/** A Playlist rule's playlist, by name: undefined when it's gone. */
+	const nameOf = (other: string): string | undefined => library.playlists.summary(other)?.name;
+	const random = $derived(rules?.order === 'random' || rules?.limit?.by === 'random');
+
+	/** The rules editor's draft, while it's open. */
+	let editing = $state<SmartDraft | null>(null);
+	let saving = $state(false);
+	const preview = new LivePreview((request, signal) => library.playlists.preview(request, signal));
+	editorHistory(
+		() => (editing === null ? null : 'smart-rules'),
+		() => {
+			editing = null;
+		}
+	);
+	const others = $derived(
+		library.playlists.all
+			.filter((p) => p.id !== id && !p.id.startsWith('pending:'))
+			.map((p) => ({ id: p.id, name: p.name }))
+	);
+	const savedIds = $derived(
+		playlist === undefined ? null : new Set(playlist.entries.map(({ track }) => track.id))
+	);
+
+	function editRules(): void {
+		if (known?.rules !== undefined) {
+			editing = new SmartDraft(known.rules, known.name);
+		}
+	}
+
+	async function saveRules(): Promise<void> {
+		const draft = editing;
+		if (draft === null) {
+			return;
+		}
+		saving = true;
+		const name = draft.name.trim();
+		try {
+			await library.playlists.saveRules(
+				id,
+				draft.rules,
+				name === '' || name === known?.name ? undefined : name
+			);
+			editing = null;
+		} catch {
+			// The draft stays open, so nothing typed is lost; the dock's Save can be pressed again.
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function copy(): Promise<void> {
+		const made = await library.playlists.copy(id).catch(() => undefined);
+		if (made !== undefined) {
+			void goto(resolve('/playlists/[id]', { id: made.id }));
+		}
+	}
 
 	$effect(() => {
 		const wanted = id;
@@ -106,8 +174,23 @@
 	<title>{known?.name ?? 'Playlist'} · Kitsune</title>
 </svelte:head>
 
-<div class="page-frame playlist">
-	{#if load.kind === 'missing'}
+<div class="page-frame playlist" class:editing={editing !== null}>
+	{#if editing !== null}
+		<SmartEditor
+			draft={editing}
+			{preview}
+			requestOf={(asked) => ({ rules: asked, id })}
+			mosaic={known?.mosaic ?? []}
+			savedCount={playlist?.songCount}
+			{savedIds}
+			playlists={others}
+			{saving}
+			onleave={() => {
+				editing = null;
+			}}
+			onsave={() => void saveRules()}
+		/>
+	{:else if load.kind === 'missing'}
 		<p class="note" role="status">
 			There's no such playlist.
 			<a href={resolve('/playlists')}>All playlists</a>
@@ -120,6 +203,7 @@
 					size={phone ? 112 : 200}
 					radius={phone ? 'var(--radius-16)' : 'var(--radius-24)'}
 				/>
+				{#if smart}<SmartStamp size={phone ? 'phone' : 'page'} />{/if}
 			</span>
 			<div class="words">
 				<span class="facts"
@@ -152,6 +236,22 @@
 						}
 					}}
 				/>
+				{#if smart && rules !== undefined}
+					{#if phone}
+						<button type="button" class="sentence-phone" onclick={editRules}
+							><span class="lead">{rules.match === 'all' ? 'ALL OF ' : 'ANY OF '}</span
+							>{phoneSentence(rules, nameOf)} · <span class="edit-words">Edit rules ›</span></button
+						>
+					{:else}
+						<p class="sentence" aria-label="Its rules">
+							<span class="lead">{sentenceLead(rules)}</span>
+							{#each sentence(rules, nameOf) as part, i (i)}
+								{#if part.join !== undefined}<span class="joiner">{part.join}</span>{/if}
+								<span class="part" class:group={part.group}>{part.text}</span>
+							{/each}
+						</p>
+					{/if}
+				{/if}
 				{#if confirming}
 					<span class="confirm" role="group" aria-label="Delete the playlist">
 						<span class="confirm-words">Delete {known?.name}? Its songs stay in your library.</span>
@@ -196,6 +296,11 @@
 								}
 							}}>Shuffle</button
 						>
+						{#if smart && !phone}
+							<button type="button" class="edit" onclick={editRules}
+								><Icon name="rules" size={15} />Edit rules</button
+							>
+						{/if}
 						<button
 							type="button"
 							class="more"
@@ -220,7 +325,7 @@
 		</div>
 
 		{#if playlist !== undefined}
-			<PlaylistSongs {playlist} onplay={playFrom} />
+			<PlaylistSongs {playlist} onplay={playFrom} smartRules={rules} />
 		{:else if load.kind === 'unavailable'}
 			<p class="note" role="status">
 				Its songs couldn't be loaded.
@@ -255,6 +360,40 @@
 				});
 			}}>Rename</button
 		>
+		{#if smart}
+			<button
+				type="button"
+				role="menuitem"
+				class="item"
+				data-menu-item
+				onclick={() => {
+					menu = null;
+					editRules();
+				}}>Edit rules</button
+			>
+			<button
+				type="button"
+				role="menuitem"
+				class="item"
+				data-menu-item
+				onclick={() => {
+					menu = null;
+					void copy();
+				}}>Copy to a playlist</button
+			>
+			{#if random}
+				<button
+					type="button"
+					role="menuitem"
+					class="item"
+					data-menu-item
+					onclick={() => {
+						menu = null;
+						void library.playlists.reseed(id).catch(() => undefined);
+					}}>Pick again</button
+				>
+			{/if}
+		{/if}
 		<button type="button" role="menuitem" class="item quiet" data-menu-item disabled
 			>Export .m3u <span class="soon">SOON</span></button
 		>
@@ -288,6 +427,7 @@
 	}
 
 	.mosaic {
+		position: relative;
 		flex: none;
 		border-radius: var(--radius-24);
 		box-shadow:
@@ -372,6 +512,76 @@
 
 	.shuffle:hover {
 		background: var(--hover);
+	}
+
+	.edit {
+		padding: 0 18px;
+		background: none;
+		box-shadow: inset 0 0 0 1px var(--edge-strong);
+	}
+
+	.edit:hover {
+		background: var(--hover);
+	}
+
+	.sentence {
+		margin-top: 2px;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px 8px;
+		font-size: 14px;
+		color: var(--text-secondary);
+	}
+
+	.lead,
+	.joiner {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		letter-spacing: 0.1em;
+		color: var(--text-meta);
+	}
+
+	.joiner {
+		font-size: 10px;
+		letter-spacing: 0.12em;
+	}
+
+	.part {
+		display: inline-flex;
+		align-items: center;
+		height: 28px;
+		padding: 0 11px;
+		border-radius: var(--radius-pill);
+		background: var(--hover);
+		border: 1px solid transparent;
+		white-space: nowrap;
+	}
+
+	.part.group {
+		border: 1px dashed color-mix(in srgb, var(--fox-line) 55%, transparent);
+	}
+
+	.sentence-phone {
+		grid-column: 1 / -1;
+		grid-row: 3;
+		margin: 8px 0 0;
+		padding: 10px 12px;
+		border: 0;
+		border-radius: var(--radius-16);
+		background: var(--hover);
+		color: var(--text-secondary);
+		font: 400 13px / 1.5 var(--font-sans);
+		text-align: left;
+	}
+
+	.sentence-phone .lead {
+		font-size: 10px;
+	}
+
+	.edit-words {
+		color: var(--fox-text);
+		font-weight: 700;
 	}
 
 	.more {
@@ -516,7 +726,7 @@
 		.buttons,
 		.confirm {
 			grid-column: 1 / -1;
-			grid-row: 3;
+			grid-row: 4;
 			margin-top: 12px;
 		}
 

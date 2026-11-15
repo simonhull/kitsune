@@ -738,6 +738,10 @@ export interface PlaylistSummary {
 	name: string;
 	/** `navidrome` for one an import brought over. */
 	source: 'kitsune' | 'navidrome';
+	/** Rules choose its songs, each time it's read: nothing is added to it, and nothing moves. */
+	smart: boolean;
+	/** A smart playlist's rules; absent for a regular one. */
+	rules?: SmartRules;
 	/** Entries: a song in twice counts twice. */
 	songCount: number;
 	albumCount: number;
@@ -783,6 +787,110 @@ export interface PlaylistAdded {
 
 /** Where a moved entry goes: just before one, or just after one. */
 export type PlaylistPlace = { before: string } | { after: string };
+
+/** What a smart rule reads of a song. `lib/library/smartlist.ts` holds what each takes. */
+export type SmartField =
+	| 'title'
+	| 'album'
+	| 'artist'
+	| 'albumArtist'
+	| 'genre'
+	| 'year'
+	| 'rating'
+	| 'plays'
+	| 'skips'
+	| 'lastPlayed'
+	| 'added'
+	| 'length'
+	| 'format'
+	| 'bitrate'
+	| 'playlist';
+
+export type SmartOp =
+	'is' | 'isNot' | 'contains' | 'notContains' | 'atLeast' | 'atMost' | 'inLast' | 'notInLast';
+
+/** One condition. Text and pick fields hold a string; every other a whole number. */
+export interface SmartRule {
+	field: SmartField;
+	op: SmartOp;
+	value: string | number;
+}
+
+/** One level of group, with its own all or any. */
+export interface SmartGroup {
+	match: 'all' | 'any';
+	rules: SmartRule[];
+}
+
+export type SmartCondition = SmartRule | SmartGroup;
+
+export type SmartChooser =
+	'random' | 'mostPlayed' | 'leastPlayed' | 'highestRated' | 'newest' | 'leastRecent';
+
+export type SmartOrder =
+	| 'chosen'
+	| 'library'
+	| 'title'
+	| 'album'
+	| 'year'
+	| 'rating'
+	| 'plays'
+	| 'lastPlayed'
+	| 'added'
+	| 'random';
+
+export interface SmartLimit {
+	count: number;
+	unit: 'songs' | 'minutes' | 'gb';
+	by: SmartChooser;
+}
+
+/** A smart playlist's rules, as the contract's `SmartRules` spells them. */
+export interface SmartRules {
+	match: 'all' | 'any';
+	rules: SmartCondition[];
+	limit?: SmartLimit;
+	/** Absent is the Library's order. */
+	order?: SmartOrder;
+}
+
+/** `POST /me/playlists/preview`: what rules would choose. */
+export interface SmartPreviewRequest {
+	rules: SmartRules;
+	/** The smart playlist being edited, whose seed a random choice follows. */
+	id?: string;
+	/** A new draft's seed. */
+	seed?: number;
+}
+
+/** A song the rules editor's live card shows. */
+export interface SmartSong {
+	id: string;
+	albumId: string;
+	title: string;
+	stars?: number;
+	plays?: number;
+	lastPlayedAt?: string;
+}
+
+/** What rules choose now. */
+export interface SmartPreview {
+	/** The limit applied. */
+	songCount: number;
+	/** Before the limit. */
+	matchCount: number;
+	albumCount: number;
+	durationMs: number;
+	mosaic: PlaylistAlbum[];
+	/** The first, at most 40, in order. */
+	songs: SmartSong[];
+}
+
+/** A change to a playlist: a new name, a smart playlist's new rules, or both. */
+export interface PlaylistChange {
+	name?: string;
+	rules?: SmartRules;
+}
 
 /** `GET /admin/settings`. */
 export interface ServerSettings {
@@ -1155,6 +1263,16 @@ export interface LibrarySource {
 	removeFromPlaylist(id: string, entries: readonly string[]): Promise<string[]>;
 	/** Moves an entry. Rejects with {@link ServerError}: 404 for one gone. */
 	movePlaylistEntry(id: string, entry: string, place: PlaylistPlace): Promise<void>;
+	/** Makes a smart playlist. Rejects with {@link ServerError}: 422 for rules it won't take. */
+	createSmartPlaylist(name: string, rules: SmartRules, seed: number): Promise<PlaylistSummary>;
+	/** Renames a playlist, or changes a smart one's rules. Rejects with {@link ServerError}: 409, 422. */
+	changePlaylist(id: string, change: PlaylistChange): Promise<PlaylistSummary>;
+	/** What rules would choose now. Rejects with {@link ServerError}: 422; aborts with the signal. */
+	previewSmart(request: SmartPreviewRequest, signal?: AbortSignal): Promise<SmartPreview>;
+	/** Pick again: a smart playlist's new seed. Rejects with {@link ServerError}: 404, 409. */
+	reseedPlaylist(id: string): Promise<PlaylistSummary>;
+	/** Copies a playlist, as it is now, to a new regular one. Rejects with {@link ServerError}: 404. */
+	copyPlaylist(id: string): Promise<PlaylistSummary>;
 }
 
 /** Trash refused a move, a restore or an empty. `detail` is the server's, ready to show. */

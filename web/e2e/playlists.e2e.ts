@@ -23,7 +23,7 @@ test('the Playlists page lists them and makes one in place, named New playlist w
 }) => {
 	await page.goto(fixtures('/playlists'));
 	await expect(page.getByRole('heading', { name: 'Playlists', exact: true })).toBeVisible();
-	await expect(page.getByText('2 PLAYLISTS · YOURS ALONE')).toBeVisible();
+	await expect(page.getByText('3 PLAYLISTS · 1 SMART · YOURS ALONE')).toBeVisible();
 	await expect(page.getByRole('link', { name: /Falling Up.*15 SONGS/ })).toBeVisible();
 
 	await page.getByRole('button', { name: 'New playlist' }).click();
@@ -34,12 +34,12 @@ test('the Playlists page lists them and makes one in place, named New playlist w
 	await page.getByRole('button', { name: 'New playlist' }).click();
 	await page.keyboard.press('Enter');
 	await expect(page.getByRole('link', { name: /^New playlist/ })).toBeVisible();
-	await expect(page.getByText('4 PLAYLISTS · YOURS ALONE')).toBeVisible();
+	await expect(page.getByText('5 PLAYLISTS · 1 SMART · YOURS ALONE')).toBeVisible();
 
 	// Leave it puts the dashed card back, making nothing.
 	await page.getByRole('button', { name: 'New playlist' }).click();
 	await page.getByRole('button', { name: 'Leave it' }).click();
-	await expect(page.getByText('4 PLAYLISTS · YOURS ALONE')).toBeVisible();
+	await expect(page.getByText('5 PLAYLISTS · 1 SMART · YOURS ALONE')).toBeVisible();
 });
 
 test('a playlist renames in place: Enter saves, Esc puts the name back', async ({ page }) => {
@@ -138,7 +138,7 @@ test('Delete playlist asks in place first, and Keep it keeps it', async ({ page 
 	await page.getByRole('button', { name: 'Delete playlist' }).click();
 	await expect(page).toHaveURL(/\/playlists(\?|$)/);
 	await expect(page.getByRole('link', { name: /Falling Up/ })).toHaveCount(0);
-	await expect(page.getByText('1 PLAYLIST · YOURS ALONE')).toBeVisible();
+	await expect(page.getByText('2 PLAYLISTS · 1 SMART · YOURS ALONE')).toBeVisible();
 });
 
 test('a playlist on a phone: two lines a song, the grip on each, the buttons under the name', async ({

@@ -184,6 +184,13 @@ export class Marks {
 		}
 	}
 
+	/** Takes the stars a list read with its songs: a playlist's, which no index may have brought. */
+	seedTracks(tracks: readonly { id: string; stars?: number }[]): void {
+		for (const track of tracks) {
+			this.#stars.seed(track.id, track.stars ?? null);
+		}
+	}
+
 	seedAlbum(album: Album): void {
 		for (const track of album.tracks) {
 			this.#stars.seed(track.id, track.stars ?? null);

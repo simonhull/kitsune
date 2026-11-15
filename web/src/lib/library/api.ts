@@ -55,6 +55,7 @@ import {
 	type PlaylistAdded,
 	type PlaylistDetail,
 	type PlaylistSummary,
+	type SmartPreview,
 	type User
 } from './source.ts';
 
@@ -752,6 +753,29 @@ export function createApiSource({
 				`/me/playlists/${encodeURIComponent(id)}/move`,
 				jsonBody('POST', { entry, ...place })
 			),
+
+		async createSmartPlaylist(name, rules, seed) {
+			const made = await read<PlaylistAdded>(
+				'/me/playlists',
+				jsonBody('POST', { name, rules, seed })
+			);
+			return made.playlist;
+		},
+
+		changePlaylist: (id, change) =>
+			read<PlaylistSummary>(`/me/playlists/${encodeURIComponent(id)}`, jsonBody('PATCH', change)),
+
+		previewSmart: (request, signal) =>
+			read<SmartPreview>('/me/playlists/preview', {
+				...jsonBody('POST', request),
+				...(signal === undefined ? {} : { signal })
+			}),
+
+		reseedPlaylist: (id) =>
+			read<PlaylistSummary>(`/me/playlists/${encodeURIComponent(id)}/seed`, { method: 'POST' }),
+
+		copyPlaylist: (id) =>
+			read<PlaylistSummary>(`/me/playlists/${encodeURIComponent(id)}/copy`, { method: 'POST' }),
 
 		async changeSettings(change) {
 			const response = await call('/admin/settings', {

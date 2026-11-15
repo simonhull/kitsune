@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import type { LibraryFilter } from './libraryRows.ts';
 
 	interface Props {
@@ -15,27 +16,60 @@
 	];
 </script>
 
-<!-- The shell's, so amber. They narrow the one list; nothing animates out. -->
-<div class="filters" role="group" aria-label="Show">
-	{#each chips as chip (chip.filter)}
-		<button
-			type="button"
-			class:on={chip.filter === filter}
-			aria-pressed={chip.filter === filter}
-			onclick={() => {
-				choose(chip.filter);
-			}}
-		>
-			{#if chip.short === undefined}
-				{chip.label}
-			{:else}
-				<span class="long">{chip.label}</span><span class="short">{chip.short}</span>
-			{/if}
-		</button>
-	{/each}
+<!--
+	The shell's, so amber. They narrow the one list; nothing animates out. While a filter other than
+	Everything is on, a quiet "Save as smart playlist" after them opens the rules editor with that
+	filter as its rule: ★ 4 and up is Rating is at least ★★★★, the fresh draft's own.
+-->
+<div class="row">
+	<div class="filters" role="group" aria-label="Show">
+		{#each chips as chip (chip.filter)}
+			<button
+				type="button"
+				class:on={chip.filter === filter}
+				aria-pressed={chip.filter === filter}
+				onclick={() => {
+					choose(chip.filter);
+				}}
+			>
+				{#if chip.short === undefined}
+					{chip.label}
+				{:else}
+					<span class="long">{chip.label}</span><span class="short">{chip.short}</span>
+				{/if}
+			</button>
+		{/each}
+	</div>
+	{#if filter === 'rated'}
+		<a class="save" href={resolve('/playlists/smart')}>Save as smart playlist</a>
+	{/if}
 </div>
 
 <style>
+	.row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-width: 0;
+	}
+
+	.save {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--text-meta);
+		text-decoration: none;
+	}
+
+	.save:hover,
+	.save:focus-visible {
+		color: var(--fox-text);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
 	.filters {
 		display: flex;
 		gap: 6px;

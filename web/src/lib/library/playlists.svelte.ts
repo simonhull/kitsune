@@ -16,7 +16,18 @@ import {
 	takenFrom,
 	type TakenOut
 } from './playlistEdits.ts';
-import type { LibrarySource, PlaylistAdded, PlaylistDetail, PlaylistSummary } from './source.ts';
+import type {
+	LibrarySource,
+	PlaylistAdded,
+	PlaylistDetail,
+	PlaylistSummary,
+	SmartPreview,
+	SmartPreviewRequest,
+	SmartRules
+} from './source.ts';
+
+/** How long a smart page waits after a library or marks event before it reads its songs again. */
+export const smartRereadMs = 400;
 
 export type { TakenOut } from './playlistEdits.ts';
 
@@ -50,6 +61,7 @@ export class Playlists {
 	#listChanges = 0;
 	#epoch = 0;
 	#made = 0;
+	#reread: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(source: LibrarySource) {
 		this.#source = source;
@@ -157,6 +169,7 @@ export class Playlists {
 				id: temp,
 				name,
 				source: 'kitsune',
+				smart: false,
 				songCount: trackIds.length,
 				albumCount: 0,
 				durationMs: 0,
@@ -200,6 +213,90 @@ export class Playlists {
 				throw error;
 			}
 		});
+	}
+
+	/** Makes a smart playlist; it's listed once the server has made it. Rejects as the server does. */
+	async createSmart(name: string, rules: SmartRules, seed: number): Promise<PlaylistSummary> {
+		const made = await this.#source.createSmartPlaylist(name, rules, seed);
+		this.#listChanges += 1;
+		if (this.list.kind === 'ready') {
+			this.#setList([...this.all, made]);
+		} else {
+			void this.load();
+		}
+		return made;
+	}
+
+	/**
+	 * Saves a smart playlist's rules, and its name with them: here at once, and its songs read again
+	 * once the server has them. A refusal puts the old rules back.
+	 */
+	saveRules(id: string, rules: SmartRules, name?: string): Promise<void> {
+		const before = this.summary(id);
+		this.#change(id, (p) => ({ ...p, rules, ...(name === undefined ? {} : { name }) }));
+		return this.#save(id, async () => {
+			try {
+				const saved = await this.#source.changePlaylist(id, {
+					rules,
+					...(name === undefined ? {} : { name })
+				});
+				this.#setSummary(saved);
+			} catch (error) {
+				if (before !== undefined) {
+					const { rules: was, name: wasNamed } = before;
+					this.#change(id, (p) => ({
+						...p,
+						name: wasNamed,
+						...(was === undefined ? {} : { rules: was })
+					}));
+				}
+				throw error;
+			} finally {
+				this.#stale(id);
+			}
+		});
+	}
+
+	/** What rules would choose now: the rules editor's live card. */
+	preview(request: SmartPreviewRequest, signal: AbortSignal): Promise<SmartPreview> {
+		return this.#source.previewSmart(request, signal);
+	}
+
+	/** Pick again: a new seed, and the smart playlist's songs read again. */
+	reseed(id: string): Promise<void> {
+		return this.#save(id, async () => {
+			this.#setSummary(await this.#source.reseedPlaylist(id));
+			this.#stale(id);
+		});
+	}
+
+	/** Copies a playlist, as it is now, to a new regular one, and answers it. */
+	async copy(id: string): Promise<PlaylistSummary> {
+		const made = await this.#source.copyPlaylist(id);
+		this.#listChanges += 1;
+		if (this.list.kind === 'ready') {
+			this.#setList([...this.all, made]);
+		}
+		return made;
+	}
+
+	/**
+	 * Songs changed in a way that moves what smart rules choose (the library, stars, a play): the
+	 * list, and every smart page read, are read again, once things settle.
+	 */
+	smartMoved(): void {
+		if (!this.all.some(({ smart }) => smart)) {
+			return;
+		}
+		clearTimeout(this.#reread);
+		this.#reread = setTimeout(() => {
+			void this.load();
+			for (const [id, held] of this.#details) {
+				if (held.kind === 'ready' && held.value.smart && (this.#pending.get(id) ?? 0) === 0) {
+					void this.loadDetail(id, true);
+				}
+			}
+		}, smartRereadMs);
 	}
 
 	/** Deletes a playlist: gone from the list at once, back if the server says no. */
@@ -322,6 +419,7 @@ export class Playlists {
 	/** Forgets everything the last session saw. */
 	reset(): void {
 		this.#epoch += 1;
+		clearTimeout(this.#reread);
 		this.list = { kind: 'loading' };
 		this.#details.clear();
 		this.#holds.clear();
