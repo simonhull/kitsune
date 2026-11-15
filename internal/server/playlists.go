@@ -1,9 +1,11 @@
 package server
 
 import (
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,20 +33,13 @@ const (
 // holding names it holds.
 func (s *Server) getPlaylists(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	var holding []string
-	for _, value := range q["holding"] {
-		for id := range strings.SplitSeq(value, ",") {
-			if id != "" && !slices.Contains(holding, id) {
-				holding = append(holding, id)
-			}
-		}
-	}
+	holding := holdingOf(q)
 	if len(holding) > mostHolding {
 		writeProblem(w, r, http.StatusBadRequest, fmt.Sprintf("holding names at most %d songs", mostHolding))
 		return
 	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
-	list, err := s.library.Playlists(r.Context(), user.ID, holding)
+	list, err := s.library.Playlists(r.Context(), user.ID, holding, s.genreAlbums())
 	if err != nil {
 		if r.Context().Err() == nil {
 			s.internalError(w, r, "list playlists", err)
@@ -59,6 +54,23 @@ func (s *Server) getPlaylists(w http.ResponseWriter, r *http.Request) {
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
 
+// holdingOf returns the songs a list of playlists is asked about, each once:
+// nil when it isn't asked, and empty, never nil, when it is asked of none.
+func holdingOf(q url.Values) []string {
+	if !q.Has("holding") {
+		return nil
+	}
+	holding := []string{} // Asking what playlists hold of nothing still leaves smart ones out.
+	for _, value := range q["holding"] {
+		for id := range strings.SplitSeq(value, ",") {
+			if id != "" && !slices.Contains(holding, id) {
+				holding = append(holding, id)
+			}
+		}
+	}
+	return holding
+}
+
 // postPlaylist makes one of the caller's playlists, with songs in it or none.
 func (s *Server) postPlaylist(w http.ResponseWriter, r *http.Request) {
 	var req api.PlaylistCreate
@@ -67,7 +79,14 @@ func (s *Server) postPlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name, ok := playlistName(w, r, req.Name)
-	if !ok || !addSized(w, r, req.Albums, req.Tracks, true) {
+	if !ok {
+		return
+	}
+	if len(req.Rules) > 0 {
+		s.postSmartPlaylist(w, r, &req, name)
+		return
+	}
+	if !addSized(w, r, req.Albums, req.Tracks, true) {
 		return
 	}
 	id, err := library.NewID(s.now())
@@ -87,7 +106,7 @@ func (s *Server) postPlaylist(w http.ResponseWriter, r *http.Request) {
 // getPlaylist answers one of the caller's playlists with its songs in order.
 func (s *Server) getPlaylist(w http.ResponseWriter, r *http.Request) {
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
-	d, err := s.library.Playlist(r.Context(), user.ID, r.PathValue("id"))
+	d, err := s.library.Playlist(r.Context(), user.ID, r.PathValue("id"), s.genreAlbums())
 	if r.Context().Err() != nil {
 		return
 	}
@@ -112,7 +131,7 @@ func (s *Server) getPlaylist(w http.ResponseWriter, r *http.Request) {
 			Track: api.LibraryTrack{
 				ID: t.ID, Title: t.Title, DurationMs: t.Duration.Milliseconds(),
 				Artists: append([]string{}, t.Artists...), DiscNo: t.DiscNo, TrackNo: t.TrackNo,
-				Stars: t.Rating.Stars(),
+				Stars: t.Rating.Stars(), TrackFields: smartFields(t.Extra),
 			},
 		}
 	}
@@ -120,25 +139,48 @@ func (s *Server) getPlaylist(w http.ResponseWriter, r *http.Request) {
 	writeCompressed(w, r, &body)
 }
 
-// patchPlaylist renames one of the caller's playlists.
+// patchPlaylist renames one of the caller's playlists, or changes a smart
+// one's rules, or both: the rules first, so a refusal changes nothing.
 func (s *Server) patchPlaylist(w http.ResponseWriter, r *http.Request) {
-	var req api.PlaylistRename
-	if err := readJSON(w, r, &req); err != nil {
-		writeProblem(w, r, http.StatusBadRequest, "request body must be a playlist's new name")
+	var req api.PlaylistChange
+	if err := readJSON(w, r, &req); err != nil || (req.Name == nil && len(req.Rules) == 0) {
+		writeProblem(w, r, http.StatusBadRequest, "request body must be a playlist's new name, new rules, or both")
 		return
 	}
-	name, ok := playlistName(w, r, req.Name)
-	if !ok {
-		return
+	var name string
+	if req.Name != nil {
+		var ok bool
+		if name, ok = playlistName(w, r, *req.Name); !ok {
+			return
+		}
 	}
 	user, _ := currentUser(r.Context()) // Always there, behind authenticate.
 	id := r.PathValue("id")
-	if err := s.library.RenamePlaylist(r.Context(), user.ID, id, name); err != nil {
-		s.playlistFailed(w, r, "rename playlist", err)
+	if len(req.Rules) > 0 && !s.setRules(w, r, user.ID, id, req.Rules) {
 		return
+	}
+	if req.Name != nil {
+		if err := s.library.RenamePlaylist(r.Context(), user.ID, id, name); err != nil {
+			s.playlistFailed(w, r, "rename playlist", err)
+			return
+		}
 	}
 	s.publishPlaylist(user.ID, id)
 	s.answerPlaylist(w, r, user.ID, id, http.StatusOK)
+}
+
+// setRules gives the user's smart playlist id the rules in raw, and reports
+// whether it did; when it didn't, it has answered.
+func (s *Server) setRules(w http.ResponseWriter, r *http.Request, userID int64, id string, raw jsontext.Value) bool {
+	rules, ok := smartRules(w, r, raw)
+	if !ok {
+		return false
+	}
+	if err := s.library.SetPlaylistRules(r.Context(), userID, id, &rules); err != nil {
+		s.smartFailed(w, r, "set playlist rules", err)
+		return false
+	}
+	return true
 }
 
 // deletePlaylist deletes one of the caller's playlists, never a song.
@@ -287,6 +329,10 @@ func (s *Server) playlistFailed(w http.ResponseWriter, r *http.Request, what str
 		writeProblem(w, r, http.StatusNotFound, noPlaylist)
 	case errors.Is(err, store.ErrNoEntry):
 		writeProblem(w, r, http.StatusNotFound, noEntry)
+	case errors.Is(err, store.ErrSmartPlaylist):
+		writeProblem(w, r, http.StatusConflict, "a smart playlist's rules choose its songs and their order")
+	case errors.Is(err, store.ErrNotSmart):
+		writeProblem(w, r, http.StatusConflict, "not a smart playlist")
 	case r.Context().Err() == nil:
 		s.internalError(w, r, what, err)
 	}
@@ -298,7 +344,7 @@ func (s *Server) answerAdded(w http.ResponseWriter, r *http.Request, userID int6
 	if len(added.Added) > 0 || status == http.StatusCreated {
 		s.publishPlaylist(userID, id)
 	}
-	p, err := s.library.PlaylistSummary(r.Context(), userID, id)
+	p, err := s.library.PlaylistSummary(r.Context(), userID, id, s.genreAlbums())
 	if err != nil {
 		s.playlistFailed(w, r, "read playlist", err)
 		return
@@ -312,7 +358,7 @@ func (s *Server) answerAdded(w http.ResponseWriter, r *http.Request, userID int6
 
 // answerPlaylist writes the caller's playlist as a list shows it.
 func (s *Server) answerPlaylist(w http.ResponseWriter, r *http.Request, userID int64, id string, status int) {
-	p, err := s.library.PlaylistSummary(r.Context(), userID, id)
+	p, err := s.library.PlaylistSummary(r.Context(), userID, id, s.genreAlbums())
 	if err != nil {
 		s.playlistFailed(w, r, "read playlist", err)
 		return
@@ -328,10 +374,14 @@ func (s *Server) publishPlaylist(userID int64, id string) {
 
 func toAPIPlaylist(p *store.Playlist, holds bool) api.Playlist {
 	out := api.Playlist{
-		ID: p.ID, Name: p.Name, Source: p.Source, SongCount: p.Songs, AlbumCount: p.Albums,
+		ID: p.ID, Name: p.Name, Source: p.Source, Smart: p.Rules != nil, SongCount: p.Songs, AlbumCount: p.Albums,
 		DurationMs: p.Duration.Milliseconds(), Mosaic: toAPIPlaylistAlbums(p.Mosaic),
 		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, AddedAt: p.AddedAt,
 	}
+	if p.Rules != nil {
+		out.Rules, _ = p.Rules.MarshalJSON() // Rules that parsed always encode.
+	}
+
 	if holds {
 		out.Holds = new(p.Holds)
 	}

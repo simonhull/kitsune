@@ -854,7 +854,10 @@ paths:
         leaves them until it comes back. `holding` names up to 1,000 songs,
         joined by commas, in one parameter or several: each playlist then says
         how many of them it holds, each once (`holds`), which is how a client
-        marks one that has them already.
+        marks one that has them already. A smart playlist (`smart`) is worked
+        out as it is listed: its counts, time and mosaic are of the songs its
+        rules choose now. With `holding` smart playlists are left out, since
+        nothing is added to one.
       parameters:
         - name: holding
           in: query
@@ -887,7 +890,12 @@ paths:
         Songs go in as `POST /me/playlists/{id}/tracks` puts them, each once.
         Songs or albums not in the library (unknown, missing or in Trash) are a
         422 naming them, and then nothing is made; so is more than 10,000
-        songs.
+        songs. With `rules` it is a smart playlist instead, which holds no
+        entries: its rules choose its songs each time it is read. Rules a smart
+        playlist can't have, rules that name the playlist itself through
+        another, and `rules` with `tracks` or `albums`, are a 422
+        (`SmartProblem`). `seed` orders its random choices, as the preview that
+        showed them did; absent, the server draws one.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
       requestBody:
@@ -912,7 +920,57 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "422":
-          $ref: "#/components/responses/PlaylistProblem"
+          description: >-
+            Songs or albums not in the library (`PlaylistProblem`), or rules a
+            smart playlist can't have (`SmartProblem`).
+          content:
+            application/problem+json:
+              schema:
+                anyOf:
+                  - { $ref: "#/components/schemas/PlaylistProblem" }
+                  - { $ref: "#/components/schemas/SmartProblem" }
+  /me/playlists/preview:
+    post:
+      operationId: postPlaylistPreview
+      summary: Work out what smart rules would choose, without saving them.
+      description: >-
+        What a rules editor's live card shows: how many songs the rules choose
+        and how long they run, how many match before the limit, and the first
+        40 in order, each with what the card shows of it and never a path.
+        `id` names the smart playlist being edited, whose seed a random choice
+        then follows, so the card shows what saving would; without it, `seed`
+        does (absent: 0). A playlist rule follows the caller's own playlists
+        as they are saved. Another person's `id` is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SmartPreviewRequest" }
+      responses:
+        "200":
+          description: What the rules choose now.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SmartPreview" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/SmartProblem"
   /me/playlists/{id}:
     get:
       operationId: getPlaylist
@@ -921,8 +979,12 @@ paths:
         Each entry has its own ID, which a move or a take-out names (a song in
         twice is two entries), and its song as the library index has it, with
         the caller's stars. Only songs in the library are listed: one in Trash
-        comes back with Restore, in its place. Another person's playlist is a
-        404.
+        comes back with Restore, in its place. A smart playlist is worked out as
+        it is read, in the order its rules give, with its `rules`; its entries'
+        IDs say only where each song is, since it has no entries to move or take
+        out, and each track carries what rules read and order by (`plays`,
+        `lastPlayedAt`, `addedAt`, `year`, `format`, `bitrate`). Another
+        person's playlist is a 404.
       parameters:
         - name: id
           in: path
@@ -953,8 +1015,12 @@ paths:
           $ref: "#/components/responses/Problem"
     patch:
       operationId: patchPlaylist
-      summary: Rename one of the caller's playlists.
-      description: The name is 1 to 200 characters once trimmed. Another person's playlist is a 404.
+      summary: Rename one of the caller's playlists, or change a smart one's rules.
+      description: >-
+        The name is 1 to 200 characters once trimmed. `rules` changes a smart
+        playlist's rules, checked as `POST /me/playlists` checks them; on a
+        regular playlist it is a 409. A change names `name`, `rules` or both.
+        Another person's playlist is a 404.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - name: id
@@ -965,10 +1031,10 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/PlaylistRename" }
+            schema: { $ref: "#/components/schemas/PlaylistChange" }
       responses:
         "200":
-          description: The playlist, renamed.
+          description: The playlist, changed.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Playlist" }
@@ -984,6 +1050,10 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/SmartProblem"
     delete:
       operationId: deletePlaylist
       summary: Delete one of the caller's playlists.
@@ -1019,7 +1089,8 @@ paths:
         adds it anyway. Songs or albums not in the library (unknown, missing or
         in Trash) are a 422 naming them, and so is taking the playlist past
         10,000 songs; then nothing is added. Another person's playlist, or a
-        `before` it doesn't hold, is a 404.
+        `before` it doesn't hold, is a 404. A smart playlist is a 409: its
+        rules choose its songs.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - name: id
@@ -1049,6 +1120,8 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
         "422":
           $ref: "#/components/responses/PlaylistProblem"
   /me/playlists/{id}/entries:
@@ -1058,7 +1131,7 @@ paths:
       description: >-
         The songs stay in the library. An entry the playlist doesn't hold is
         left alone, and the response lists only those taken out. Another
-        person's playlist is a 404.
+        person's playlist is a 404, and a smart one a 409.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - name: id
@@ -1088,6 +1161,8 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
   /me/playlists/{id}/move:
     post:
       operationId: postPlaylistMove
@@ -1095,7 +1170,8 @@ paths:
       description: >-
         The entry goes just before `before`, or just after `after`: exactly one
         of them. Only that entry is written. Another person's playlist, or an
-        entry it doesn't hold, is a 404.
+        entry it doesn't hold, is a 404. A smart playlist is a 409: its rules
+        set its order.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - name: id
@@ -1122,6 +1198,74 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+  /me/playlists/{id}/seed:
+    post:
+      operationId: postPlaylistSeed
+      summary: Pick again, drawing a new seed for a smart playlist's random choices.
+      description: >-
+        A smart playlist chosen at random, or shuffled once, keeps its seed so
+        it reads the same each time it opens; this draws a new one. A regular
+        playlist is a 409, and another person's a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The playlist, as its new seed has it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Playlist" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+  /me/playlists/{id}/copy:
+    post:
+      operationId: postPlaylistCopy
+      summary: Copy one of the caller's playlists to a new regular one.
+      description: >-
+        The copy is a regular playlist named "<name> (copy)", cut to 200
+        characters, holding the songs in the order they are now: a smart
+        playlist's as its rules choose them. It changes on its own from then
+        on. A copy past 10,000 songs is a 422, and then nothing is made.
+        Another person's playlist is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "201":
+          description: The new playlist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Playlist" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/PlaylistProblem"
   /me/lastfm:
     get:
       operationId: getLastfm
@@ -2535,6 +2679,13 @@ components:
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/EditProblem" }
+    SmartProblem:
+      description: >-
+        An RFC 9457 problem: rules a smart playlist can't have, or rules that
+        name a playlist that names them back, which `cycle` lists.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/SmartProblem" }
     PlaylistProblem:
       description: >-
         An RFC 9457 problem: an add named songs or albums not in the library,
@@ -2914,11 +3065,13 @@ components:
     Playlist:
       type: object
       additionalProperties: false
-      required: [id, name, source, songCount, albumCount, durationMs, mosaic, createdAt, updatedAt]
+      required: [id, name, source, smart, songCount, albumCount, durationMs, mosaic, createdAt, updatedAt]
       properties:
         id: { type: string }
         name: { type: string, minLength: 1, maxLength: 200 }
         source: { type: string, enum: [kitsune, navidrome], description: "`navidrome` for one an import brought over." }
+        smart: { type: boolean, description: Whether rules choose its songs. }
+        rules: { $ref: "#/components/schemas/SmartRules" }
         songCount: { type: integer, minimum: 0, description: Its entries in the library; a song in twice counts twice. }
         albumCount: { type: integer, minimum: 0 }
         durationMs: { type: integer, format: int64, minimum: 0 }
@@ -2935,11 +3088,13 @@ components:
       type: object
       additionalProperties: false
       description: A Playlist's properties, repeated (allOf does not mix with additionalProperties false), plus its entries and their albums.
-      required: [id, name, source, songCount, albumCount, durationMs, mosaic, createdAt, updatedAt, entries, albums]
+      required: [id, name, source, smart, songCount, albumCount, durationMs, mosaic, createdAt, updatedAt, entries, albums]
       properties:
         id: { type: string }
         name: { type: string, minLength: 1, maxLength: 200 }
         source: { type: string, enum: [kitsune, navidrome] }
+        smart: { type: boolean }
+        rules: { $ref: "#/components/schemas/SmartRules" }
         songCount: { type: integer, minimum: 0 }
         albumCount: { type: integer, minimum: 0 }
         durationMs: { type: integer, format: int64, minimum: 0 }
@@ -2985,12 +3140,141 @@ components:
         name: { type: string }
         albums: { type: array, maxItems: 1000, items: { type: string, minLength: 1 } }
         tracks: { type: array, maxItems: 10000, items: { type: string, minLength: 1 } }
-    PlaylistRename:
+        rules: { $ref: "#/components/schemas/SmartRules" }
+        seed: { $ref: "#/components/schemas/SmartSeed" }
+    PlaylistChange:
       type: object
       additionalProperties: false
-      required: [name]
+      minProperties: 1
       properties:
         name: { type: string }
+        rules: { $ref: "#/components/schemas/SmartRules" }
+    SmartSeed:
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 9007199254740991
+      description: What a smart playlist's random choices follow; any whole number a client can hold exactly.
+    SmartRules:
+      type: object
+      additionalProperties: false
+      description: >-
+        A smart playlist's rules: conditions joined by `match`, one level of
+        groups, at most 50 rules in all; an optional limit; and an order
+        (default `library`; `chosen`, the limit's own, only with a limit). Ties
+        always fall back to the Library's order. Which operators a field takes,
+        and what its value holds, is internal/smartlist's table: text fields
+        take is, isNot, contains and notContains and a string (empty counts for
+        nothing); year, plays, skips and bitrate (kbps) take is, atLeast and
+        atMost; rating takes them in half stars, 1 to 10; lastPlayed and added
+        take inLast and notInLast in days; length takes atLeast and atMost in
+        minutes; format and playlist (an ID) take is and isNot. Anything else is
+        a 422.
+      required: [match, rules]
+      properties:
+        match: { $ref: "#/components/schemas/SmartMatch" }
+        rules:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/SmartCondition" }
+        limit: { $ref: "#/components/schemas/SmartLimit" }
+        order:
+          type: string
+          enum: [chosen, library, title, album, year, rating, plays, lastPlayed, added, random]
+    SmartMatch:
+      type: string
+      enum: [all, any]
+    SmartCondition:
+      description: A rule, or one level of group.
+      oneOf:
+        - { $ref: "#/components/schemas/SmartRule" }
+        - { $ref: "#/components/schemas/SmartGroup" }
+    SmartGroup:
+      type: object
+      additionalProperties: false
+      required: [match, rules]
+      properties:
+        match: { $ref: "#/components/schemas/SmartMatch" }
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: "#/components/schemas/SmartRule" }
+    SmartRule:
+      type: object
+      additionalProperties: false
+      required: [field, op, value]
+      properties:
+        field:
+          type: string
+          enum: [title, album, artist, albumArtist, genre, year, rating, plays, skips, lastPlayed, added, length, format, bitrate, playlist]
+        op:
+          type: string
+          enum: [is, isNot, contains, notContains, atLeast, atMost, inLast, notInLast]
+        value:
+          oneOf:
+            - { type: string, maxLength: 200 }
+            - { type: integer, format: int64 }
+    SmartLimit:
+      type: object
+      additionalProperties: false
+      required: [count, unit, by]
+      properties:
+        count: { type: integer, minimum: 1, maximum: 100000 }
+        unit: { type: string, enum: [songs, minutes, gb] }
+        by:
+          type: string
+          enum: [random, mostPlayed, leastPlayed, highestRated, newest, leastRecent]
+    SmartPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [rules]
+      properties:
+        rules: { $ref: "#/components/schemas/SmartRules" }
+        id: { type: string, minLength: 1, description: The smart playlist being edited, whose seed a random choice follows. }
+        seed: { $ref: "#/components/schemas/SmartSeed" }
+    SmartPreview:
+      type: object
+      additionalProperties: false
+      required: [songCount, matchCount, albumCount, durationMs, mosaic, songs]
+      properties:
+        songCount: { type: integer, minimum: 0, description: The songs the rules choose, the limit applied. }
+        matchCount: { type: integer, minimum: 0, description: The songs that match before the limit. }
+        albumCount: { type: integer, minimum: 0 }
+        durationMs: { type: integer, format: int64, minimum: 0 }
+        mosaic:
+          type: array
+          maxItems: 4
+          items: { $ref: "#/components/schemas/PlaylistAlbum" }
+        songs:
+          type: array
+          maxItems: 40
+          description: The first songs, in order.
+          items: { $ref: "#/components/schemas/SmartSong" }
+    SmartSong:
+      type: object
+      additionalProperties: false
+      required: [id, albumId, title]
+      properties:
+        id: { type: string, description: The track's ID. }
+        albumId: { type: string }
+        title: { type: string }
+        stars: { type: number, minimum: 0.5, maximum: 5, multipleOf: 0.5 }
+        plays: { type: integer, minimum: 1, description: Absent when never played. }
+        lastPlayedAt: { type: string, format: date-time, description: Absent when never played. }
+    SmartProblem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        requestId: { type: string }
+        cycle:
+          type: array
+          description: The playlists that name each other, in order, when that is the trouble.
+          items: { type: string }
     PlaylistAdd:
       type: object
       additionalProperties: false
