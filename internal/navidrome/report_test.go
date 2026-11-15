@@ -45,7 +45,7 @@ func TestWrite(t *testing.T) {
 				"  album hearts          0        0        -        -          0\n",
 				"  artist hearts         0        0        -        0          0\n",
 				"  playlist songs        0        0        0        0          0\n",
-				"Playlists: 0 come over; smart playlists stay behind for now (plan 066): 0\n",
+				"Playlists: 0 playlists, 0 smart\n",
 				"Not imported: album ratings 0, bookmarks 0\n",
 				"Songs with plays, marks or in playlists that matched nothing: 1\n",
 				"Navidrome users with no Kitsune account: none\n",

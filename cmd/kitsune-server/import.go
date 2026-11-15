@@ -213,6 +213,13 @@ func planImport(ctx context.Context, st *store.Store, src *navidrome.Source, a *
 	accounts := make([]navidrome.Account, len(users))
 	for i := range users {
 		accounts[i] = navidrome.Account{ID: users[i].User.ID, Name: users[i].User.Name}
+		lastfm, lastfmErr := st.LastfmAccount(ctx, users[i].User.ID)
+		switch {
+		case lastfmErr == nil:
+			accounts[i].LoveFrom = lastfm.Switches.LoveFrom
+		case !errors.Is(lastfmErr, store.ErrNotFound):
+			return navidrome.Plan{}, lastfmErr //nolint:wrapcheck // Says "last.fm account".
+		}
 	}
 	return navidrome.New(src, &targets, &navidrome.Options{ //nolint:wrapcheck // Its errors name the flag at fault.
 		Accounts: accounts, Users: a.users, Roots: a.roots, Paths: a.paths, Now: now, HeartStars: a.heartStars,

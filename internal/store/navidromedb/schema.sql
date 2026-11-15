@@ -51,7 +51,8 @@ CREATE TABLE artist (
 );
 
 -- Optional: a person's playlists, in their order. rules is set only on a smart
--- playlist, which is counted and not imported. Neither table holds a secret.
+-- playlist, its criteria as JSON, which a smart playlist is mapped from.
+-- Neither table holds a secret.
 CREATE TABLE playlist (
     id         varchar(255) NOT NULL PRIMARY KEY,
     name       varchar(255) NOT NULL,

@@ -112,7 +112,7 @@ func TestReadsAnnotationsAndScrobbles(t *testing.T) {
 }
 
 // A person's playlists come with their songs in Navidrome's order, a song as
-// often as it is in one, and a smart one says so.
+// often as it is in one, and a smart one says so, with its criteria as kept.
 func TestReadsPlaylists(t *testing.T) {
 	t.Parallel()
 	got, err := open(t, navidromedbtest.New(t, fixture...)).Playlists(t.Context(), user1)
@@ -120,12 +120,12 @@ func TestReadsPlaylists(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"p1 Falling Up 2025-03-09 01:36:00 +0000 UTC smart=false [m2 m1 m1]",
-		"p3 Recent 0001-01-01 00:00:00 +0000 UTC smart=true []",
+		`p1 Falling Up 2025-03-09 01:36:00 +0000 UTC smart=false "" [m2 m1 m1]`,
+		`p3 Recent 0001-01-01 00:00:00 +0000 UTC smart=true "{\"all\":[{\"inTheLast\":{\"lastPlayed\":30}}]}" []`,
 	}
 	shown := make([]string, len(got))
 	for i, p := range got {
-		shown[i] = fmt.Sprintf("%s %s %v smart=%v %v", p.ID, p.Name, p.CreatedAt, p.Smart, p.Songs)
+		shown[i] = fmt.Sprintf("%s %s %v smart=%v %q %v", p.ID, p.Name, p.CreatedAt, p.Smart, p.Rules, p.Songs)
 	}
 	if !slices.Equal(shown, want) {
 		t.Errorf("Playlists = %q, want %q", shown, want)

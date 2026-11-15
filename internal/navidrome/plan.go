@@ -51,6 +51,10 @@ type Options struct {
 type Account struct {
 	ID   int64
 	Name string
+	// LoveFrom is the person's love line, which a smart playlist's loved
+	// criterion becomes; [rating.None] for one with no Last.fm account, whose
+	// line is 4★.
+	LoveFrom rating.Rating
 }
 
 // Plan is a whole import, resolved: one person per Navidrome user with a
@@ -139,7 +143,14 @@ func New(src *Source, targets *store.ImportTargets, opts *Options) (Plan, error)
 	if err != nil {
 		return Plan{}, err
 	}
-	p := planner{src: src, matches: matches, r: r, now: opts.Now, heartStars: opts.HeartStars, albums: albumsOf(src.Songs, matches)}
+	newID := opts.NewID
+	if newID == nil {
+		newID = library.NewID
+	}
+	p := planner{
+		src: src, matches: matches, r: r, now: opts.Now, heartStars: opts.HeartStars, albums: albumsOf(src.Songs, matches),
+		newID: newID,
+	}
 	plan := Plan{Unmapped: unmapped}
 	gate := map[string]bool{} // Annotated songs, by ID: matched by path or not.
 	for _, pair := range people {
@@ -152,12 +163,8 @@ func New(src *Source, targets *store.ImportTargets, opts *Options) (Plan, error)
 			plan.Gate.ByPath++
 		}
 	}
-	newID := opts.NewID
-	if newID == nil {
-		newID = library.NewID
-	}
-	if err = nameIDs(&plan, newID, opts.Now); err != nil {
-		return Plan{}, fmt.Errorf("playlist ID: %w", err)
+	if p.idErr != nil {
+		return Plan{}, fmt.Errorf("playlist ID: %w", p.idErr)
 	}
 	return plan, nil
 }
@@ -247,6 +254,10 @@ type planner struct {
 	now     time.Time
 	// heartStars is what an unrated heart becomes.
 	heartStars rating.Rating
+	// newID makes each playlist's ULID; idErr is the first error it gave,
+	// which stops the plan.
+	newID func(time.Time) (string, error)
+	idErr error
 }
 
 // person plans one Navidrome user's import into account, noting in gate each
@@ -282,7 +293,7 @@ func (p *planner) person(nd navidromedb.User, account Account, gate map[string]b
 		}
 	}
 	p.songMarks(&out, songs, note)
-	p.playlists(&out, &marks, note)
+	p.playlists(&out, &marks, account.LoveFrom, note)
 	out.Report.Unmatched = slices.Sorted(maps.Keys(lost))
 	return out
 }

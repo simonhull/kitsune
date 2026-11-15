@@ -35,10 +35,13 @@ var navidromeFixture = []string{ //nolint:gochecknoglobals // Read-only fixture 
 		('u1', 'al1', 'album', 0, NULL, 0, true, '2025-03-09 01:36:00+00:00')`,
 	`INSERT INTO scrobbles (id, media_file_id, user_id, submission_time) VALUES (1, 'm1', 'u1', 1767323045)`,
 	// Falling Up holds the moved song twice around one.flac, and a song Kitsune
-	// doesn't have; Recent is a smart one.
+	// doesn't have. Loved in it is a smart one that comes over; Live, smart on a
+	// comment, Kitsune can't say.
 	`INSERT INTO media_file (id, path, album_id) VALUES ('m4', 'B/gone.flac', 'al2')`,
 	`INSERT INTO playlist (id, name, owner_id, created_at, rules) VALUES
-		('p1', 'Falling Up', 'u1', '2025-03-09 01:36:00+00:00', NULL), ('p2', 'Recent', 'u1', NULL, '{"all":[]}')`,
+		('p1', 'Falling Up', 'u1', '2025-03-09 01:36:00+00:00', NULL),
+		('p2', 'Loved in it', 'u1', NULL, '{"all":[{"is":{"loved":true}},{"inPlaylist":{"id":"p1"}}],"sort":"lastplayed","limit":10}'),
+		('p3', 'Live', 'u1', NULL, '{"any":[{"contains":{"comment":"live"}}]}')`,
 	`INSERT INTO playlist_tracks (id, playlist_id, media_file_id) VALUES (1, 'p1', 'm2'), (2, 'p1', 'm1'), (3, 'p1', 'm4'), (4, 'p1', 'm2')`,
 }
 
@@ -152,7 +155,8 @@ func TestImportNavidrome(t *testing.T) { //nolint:paralleltest // overrides auth
 		"  unrated hearts        1        1        1        0          0      1              0     0\n",
 		"Starred songs with no rating are rated 4★ (-heart-stars 8)\n",
 		"  playlist songs        4        3        3        0          1      3              0     -\n",
-		"Playlists: 1 come over (1 new, 0 already here and left as they are); smart playlists stay behind for now (plan 066): 1\n",
+		"Playlists: 2 playlists, 1 smart (2 new, 0 already here and left as they are); 1 smart left out (comment)\n",
+		"  Left out: Live (comment)\n",
 		"Navidrome users with no Kitsune account: Guest",
 		afterImport,
 	} {
@@ -169,7 +173,7 @@ func checkSecondRun(t *testing.T, second cliResult) {
 	t.Helper()
 	for _, line := range []string{
 		"  plays                 5        5        5        0          0      0              5     -\n",
-		"(0 new, 1 already here and left as they are)",
+		"(0 new, 2 already here and left as they are)",
 	} {
 		if !strings.Contains(second.stdout, line) {
 			t.Errorf("second run's report lacks %q: it added something:\n%s", line, second.stdout)
@@ -177,8 +181,28 @@ func checkSecondRun(t *testing.T, second cliResult) {
 	}
 }
 
+// importedOnce reports whether lists are the fixture's Falling Up and its
+// smart Loved in it, from Navidrome, by name.
+func importedOnce(lists []store.Playlist) bool {
+	return len(lists) == 2 && lists[0].Name == "Falling Up" && lists[0].Source == store.PlaylistImported &&
+		lists[0].Rules == nil && lists[1].Name == "Loved in it" && lists[1].Rules != nil
+}
+
+// checkImportedRules checks Loved in it's rules: loved at simon's love line,
+// and in the playlist with the ID fallingUp.
+func checkImportedRules(t *testing.T, smart *store.Playlist, fallingUp string) {
+	t.Helper()
+	rules, err := smart.Rules.MarshalJSON()
+	want := `{"match":"all","rules":[{"field":"rating","op":"atLeast","value":8},{"field":"playlist","op":"is","value":"` + fallingUp +
+		`"}],"limit":{"count":10,"unit":"songs","by":"leastRecent"},"order":"chosen"}`
+	if err != nil || string(rules) != want {
+		t.Errorf("Loved in it's rules = %s, %v; want %s", rules, err, want)
+	}
+}
+
 // checkImportedPlaylist checks simon has the fixture's Falling Up once, in
-// Navidrome's order with its repeat, less the song Kitsune doesn't have.
+// Navidrome's order with its repeat, less the song Kitsune doesn't have, and
+// its smart Loved in it once, with rules naming Falling Up.
 func checkImportedPlaylist(t *testing.T, e userEnv) {
 	t.Helper()
 	st := e.openStore(t)
@@ -186,11 +210,12 @@ func checkImportedPlaylist(t *testing.T, e userEnv) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lists, err := st.Playlists(t.Context(), u.ID, nil)
-	if err != nil || len(lists) != 1 || lists[0].Name != "Falling Up" || lists[0].Source != store.PlaylistImported {
-		t.Fatalf("Playlists = %+v, %v; want Falling Up from Navidrome, once", lists, err)
+	lists, err := st.Playlists(t.Context(), u.ID, nil, nil)
+	if err != nil || !importedOnce(lists) {
+		t.Fatalf("Playlists = %+v, %v; want Falling Up and the smart Loved in it from Navidrome, once each", lists, err)
 	}
-	d, err := st.Playlist(t.Context(), u.ID, lists[0].ID)
+	checkImportedRules(t, &lists[1], lists[0].ID)
+	d, err := st.Playlist(t.Context(), u.ID, lists[0].ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
