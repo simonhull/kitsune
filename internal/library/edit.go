@@ -172,6 +172,7 @@ func (s *Scanner) edit(ctx context.Context, edits []fileEdit, live map[int64]int
 			return stopped(edits, 0, err)
 		}
 	}
+	inPlace := s.inPlaceBefore(context.WithoutCancel(ctx), edits)
 	undo, err := s.moveRows(context.WithoutCancel(ctx), edits, live)
 	if err != nil {
 		return stopped(edits, 0, err)
@@ -180,7 +181,10 @@ func (s *Scanner) edit(ctx context.Context, edits []fileEdit, live map[int64]int
 	// A rewritten file loses its fingerprint, which the pass makes again.
 	defer s.askForPass()
 	written := 0
-	defer func() { s.settle(ctx, edits[:written]) }()
+	defer func() {
+		s.settle(ctx, edits[:written])
+		s.edits.add(writtenOf(inPlace, edits[:written]))
+	}()
 	for i := range edits {
 		file := edits[i].file
 		path := filepath.Join(file.Root, file.RelPath)
