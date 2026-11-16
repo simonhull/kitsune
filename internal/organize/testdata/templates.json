@@ -136,7 +136,7 @@
     { "in": "@eaDir", "out": "_eaDir" },
     { "in": "", "out": "_" },
     { "in": "...", "out": "_" },
-    { "in": "tab\there", "out": "tab here" },
+    { "in": "tab\there", "out": "tabhere" },
     { "in": "bell\u0007", "out": "bell" },
     { "in": "é", "out": "é" }
   ]
