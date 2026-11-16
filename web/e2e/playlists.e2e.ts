@@ -13,7 +13,7 @@ const rowAt = (page: Page, at: number) => page.locator('section.songs .slot [dat
 
 async function openFallingUp(page: Page): Promise<void> {
 	await page.goto(fixtures('/playlists'));
-	await page.getByRole('link', { name: /Falling Up/ }).click();
+	await page.getByRole('link', { name: /^Falling Up \d/ }).click();
 	await expect(page).toHaveURL(/\/playlists\/falling-up/);
 	await expect(rowAt(page, 0)).toBeVisible();
 }
@@ -137,7 +137,7 @@ test('Delete playlist asks in place first, and Keep it keeps it', async ({ page 
 	await page.getByRole('menuitem', { name: 'Delete playlist' }).click();
 	await page.getByRole('button', { name: 'Delete playlist' }).click();
 	await expect(page).toHaveURL(/\/playlists(\?|$)/);
-	await expect(page.getByRole('link', { name: /Falling Up/ })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: /^Falling Up \d/ })).toHaveCount(0);
 	await expect(page.getByText('4 PLAYLISTS · 1 SMART · 2 FROM FILES')).toBeVisible();
 });
 
