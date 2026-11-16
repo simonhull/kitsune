@@ -251,6 +251,97 @@ CREATE TABLE match_states (
 --   column cid=2 name=at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   foreign key id=0 seq=0 table=albums from=album_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 
+-- table organize_moves
+CREATE TABLE organize_moves (
+	id       INTEGER PRIMARY KEY,
+	run_id   INTEGER NOT NULL REFERENCES organize_runs (id) ON DELETE CASCADE,
+	track_id INTEGER REFERENCES tracks (id) ON DELETE SET NULL,
+	root     TEXT    NOT NULL,
+	from_rel TEXT    NOT NULL,
+	to_rel   TEXT    NOT NULL,
+	kind     TEXT    NOT NULL CHECK (kind IN ('song', 'companion', 'folder', 'playlist')),
+	state    TEXT    NOT NULL CHECK (state IN ('planned', 'moved', 'skipped', 'undone')),
+	reason   TEXT
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=run_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=track_id type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=root type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=from_rel type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=to_rel type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=kind type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=state type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=8 name=reason type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=SET NULL match=NONE
+--   foreign key id=1 seq=0 table=organize_runs from=run_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
+-- index organize_moves_planned
+CREATE INDEX organize_moves_planned ON organize_moves (run_id) WHERE state = 'planned';
+--   key seqno=0 cid=1 name=run_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index organize_moves_run
+CREATE INDEX organize_moves_run ON organize_moves (run_id, kind, state);
+--   key seqno=0 cid=1 name=run_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=6 name=kind desc=0 coll=BINARY key=1
+--   key seqno=2 cid=7 name=state desc=0 coll=BINARY key=1
+--   key seqno=3 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index organize_moves_track
+CREATE INDEX organize_moves_track ON organize_moves (track_id);
+--   key seqno=0 cid=2 name=track_id desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- table organize_runs
+CREATE TABLE organize_runs (
+	id          INTEGER PRIMARY KEY,
+	ulid        TEXT    NOT NULL UNIQUE CHECK (length(ulid) = 26),
+	kind        TEXT    NOT NULL CHECK (kind IN ('run', 'undo', 'edit')),
+	by_user     INTEGER REFERENCES users (id) ON DELETE SET NULL,
+	started_at  INTEGER NOT NULL,
+	finished_at INTEGER,
+	state       TEXT    NOT NULL CHECK (state IN ('running', 'done', 'stopped', 'undone')),
+	template    TEXT    NOT NULL,
+	total       INTEGER NOT NULL DEFAULT 0,
+	moved       INTEGER NOT NULL DEFAULT 0,
+	folders     INTEGER NOT NULL DEFAULT 0,
+	conflicts   INTEGER NOT NULL DEFAULT 0,
+	left_count  INTEGER NOT NULL DEFAULT 0,
+	failed      INTEGER NOT NULL DEFAULT 0,
+	companions  INTEGER NOT NULL DEFAULT 0,
+	playlists   INTEGER NOT NULL DEFAULT 0,
+	undo_of     INTEGER REFERENCES organize_runs (id) ON DELETE SET NULL
+) STRICT;
+--   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=ulid type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=kind type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=by_user type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=started_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=finished_at type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=state type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=template type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=8 name=total type=INTEGER notnull=1 dflt_value=0 pk=0 hidden=0
+--   column cid=9 name=moved type=INTEGER notnull=1 dflt_value=0 pk=0 hidden=0
+--   column cid=10 name=folders type=INTEGER notnull=1 dflt_value=0 pk=0 hidden=0
+--   column cid=11 name=conflicts type=INTEGER notnull=1 dflt_value=0 pk=0 hidden=0
+--   column cid=12 name=left_count type=INTEGER notnull=1 dflt_value=0 pk=0 hidden=0
+--   column cid=13 name=failed type=INTEGER notnull=1 dflt_value=0 pk=0 hidden=0
+--   column cid=14 name=companions type=INTEGER notnull=1 dflt_value=0 pk=0 hidden=0
+--   column cid=15 name=playlists type=INTEGER notnull=1 dflt_value=0 pk=0 hidden=0
+--   column cid=16 name=undo_of type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=organize_runs from=undo_of to=id on_update=NO ACTION on_delete=SET NULL match=NONE
+--   foreign key id=1 seq=0 table=users from=by_user to=id on_update=NO ACTION on_delete=SET NULL match=NONE
+
+-- index organize_runs_started
+CREATE INDEX organize_runs_started ON organize_runs (started_at);
+--   key seqno=0 cid=4 name=started_at desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
+-- index organize_runs_undo_of
+CREATE INDEX organize_runs_undo_of ON organize_runs (undo_of) WHERE undo_of IS NOT NULL;
+--   key seqno=0 cid=16 name=undo_of desc=0 coll=BINARY key=1
+--   key seqno=1 cid=-1 name=<nil> desc=0 coll=BINARY key=0
+
 -- table playback
 CREATE TABLE playback (
 	user_id       INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,

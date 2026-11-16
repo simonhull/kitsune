@@ -103,6 +103,38 @@ type MatchState struct {
 	At      int64
 }
 
+type OrganizeMove struct {
+	ID      int64
+	RunID   int64
+	TrackID *int64
+	Root    string
+	FromRel string
+	ToRel   string
+	Kind    string
+	State   string
+	Reason  *string
+}
+
+type OrganizeRun struct {
+	ID         int64
+	Ulid       string
+	Kind       string
+	ByUser     *int64
+	StartedAt  int64
+	FinishedAt *int64
+	State      string
+	Template   string
+	Total      int64
+	Moved      int64
+	Folders    int64
+	Conflicts  int64
+	LeftCount  int64
+	Failed     int64
+	Companions int64
+	Playlists  int64
+	UndoOf     *int64
+}
+
 type Play struct {
 	UserID   int64
 	TrackID  int64
