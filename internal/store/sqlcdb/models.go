@@ -128,7 +128,7 @@ type Playback struct {
 type Playlist struct {
 	ID        int64
 	Ulid      string
-	UserID    int64
+	UserID    *int64
 	Name      string
 	Source    string
 	ImportKey *string
@@ -139,12 +139,26 @@ type Playlist struct {
 	Seed      *int64
 }
 
+type PlaylistFile struct {
+	PlaylistID int64
+	Root       string
+	RelPath    string
+	Size       int64
+	MtimeMs    int64
+	ReadAt     int64
+	Reader     int64
+	Lines      int64
+	PastLimit  int64
+	Missing    string
+}
+
 type PlaylistTrack struct {
 	ID         int64
 	PlaylistID int64
 	Position   int64
 	TrackID    int64
 	AddedAt    int64
+	Line       *string
 }
 
 type ScanIssue struct {

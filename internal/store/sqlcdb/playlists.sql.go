@@ -21,7 +21,7 @@ func (q *Queries) CountPlaylistEntries(ctx context.Context, playlistID int64) (i
 }
 
 const deletePlaylist = `-- name: DeletePlaylist :execrows
-DELETE FROM playlists WHERE user_id = ? AND ulid = ?
+DELETE FROM playlists WHERE user_id = CAST(?1 AS INTEGER) AND ulid = ?2
 `
 
 type DeletePlaylistParams struct {
@@ -90,7 +90,10 @@ func (q *Queries) EntryPosition(ctx context.Context, arg EntryPositionParams) (i
 const insertPlaylist = `-- name: InsertPlaylist :one
 
 INSERT INTO playlists (ulid, user_id, name, source, import_key, created_at, updated_at, rules, seed)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (
+    ?1, CAST(?2 AS INTEGER), ?3, ?4, ?5,
+    ?6, ?7, ?8, ?9
+)
 RETURNING id
 `
 
@@ -406,7 +409,7 @@ SELECT e.playlist_id, t.ulid, t.album_id, t.duration_ms
 FROM playlist_tracks e
 JOIN playlists p ON p.id = e.playlist_id
 JOIN tracks t ON t.id = e.track_id
-WHERE p.user_id = ? AND t.missing_since IS NULL
+WHERE (p.user_id = CAST(?1 AS INTEGER) OR p.user_id IS NULL) AND t.missing_since IS NULL
 ORDER BY e.playlist_id, e.position
 `
 
@@ -417,8 +420,8 @@ type ListPlaylistSongsRow struct {
 	DurationMs int64
 }
 
-// What every playlist of a person holds that is live, in order: enough to count
-// it, time it, find its mosaic and say which songs it holds.
+// What every playlist a person sees holds that is live, in order: enough to
+// count it, time it, find its mosaic and say which songs it holds.
 func (q *Queries) ListPlaylistSongs(ctx context.Context, userID int64) ([]ListPlaylistSongsRow, error) {
 	rows, err := q.query(ctx, q.listPlaylistSongsStmt, listPlaylistSongs, userID)
 	if err != nil {
@@ -561,7 +564,7 @@ func (q *Queries) ListPlaylistTrackRows(ctx context.Context, playlistID int64) (
 const listPlaylists = `-- name: ListPlaylists :many
 SELECT id, ulid, name, source, created_at, updated_at, added_at, rules, seed
 FROM playlists
-WHERE user_id = ?
+WHERE user_id = CAST(?1 AS INTEGER) OR user_id IS NULL
 ORDER BY name COLLATE NOCASE, id
 `
 
@@ -577,6 +580,7 @@ type ListPlaylistsRow struct {
 	Seed      *int64
 }
 
+// The playlists a person sees: their own and the server's file playlists.
 func (q *Queries) ListPlaylists(ctx context.Context, userID int64) ([]ListPlaylistsRow, error) {
 	rows, err := q.query(ctx, q.listPlaylistsStmt, listPlaylists, userID)
 	if err != nil {
@@ -611,7 +615,7 @@ func (q *Queries) ListPlaylists(ctx context.Context, userID int64) ([]ListPlayli
 }
 
 const listSmartPlaylistRules = `-- name: ListSmartPlaylistRules :many
-SELECT ulid, rules FROM playlists WHERE user_id = ? AND rules IS NOT NULL
+SELECT ulid, rules FROM playlists WHERE user_id = CAST(?1 AS INTEGER) AND rules IS NOT NULL
 `
 
 type ListSmartPlaylistRulesRow struct {
@@ -759,7 +763,7 @@ func (q *Queries) ParkPositions(ctx context.Context, playlistID int64) error {
 }
 
 const playlistByImportKey = `-- name: PlaylistByImportKey :one
-SELECT id FROM playlists WHERE user_id = ? AND import_key = ?
+SELECT id FROM playlists WHERE user_id = CAST(?1 AS INTEGER) AND import_key = ?2
 `
 
 type PlaylistByImportKeyParams struct {
@@ -777,12 +781,12 @@ func (q *Queries) PlaylistByImportKey(ctx context.Context, arg PlaylistByImportK
 const playlistRow = `-- name: PlaylistRow :one
 SELECT id, ulid, name, source, created_at, updated_at, added_at, rules, seed
 FROM playlists
-WHERE user_id = ? AND ulid = ?
+WHERE ulid = ?1 AND (user_id = CAST(?2 AS INTEGER) OR user_id IS NULL)
 `
 
 type PlaylistRowParams struct {
-	UserID int64
 	Ulid   string
+	UserID int64
 }
 
 type PlaylistRowRow struct {
@@ -797,8 +801,9 @@ type PlaylistRowRow struct {
 	Seed      *int64
 }
 
+// A playlist the person sees: their own, or one of the server's file playlists.
 func (q *Queries) PlaylistRow(ctx context.Context, arg PlaylistRowParams) (PlaylistRowRow, error) {
-	row := q.queryRow(ctx, q.playlistRowStmt, playlistRow, arg.UserID, arg.Ulid)
+	row := q.queryRow(ctx, q.playlistRowStmt, playlistRow, arg.Ulid, arg.UserID)
 	var i PlaylistRowRow
 	err := row.Scan(
 		&i.ID,

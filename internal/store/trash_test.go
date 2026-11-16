@@ -180,6 +180,7 @@ func liveReads(live string) []liveRead {
 		{"home", albumID(1), readHome},
 		{"an album's edit files", live, readEditFiles},
 		{"genres", albumID(1), readGenres},
+		{"a file playlist", live, readFilePlaylist},
 	}
 }
 

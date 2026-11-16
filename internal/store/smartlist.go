@@ -1165,9 +1165,9 @@ func (s *Store) SetPlaylistRules(ctx context.Context, userID int64, id string, r
 		return fmt.Errorf("set rules of playlist %s: %w", id, err)
 	}
 	err = s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
-		row, rowErr := q.PlaylistRow(ctx, sqlcdb.PlaylistRowParams{UserID: userID, Ulid: id})
+		row, rowErr := ownRow(ctx, q, userID, id)
 		if rowErr != nil {
-			return notFound(rowErr)
+			return rowErr
 		}
 		if row.Rules == nil {
 			return ErrNotSmart
@@ -1188,9 +1188,9 @@ func (s *Store) SetPlaylistRules(ctx context.Context, userID int64, id string, r
 // and [ErrNotSmart] for a regular one.
 func (s *Store) SetPlaylistSeed(ctx context.Context, userID int64, id string, seed int64) error {
 	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
-		row, err := q.PlaylistRow(ctx, sqlcdb.PlaylistRowParams{UserID: userID, Ulid: id})
+		row, err := ownRow(ctx, q, userID, id)
 		if err != nil {
-			return notFound(err)
+			return err
 		}
 		if row.Rules == nil {
 			return ErrNotSmart
