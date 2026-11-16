@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -122,6 +124,7 @@ func (s *Server) getPlaylist(w http.ResponseWriter, r *http.Request) {
 		Playlist: toAPIPlaylist(&d.Playlist, false),
 		Entries:  make([]api.PlaylistEntry, len(d.Entries)),
 		Albums:   toAPIPlaylistAlbums(d.Albums),
+		Missing:  toAPIMissing(d.Missing),
 	}
 	for i := range d.Entries {
 		e := &d.Entries[i]
@@ -329,6 +332,8 @@ func (s *Server) playlistFailed(w http.ResponseWriter, r *http.Request, what str
 		writeProblem(w, r, http.StatusNotFound, noPlaylist)
 	case errors.Is(err, store.ErrNoEntry):
 		writeProblem(w, r, http.StatusNotFound, noEntry)
+	case errors.Is(err, store.ErrFilePlaylist):
+		writeProblem(w, r, http.StatusConflict, "it comes from a file: edit the file, or copy it to a playlist of your own")
 	case errors.Is(err, store.ErrSmartPlaylist):
 		writeProblem(w, r, http.StatusConflict, "a smart playlist's rules choose its songs and their order")
 	case errors.Is(err, store.ErrNotSmart):
@@ -384,6 +389,29 @@ func toAPIPlaylist(p *store.Playlist, holds bool) api.Playlist {
 
 	if holds {
 		out.Holds = new(p.Holds)
+	}
+	if f := p.File; f != nil {
+		rel := filepath.ToSlash(f.RelPath)
+		out.File = &api.PlaylistFile{
+			Path: rel, Format: strings.ToLower(strings.TrimPrefix(path.Ext(rel), ".")), NotFound: f.NotFound,
+			PastLimit: f.PastLimit, ReadAt: f.ReadAt, ModifiedAt: f.ModifiedAt,
+		}
+	}
+	return out
+}
+
+// toAPIMissing is a file playlist's lines that found no song, nil for any other
+// playlist.
+func toAPIMissing(lines []store.MissingLine) []api.MissingLine {
+	if lines == nil {
+		return nil
+	}
+	out := make([]api.MissingLine, len(lines))
+	for i := range lines {
+		l := &lines[i]
+		out[i] = api.MissingLine{
+			Line: l.Line, Text: l.Text, Title: l.Title, Seconds: l.Seconds, Reason: l.Reason, OtherExtension: l.OtherExtension,
+		}
 	}
 	return out
 }

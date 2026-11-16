@@ -372,7 +372,9 @@ func TestNoEventHoldsASecret(t *testing.T) {
 	fx.startShuffle(t, token, &api.ShuffleStart{Scope: api.ShuffleScope{Kind: scopeLibrary}, Mode: modeEndless})
 	fx.send(t, fx.trashCall(trashPath, tracksBody(fx.album.Tracks[0].ID)))
 	fx.send(t, fx.trashCall(restorePath, tracksBody(fx.album.Tracks[0].ID)))
-	fx.makePlaylist(t, token, &api.PlaylistCreate{Name: mixName, Tracks: []string{fx.album.Tracks[0].ID}})
+	made := fx.makePlaylist(t, token, &api.PlaylistCreate{Name: mixName, Tracks: []string{fx.album.Tracks[0].ID}})
+	writeUnder(t, fx.root, mixFile, mixLines(fx.root))
+	fx.send(t, saveCall(made.Playlist.ID, token, jsonBody(t, api.PlaylistSave{Root: fx.root, Folder: savedDir, Name: mixName})))
 	if _, err := fx.Scanner.Scan(t.Context(), library.Full); err != nil {
 		t.Fatal(err)
 	}

@@ -857,7 +857,9 @@ paths:
         marks one that has them already. A smart playlist (`smart`) is worked
         out as it is listed: its counts, time and mosaic are of the songs its
         rules choose now. With `holding` smart playlists are left out, since
-        nothing is added to one.
+        nothing is added to one. The server's file playlists (`source` `file`),
+        read from `.m3u` and `.m3u8` files in the library, are listed for
+        everyone beside the caller's own, and left out with `holding` too.
       parameters:
         - name: holding
           in: query
@@ -983,7 +985,9 @@ paths:
         it is read, in the order its rules give, with its `rules`; its entries'
         IDs say only where each song is, since it has no entries to move or take
         out, and each track carries what rules read and order by (`plays`,
-        `lastPlayedAt`, `addedAt`, `year`, `format`, `bitrate`). Another
+        `lastPlayedAt`, `addedAt`, `year`, `format`, `bitrate`). A file
+        playlist, which everyone sees, is the file's songs in its order with its
+        repeats, and `missing` lists the lines that found no song. Another
         person's playlist is a 404.
       parameters:
         - name: id
@@ -1019,7 +1023,8 @@ paths:
       description: >-
         The name is 1 to 200 characters once trimmed. `rules` changes a smart
         playlist's rules, checked as `POST /me/playlists` checks them; on a
-        regular playlist it is a 409. A change names `name`, `rules` or both.
+        regular playlist it is a 409, and so is any change to a file playlist,
+        which belongs to its file. A change names `name`, `rules` or both.
         Another person's playlist is a 404.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
@@ -1057,7 +1062,9 @@ paths:
     delete:
       operationId: deletePlaylist
       summary: Delete one of the caller's playlists.
-      description: Its songs stay in the library. Another person's playlist is a 404.
+      description: >-
+        Its songs stay in the library. Another person's playlist is a 404, and a
+        file playlist a 409: deleting its file deletes it.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - name: id
@@ -1077,6 +1084,8 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "404":
           $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
   /me/playlists/{id}/tracks:
     post:
       operationId: postPlaylistTracks
@@ -1090,7 +1099,7 @@ paths:
         in Trash) are a 422 naming them, and so is taking the playlist past
         10,000 songs; then nothing is added. Another person's playlist, or a
         `before` it doesn't hold, is a 404. A smart playlist is a 409: its
-        rules choose its songs.
+        rules choose its songs. So is a file playlist: its file does.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - name: id
@@ -1131,7 +1140,7 @@ paths:
       description: >-
         The songs stay in the library. An entry the playlist doesn't hold is
         left alone, and the response lists only those taken out. Another
-        person's playlist is a 404, and a smart one a 409.
+        person's playlist is a 404, and a smart or file one a 409.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - name: id
@@ -1171,7 +1180,7 @@ paths:
         The entry goes just before `before`, or just after `after`: exactly one
         of them. Only that entry is written. Another person's playlist, or an
         entry it doesn't hold, is a 404. A smart playlist is a 409: its rules
-        set its order.
+        set its order. So is a file playlist: its file does.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - name: id
@@ -1207,7 +1216,7 @@ paths:
       description: >-
         A smart playlist chosen at random, or shuffled once, keeps its seed so
         it reads the same each time it opens; this draws a new one. A regular
-        playlist is a 409, and another person's a 404.
+        or file playlist is a 409, and another person's a 404.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - name: id
@@ -1240,8 +1249,9 @@ paths:
         The copy is a regular playlist named "<name> (copy)", cut to 200
         characters, holding the songs in the order they are now: a smart
         playlist's as its rules choose them. It changes on its own from then
-        on. A copy past 10,000 songs is a 422, and then nothing is made.
-        Another person's playlist is a 404.
+        on. A copy past 10,000 songs is a 422, and then nothing is made. A file
+        playlist copies too: that is how a person makes one their own. Another
+        person's playlist is a 404.
       parameters:
         - $ref: "#/components/parameters/KitsuneRequest"
         - name: id
@@ -1266,6 +1276,44 @@ paths:
           $ref: "#/components/responses/Problem"
         "422":
           $ref: "#/components/responses/PlaylistProblem"
+  /me/playlists/{id}/m3u:
+    get:
+      operationId: getPlaylistM3U
+      summary: Export a playlist as an .m3u8 file.
+      description: >-
+        A snapshot of any playlist the caller sees, file playlists included:
+        `#EXTM3U`, then for each song `#EXTINF:<seconds>,<artist> - <title>`
+        and its path, relative to the song's own library folder, so no library
+        folder is ever named. UTF-8 with no BOM and `\n` line ends. A smart
+        playlist exports what its rules choose now. The file name is the
+        playlist's, with path separators, control characters and a leading dot
+        dropped, cut to 120 bytes. Another person's playlist is a 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The file.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            audio/x-mpegurl:
+              schema: { type: string }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          $ref: "#/components/responses/Problem"
   /me/lastfm:
     get:
       operationId: getLastfm
@@ -2353,6 +2401,71 @@ paths:
           $ref: "#/components/responses/Problem"
         "409":
           $ref: "#/components/responses/LibraryConflict"
+  /admin/playlists/{id}/save:
+    post:
+      operationId: postPlaylistSave
+      summary: Save a playlist as an .m3u8 file in a library folder.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on, else a
+        409. Writes what `GET /me/playlists/{id}/m3u` would, but with paths
+        relative to `folder`, `../` where needed, so any player reading the
+        folder plays it; songs in another library folder can't be named that
+        way and are left out, counted in `leftOut`. `root` is one of
+        `library.roots`, and `folder` is relative to it. `name` gets `.m3u8`
+        when it lacks it; one with a path separator, or a folder outside the
+        root, is a 422. A file already there is a 409 (`PlaylistExists`) unless
+        `replace`: nothing is ever overwritten without it. The file is written
+        beside its target and renamed over it, under the library lock (a scan
+        or an edit holding it is a 409 with Retry-After), then read at once, so
+        it shows as a file playlist, and everyone hears a `playlists` event.
+        Another person's playlist is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaylistSave" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaylistSaved" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: >-
+            Tag writes are off, the library is busy (with Retry-After), or the
+            file is there already (`PlaylistExists`).
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again, while the library is busy.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema:
+                anyOf:
+                  - { $ref: "#/components/schemas/PlaylistExists" }
+                  - { $ref: "#/components/schemas/Problem" }
+        "422":
+          $ref: "#/components/responses/Problem"
   /library:
     get:
       operationId: getLibrary
@@ -3050,7 +3163,8 @@ components:
       additionalProperties: false
       description: >-
         The person's playlists made, changed or deleted on any device, by id;
-        `GET /me/playlists` and `GET /me/playlists/{id}` read them.
+        `GET /me/playlists` and `GET /me/playlists/{id}` read them. A file
+        playlist read, read again, deleted or saved is told to everyone.
       required: [ids]
       properties:
         ids: { type: array, items: { type: string } }
@@ -3069,8 +3183,12 @@ components:
       properties:
         id: { type: string }
         name: { type: string, minLength: 1, maxLength: 200 }
-        source: { type: string, enum: [kitsune, navidrome], description: "`navidrome` for one an import brought over." }
+        source:
+          type: string
+          enum: [kitsune, navidrome, file]
+          description: "`navidrome` for one an import brought over; `file` for one read from a file in the library, which everyone sees and nobody changes here."
         smart: { type: boolean, description: Whether rules choose its songs. }
+        file: { $ref: "#/components/schemas/PlaylistFile" }
         rules: { $ref: "#/components/schemas/SmartRules" }
         songCount: { type: integer, minimum: 0, description: Its entries in the library; a song in twice counts twice. }
         albumCount: { type: integer, minimum: 0 }
@@ -3092,8 +3210,9 @@ components:
       properties:
         id: { type: string }
         name: { type: string, minLength: 1, maxLength: 200 }
-        source: { type: string, enum: [kitsune, navidrome] }
+        source: { type: string, enum: [kitsune, navidrome, file] }
         smart: { type: boolean }
+        file: { $ref: "#/components/schemas/PlaylistFile" }
         rules: { $ref: "#/components/schemas/SmartRules" }
         songCount: { type: integer, minimum: 0 }
         albumCount: { type: integer, minimum: 0 }
@@ -3113,6 +3232,85 @@ components:
           type: array
           description: Every album of the entries, in the order they first appear.
           items: { $ref: "#/components/schemas/PlaylistAlbum" }
+        missing:
+          type: array
+          description: A file playlist's lines that found no song, in the file's order; absent for any other.
+          items: { $ref: "#/components/schemas/MissingLine" }
+    PlaylistFile:
+      type: object
+      additionalProperties: false
+      description: Where a file playlist comes from. No library folder is ever named.
+      required: [path, format, notFound, pastLimit, readAt, modifiedAt]
+      properties:
+        path: { type: string, description: "The file's path relative to its library folder, such as `Playlists/Night drive.m3u8`." }
+        format: { type: string, enum: [m3u, m3u8] }
+        notFound: { type: integer, minimum: 0, description: "Lines that found no song, those past the limit included." }
+        pastLimit: { type: integer, minimum: 0, description: Lines past what Kitsune reads of a file, counted only. }
+        readAt: { type: string, format: date-time, description: When Kitsune last read the file. }
+        modifiedAt: { type: string, format: date-time, description: The file's own modification time. }
+    MissingLine:
+      type: object
+      additionalProperties: false
+      required: [line, text, reason]
+      description: >-
+        A line of a playlist file that found no song. `text` is the line as
+        written, except that an absolute path outside the library is only its
+        last two segments after `…/`, an absolute path inside it is relative to
+        its library folder, and a web address is only its scheme and `//…`.
+      properties:
+        line: { type: integer, minimum: 1, description: Its line number in the file, from 1. }
+        text: { type: string }
+        title: { type: string, description: "The `#EXTINF` title before it, if any." }
+        seconds: { type: integer, description: "The `#EXTINF` length before it, if any." }
+        reason:
+          type: string
+          enum: [noSong, outside, notFile, trashed]
+          description: >-
+            `noSong`: no song at the path; `outside`: an absolute path in no
+            library folder, or one that climbs out of its own; `notFile`: a web
+            address; `trashed`: the song is in the Trash.
+        otherExtension:
+          type: string
+          description: "With `noSong`: the file name of a song in the same folder with the same name and another extension. Only a hint: it never matches."
+    PlaylistSave:
+      type: object
+      additionalProperties: false
+      required: [root, folder, name]
+      properties:
+        root: { type: string, description: "One of `library.roots`." }
+        folder: { type: string, description: "A folder relative to `root`; empty or `.` is the root itself." }
+        name: { type: string, minLength: 1, maxLength: 255, description: "The file's name; `.m3u8` is added when it lacks it." }
+        replace: { type: boolean, description: Replace a file that is there already. }
+    PlaylistSaved:
+      type: object
+      additionalProperties: false
+      required: [name, folder, songCount, leftOut]
+      properties:
+        name: { type: string, description: The file's name, with its extension. }
+        folder: { type: string, description: The folder relative to its library folder. }
+        songCount: { type: integer, minimum: 0, description: The songs written. }
+        leftOut: { type: integer, minimum: 0, description: Songs in another library folder, which a relative path can't name. }
+    PlaylistExists:
+      type: object
+      required: [type, title, status, exists]
+      description: The problem of a save whose file is there already.
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        requestId: { type: string }
+        exists:
+          type: object
+          additionalProperties: false
+          required: [name, freeName, modifiedAt]
+          properties:
+            name: { type: string, description: The file's name. }
+            freeName: { type: string, description: "The next name free in that folder, such as `Falling Up 2.m3u8`." }
+            modifiedAt: { type: string, format: date-time }
+            playlist: { type: string, description: The file playlist Kitsune reads from it, when it has read it. }
+            playlistName: { type: string }
+            songCount: { type: integer, minimum: 0, description: That playlist's songs. }
     PlaylistEntry:
       type: object
       additionalProperties: false
