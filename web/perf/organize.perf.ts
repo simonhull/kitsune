@@ -87,3 +87,27 @@ test('Organize: press Preview, to the first album rows', async ({ page, perf }) 
 		);
 	}
 });
+
+test('Duplicates: open its tab from Organize, to the first groups painted', async ({
+	page,
+	perf
+}) => {
+	const open = perf.samples('open-duplicates');
+	for (let i = 0; i < runs; i++) {
+		await page.goto('/server/organize');
+		const tab = page.getByRole('link', { name: 'Duplicates', exact: true });
+		await page.locator('main .field.main .chip').first().waitFor();
+		await atRest(page);
+		await perf.time(
+			open,
+			'click',
+			{
+				kind: 'selector',
+				// The first group, or the pair, or the word that there are none: whichever the library has.
+				selector: 'main :is(.groups li, article.pair, p.empty)',
+				path: '/server/duplicates'
+			},
+			() => tab.click()
+		);
+	}
+});

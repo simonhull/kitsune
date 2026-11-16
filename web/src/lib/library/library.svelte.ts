@@ -20,6 +20,7 @@ import { patchIndex } from './indexPatch.ts';
 import { Trashed } from './trashed.svelte.ts';
 import type { PlaybackFixture } from './playbackFixture.ts';
 import { eventsUrl, Live, type EventStream } from './live.ts';
+import type { DuplicatesSource } from '#lib/duplicates/types.ts';
 import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
 import { Marks } from './marks.svelte.ts';
 import { Playlists } from './playlists.svelte.ts';
@@ -420,6 +421,11 @@ export class Library {
 	/** The organizer's routes. */
 	get organize(): OrganizeSource {
 		return this.#source.organize;
+	}
+
+	/** Duplicates' routes. */
+	get duplicates(): DuplicatesSource {
+		return this.#source.duplicates;
 	}
 
 	/**

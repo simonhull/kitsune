@@ -149,6 +149,10 @@
       "interaction": "Organize: click it on the Server page, to the template's chips painted",
       "p95Ms": 55
     },
+    "open-duplicates": {
+      "interaction": "Duplicates: click its tab on Organize, to the first groups painted",
+      "p95Ms": 300
+    },
     "preview-paint": {
       "interaction": "Organize: press Preview over the whole library, to the first album's rows",
       "p95Ms": 1100

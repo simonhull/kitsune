@@ -7,7 +7,7 @@
 <script lang="ts">
 	import Cover from '#lib/cover/Cover.svelte';
 	import { tagEditor } from '#lib/pages/tagEditor.svelte.ts';
-	import { duplicatesReady, openDuplicates } from './duplicates.ts';
+	import { openDuplicates } from './duplicates.ts';
 	import type { OrganizeAlbum, OrganizeFile } from './types.ts';
 	import {
 		albumChip,
@@ -215,24 +215,17 @@
 							<span class="mono note"
 								>{conflict.why === 'digest'
 									? 'THE SAME AUDIO · BOTH STAY WHERE THEY ARE'
-									: 'SAME ARTIST, TITLE AND LENGTH · BOTH STAY WHERE THEY ARE'}</span
+									: conflict.why === 'recording'
+										? 'ONE MUSICBRAINZ RECORDING · BOTH STAY WHERE THEY ARE'
+										: 'SAME ARTIST, TITLE AND LENGTH · BOTH STAY WHERE THEY ARE'}</span
 							>
-							{#if duplicatesReady}
-								<button
-									type="button"
-									class="fox-button"
-									onclick={() => {
-										openDuplicates([conflict.self.track, ...conflict.with.map((c) => c.track)]);
-									}}>Compare in Duplicates ›</button
-								>
-							{:else}
-								<button
-									type="button"
-									class="fox-button"
-									disabled
-									aria-describedby={`soon-${file.track}`}>Compare in Duplicates ›</button
-								><span class="soon mono" id={`soon-${file.track}`}>SOON</span>
-							{/if}
+							<button
+								type="button"
+								class="fox-button"
+								onclick={() => {
+									openDuplicates(conflict.group);
+								}}>Compare in Duplicates ›</button
+							>
 						{:else}
 							<span class="verdict"
 								>Two songs, one name. Edit a tag so the template tells them apart.</span
@@ -563,18 +556,6 @@
 	.fox-button:disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
-	}
-
-	.soon {
-		margin-left: -6px;
-		padding: 2px 6px;
-		border-radius: 5px;
-		border: 1.5px dashed var(--edge-strong);
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		color: var(--text-meta);
-		transform: rotate(-2deg);
 	}
 
 	.outline {

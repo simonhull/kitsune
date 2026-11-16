@@ -55,9 +55,6 @@ test('the preview filters to its conflicts, and one says why', async ({ page }) 
 	await expect(card).toContainText('2 songs want');
 	await expect(card).toContainText('They look like the same recording.');
 	await expect(card).toContainText('ALREADY THERE');
-	// Duplicates is plan 069's: until then its way in is marked SOON.
-	await expect(card.getByRole('button', { name: 'Compare in Duplicates ›' })).toBeDisabled();
-	await expect(card).toContainText('SOON');
 
 	const braid = page.getByRole('article', { name: 'Frame & Canvas' });
 	await braid.getByRole('button', { name: 'WHY ›' }).click();
@@ -66,6 +63,21 @@ test('the preview filters to its conflicts, and one says why', async ({ page }) 
 	await page.getByRole('textbox', { name: 'Find in the preview' }).fill('braid');
 	await expect(deluxe).toHaveCount(0);
 	await expect(braid).toBeVisible();
+});
+
+test('a conflict between two copies opens their group in Duplicates', async ({ page }) => {
+	await open(page);
+	await preview(page);
+	await page.getByRole('button', { name: /^Conflicts/ }).click();
+	const deluxe = page.getByRole('article', { name: 'Wish Upon a Blackstar (Deluxe)' });
+	await deluxe.getByRole('button', { name: 'WHY ›' }).last().click();
+	await deluxe.getByRole('button', { name: 'Compare in Duplicates ›' }).click();
+	await expect(page).toHaveURL(/\/server\/duplicates\/dup-best-its-gonna-get/);
+	await expect(page.getByRole('heading', { name: 'The Best It’s Gonna Get.' })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Duplicates', exact: true })).toHaveAttribute(
+		'aria-current',
+		'page'
+	);
 });
 
 test('a run stops at an album’s end, and Undo puts it back', async ({ page }) => {

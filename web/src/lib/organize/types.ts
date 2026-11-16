@@ -64,7 +64,9 @@ export interface OrganizeConflict {
 	self: OrganizeClaimant;
 	with: OrganizeClaimant[];
 	sameRecording: boolean;
-	why?: 'digest' | 'tags';
+	why?: 'digest' | 'recording' | 'tags';
+	/** The group of Duplicates the songs are in, for its page. */
+	group?: string;
 }
 
 export interface OrganizeFile {

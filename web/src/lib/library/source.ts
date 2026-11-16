@@ -1,5 +1,6 @@
 /** The contract's types, by name: see `api/openapi.yaml`. Real tags are messy, so much is optional. */
 
+import type { DuplicatesSource } from '#lib/duplicates/types.ts';
 import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
 import type { ThemeChoice } from '#lib/theme/theme.svelte.ts';
 import type { AlbumOrder, ArtistOrder, ArtistSongs, LibrarySort, Sort } from './sorts.ts';
@@ -1383,6 +1384,8 @@ export interface LibrarySource {
 	savePlaylist(id: string, save: PlaylistSave): Promise<PlaylistSaved>;
 	/** The organizer's routes, for administrators. */
 	readonly organize: OrganizeSource;
+	/** Duplicates' routes, for administrators. */
+	readonly duplicates: DuplicatesSource;
 }
 
 /** A save found a file where it was going: nothing was written. */

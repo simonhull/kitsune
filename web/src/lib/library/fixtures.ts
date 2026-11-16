@@ -6,6 +6,7 @@ import { discOf, discsOf } from './format.ts';
 import { partOf } from './indexPatch.ts';
 import { createPlaybackFixture, type PlaybackFixture } from './playbackFixture.ts';
 import { createPlaylistsFixture } from './playlistsFixture.ts';
+import { createDuplicatesFixture } from '#lib/duplicates/fixture.ts';
 import { createOrganizeFixture } from '#lib/organize/fixture.ts';
 import { defaultCompilations, defaultTemplate } from '#lib/organize/template.ts';
 import type { SongFacts } from './smartEval.ts';
@@ -1227,11 +1228,31 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		};
 	}
 
+	/** Duplicates on the boards' own albums: a merge sends its copies to this Trash. */
+	const duplicates = createDuplicatesFixture({
+		respond: (answer) =>
+			respond(() => {
+				adminOnly();
+				return answer();
+			}),
+		writes: () => signedIn.canTrash,
+		trash: (songs) => {
+			const at = Date.now();
+			for (const { albumId, trackId } of songs) {
+				bin.set(trackId, { albumId, trashedAt: at });
+			}
+			return {
+				tracks: songs.map(({ trackId }) => trackId),
+				albums: [...new Set(songs.map(({ albumId }) => albumId))]
+			};
+		}
+	});
+
 	/** What's in Trash, as `GET /admin/trash` says it. */
 	function trashed(): Trash {
 		const groups = new Map<string, { album: Album; tracks: TrashedTrack[]; newest: number }>();
 		for (const [trackId, { albumId, trashedAt }] of bin) {
-			const album = held.get(albumId) ?? listOnly.get(albumId);
+			const album = held.get(albumId) ?? listOnly.get(albumId) ?? duplicates.album(albumId);
 			const track = album?.tracks.find(({ id }) => id === trackId);
 			if (album === undefined || track === undefined) {
 				continue;
@@ -1772,6 +1793,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				}
 				return lists.savePlaylist(id, request);
 			}),
+		duplicates,
 		organize: createOrganizeFixture({
 			albums: () => [...held.values()],
 			templates: () => ({

@@ -9,11 +9,11 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
-	import { duplicatesReady, openDuplicates } from '#lib/organize/duplicates.ts';
 	import ExampleCard from '#lib/organize/ExampleCard.svelte';
 	import { organizer } from '#lib/organize/organizer.svelte.ts';
 	import PreviewAlbum from '#lib/organize/PreviewAlbum.svelte';
 	import TemplateField from '#lib/organize/TemplateField.svelte';
+	import ToolTabs from '#lib/organize/ToolTabs.svelte';
 	import { TemplateError, tryParse, type Template } from '#lib/organize/template.ts';
 	import type { OrganizeFilter } from '#lib/organize/types.ts';
 	import {
@@ -205,27 +205,7 @@
 	<div class="page-frame organize" class:phone={phone.current}>
 		<header class="intro">
 			<div class="intro-words">
-				<div class="crumbs">
-					<a class="crumb mono" href={resolve('/server')}>YOU › SERVER</a>
-					<div class="tabs" role="tablist" aria-label="Library tools">
-						<span class="tab on" role="tab" aria-selected="true">Organize</span>
-						{#if duplicatesReady}
-							<button
-								type="button"
-								class="tab"
-								role="tab"
-								aria-selected="false"
-								onclick={() => {
-									openDuplicates();
-								}}>Duplicates</button
-							>
-						{:else}
-							<span class="tab off" role="tab" aria-selected="false" aria-disabled="true"
-								>Duplicates <span class="soon mono">SOON</span></span
-							>
-						{/if}
-					</div>
-				</div>
+				<ToolTabs current="organize" phone={phone.current} />
 				<h1>Organize<span class="dot">.</span></h1>
 				<p class="counts mono" data-testid="counts">
 					{counts === null ? ' ' : countsLine(counts, phone.current)}
@@ -742,60 +722,6 @@
 		flex-direction: column;
 		gap: 10px;
 		min-width: 0;
-	}
-
-	.crumbs {
-		display: flex;
-		align-items: center;
-		gap: 16px;
-	}
-
-	.crumb {
-		font-size: calc(12px * var(--step));
-		letter-spacing: 0.08em;
-		color: var(--text-meta);
-		text-decoration: none;
-	}
-
-	.crumb:hover {
-		color: var(--fox-text);
-	}
-
-	.tabs {
-		display: flex;
-		gap: 4px;
-		padding: 4px;
-		border-radius: var(--radius-pill);
-		border: 1px solid var(--edge);
-	}
-
-	.tab {
-		height: calc(32px * var(--step));
-		line-height: calc(32px * var(--step));
-		padding: 0 14px;
-		border-radius: var(--radius-pill);
-		font-size: calc(14px * var(--step));
-		font-weight: 600;
-		color: var(--text-secondary);
-		text-decoration: none;
-	}
-
-	.tab.on {
-		background: var(--fill);
-		color: var(--text);
-		font-weight: 700;
-	}
-
-	.tab.off {
-		color: var(--text-meta);
-		cursor: default;
-	}
-
-	.soon {
-		margin-left: 4px;
-		font-size: calc(10px * var(--step));
-		letter-spacing: 0.08em;
-		color: var(--fox-text);
 	}
 
 	h1 {
@@ -1445,17 +1371,6 @@
 
 	.phone h1 {
 		font-size: 48px;
-	}
-
-	.phone .crumbs {
-		justify-content: space-between;
-	}
-
-	.phone .tab {
-		height: 28px;
-		line-height: 28px;
-		padding: 0 12px;
-		font-size: 13px;
 	}
 
 	.phone .counts {

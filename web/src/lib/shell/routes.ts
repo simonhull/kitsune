@@ -34,6 +34,8 @@ const table = {
 	'/playlists/smart': { look: 'home', current: 'playlists', journey: 'playlist' },
 	'/search': { look: 'home', current: null, journey: 'search' },
 	'/server': { look: 'home', current: null, journey: 'server' },
+	'/server/duplicates': { look: 'home', current: null, journey: 'server' },
+	'/server/duplicates/[group]': { look: 'home', current: null, journey: 'server' },
 	'/server/organize': { look: 'home', current: null, journey: 'server' },
 	'/server/trash': { look: 'home', current: null, journey: 'server' },
 	'/setup': { look: 'door', current: 'home', journey: 'login' },
