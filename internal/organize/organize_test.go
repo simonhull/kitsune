@@ -15,7 +15,8 @@ import (
 
 // fixtures are the cases the web client's port is held to as well.
 type fixtures struct {
-	Parse []struct {
+	Comment string
+	Parse   []struct {
 		Template string
 		Error    *struct {
 			At     int
@@ -52,8 +53,13 @@ func loadFixtures(t *testing.T) *fixtures {
 		t.Fatal(err)
 	}
 	var f fixtures
-	if err = json.Unmarshal(data, &f); err != nil {
+	// The file is camelCase, as the web client reads it: names match ignoring case,
+	// and a member no field takes fails, so nothing is silently left out.
+	if err = json.Unmarshal(data, &f, json.MatchCaseInsensitiveNames(true), json.RejectUnknownMembers(true)); err != nil {
 		t.Fatal(err)
+	}
+	if len(f.Parse) == 0 || len(f.Paths) == 0 || len(f.Safe) == 0 {
+		t.Fatalf("fixtures hold %d parses, %d paths and %d safes, want some of each", len(f.Parse), len(f.Paths), len(f.Safe))
 	}
 	return &f
 }
