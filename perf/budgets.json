@@ -190,6 +190,14 @@
     "quick-scan-playlists": {
       "interaction": "Quick scan of 500 unchanged songs and 50 unchanged playlist files",
       "p95Ms": 27
+    },
+    "organize-preview": {
+      "interaction": "POST /admin/organize/preview, 50k songs, a fifth of them to move",
+      "p95Ms": 340
+    },
+    "organize-run": {
+      "interaction": "An organize run of 1,000 songs in 100 albums, all moved and journaled, per song",
+      "p95Ms": 3.7
     }
   }
 }
