@@ -5,6 +5,8 @@ import { expect, fixtures, test } from './fixture';
 async function openAlbum(page: Page): Promise<void> {
 	await page.goto(fixtures('/'));
 	await page.getByRole('link', { name: 'Albums', exact: true }).click();
+	// Albums must land before the album is opened, or that navigation replaces it and Back skips it.
+	await expect(page).toHaveURL(/\/albums(\?|$)/);
 	await page.locator('a[href^="/album/glasshouse-66"]').first().click();
 	await expect(page.getByRole('heading', { name: 'Glasshouse', exact: true })).toBeVisible();
 }
