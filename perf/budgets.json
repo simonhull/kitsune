@@ -144,6 +144,14 @@
     "export-download": {
       "interaction": "Export: press Download on a playlist of 500 songs, to the download starting (the response's first byte)",
       "p95Ms": 70
+    },
+    "open-organize": {
+      "interaction": "Organize: click it on the Server page, to the template's chips painted (not yet measured: a first guess)",
+      "p95Ms": 300
+    },
+    "preview-paint": {
+      "interaction": "Organize: press Preview over the whole library, to the first album's rows (not yet measured: a first guess)",
+      "p95Ms": 1500
     }
   },
   "server": {
