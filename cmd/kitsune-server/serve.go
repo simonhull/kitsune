@@ -477,7 +477,7 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	}
 
 	// A run a stop interrupted is settled before anything scans or watches.
-	if err := a.scanner.RecoverOrganize(ctx); err != nil {
+	if err := a.scanner.RecoverOrganize(context.WithoutCancel(ctx)); err != nil {
 		return fmt.Errorf("recover an interrupted organize run: %w", err)
 	}
 	bgCtx, cancelBackground := context.WithCancel(ctx)

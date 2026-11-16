@@ -344,7 +344,7 @@ func previewAlbumOf(p *library.OrganizePreview, songs []int, size int, roots []s
 		}
 		a.Files = append(a.Files, f)
 		kinds[f.Kind] = true
-		if pl.Kind.Moves() {
+		if f.To != "" {
 			from[path.Dir(f.From)], to[path.Dir(f.To)] = true, true
 		}
 		for _, c := range companions[song.ID] {
@@ -355,7 +355,7 @@ func previewAlbumOf(p *library.OrganizePreview, songs []int, size int, roots []s
 	if len(kinds) == 1 {
 		a.Kind = a.Files[0].Kind
 	}
-	if len(from) == 1 && len(to) == 1 && len(kinds) == 1 && a.Kind == api.OrganizeKindMove {
+	if len(from) == 1 && len(to) == 1 && onlyKey(from) != onlyKey(to) {
 		a.FromFolder, a.ToFolder = onlyKey(from)+"/", onlyKey(to)+"/"
 		a.CaseOnly = strings.EqualFold(a.FromFolder, a.ToFolder)
 	}
