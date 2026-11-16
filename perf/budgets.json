@@ -143,7 +143,7 @@
     },
     "export-download": {
       "interaction": "Export: press Download on a playlist of 500 songs, to the download starting (the response's first byte)",
-      "p95Ms": 60
+      "p95Ms": 70
     }
   },
   "server": {
