@@ -95,8 +95,17 @@ type OrganizeConflict struct {
 	Self          OrganizeClaimant   `json:"self"`
 	With          []OrganizeClaimant `json:"with"`
 	SameRecording bool               `json:"sameRecording"`
-	Why           string             `json:"why,omitzero"` // "digest" or "tags".
+	Why           string             `json:"why,omitzero"`   // A ConflictWhy.
+	Group         string             `json:"group,omitzero"` // The group of duplicates the songs are in.
 }
+
+// What makes the songs of a conflict look like one recording: the same audio,
+// one MusicBrainz recording, or the same artist, title and length.
+const (
+	ConflictWhyDigest    = "digest"
+	ConflictWhyRecording = "recording"
+	ConflictWhyTags      = "tags"
+)
 
 // OrganizeClaimant is a song in a conflict. Plays and Stars are the caller's.
 type OrganizeClaimant struct {

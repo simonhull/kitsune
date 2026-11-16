@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/duplicates"
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/organize"
 	"github.com/simonhull/kitsune/internal/store"
@@ -32,9 +33,6 @@ const (
 	mostLeft = 500
 	// mostExamples and defaultExamples bound GET /admin/organize/examples.
 	mostExamples, defaultExamples = 12, 3
-	// sameLength is how far apart two songs' lengths may be and still look like
-	// one recording.
-	sameLength = 2 * time.Second
 	// runsShown is how many runs the list shows.
 	runsShown = 10
 	// organizeOffDetail is what a run is told while tag writes are off.
@@ -385,24 +383,41 @@ func (s *Server) claimantsOf(ctx context.Context, userID int64, p *library.Organ
 	if err != nil {
 		return nil, fmt.Errorf("conflicts: %w", err)
 	}
+	dupes, err := s.scanner.FindDuplicates(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("conflicts: %w", err)
+	}
 	roots := s.scanner.Roots()
 	for _, at := range claimed.songs {
 		pl := &p.Plan.Songs[at]
 		self := facts[p.Songs[at].ID]
 		c := &api.OrganizeConflict{Self: claimant(&self, pl.To, roots), With: make([]api.OrganizeClaimant, 0, len(pl.With))}
+		g, grouped := dupes.GroupOf(self.ULID)
 		for _, id := range pl.With {
 			other, ok := facts[id]
 			if !ok {
 				continue
 			}
 			c.With = append(c.With, claimant(&other, pl.To, roots))
-			if why := sameRecording(&self, &other); why != "" && c.Why == "" {
-				c.SameRecording, c.Why = true, why
+			if theirs, in := dupes.GroupOf(other.ULID); grouped && in && theirs.Key == g.Key {
+				c.SameRecording, c.Why, c.Group = true, whyOf(g.Confidence), g.Key
 			}
 		}
 		out[at] = c
 	}
 	return out, nil
+}
+
+// whyOf names what makes songs one recording, as a conflict says it.
+func whyOf(c duplicates.Confidence) string {
+	switch c {
+	case duplicates.SameAudio:
+		return api.ConflictWhyDigest
+	case duplicates.SameRecording:
+		return api.ConflictWhyRecording
+	case duplicates.SameSong:
+	}
+	return api.ConflictWhyTags
 }
 
 // claimed is what the claimed conflicts of a page name.
@@ -433,19 +448,6 @@ func claimant(c *store.OrganizeClaimant, to string, roots []string) api.Organize
 		Format: c.Format, Bitrate: c.Bitrate, DurationMs: c.Duration.Milliseconds(), Plays: c.Plays,
 		Stars: c.Stars.Stars(), AddedAt: c.AddedAt, Here: strings.EqualFold(slash(c.RelPath), to),
 	}
-}
-
-// sameRecording says why a and b look like one recording, "digest" or
-// "tags", or "" when they don't.
-func sameRecording(a, b *store.OrganizeClaimant) string {
-	if a.Digest != nil && b.Digest != nil && *a.Digest == *b.Digest {
-		return "digest"
-	}
-	gap := a.Duration - b.Duration
-	if strings.EqualFold(a.Title, b.Title) && strings.EqualFold(a.Artist, b.Artist) && gap <= sameLength && gap >= -sameLength {
-		return "tags"
-	}
-	return ""
 }
 
 // getOrganizeExamples answers a few songs to show a template on.
