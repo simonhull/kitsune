@@ -136,6 +136,14 @@
     "edit-rule": {
       "interaction": "Rules editor: press a star, to the count changed",
       "p95Ms": 200
+    },
+    "open-file-playlist": {
+      "interaction": "Open a file playlist of 500 songs (an .m3u8 at the top of the library) from its card, click to its rows",
+      "p95Ms": 90
+    },
+    "export-download": {
+      "interaction": "Export: press Download on a playlist of 500 songs, to the download starting (the response's first byte)",
+      "p95Ms": 60
     }
   },
   "server": {
