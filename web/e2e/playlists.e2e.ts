@@ -91,6 +91,17 @@ test('Alt+↓ moves the focused song, and Del takes it out with an Undo', async 
 		.focus();
 	await page.keyboard.press('Alt+ArrowDown');
 	await expect.poll(() => titles(page)).toEqual([before[1], before[0], ...before.slice(2)]);
+	// The move puts the focus back on the song a frame later: let that frame pass before taking it.
+	await page.evaluate(
+		() =>
+			new Promise<void>((done) => {
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => {
+						done();
+					});
+				});
+			})
+	);
 
 	await rowAt(page, 0)
 		.getByRole('button', { name: `Play ${before[1] ?? ''}` })
