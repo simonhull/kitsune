@@ -63,6 +63,8 @@ import {
 	type Prefs,
 	type ScanStatus,
 	type ServerSettings,
+	type PlaylistSave,
+	type PlaylistSaved,
 	type SettingsChange,
 	type SetupStatus,
 	type Account,
@@ -858,6 +860,21 @@ export class Library {
 	/** The folders the server sees in a path, for the folder picker. */
 	folders(path: string): Promise<FolderListing> {
 		return this.#source.folders(path);
+	}
+
+	/** Where a playlist downloads as an .m3u8. */
+	playlistFileUrl(id: string): string {
+		return this.#source.playlistFileUrl(id);
+	}
+
+	/**
+	 * Saves a playlist as an .m3u8 in a library folder, and reads the playlists again, since the
+	 * server reads the file at once. Rejects as {@link LibrarySource.savePlaylist} does.
+	 */
+	async savePlaylist(id: string, save: PlaylistSave): Promise<PlaylistSaved> {
+		const saved = await this.#source.savePlaylist(id, save);
+		void this.playlists.load();
+		return saved;
 	}
 
 	/** The server's settings, for an administrator's Server page. */

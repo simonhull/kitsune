@@ -736,8 +736,11 @@ export interface PlaylistAlbum {
 export interface PlaylistSummary {
 	id: string;
 	name: string;
-	/** `navidrome` for one an import brought over. */
-	source: 'kitsune' | 'navidrome';
+	/**
+	 * `navidrome` for one an import brought over; `file` for one read from a playlist file in the
+	 * library, which everyone sees and nothing here changes.
+	 */
+	source: 'kitsune' | 'navidrome' | 'file';
 	/** Rules choose its songs, each time it's read: nothing is added to it, and nothing moves. */
 	smart: boolean;
 	/** A smart playlist's rules; absent for a regular one. */
@@ -754,6 +757,74 @@ export interface PlaylistSummary {
 	addedAt?: string;
 	/** With `holding`: how many of those songs it holds, each once. */
 	holds?: number;
+	/** Where a file playlist comes from; absent for any other. */
+	file?: PlaylistFile;
+}
+
+/** Where a file playlist comes from. No library folder is ever named. */
+export interface PlaylistFile {
+	/** Relative to its library folder: "Playlists/Night drive.m3u8". */
+	path: string;
+	format: 'm3u' | 'm3u8';
+	/** Lines that found no song, those past the limit included. */
+	notFound: number;
+	/** Lines past what Kitsune reads of a file, counted only. */
+	pastLimit: number;
+	/** When Kitsune last read it. */
+	readAt: string;
+	/** The file's own modification time. */
+	modifiedAt: string;
+}
+
+/** Why a line of a playlist file found no song. */
+export type MissingReason = 'noSong' | 'outside' | 'notFile' | 'trashed';
+
+/**
+ * A line of a playlist file that found no song. `text` is the line as written, but an absolute path
+ * outside the library is only its end ("…/Dawn Escapes/07 Moonlit.mp3"), and a web address only its
+ * scheme ("https://…").
+ */
+export interface MissingLine {
+	line: number;
+	text: string;
+	/** The `#EXTINF` before it. */
+	title?: string;
+	seconds?: number;
+	reason: MissingReason;
+	/** With `noSong`: a song in the same folder with the same name and another extension. */
+	otherExtension?: string;
+}
+
+/** Where to save a playlist as a file: a folder under one of the library's roots. */
+export interface PlaylistSave {
+	/** One of `library.roots`. */
+	root: string;
+	/** Relative to the root; empty is the root itself. */
+	folder: string;
+	/** `.m3u8` is added when it lacks it. */
+	name: string;
+	replace?: boolean;
+}
+
+/** What a save wrote. */
+export interface PlaylistSaved {
+	name: string;
+	folder: string;
+	songCount: number;
+	/** Songs in another library folder, which a path relative to this one can't name. */
+	leftOut: number;
+}
+
+/** The file a save found in its way. */
+export interface ExistingFile {
+	name: string;
+	/** The next name free beside it: "Falling Up 2.m3u8". */
+	freeName: string;
+	modifiedAt: string;
+	/** The file playlist Kitsune reads from it, once it has. */
+	playlist?: string;
+	playlistName?: string;
+	songCount?: number;
 }
 
 /** One place in a playlist: a song in twice is two entries, each with its own ID. */
@@ -767,6 +838,8 @@ export interface PlaylistEntry {
 export interface PlaylistDetail extends PlaylistSummary {
 	entries: PlaylistEntry[];
 	albums: PlaylistAlbum[];
+	/** A file playlist's lines that found no song, in the file's order. */
+	missing?: MissingLine[];
 }
 
 /** What to put in a playlist: at the end, or just before the entry `before`. */
@@ -1273,6 +1346,27 @@ export interface LibrarySource {
 	reseedPlaylist(id: string): Promise<PlaylistSummary>;
 	/** Copies a playlist, as it is now, to a new regular one. Rejects with {@link ServerError}: 404. */
 	copyPlaylist(id: string): Promise<PlaylistSummary>;
+	/** Where a playlist downloads as an .m3u8: a plain link the browser saves. */
+	playlistFileUrl(id: string): string;
+	/**
+	 * Saves a playlist as an .m3u8 in a library folder. Administrators, with tag writes on. Rejects
+	 * with {@link PlaylistExistsError} when the file is there and `replace` isn't set, else with
+	 * {@link ServerError}: 409 for tag writes off or a busy library, 422 for a folder or name it won't
+	 * take.
+	 */
+	savePlaylist(id: string, save: PlaylistSave): Promise<PlaylistSaved>;
+}
+
+/** A save found a file where it was going: nothing was written. */
+export class PlaylistExistsError extends Error {
+	override name = 'PlaylistExistsError';
+	readonly status = 409;
+	readonly exists: ExistingFile;
+
+	constructor(exists: ExistingFile) {
+		super(`${exists.name} is there already`);
+		this.exists = exists;
+	}
 }
 
 /** Trash refused a move, a restore or an empty. `detail` is the server's, ready to show. */

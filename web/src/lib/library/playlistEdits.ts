@@ -34,7 +34,7 @@ export function recount(detail: PlaylistDetail): PlaylistDetail {
 /** The summary part of a detail. */
 export function summaryOf(detail: PlaylistDetail): PlaylistSummary {
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- The summary is the rest.
-	const { entries, albums, ...summary } = detail;
+	const { entries, albums, missing, ...summary } = detail;
 	return summary;
 }
 
