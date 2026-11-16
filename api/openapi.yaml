@@ -1502,7 +1502,8 @@ paths:
         (`EventLibrary`), `scan` (`ScanStatus`, with the failure's reason for
         administrators only) and `ready`/`resync` (`EventStream`) go to
         everyone; `fingerprints` (`FingerprintStatus`), `loudness`
-        (`LoudnessStatus`) and `settings` (`EventSettings`) to administrators; `marks` (`EventMarks`), `prefs`
+        (`LoudnessStatus`), `organize` (`EventOrganize`) and `settings`
+        (`EventSettings`) to administrators; `marks` (`EventMarks`), `prefs`
         (`EventPrefs`), `shuffle-rules` (`EventShuffleRules`), `shuffle`
         (`EventShuffle`), `listening`
         (`EventListening`), `lastfm` (`EventLastfm`) and `playlists`
@@ -2466,6 +2467,315 @@ paths:
                   - { $ref: "#/components/schemas/Problem" }
         "422":
           $ref: "#/components/responses/Problem"
+  /admin/organize/preview:
+    post:
+      operationId: postOrganizePreview
+      summary: Preview where the template would file every song, or some.
+      description: >-
+        For administrators, tag writes on or off: a preview moves nothing.
+        `template` and `compilations` default to the saved `organize.template`
+        and `organize.compilations` (a library folder in `organize.roots` uses
+        its own); either one that doesn't parse is a 422 saying which and
+        where. `tracks` or `albums` preview just those songs; an ID that names
+        nothing in the library is a 404. The server reads what it keeps of
+        every song's tags (no audio file is read) and lists only the folders a
+        song would land in, to find a file Kitsune doesn't know in the way, and
+        the folders songs leave, to bring their covers and sheets along. The
+        preview is kept for 30 minutes for its run, and answers with its
+        counts and its first page of albums. Every path is relative to its
+        library folder, named by its index in `library.roots`.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrganizeRequest" }
+      responses:
+        "200":
+          description: The preview, and its first page.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizePreview" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          description: A template doesn't parse; `field` says which and `at` where.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/OrganizeTemplateProblem" }
+  /admin/organize/examples:
+    get:
+      operationId: getOrganizeExamples
+      summary: A few songs to show a template on.
+      description: >-
+        For administrators. Up to `count` songs, chosen by `seed`, each with
+        what a template reads of it and where it is now, so a client can show
+        what a template would make of them as it is typed, with its own copy of
+        the parser. Under the saved templates the first is one in place, the
+        second one renamed and the third one moved, where the library has
+        them. No path carries its library folder.
+      parameters:
+        - name: count
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 12, default: 3 }
+        - name: seed
+          in: query
+          required: false
+          description: Another seed, other songs; the same seed, the same songs while the library holds still.
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: The songs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizeExamples" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+  /admin/organize/previews/{id}:
+    get:
+      operationId: getOrganizePreview
+      summary: Page a kept preview.
+      description: >-
+        For administrators. The preview's counts and a page of its albums, 200
+        at a time, those with a song of `filter`'s kind (all moves by default)
+        and, with `q`, with an artist, album, title or path that holds it,
+        ignoring case. A preview past its 30 minutes, or replaced, is a 404:
+        preview again.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: filter
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/OrganizeFilter" }
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, maxLength: 200 }
+        - name: cursor
+          in: query
+          required: false
+          description: The `nextCursor` of the page before.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The page.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizePreview" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /admin/organize/runs:
+    get:
+      operationId: getOrganizeRuns
+      summary: List the latest runs.
+      description: >-
+        For administrators. The last 10 runs and undos, newest first, with the
+        one running, if any, first of all. A page that reloads finds a run it
+        was following here, and follows its `organize` events again.
+      responses:
+        "200":
+          description: The runs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizeRuns" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: postOrganizeRun
+      summary: Run a preview's moves.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on, else a
+        409. Starts moving the preview's songs (or, with `tracks` or `albums`,
+        just those of them) and answers 202 with the run at once; its progress
+        comes as `organize` events. A run takes one album at a time under the
+        library lock: it journals the album's moves, renames each file within
+        its library folder (never a copy, never over anything), and sets each
+        song's path in the same step, so a song keeps its ID, plays, stars and
+        playlist places and no scan sees it go. A song that moved or changed
+        since the preview, whose file is gone, or that would cross to another
+        filesystem stays where it is, named in the run. A preview gone is a
+        404. A run, a scan or an edit holding the library is a 409 with
+        Retry-After, and so is a library folder the run would touch that looks
+        down (missing, unreadable, or empty while it has songs).
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrganizeRunRequest" }
+      responses:
+        "202":
+          description: The run, started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizeRun" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/LibraryConflict"
+  /admin/organize/runs/{id}:
+    get:
+      operationId: getOrganizeRun
+      summary: Read one run, with the songs it left where they were.
+      description: >-
+        For administrators. The run, and up to 500 of the songs it skipped or
+        couldn't move, each with why. A run past the last 10 kept, or 90 days,
+        is a 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The run.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizeRunDetail" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /admin/organize/runs/{id}/stop:
+    post:
+      operationId: postOrganizeRunStop
+      summary: Stop a run once the album in hand has moved.
+      description: >-
+        For administrators. The run finishes the album it is moving, so the
+        library is whole, and stops; its `organize` event says `stopped`. A run
+        that isn't running is a 409.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: The run, stopping.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizeRun" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+  /admin/organize/runs/{id}/undo:
+    post:
+      operationId: postOrganizeRunUndo
+      summary: Put back what a run moved.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on, else a
+        409. A run in reverse over what the run moved, with the same batches,
+        journal and events, so it can be stopped and recovered too: each song
+        goes back to where it was, unless it moved again, was edited elsewhere
+        or trashed since, or something is at its old path now; those stay, and
+        the undo names them. Answers 202 with the undo, a run of its own. A run
+        already undone, one still running, or a 409 as for a run.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: The undo, started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrganizeRun" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/LibraryConflict"
   /library:
     get:
       operationId: getLibrary
@@ -2849,7 +3159,7 @@ components:
       description: A user's properties, repeated (allOf does not mix with additionalProperties false), plus what the user may do.
       type: object
       additionalProperties: false
-      required: [id, name, role, createdAt, canEditTags, canTrash]
+      required: [id, name, role, createdAt, canEditTags, canTrash, canOrganize]
       properties:
         id: { type: integer, format: int64 }
         name: { type: string }
@@ -2863,6 +3173,12 @@ components:
           description: >-
             True for an administrator on a server with `library.tag_writes` on:
             the Trash moves files, so it is off with tag writes.
+        canOrganize:
+          type: boolean
+          description: >-
+            True for an administrator on a server with `library.tag_writes` on:
+            organizing moves files, so its ways in from an album or a selection
+            are off with tag writes. The Organize page still previews.
     ListenReport:
       type: object
       additionalProperties: false
@@ -5089,6 +5405,12 @@ components:
             - log.level
             - server.base_url
             - server.trusted_proxies
+            - organize.template
+            - organize.compilations
+            - organize.roots
+            - organize.on_edit
+            - organize.companions
+            - organize.rewrite_playlists
           properties:
             lastfm.api_key: { $ref: "#/components/schemas/StringSetting" }
             lastfm.shared_secret: { $ref: "#/components/schemas/SecretSetting" }
@@ -5099,6 +5421,12 @@ components:
             log.level: { $ref: "#/components/schemas/StringSetting" }
             server.base_url: { $ref: "#/components/schemas/StringSetting" }
             server.trusted_proxies: { $ref: "#/components/schemas/ListSetting" }
+            organize.template: { $ref: "#/components/schemas/StringSetting" }
+            organize.compilations: { $ref: "#/components/schemas/StringSetting" }
+            organize.roots: { $ref: "#/components/schemas/ObjectSetting" }
+            organize.on_edit: { $ref: "#/components/schemas/BoolSetting" }
+            organize.companions: { $ref: "#/components/schemas/BoolSetting" }
+            organize.rewrite_playlists: { $ref: "#/components/schemas/BoolSetting" }
         listen:
           type: string
           description: >-
@@ -5234,3 +5562,333 @@ components:
         log.level: { type: [string, "null"], description: 'debug, info, warn or error, in any case.' }
         server.base_url: { type: [string, "null"] }
         server.trusted_proxies: { type: [array, "null"], items: { type: string }, maxItems: 64 }
+        organize.template: { type: [string, "null"], maxLength: 2000, description: "The path template; one that doesn't parse is a 400." }
+        organize.compilations: { type: [string, "null"], maxLength: 2000 }
+        organize.roots:
+          type: [object, "null"]
+          description: Library folders with templates of their own, by folder; each must be one of `library.roots`.
+          maxProperties: 64
+          additionalProperties: { $ref: "#/components/schemas/OrganizeTemplates" }
+        organize.on_edit: { type: [boolean, "null"] }
+        organize.companions: { type: [boolean, "null"] }
+        organize.rewrite_playlists: { type: [boolean, "null"] }
+    OrganizeRequest:
+      type: object
+      additionalProperties: false
+      description: >-
+        What to preview. Without `template` or `compilations`, the saved ones;
+        without `tracks` and `albums`, every song in the library. At most one of
+        `tracks` and `albums`.
+      properties:
+        template: { type: string, minLength: 1, maxLength: 2000 }
+        compilations: { type: string, minLength: 1, maxLength: 2000 }
+        tracks:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          items: { type: string }
+        albums:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string }
+    OrganizeFilter:
+      type: string
+      description: >-
+        Which songs a page lists: `all` every move (renames and new folders),
+        `rename` a new name in the same folder, `move` a new folder,
+        `conflict`, `skipped`, `inPlace`.
+      enum: [all, rename, move, conflict, skipped, inPlace]
+    OrganizeCounts:
+      type: object
+      additionalProperties: false
+      required: [songs, inPlace, moves, renames, newFolders, conflicts, skipped, folders]
+      properties:
+        songs: { type: integer, description: Every song previewed. }
+        inPlace: { type: integer }
+        moves: { type: integer, description: Renames and new folders together. }
+        renames: { type: integer }
+        newFolders: { type: integer, description: Songs that go to another folder. }
+        conflicts: { type: integer }
+        skipped: { type: integer }
+        folders: { type: integer, description: How many folders the moves land in. }
+    OrganizePreview:
+      type: object
+      additionalProperties: false
+      required: [id, template, compilations, counts, filter, albums]
+      properties:
+        id: { type: string, description: The preview's ID, for its pages and its run. }
+        template: { type: string }
+        compilations: { type: string }
+        counts: { $ref: "#/components/schemas/OrganizeCounts" }
+        scope:
+          type: object
+          additionalProperties: false
+          description: Present when the preview is of some songs, not the library.
+          required: [songs, albums]
+          properties:
+            songs: { type: integer }
+            albums: { type: integer }
+            album: { type: string, description: The album's title, when the songs are on one. }
+        filter: { $ref: "#/components/schemas/OrganizeFilter" }
+        matching: { type: integer, description: Albums this filter and search hold, in all their pages. }
+        albums:
+          type: array
+          items: { $ref: "#/components/schemas/OrganizeAlbum" }
+        nextCursor: { type: string }
+    OrganizeAlbum:
+      type: object
+      additionalProperties: false
+      description: >-
+        One album's songs in a preview, in the order a run takes them. `kind`
+        is the album's when its songs share one, else `mixed`. `fromFolder`
+        and `toFolder` are set when every song listed leaves one folder for
+        another, so a client can show the folder change once.
+      required: [id, title, artist, root, kind, songs, files, companions]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        artwork: { $ref: "#/components/schemas/Artwork" }
+        root: { type: integer, description: The album's library folder, as an index into `library.roots`. }
+        kind: { type: string, enum: [rename, move, conflict, skipped, inPlace, mixed] }
+        songs: { type: integer, description: The album's songs in the preview, listed or not. }
+        fromFolder: { type: string }
+        toFolder: { type: string }
+        caseOnly: { type: boolean, description: The folder changes only in case. }
+        files:
+          type: array
+          description: The songs this filter and search list, in disc and track order.
+          items: { $ref: "#/components/schemas/OrganizeFile" }
+        companions:
+          type: array
+          description: Files that come along with the album's songs.
+          items:
+            type: object
+            additionalProperties: false
+            required: [from, to]
+            properties:
+              from: { type: string }
+              to: { type: string }
+    OrganizeFile:
+      type: object
+      additionalProperties: false
+      required: [track, title, from, kind]
+      properties:
+        track: { type: string }
+        title: { type: string }
+        from: { type: string, description: Where the file is, relative to its library folder. }
+        to: { type: string, description: Where the template files it; absent when skipped. }
+        kind: { type: string, enum: [rename, move, conflict, skipped, inPlace] }
+        caseOnly: { type: boolean, description: The path changes only in case, which a run does in two steps. }
+        reason:
+          type: string
+          description: >-
+            Why a song is in conflict or skipped: `claimed` (another song is at
+            the path or wants it), `unknownFile` (a file Kitsune doesn't play is
+            there, named by `unknown`), `noTags` (nothing for the file's name),
+            `tooLong`.
+          enum: [claimed, unknownFile, noTags, tooLong]
+        unknown: { type: string, description: The name of the file in the way. }
+        conflict: { $ref: "#/components/schemas/OrganizeConflict" }
+    OrganizeConflict:
+      type: object
+      additionalProperties: false
+      description: >-
+        A song in a `claimed` conflict, beside the songs in its way: the one
+        already at the path (`here`) and any others that want it.
+        `sameRecording` says they look like one recording, by fingerprint
+        (`why` `digest`) or by artist, title and length (`tags`).
+      required: [self, with, sameRecording]
+      properties:
+        self: { $ref: "#/components/schemas/OrganizeClaimant" }
+        with:
+          type: array
+          items: { $ref: "#/components/schemas/OrganizeClaimant" }
+        sameRecording: { type: boolean }
+        why: { type: string, enum: [digest, tags] }
+    OrganizeClaimant:
+      type: object
+      additionalProperties: false
+      description: A song in a conflict, with what tells it apart. Plays and stars are the caller's.
+      required: [track, title, album, albumId, path, root, format, durationMs, plays, stars, addedAt, here]
+      properties:
+        track: { type: string }
+        title: { type: string }
+        album: { type: string }
+        albumId: { type: string }
+        path: { type: string, description: Where it is now, relative to its library folder. }
+        root: { type: integer }
+        format: { type: string }
+        bitrate: { type: integer, description: In kbps. }
+        durationMs: { type: integer, format: int64 }
+        plays: { type: integer }
+        stars: { type: number, minimum: 0, maximum: 5, multipleOf: 0.5 }
+        addedAt: { type: string, format: date-time }
+        here: { type: boolean, description: It is at the path already. }
+    OrganizeRunRequest:
+      type: object
+      additionalProperties: false
+      description: The preview to run, all of its moves or only those of some songs or albums in it.
+      required: [previewId]
+      properties:
+        previewId: { type: string }
+        tracks:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          items: { type: string }
+        albums:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string }
+    OrganizeRun:
+      type: object
+      additionalProperties: false
+      description: >-
+        A run, an undo of one (`undoOf`), or one song moved after a tag edit
+        (`edit`). `done` counts songs dealt with of `total`, moved or not.
+        `undoable` while an undo would put something back.
+      required: [id, kind, state, startedAt, template, total, done, moved, folders, conflicts, left, failed, companions, undoable]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [run, undo, edit] }
+        state: { $ref: "#/components/schemas/OrganizeState" }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        by: { type: string, description: The administrator who ran it, while their account is. }
+        template: { type: string }
+        total: { type: integer }
+        done: { type: integer }
+        moved: { type: integer }
+        folders: { type: integer, description: The folders its songs landed in. }
+        conflicts: { type: integer, description: Songs in conflict, which stayed where they were. }
+        left: { type: integer, description: Songs it skipped, which stayed where they were. }
+        failed: { type: integer, description: Songs whose move failed and were put back. }
+        companions: { type: integer, description: Files that came along. }
+        playlists: { type: integer, description: Playlist files it rewrote. }
+        album: { type: string, description: The album it is moving now. }
+        stopping: { type: boolean }
+        undoable: { type: boolean }
+        undoOf: { type: string }
+        undoneBy: { type: string }
+    OrganizeState:
+      type: string
+      description: "`running`, `done`, `stopped` (by Stop, or by the server stopping), or `undone`."
+      enum: [running, done, stopped, undone]
+    OrganizeRuns:
+      type: object
+      additionalProperties: false
+      required: [runs]
+      properties:
+        runs:
+          type: array
+          items: { $ref: "#/components/schemas/OrganizeRun" }
+    OrganizeRunDetail:
+      type: object
+      additionalProperties: false
+      required: [run, left]
+      properties:
+        run: { $ref: "#/components/schemas/OrganizeRun" }
+        left:
+          type: array
+          description: Songs the run left where they were, at most 500, each with why.
+          items:
+            type: object
+            additionalProperties: false
+            required: [track, title, from, reason]
+            properties:
+              track: { type: string }
+              title: { type: string }
+              from: { type: string }
+              to: { type: string }
+              root: { type: integer }
+              reason:
+                type: string
+                enum: [claimed, unknownFile, noTags, tooLong, otherFilesystem, changed, missing, failed, movedSince, taken]
+    OrganizeTemplateProblem:
+      type: object
+      required: [type, title, status, field, at]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string, description: What is wrong, for a person. }
+        requestId: { type: string }
+        field: { type: string, enum: [template, compilations] }
+        at: { type: integer, description: Where, in characters from the start. }
+    EventOrganize:
+      type: object
+      additionalProperties: false
+      description: >-
+        A run's progress, to administrators: at its start, about every second,
+        after each album, and at its end. `albumsDone` counts the albums it has
+        finished, in the preview's order; `album` is the one in hand. Never a
+        path.
+      required: [run, state, done, total, albumsDone]
+      properties:
+        run: { type: string }
+        state: { $ref: "#/components/schemas/OrganizeState" }
+        done: { type: integer }
+        total: { type: integer }
+        albumsDone: { type: integer }
+        album: { type: string }
+    ObjectSetting:
+      type: object
+      additionalProperties: false
+      description: "`organize.roots`: the library folders with templates of their own, by folder."
+      required: [value, source]
+      properties:
+        value:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/OrganizeTemplates" }
+        source: { $ref: "#/components/schemas/SettingSource" }
+        from: { $ref: "#/components/schemas/SettingFrom" }
+    OrganizeTemplates:
+      type: object
+      additionalProperties: false
+      required: [template, compilations]
+      properties:
+        template: { type: string }
+        compilations: { type: string }
+    OrganizeExamples:
+      type: object
+      additionalProperties: false
+      required: [songs]
+      properties:
+        songs:
+          type: array
+          items: { $ref: "#/components/schemas/OrganizeExample" }
+    OrganizeExample:
+      type: object
+      additionalProperties: false
+      required: [track, title, artist, album, from, root, song]
+      properties:
+        track: { type: string }
+        title: { type: string }
+        artist: { type: string, description: Who it is by, to show. }
+        album: { type: string }
+        from: { type: string, description: Where the file is, relative to its library folder; the extension is its last. }
+        root: { type: integer }
+        song: { $ref: "#/components/schemas/OrganizeSong" }
+    OrganizeSong:
+      type: object
+      additionalProperties: false
+      description: What a template reads of a song, as `internal/organize` takes it.
+      required: [title, album, albumArtist, artists, genre, discName, format, year, originalYear, disc, discs, track, discSongs, compilation]
+      properties:
+        title: { type: string }
+        album: { type: string }
+        albumArtist: { type: string }
+        artists: { type: array, items: { type: string } }
+        genre: { type: string }
+        discName: { type: string }
+        format: { type: string }
+        year: { type: integer }
+        originalYear: { type: integer }
+        disc: { type: integer }
+        discs: { type: integer }
+        track: { type: integer }
+        discSongs: { type: integer }
+        compilation: { type: boolean }

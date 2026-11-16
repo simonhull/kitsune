@@ -549,6 +549,9 @@ type Me struct {
 	CanEditTags bool `json:"canEditTags"`
 	// CanTrash is too: the Trash moves files, so it is off with tag writes.
 	CanTrash bool `json:"canTrash"`
+	// CanOrganize is too: organizing moves files. The Organize page still
+	// previews without it.
+	CanOrganize bool `json:"canOrganize"`
 }
 
 // Session is the response to a successful login.
