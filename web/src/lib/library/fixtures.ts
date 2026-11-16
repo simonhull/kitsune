@@ -980,6 +980,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	const lists = createPlaylistsFixture({
 		albums: () => new Map([...held, ...listOnly]),
 		gone,
+		trashed: (id) => bin.has(id),
 		stars: (id) => stars.get(id),
 		facts: () => smartFacts(),
 		factsNow: () => fixtureNow,
@@ -1749,6 +1750,17 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		previewSmart: (request, signal) => after(() => lists.previewSmart(request, signal)),
 		reseedPlaylist: (id) => after(() => lists.reseedPlaylist(id)),
 		copyPlaylist: (id) => after(() => lists.copyPlaylist(id)),
+		// A download: the file itself, so the link works with no server.
+		playlistFileUrl: (id) =>
+			`data:audio/x-mpegurl;charset=utf-8,${encodeURIComponent(lists.fileText(id))}`,
+		savePlaylist: (id, request) =>
+			after(() => {
+				adminOnly();
+				if (!signedIn.canTrash) {
+					throw new ServerError(409);
+				}
+				return lists.savePlaylist(id, request);
+			}),
 		changeSettings: (change) =>
 			respond(() => {
 				adminOnly();

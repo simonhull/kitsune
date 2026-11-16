@@ -96,6 +96,10 @@
 	--control-wash-strong: rgb(255 255 255 / 14%);
 	/* Keyboard focus is printed off register: the fox ring, and this teal a pixel and a half off. */
 	--misprint: #3fb6c4;
+	/* A file playlist's paper: its tag and its dog-eared corner, with the ink written on it. */
+	--paper: #e9dfcd;
+	--paper-ink: #2a241e;
+	--paper-line: rgb(22 18 14 / 55%);
 }
 
 /*
@@ -175,6 +179,9 @@
 	--control-wash: rgb(22 18 14 / 7%);
 	--control-wash-strong: rgb(22 18 14 / 12%);
 	--misprint: #2b8f9b;
+	--paper: #efe6d6;
+	--paper-ink: #3f3832;
+	--paper-line: rgb(22 18 14 / 45%);
 }
 
 :root {

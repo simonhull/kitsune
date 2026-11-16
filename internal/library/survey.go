@@ -45,6 +45,7 @@ type surveyed struct {
 	Seen         int
 	SkippedRoots int
 	HoldDeletes  bool // Deleting missing tracks must wait: an outage may be hiding files.
+	Playlists    []playlistSurvey
 }
 
 // rootSurvey is the survey of one root.
@@ -56,6 +57,7 @@ type rootSurvey struct {
 	seen         int
 	skipped      bool
 	hold         bool
+	playlists    playlistSurvey
 }
 
 // seenFile is a regular audio file the walk found.
@@ -68,9 +70,10 @@ type seenFile struct {
 // walked is what walking one root found.
 type walked struct {
 	files      []seenFile
-	temps      []string // Absolute paths of the temp files [isWriteTemp] recognizes.
-	unreadable []string // Relative paths of folders and entries the walk could not read.
-	rootErr    error    // Set when the root itself is unreadable.
+	playlists  []seenFile // Playlist files: see [IsPlaylistFile].
+	temps      []string   // Absolute paths of the temp files [isWriteTemp] recognizes.
+	unreadable []string   // Relative paths of folders and entries the walk could not read.
+	rootErr    error      // Set when the root itself is unreadable.
 }
 
 // isAudio reports whether name has an extension the scanner reads.
@@ -101,7 +104,8 @@ func SkipsFolder(name string) bool {
 // progress, ".<name>.audiometa-<random>.tmp". Scans hold the library lock, so one
 // they see was left by a killed edit.
 func isWriteTemp(name string) bool {
-	return strings.HasPrefix(name, ".") && strings.Contains(name, ".audiometa-") && strings.HasSuffix(name, ".tmp")
+	return strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".tmp") &&
+		(strings.Contains(name, ".audiometa-") || strings.Contains(name, ".kitsune-"))
 }
 
 // survey walks and diffs every root against the store without writing. A
@@ -122,6 +126,9 @@ func (s *Scanner) survey(ctx context.Context, mode Mode) (*surveyed, error) {
 		}
 		sv.Seen += r.seen
 		sv.HoldDeletes = sv.HoldDeletes || r.hold
+		if !r.skipped {
+			sv.Playlists = append(sv.Playlists, r.playlists)
+		}
 		switch {
 		case r.skipped:
 			sv.SkippedRoots++
@@ -169,6 +176,9 @@ func (s *Scanner) surveyRoot(ctx context.Context, root string, mode Mode) (rootS
 	if len(w.unreadable) > 0 {
 		s.log.WarnContext(ctx, "some library folders or files are unreadable; leaving their tracks alone",
 			"root", root, "paths", w.unreadable)
+	}
+	if r.playlists, err = s.surveyPlaylists(ctx, root, &w, every); err != nil {
+		return rootSurvey{}, err
 	}
 	return r, nil
 }
@@ -283,16 +293,20 @@ func (w *walked) visitEntry(path, rel string, d fs.DirEntry) error {
 	case d.Type().IsRegular() && isWriteTemp(name):
 		w.temps = append(w.temps, path)
 		return nil
-	case d.IsDir(), strings.HasPrefix(name, "."), !isAudio(name):
+	case d.IsDir(), strings.HasPrefix(name, "."):
 		return nil
+	case IsPlaylistFile(name):
+		w.addFile(&w.playlists, path, rel, d)
+	case isAudio(name):
+		w.addFile(&w.files, path, rel, d)
 	}
-	w.addFile(path, rel, d)
 	return nil
 }
 
-// addFile records the regular file at path. A symlink counts when it leads to
-// one. A file that can't be statted is unreadable, so its track stays live.
-func (w *walked) addFile(path, rel string, d fs.DirEntry) {
+// addFile records the regular file at path in to. A symlink counts when it
+// leads to one. A file that can't be statted is unreadable, so its track stays
+// live.
+func (w *walked) addFile(to *[]seenFile, path, rel string, d fs.DirEntry) {
 	info, err := d.Info()
 	if d.Type()&fs.ModeSymlink != 0 {
 		info, err = os.Stat(path)
@@ -301,7 +315,7 @@ func (w *walked) addFile(path, rel string, d fs.DirEntry) {
 	case err != nil:
 		w.unreadable = append(w.unreadable, rel)
 	case info.Mode().IsRegular(): // A FIFO would block a read past its context.
-		w.files = append(w.files, seenFile{rel: rel, size: info.Size(), mtime: info.ModTime()})
+		*to = append(*to, seenFile{rel: rel, size: info.Size(), mtime: info.ModTime()})
 	}
 }
 
@@ -316,7 +330,10 @@ type diff struct {
 // diffRoot compares the walk with the stored states.
 func diffRoot(root string, states map[string]store.FileState, w *walked, mode Mode, reader string) diff {
 	var r rootSurvey
-	seen := make(map[string]struct{}, len(w.files))
+	seen := make(map[string]struct{}, len(w.files)+len(w.playlists))
+	for i := range w.playlists { // A playlist file's scan issue stays while the file does.
+		seen[w.playlists[i].rel] = struct{}{}
+	}
 	for i := range w.files {
 		f := &w.files[i]
 		seen[f.rel] = struct{}{}
@@ -397,6 +414,11 @@ func (s *Scanner) removedRoots(ctx context.Context, sv *surveyed, everyRootWalke
 	if err != nil {
 		return fmt.Errorf("known roots: %w", err)
 	}
+	listed, err := s.st.FilePlaylistRoots(ctx)
+	if err != nil {
+		return err //nolint:wrapcheck // The store's error already says what failed.
+	}
+	known = slices.Compact(slices.Sorted(slices.Values(append(known, listed...))))
 	removed := slices.DeleteFunc(known, func(k string) bool { return slices.Contains(s.live().Roots, k) })
 	if len(removed) == 0 {
 		return nil
@@ -420,6 +442,12 @@ func (s *Scanner) removedRoots(ctx context.Context, sv *surveyed, everyRootWalke
 		}
 		s.log.WarnContext(ctx, "library root left the configuration; marking its tracks missing",
 			"root", root, "tracks", len(gone.mark))
+		var nothing walked
+		p, pErr := s.surveyPlaylists(ctx, root, &nothing, every)
+		if pErr != nil {
+			return pErr
+		}
+		sv.Playlists = append(sv.Playlists, p)
 	}
 	return nil
 }

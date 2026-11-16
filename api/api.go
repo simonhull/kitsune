@@ -304,6 +304,7 @@ type EventPlaylists struct {
 const (
 	PlaylistMade     = "kitsune"
 	PlaylistImported = "navidrome"
+	PlaylistFromFile = "file"
 )
 
 // Playlist is one of the caller's playlists as a list shows it. Its counts are
@@ -330,6 +331,75 @@ type Playlist struct {
 	// Holds is how many of the songs GET /me/playlists?holding= named it holds,
 	// each once; absent without holding.
 	Holds *int `json:"holds,omitzero"`
+	// File is where a file playlist comes from; absent for any other.
+	File *PlaylistFile `json:"file,omitzero"`
+}
+
+// PlaylistFile is where a file playlist comes from. Path is relative to its
+// library folder: no root is ever named.
+type PlaylistFile struct {
+	Path   string `json:"path"`
+	Format string `json:"format"` // m3u or m3u8.
+	// NotFound counts the lines that found no song, PastLimit's included.
+	NotFound   int       `json:"notFound"`
+	PastLimit  int       `json:"pastLimit"`
+	ReadAt     time.Time `json:"readAt"`
+	ModifiedAt time.Time `json:"modifiedAt"`
+}
+
+// Why a [MissingLine] found no song.
+const (
+	MissingNoSong  = "noSong"
+	MissingOutside = "outside"
+	MissingNotFile = "notFile"
+	MissingTrashed = "trashed"
+)
+
+// MissingLine is a line of a playlist file that found no song. Text is the
+// line as written, except that an absolute path is never sent whole.
+type MissingLine struct {
+	Line    int    `json:"line"`
+	Text    string `json:"text"`
+	Title   string `json:"title,omitzero"`
+	Seconds int    `json:"seconds,omitzero"`
+	Reason  string `json:"reason"`
+	// OtherExtension is the file name of a song in the same folder with the
+	// same name and another extension: a hint, never a match.
+	OtherExtension string `json:"otherExtension,omitzero"`
+}
+
+// PlaylistSave is the body of POST /admin/playlists/{id}/save.
+type PlaylistSave struct {
+	Root    string `json:"root"`
+	Folder  string `json:"folder"`
+	Name    string `json:"name"`
+	Replace bool   `json:"replace,omitzero"`
+}
+
+// PlaylistSaved is what a save wrote.
+type PlaylistSaved struct {
+	Name      string `json:"name"`
+	Folder    string `json:"folder"`
+	SongCount int    `json:"songCount"`
+	LeftOut   int    `json:"leftOut"`
+}
+
+// PlaylistExists is the [Problem] of a save whose file is there already.
+type PlaylistExists struct {
+	Problem `json:",inline"`
+
+	Exists ExistingFile `json:"exists"`
+}
+
+// ExistingFile is the file a save found in its way, and the playlist Kitsune
+// reads from it, when it has read it.
+type ExistingFile struct {
+	Name         string    `json:"name"`
+	FreeName     string    `json:"freeName"`
+	ModifiedAt   time.Time `json:"modifiedAt"`
+	Playlist     string    `json:"playlist,omitzero"`
+	PlaylistName string    `json:"playlistName,omitzero"`
+	SongCount    *int      `json:"songCount,omitzero"`
 }
 
 // PlaylistAlbum is an album as a playlist shows it.
@@ -355,6 +425,9 @@ type PlaylistDetail struct {
 	Entries []PlaylistEntry `json:"entries"`
 	// Albums are every album of the entries, in the order they first appear.
 	Albums []PlaylistAlbum `json:"albums"`
+	// Missing are a file playlist's lines that found no song, in order; absent
+	// for any other.
+	Missing []MissingLine `json:"missing,omitzero"`
 }
 
 // PlaylistEntry is one place in a playlist. ID is the entry's own, which a move

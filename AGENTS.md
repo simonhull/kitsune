@@ -120,6 +120,28 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   "<name> (copy)" of what any playlist holds now (a 422 past 10,000). Rules a smart playlist can't
   have, rules with songs, a cycle (`cycle` names it) and nesting past `store.MostSmartDepth` are 422
   `SmartProblem`s. Rule changes, seeds and copies publish `playlists`.
+- A file playlist (`source: file`) is read from a `.m3u` or `.m3u8` in the library (see Library) and
+  is the server's: `GET /me/playlists` lists them for everyone beside a person's own (with `holding`
+  it leaves them out), each with `file` (its path relative to its root, never the root, and how many
+  lines found no song). `GET /me/playlists/{id}` adds `missing`, those lines in the file's order: the
+  ones its read found nothing for and the entries whose song has left the library since (`trashed`
+  when in the Trash). It is read-only: rename, rules, delete, adds, take-outs, moves and Pick again
+  are a 409 "it comes from a file" (`store.ErrFilePlaylist`, from `ownRow`); `copy` and the
+  `playlist` shuffle scope work, since `PlaylistRow` reads a person's own or a file's. A file
+  playlist read, read again or deleted publishes `playlists` to everyone (`PlaylistsChanged`).
+- `GET /me/playlists/{id}/m3u` exports any playlist a person sees as `.m3u8` (`internal/m3u`'s
+  `Write`, a smart one as its rules choose now): paths relative to each song's own root, so no root
+  is ever named, and `filename*` from `m3u.FileName`. `POST /admin/playlists/{id}/save` (`root`, a
+  root-relative `folder`, `name`, `replace`) writes it into a library folder with paths from that
+  folder (`../` where needed), leaving out songs on another root (`leftOut`); a 409 with tag writes
+  off or while busy, a 422 for a folder outside its root or a name with a separator or a leading dot,
+  and a 409 `PlaylistExists` (the playlist read from it, its count and mtime, and `freeName`) unless
+  `replace`. `Scanner.SavePlaylist` writes under the library lock through `os.Root`, a
+  `.<name>.kitsune-<random>.tmp` beside the target (which `isWriteTemp` sweeps), synced, then
+  renamed, and reads the file at once.
+- What a not-found line may show: a relative line as written; an absolute one inside a root as its
+  root-relative path; one outside every root only its last two segments after `…/`; a URL only its
+  scheme and `//…` (`m3u.Ref.Shown`, `m3u.Shown`). `TestFilePlaylistIsSharedAndNamesNoRoot` holds it.
 - `GET /me/home` is Home's history, 25 albums each as `GET /albums` lists them: `recent`, by latest
   play, and `onRepeat`, by plays in the last 90 days (`onRepeatWindow`, the server's clock). Both
   count `plays` (imports included, but undated ones never on repeat, `store.SourceUndated`), never
@@ -246,6 +268,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   ULID. What it works out of the library (that order, folded names, details) is kept beside the
   index's rows (`libraryRows.smart`). The `playlist_tracks_not_smart` trigger refuses entries for a
   smart playlist, as `ownEntries` does.
+- A file playlist (`playlistfiles.go`) has no owner: `playlists.user_id` is NULL exactly when `source`
+  is `file`, a CHECK since `0022`'s rebuild. `playlist_files` says which file it is (root, path, size,
+  mtime, the reader's `m3uVersion`, and `missing`, the JSON of its not-found lines) and goes with it.
+  Its entries are `playlist_tracks` rows whose position is the line's number and whose `line` is the
+  path as written (NULL for every other playlist); `WriteFilePlaylist` replaces them in one
+  transaction and keeps the ULID while the file is at its path. Entries go with their track as any
+  playlist's do, so a trashed song waits in place for Restore and the purge takes it.
 
 ## Matching
 - `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
@@ -438,6 +467,22 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   in path order, a batch under the library lock, and stops midway through a file for a waiting scan
   or edit. A track's `replayGain` is its tags' when it has a gain tagged, else the measure, and says
   which (`source`).
+- Playlist files (`playlists.go`, `IsPlaylistFile`: `.m3u`, `.m3u8`) are found by the walk, the
+  watcher and the poller beside the audio, and read after the scan's songs under the same claim and
+  lock, so a file and its songs arrive together. One is read only when it is new, its size or mtime
+  changed, `m3uVersion` went up, the scan is full, or songs were added or moved and it has lines that
+  found none (a targeted scan that adds songs reads those files on every root); an unchanged file is
+  a stat. `internal/m3u` is pure: `Parse` keeps to 4 MiB, 25,000 lines, 4,096 bytes a line and 10,000
+  paths and counts the rest as past the limit; `.m3u` falls back to Windows-1252. A line is matched as
+  a string, never through the file system (`m3u.Resolve`, then `matcher`): the track at that root and
+  path (a trashed one by its `restore_path`), else the one track whose path folds the same under NFC
+  and case folding; two is no match, never a guess, and another extension in the folder is only a
+  hint (`otherExtension`). A line that no longer names a song keeps the one its last read found while
+  that is live (`FileEntryLines`), so a tidy-up never empties a playlist. A file that can't be read is
+  an `unreadable` scan issue, tried every scan. A playlist goes when the walk, or a targeted scan of
+  its folder, finds its file gone, and never for a root that looks down, by the same rules as tracks.
+  Files are read with tag writes off too; only saving writes.
+- A targeted scan refreshes genres and names only when it read a song or marked one missing.
 
 ## Shuffle
 - `internal/shuffle` is the pure engine: units, weights, a finite order and an endless stream, given
@@ -584,6 +629,14 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   before and keeping its last answer until the next arrives, so it never blanks. A new draft sends a
   seed it drew itself and an edit the playlist's `id`, so the card shows what saving would. The
   fixtures work smart playlists out in `lib/library/smartEval.ts`, so e2e needs no server.
+- File playlists sit in `library.playlists` beside a person's own (`source: 'file'`), in their own
+  From files section of the Playlists page, marked by `FileTag.svelte` (the dog-ear and the paper tag,
+  on `--paper` tokens), never by SMART's stamp; Add to playlist never lists them. Their page reads
+  like a smart one's (no grip, Alt+arrows, Del or Take out, no rename) with the FROM line, the
+  not-found pill and its card (`MissingLines.svelte`); their words live in `fileWords.ts`. Copy to a
+  playlist lands on the copy. Export (`PlaylistExport.svelte`) opens on any playlist's ⋯ in place of
+  the buttons: Download is a plain link to the `m3u` route, and Save in the library (an admin with
+  `canTrash`, never on a phone) uses the folder picker limited to the roots and the overwrite confirm.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
@@ -600,7 +653,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   suite (`web/perf`, Playwright) times clicks, keys and page loads in a release build against generated
   libraries of 1,000 and 50,000 songs, 20 runs each; `internal/server`'s `*Speed` tests time the
   stream's first byte, `GET /library/index`, `GET /me/home`, a 10,000-entry `GET /me/playlists/{id}`,
-  a smart playlist's preview and a `GET /me/playlists` of ten smart ones. Each fails past its budget, and CI's `perf` job runs
+  a smart playlist's preview, a `GET /me/playlists` of ten smart ones, a 10,000-song `.m3u8` read
+  against 50,000 songs, and a quick scan with 50 unchanged playlist files, held to the same scan
+  without them. Each fails past its budget, and CI's `perf` job runs
   both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
   they were set; on CI they are multiplied by `ciMultiplier`, which comes from CI's own numbers.
 - `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes

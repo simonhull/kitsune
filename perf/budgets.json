@@ -136,6 +136,14 @@
     "edit-rule": {
       "interaction": "Rules editor: press a star, to the count changed",
       "p95Ms": 200
+    },
+    "open-file-playlist": {
+      "interaction": "Open a file playlist of 500 songs (an .m3u8 at the top of the library) from its card, click to its rows",
+      "p95Ms": 90
+    },
+    "export-download": {
+      "interaction": "Export: press Download on a playlist of 500 songs, to the download starting (the response's first byte)",
+      "p95Ms": 70
     }
   },
   "server": {
@@ -166,6 +174,14 @@
     "smart-playlists": {
       "interaction": "GET /me/playlists with 10 smart playlists, 50k songs",
       "p95Ms": 220
+    },
+    "m3u-read": {
+      "interaction": "Read a 10,000-song .m3u8 against 50k songs, the watcher's targeted scan of its folder",
+      "p95Ms": 150
+    },
+    "quick-scan-playlists": {
+      "interaction": "Quick scan of 500 unchanged songs and 50 unchanged playlist files",
+      "p95Ms": 27
     }
   }
 }

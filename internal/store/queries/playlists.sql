@@ -5,31 +5,36 @@
 
 -- name: InsertPlaylist :one
 INSERT INTO playlists (ulid, user_id, name, source, import_key, created_at, updated_at, rules, seed)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (
+    sqlc.arg(ulid), CAST(sqlc.arg(user_id) AS INTEGER), sqlc.arg(name), sqlc.arg(source), sqlc.arg(import_key),
+    sqlc.arg(created_at), sqlc.arg(updated_at), sqlc.arg(rules), sqlc.arg(seed)
+)
 RETURNING id;
 
 -- name: PlaylistRow :one
+-- A playlist the person sees: their own, or one of the server's file playlists.
 SELECT id, ulid, name, source, created_at, updated_at, added_at, rules, seed
 FROM playlists
-WHERE user_id = ? AND ulid = ?;
+WHERE ulid = sqlc.arg(ulid) AND (user_id = CAST(sqlc.arg(user_id) AS INTEGER) OR user_id IS NULL);
 
 -- name: PlaylistByImportKey :one
-SELECT id FROM playlists WHERE user_id = ? AND import_key = ?;
+SELECT id FROM playlists WHERE user_id = CAST(sqlc.arg(user_id) AS INTEGER) AND import_key = sqlc.arg(import_key);
 
 -- name: ListPlaylists :many
+-- The playlists a person sees: their own and the server's file playlists.
 SELECT id, ulid, name, source, created_at, updated_at, added_at, rules, seed
 FROM playlists
-WHERE user_id = ?
+WHERE user_id = CAST(sqlc.arg(user_id) AS INTEGER) OR user_id IS NULL
 ORDER BY name COLLATE NOCASE, id;
 
 -- name: ListPlaylistSongs :many
--- What every playlist of a person holds that is live, in order: enough to count
--- it, time it, find its mosaic and say which songs it holds.
+-- What every playlist a person sees holds that is live, in order: enough to
+-- count it, time it, find its mosaic and say which songs it holds.
 SELECT e.playlist_id, t.ulid, t.album_id, t.duration_ms
 FROM playlist_tracks e
 JOIN playlists p ON p.id = e.playlist_id
 JOIN tracks t ON t.id = e.track_id
-WHERE p.user_id = ? AND t.missing_since IS NULL
+WHERE (p.user_id = CAST(sqlc.arg(user_id) AS INTEGER) OR p.user_id IS NULL) AND t.missing_since IS NULL
 ORDER BY e.playlist_id, e.position;
 
 -- name: ListPlaylistSongsOf :many
@@ -131,7 +136,7 @@ UPDATE playlists SET seed = ?, updated_at = ? WHERE id = ?;
 
 -- name: ListSmartPlaylistRules :many
 -- A person's smart playlists' rules: what a check for a cycle walks.
-SELECT ulid, rules FROM playlists WHERE user_id = ? AND rules IS NOT NULL;
+SELECT ulid, rules FROM playlists WHERE user_id = CAST(sqlc.arg(user_id) AS INTEGER) AND rules IS NOT NULL;
 
 -- name: ListSmartRatings :many
 -- A person's stars, by track row: what smart rules read of them.
@@ -154,7 +159,7 @@ UPDATE playlists SET updated_at = ? WHERE id = ?;
 UPDATE playlists SET updated_at = sqlc.arg(at), added_at = sqlc.arg(at) WHERE id = sqlc.arg(id);
 
 -- name: DeletePlaylist :execrows
-DELETE FROM playlists WHERE user_id = ? AND ulid = ?;
+DELETE FROM playlists WHERE user_id = CAST(sqlc.arg(user_id) AS INTEGER) AND ulid = sqlc.arg(ulid);
 
 -- name: ListTracksToAdd :many
 -- The songs named to go into a playlist, by ULID, and whether each is live.

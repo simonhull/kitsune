@@ -6,8 +6,13 @@
  */
 import { evaluate, type SongFacts } from './smartEval.ts';
 import {
+	PlaylistExistsError,
 	ServerError,
 	type Album,
+	type MissingLine,
+	type PlaylistFile,
+	type PlaylistSave,
+	type PlaylistSaved,
 	type LibrarySource,
 	type PlaylistAdd,
 	type PlaylistAdded,
@@ -31,7 +36,7 @@ const mostEntries = 10_000;
 interface StoredPlaylist {
 	id: string;
 	name: string;
-	source: 'kitsune' | 'navidrome';
+	source: 'kitsune' | 'navidrome' | 'file';
 	createdAt: number;
 	updatedAt: number;
 	addedAt?: number;
@@ -39,10 +44,37 @@ interface StoredPlaylist {
 	/** A smart playlist's rules, and the seed its random choices follow. */
 	rules?: SmartRules;
 	seed?: number;
+	/** A file playlist's file, and the line each entry came from. */
+	file?: StoredFile;
+}
+
+/** What the fixtures know of a playlist file. */
+interface StoredFile {
+	path: string;
+	format: 'm3u' | 'm3u8';
+	readAt: number;
+	modifiedAt: number;
+	pastLimit: number;
+	/** The lines that found no song when it was read. */
+	missing: MissingLine[];
+	/** Each entry's line in the file, by entry ID. */
+	lines: Record<string, number>;
+}
+
+/** A playlist file already in a library folder, which a save would meet. */
+interface StoredOnDisk {
+	root: string;
+	folder: string;
+	name: string;
+	modifiedAt: number;
+	playlistName?: string;
+	songCount?: number;
 }
 
 interface Stored {
 	playlists: StoredPlaylist[];
+	/** Playlist files in the library folders, as a save finds them. */
+	files?: StoredOnDisk[];
 	/** The last ID handed out, of an entry or a playlist: never used twice. */
 	made: number;
 }
@@ -52,6 +84,8 @@ interface PlaylistsFixtureOptions {
 	albums: () => ReadonlyMap<string, Album>;
 	/** Whether a song is out of the library: in Trash, or deleted from it. */
 	gone: (trackId: string) => boolean;
+	/** Whether a song is in Trash, which a file playlist's lines say. */
+	trashed?: (trackId: string) => boolean;
 	/** The person's stars for a song, as the index carries them. */
 	stars: (trackId: string) => number | undefined;
 	/** Every live song, in the Library's order, with what a smart rule reads of it. */
@@ -77,6 +111,7 @@ type PlaylistMethods = Pick<
 	| 'previewSmart'
 	| 'reseedPlaylist'
 	| 'copyPlaylist'
+	| 'savePlaylist'
 >;
 
 /** The most songs a preview lists. */
@@ -124,6 +159,54 @@ function seeded(now: number): Stored {
 		'night-ferry-94-2'
 	];
 	const mornings = ['tidewater-12-1', 'tidewater-12-2', 'tidewater-12-3', 'after-hours-19-3'];
+	// The file board's: 22 lines, 19 of them songs, and one line of each kind that found none.
+	const essentials = [
+		'paper-suns-16-1',
+		'harbour-lights-6-2',
+		'quiet-machines-24-3',
+		'night-ferry-94-4',
+		'orbitals-14-1',
+		'tidewater-12-5',
+		'orbitals-14-2',
+		'night-ferry-94-6',
+		'after-hours-19-2',
+		'quiet-machines-24-5',
+		'tidewater-12-2',
+		'orbitals-14-3',
+		'night-ferry-94-7',
+		'paper-suns-16-4',
+		'quiet-machines-24-6',
+		'night-ferry-94-8',
+		'tidewater-12-6',
+		'orbitals-14-6',
+		'paper-suns-16-7'
+	];
+	const missingLines = new Set([9, 15, 20]);
+	const essentialEntries = entries(essentials);
+	const essentialLines: Record<string, number> = {};
+	let line = 0;
+	for (const entry of essentialEntries) {
+		line += 1;
+		while (missingLines.has(line)) {
+			line += 1;
+		}
+		essentialLines[entry.id] = line;
+	}
+	const drive = [
+		'red-signal-109-1',
+		'long-summer-7-2',
+		'night-ferry-94-3',
+		'after-hours-19-4',
+		'red-signal-109-3',
+		'long-summer-7-4',
+		'glasshouse-66-5',
+		'after-hours-19-6',
+		'red-signal-109-5',
+		'long-summer-7-6',
+		'glasshouse-66-7',
+		'after-hours-19-8'
+	];
+	const driveEntries = entries(drive);
 	return {
 		playlists: [
 			{
@@ -152,6 +235,67 @@ function seeded(now: number): Stored {
 				entries: [],
 				rules: restedRules,
 				seed: 7
+			},
+			{
+				id: 'falling-up-essentials',
+				name: 'Falling Up essentials',
+				source: 'file',
+				createdAt: now - 30 * day,
+				updatedAt: now - 2 * day,
+				entries: essentialEntries,
+				file: {
+					path: 'Playlists/Falling Up essentials.m3u8',
+					format: 'm3u8',
+					readAt: now - 2 * day,
+					modifiedAt: now - 2 * day,
+					pastLimit: 0,
+					missing: [
+						{
+							line: 9,
+							text: 'Falling Up/2009 - Fangs!/04 Golden Arrows.mp3',
+							title: 'Falling Up - Golden Arrows',
+							seconds: 246,
+							reason: 'noSong',
+							otherExtension: '04 Golden Arrows.flac'
+						},
+						{ line: 15, text: 'https://…', title: 'Live stream', reason: 'notFile' },
+						{
+							line: 20,
+							text: '…/Dawn Escapes/07 Moonlit.mp3',
+							title: 'Falling Up - Moonlit',
+							seconds: 212,
+							reason: 'outside'
+						}
+					],
+					lines: essentialLines
+				}
+			},
+			{
+				id: 'night-drive',
+				name: 'Night drive',
+				source: 'file',
+				createdAt: now - 60 * day,
+				updatedAt: now - 9 * day,
+				entries: driveEntries,
+				file: {
+					path: 'Night drive.m3u',
+					format: 'm3u',
+					readAt: now - 9 * day,
+					modifiedAt: now - 9 * day,
+					pastLimit: 0,
+					missing: [],
+					lines: Object.fromEntries(driveEntries.map(({ id }, i) => [id, i + 1]))
+				}
+			}
+		],
+		files: [
+			{
+				root: '/music',
+				folder: 'Playlists',
+				name: 'Falling Up.m3u8',
+				modifiedAt: now - 21 * day,
+				playlistName: 'Falling Up',
+				songCount: 148
 			}
 		],
 		made
@@ -171,12 +315,16 @@ function read(store: () => Storage): Stored | null {
 export function createPlaylistsFixture({
 	albums,
 	gone,
+	trashed = () => false,
 	stars,
 	facts = () => [],
 	store = () => sessionStorage,
 	now = Date.now,
 	factsNow = now
-}: PlaylistsFixtureOptions): PlaylistMethods & { trackIdsOf(id: string): string[] } {
+}: PlaylistsFixtureOptions): PlaylistMethods & {
+	trackIdsOf(id: string): string[];
+	fileText(id: string): string;
+} {
 	const held: Stored = read(store) ?? seeded(now());
 
 	function save(): void {
@@ -361,7 +509,9 @@ export function createPlaylistsFixture({
 			});
 		}
 		const albumList = [...seen.values()];
+		const filed = p.file === undefined ? {} : fileOf(p, p.file);
 		return {
+			...filed,
 			id: p.id,
 			name: p.name,
 			source: p.source,
@@ -378,9 +528,123 @@ export function createPlaylistsFixture({
 		};
 	}
 
+	/** A file playlist's file and its lines that found no song: a song in Trash among them. */
+	function fileOf(
+		p: StoredPlaylist,
+		f: StoredFile
+	): { file: PlaylistFile; missing: MissingLine[] } {
+		const binned: MissingLine[] = p.entries
+			.filter(({ track }) => trashed(track))
+			.map(({ id, track }) => ({
+				line: f.lines[id] ?? 1,
+				text: `${track}.flac`,
+				reason: 'trashed'
+			}));
+		const missing = [...f.missing, ...binned].toSorted((a, b) => a.line - b.line);
+		return {
+			file: {
+				path: f.path,
+				format: f.format,
+				notFound: missing.length + f.pastLimit,
+				pastLimit: f.pastLimit,
+				readAt: new Date(f.readAt).toISOString(),
+				modifiedAt: new Date(f.modifiedAt).toISOString()
+			},
+			missing
+		};
+	}
+
+	/** A playlist as an .m3u8, as the server writes a download. */
+	function fileText(id: string): string {
+		const d = detail(own(id));
+		const lines = ['#EXTM3U'];
+		const all = albums();
+		for (const { albumId, track } of d.entries) {
+			const album = all.get(albumId);
+			const number = String(track.trackNo ?? 0).padStart(2, '0');
+			lines.push(
+				`#EXTINF:${String(Math.round(track.durationMs / 1000))},${track.artists.join(', ')} - ${track.title}`,
+				`${album?.artist ?? ''}/${album?.title ?? ''}/${number} ${track.title}.flac`
+			);
+		}
+		return `${lines.join('\n')}\n`;
+	}
+
+	/** The next name free beside a file: "Falling Up 2.m3u8". */
+	function freeName(taken: readonly StoredOnDisk[], name: string): string {
+		const stem = name.replace(/\.m3u8?$/i, '');
+		const has = (each: string): boolean =>
+			taken.some((file) => file.name.toLowerCase() === each.toLowerCase());
+		for (let n = 2; ; n += 1) {
+			const next = `${stem} ${String(n)}.m3u8`;
+			if (!has(next)) {
+				return next;
+			}
+		}
+	}
+
+	function saveFile(
+		id: string,
+		{ root, folder, name, replace = false }: PlaylistSave
+	): PlaylistSaved {
+		const d = detail(own(id));
+		const typed = name.trim();
+		if (typed === '' || /[/\\]/.test(typed) || folder.split('/').includes('..')) {
+			throw new ServerError(422);
+		}
+		const file = /\.m3u8?$/i.test(typed) ? typed : `${typed}.m3u8`;
+		const where = folder === '.' ? '' : folder.replace(/^\/+|\/+$/g, '');
+		const files = held.files ?? [];
+		const beside = files.filter((each) => each.root === root && each.folder === where);
+		const there = beside.find((each) => each.name.toLowerCase() === file.toLowerCase());
+		if (there !== undefined && !replace) {
+			throw new PlaylistExistsError({
+				name: there.name,
+				freeName: freeName(beside, there.name),
+				modifiedAt: new Date(there.modifiedAt).toISOString(),
+				...(there.playlistName === undefined ? {} : { playlistName: there.playlistName }),
+				...(there.songCount === undefined ? {} : { songCount: there.songCount })
+			});
+		}
+		const at = now();
+		const playlistName = file.replace(/\.m3u8?$/i, '');
+		const written: StoredOnDisk = {
+			root,
+			folder: where,
+			name: file,
+			modifiedAt: at,
+			playlistName,
+			songCount: d.entries.length
+		};
+		held.files = [...files.filter((each) => each !== there), written];
+		// The library reads it at once, as the server's save does: a file playlist everyone sees.
+		const path = where === '' ? file : `${where}/${file}`;
+		held.playlists = held.playlists.filter((p) => p.file?.path !== path);
+		const made = d.entries.map(({ track }) => ({ id: nextId(), track: track.id }));
+		held.playlists.push({
+			id: `file-${nextId()}`,
+			name: playlistName,
+			source: 'file',
+			createdAt: at,
+			updatedAt: at,
+			entries: made,
+			file: {
+				path,
+				format: /\.m3u$/i.test(file) ? 'm3u' : 'm3u8',
+				readAt: at,
+				modifiedAt: at,
+				pastLimit: 0,
+				missing: [],
+				lines: Object.fromEntries(made.map(({ id: entry }, i) => [entry, i + 1]))
+			}
+		});
+		save();
+		return { name: file, folder: where, songCount: d.entries.length, leftOut: 0 };
+	}
+
 	function summary(p: StoredPlaylist, holding?: ReadonlySet<string>): PlaylistSummary {
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars -- A summary is the detail without these.
-		const { entries, albums: _albums, ...rest } = detail(p);
+		const { entries, albums: _albums, missing: _missing, ...rest } = detail(p);
 		if (holding === undefined) {
 			return rest;
 		}
@@ -390,10 +654,10 @@ export function createPlaylistsFixture({
 		return { ...rest, holds: holds.size };
 	}
 
-	/** A regular playlist's own: a smart one has no entries to change. */
+	/** A regular playlist's own: a smart or file one has no entries to change. */
 	function regular(id: string): StoredPlaylist {
 		const p = own(id);
-		if (p.rules !== undefined) {
+		if (p.rules !== undefined || p.file !== undefined) {
 			throw new ServerError(409);
 		}
 		return p;
@@ -449,13 +713,24 @@ export function createPlaylistsFixture({
 		return structuredClone(make());
 	}
 
+	/** One of the person's own: a file playlist belongs to its file. */
+	function mine(id: string): StoredPlaylist {
+		const p = own(id);
+		if (p.file !== undefined) {
+			throw new ServerError(409);
+		}
+		return p;
+	}
+
 	return {
 		trackIdsOf: (id) => [...(heldBy(id) ?? [])],
+		fileText,
+		savePlaylist: (id, request) => answer(() => saveFile(id, request)),
 		playlists: (holding) =>
 			answer(() =>
 				held.playlists
 					// Asked what they hold, smart ones aren't listed: nothing is added to one.
-					.filter((p) => holding === undefined || p.rules === undefined)
+					.filter((p) => holding === undefined || (p.rules === undefined && p.file === undefined))
 					.map((p) => summary(p, holding === undefined ? undefined : new Set(holding)))
 					.toSorted((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }))
 			),
@@ -480,7 +755,7 @@ export function createPlaylistsFixture({
 			}),
 		renamePlaylist: (id, name) =>
 			answer(() => {
-				const p = own(id);
+				const p = mine(id);
 				const trimmed = name.trim();
 				if (trimmed === '' || [...trimmed].length > 200) {
 					throw new ServerError(400);
@@ -492,7 +767,7 @@ export function createPlaylistsFixture({
 			}),
 		deletePlaylist: (id) =>
 			answer(() => {
-				own(id);
+				mine(id);
 				held.playlists = held.playlists.filter((p) => p.id !== id);
 				save();
 			}),
@@ -550,7 +825,7 @@ export function createPlaylistsFixture({
 			}),
 		changePlaylist: (id, change) =>
 			answer(() => {
-				const p = own(id);
+				const p = mine(id);
 				if (change.rules !== undefined && p.rules === undefined) {
 					throw new ServerError(409);
 				}
@@ -571,7 +846,7 @@ export function createPlaylistsFixture({
 			}),
 		reseedPlaylist: (id) =>
 			answer(() => {
-				const p = own(id);
+				const p = mine(id);
 				if (p.rules === undefined) {
 					throw new ServerError(409);
 				}

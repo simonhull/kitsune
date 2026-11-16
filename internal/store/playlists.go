@@ -92,6 +92,9 @@ type Playlist struct {
 	Mosaic []PlaylistAlbum
 	// Holds is how many of the songs asked about it holds, each counted once.
 	Holds int
+	// File is where a file playlist ([PlaylistFromFile]) comes from; nil for
+	// any other.
+	File *PlaylistFile
 }
 
 // PlaylistAlbum is an album as a playlist shows it.
@@ -111,6 +114,9 @@ type PlaylistDetail struct {
 	Entries []PlaylistEntry
 	// Albums are every album of Entries, in the order they first appear.
 	Albums []PlaylistAlbum
+	// Missing are a file playlist's lines that found no song, in the file's
+	// order; nil for any other.
+	Missing []MissingLine
 }
 
 // PlaylistEntry is one place in a playlist.
@@ -181,32 +187,59 @@ func (s *Store) playlists(ctx context.Context, userID int64, holding []string, g
 	if err != nil {
 		return nil, fmt.Errorf("list: %w", err)
 	}
-	songs, err := q.ListPlaylistSongs(ctx, userID)
+	facts, err := playlistTallies(ctx, q, userID, holding)
 	if err != nil {
-		return nil, fmt.Errorf("songs: %w", err)
+		return nil, err
 	}
-	tallies := songTallies(songs, holding)
 	out := make([]Playlist, 0, len(rows))
 	listed := make([]int64, 0, len(rows))
 	for i := range rows {
 		r := &rows[i]
-		if r.Rules != nil && holding != nil {
+		if holding != nil && takesNoAdds(r) {
 			continue
 		}
-		p, listErr := e.listed(ctx, r, tallies)
+		p, listErr := e.listed(ctx, r, facts.tallies)
 		if listErr != nil {
 			return nil, listErr
 		}
+		p.File = facts.files[r.ID]
 		out, listed = append(out, p), append(listed, r.ID)
 	}
-	albums, err := mosaicAlbums(ctx, q, tallies)
+	albums, err := mosaicAlbums(ctx, q, facts.tallies)
 	if err != nil {
 		return nil, err
 	}
 	for i, row := range listed {
-		cmp.Or(tallies[row], newTally()).fill(&out[i], albums)
+		cmp.Or(facts.tallies[row], newTally()).fill(&out[i], albums)
 	}
 	return out, nil
+}
+
+// takesNoAdds reports whether nothing is added to the playlist r: it is smart,
+// or a file's.
+func takesNoAdds(r *sqlcdb.ListPlaylistsRow) bool {
+	return r.Rules != nil || r.Source == PlaylistFromFile
+}
+
+// listFacts is what a list of playlists reads beside them, by playlist row.
+type listFacts struct {
+	tallies map[int64]*tally
+	files   map[int64]*PlaylistFile
+}
+
+// playlistTallies reads and counts the songs of each regular or file playlist
+// the user sees, and which of them have the ULIDs holding, with every file
+// playlist's file.
+func playlistTallies(ctx context.Context, q *sqlcdb.Queries, userID int64, holding []string) (listFacts, error) {
+	songs, err := q.ListPlaylistSongs(ctx, userID)
+	if err != nil {
+		return listFacts{}, fmt.Errorf("songs: %w", err)
+	}
+	files, err := playlistFiles(ctx, q)
+	if err != nil {
+		return listFacts{}, err
+	}
+	return listFacts{tallies: songTallies(songs, holding), files: files}, nil
 }
 
 // songTallies counts the songs of each regular playlist, by row, and which of
@@ -358,7 +391,14 @@ func (s *Store) playlistDetail(ctx context.Context, userID int64, id string, gen
 		return PlaylistDetail{}, err
 	}
 	if rules == nil {
-		return regularDetail(ctx, q, userID, &row)
+		d, detailErr := regularDetail(ctx, q, userID, &row)
+		if detailErr != nil || row.Source != PlaylistFromFile {
+			return d, detailErr
+		}
+		if d.File, d.Missing, err = fileDetail(ctx, q, row.ID); err != nil {
+			return PlaylistDetail{}, err
+		}
+		return d, nil
 	}
 	d := PlaylistDetail{Playlist: playlistOf(row.Ulid, row.Name, row.Source, row.CreatedAt, row.UpdatedAt, row.AddedAt)}
 	d.Rules = rules
@@ -488,7 +528,20 @@ func (s *Store) playlistSummary(ctx context.Context, userID int64, id string, ge
 		return Playlist{}, err
 	}
 	t.fill(&p, albums)
+	if fileErr := fileOf(ctx, q, &row, &p); fileErr != nil {
+		return Playlist{}, fileErr
+	}
 	return p, nil
+}
+
+// fileOf fills in p.File when row is a file playlist.
+func fileOf(ctx context.Context, q *sqlcdb.Queries, row *sqlcdb.PlaylistRowRow, p *Playlist) error {
+	if row.Source != PlaylistFromFile {
+		return nil
+	}
+	var err error
+	p.File, _, err = fileDetail(ctx, q, row.ID)
+	return err
 }
 
 // CreatePlaylist makes a playlist of the user's named name, with the ULID
@@ -536,14 +589,19 @@ func (s *Store) RenamePlaylist(ctx context.Context, userID int64, id, name strin
 
 // DeletePlaylist deletes the user's playlist with its entries. It never touches
 // a song. It returns an error wrapping [ErrNotFound] for a playlist the user
-// doesn't have.
+// doesn't have, and [ErrFilePlaylist] for a file playlist.
 func (s *Store) DeletePlaylist(ctx context.Context, userID int64, id string) error {
-	n, err := s.wq.DeletePlaylist(ctx, sqlcdb.DeletePlaylistParams{UserID: userID, Ulid: id})
+	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+		if _, err := ownPlaylist(ctx, q, userID, id); err != nil {
+			return err
+		}
+		if _, err := q.DeletePlaylist(ctx, sqlcdb.DeletePlaylistParams{UserID: userID, Ulid: id}); err != nil {
+			return fmt.Errorf("delete: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("delete playlist %s: %w", id, err)
-	}
-	if n == 0 {
-		return fmt.Errorf("delete playlist %s: %w", id, ErrNotFound)
 	}
 	return nil
 }
@@ -571,22 +629,33 @@ func (s *Store) AddToPlaylist(ctx context.Context, userID int64, id string, add 
 	return added, nil
 }
 
-// ownPlaylist returns the row of the user's playlist id, or [ErrNotFound].
+// ownPlaylist returns the row of the user's playlist id, which the user may
+// change: [ErrNotFound] for one the user doesn't see, and [ErrFilePlaylist] for
+// one that belongs to its file.
 func ownPlaylist(ctx context.Context, q *sqlcdb.Queries, userID int64, id string) (int64, error) {
+	row, err := ownRow(ctx, q, userID, id)
+	return row.ID, err
+}
+
+// ownRow returns the user's playlist id, as [ownPlaylist] does.
+func ownRow(ctx context.Context, q *sqlcdb.Queries, userID int64, id string) (sqlcdb.PlaylistRowRow, error) {
 	row, err := q.PlaylistRow(ctx, sqlcdb.PlaylistRowParams{UserID: userID, Ulid: id})
 	if err != nil {
-		return 0, notFound(err)
+		return sqlcdb.PlaylistRowRow{}, notFound(err)
 	}
-	return row.ID, nil
+	if row.Source == PlaylistFromFile {
+		return sqlcdb.PlaylistRowRow{}, ErrFilePlaylist
+	}
+	return row, nil
 }
 
 // ownEntries returns the row of the user's regular playlist id, whose entries a
-// write changes: [ErrNotFound] for one the user doesn't have, and
-// [ErrSmartPlaylist] for a smart one.
+// write changes: [ErrNotFound] for one the user doesn't have, [ErrFilePlaylist]
+// for a file's and [ErrSmartPlaylist] for a smart one.
 func ownEntries(ctx context.Context, q *sqlcdb.Queries, userID int64, id string) (int64, error) {
-	row, err := q.PlaylistRow(ctx, sqlcdb.PlaylistRowParams{UserID: userID, Ulid: id})
+	row, err := ownRow(ctx, q, userID, id)
 	if err != nil {
-		return 0, notFound(err)
+		return 0, err
 	}
 	if row.Rules != nil {
 		return 0, ErrSmartPlaylist

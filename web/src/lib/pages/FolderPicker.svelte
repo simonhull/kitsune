@@ -8,9 +8,17 @@
 		open: boolean;
 		onadd: (path: string) => void;
 		onclose: () => void;
+		/**
+		 * Limits it to the library's folders: it opens on the first, only folders in them can be
+		 * chosen, and only those, or the way to them, can be opened. Choosing says `choose`.
+		 */
+		within?: readonly string[] | undefined;
+		/** Its heading, and the choose button's word, in place of Add a folder and Add. */
+		title?: string;
+		choose?: string;
 	}
 
-	let { open, onadd, onclose }: Props = $props();
+	let { open, onadd, onclose, within, title = 'Add a folder', choose = 'Add' }: Props = $props();
 
 	let dialog = $state<HTMLDialogElement | undefined>();
 	let listing = $state.raw<FolderListing | null>(null);
@@ -19,7 +27,12 @@
 	/** The last path asked for: an answer for an older one is dropped. */
 	let asked = '';
 
-	const addable = $derived(listing !== null && listing.kind === 'folder' && listing.path !== '/');
+	const addable = $derived(
+		listing !== null &&
+			(within === undefined
+				? listing.kind === 'folder' && listing.path !== '/'
+				: listing.kind === 'library' || listing.kind === 'inside')
+	);
 
 	async function go(path: string): Promise<void> {
 		asked = path;
@@ -47,13 +60,16 @@
 		}
 		if (open && !dialog.open) {
 			dialog.showModal();
-			void go('/');
+			void go(within?.[0] ?? '/');
 		} else if (!open && dialog.open) {
 			dialog.close();
 		}
 	});
 
 	function enterable(kind: FolderKind): boolean {
+		if (within !== undefined) {
+			return kind === 'library' || kind === 'inside' || kind === 'holds';
+		}
 		return kind !== 'data' && kind !== 'config';
 	}
 </script>
@@ -71,7 +87,7 @@
 	<div class="picker">
 		<div>
 			<p class="mono eyebrow">WHAT THE SERVER CAN SEE</p>
-			<h2 id="picker-title">Add a folder</h2>
+			<h2 id="picker-title">{title}</h2>
 		</div>
 
 		<nav aria-label="Path" class="crumbs">
@@ -122,7 +138,15 @@
 						<path class="tick" d="M5 12.5l4.5 4.5L19 7.5"></path>
 					</svg>
 				{/if}
-				<span>{trouble !== '' ? trouble : checkLine(listing)}</span>
+				<span
+					>{trouble !== ''
+						? trouble
+						: within === undefined
+							? checkLine(listing)
+							: addable
+								? `It goes in ${listing.path}.`
+								: 'Open one of the library’s folders.'}</span
+				>
 			</div>
 		{/if}
 
@@ -142,10 +166,10 @@
 				}}
 			>
 				{addable && listing !== null && listing.path.length <= 28
-					? `Add ${listing.path}`
+					? `${choose} ${listing.path}`
 					: addable
-						? 'Add this folder'
-						: 'Add'}
+						? `${choose} this folder`
+						: choose}
 			</button>
 		</div>
 	</div>

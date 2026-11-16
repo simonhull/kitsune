@@ -54,7 +54,10 @@ import {
 	type TracksEdit,
 	type PlaylistAdded,
 	type PlaylistDetail,
+	type PlaylistSaved,
 	type PlaylistSummary,
+	type ExistingFile,
+	PlaylistExistsError,
 	type SmartPreview,
 	type User
 } from './source.ts';
@@ -776,6 +779,31 @@ export function createApiSource({
 
 		copyPlaylist: (id) =>
 			read<PlaylistSummary>(`/me/playlists/${encodeURIComponent(id)}/copy`, { method: 'POST' }),
+
+		playlistFileUrl: (id) => `${base}/me/playlists/${encodeURIComponent(id)}/m3u`,
+
+		async savePlaylist(id, save) {
+			const response = await call(
+				`/admin/playlists/${encodeURIComponent(id)}/save`,
+				jsonBody('POST', save)
+			);
+			if (response.status === 401) {
+				onUnauthorized();
+				throw new UnauthorizedError();
+			}
+			if (response.status === 409) {
+				const problem = (await response.json().catch(() => null)) as {
+					exists?: ExistingFile;
+				} | null;
+				if (problem?.exists !== undefined) {
+					throw new PlaylistExistsError(problem.exists);
+				}
+			}
+			if (!response.ok) {
+				throw new ServerError(response.status);
+			}
+			return (await response.json()) as PlaylistSaved;
+		},
 
 		async changeSettings(change) {
 			const response = await call('/admin/settings', {

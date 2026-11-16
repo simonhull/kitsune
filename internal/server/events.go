@@ -148,6 +148,12 @@ func (e *LibraryEvents) LoudnessChanged(p library.LoudnessProgress) {
 	publishJSON(e.hub, events.Loudness, events.Admins(), &status, nil)
 }
 
+// PlaylistsChanged implements [library.Notifier]: everyone hears which file
+// playlists were read, read again or deleted, since everyone sees them.
+func (e *LibraryEvents) PlaylistsChanged(ids []string) {
+	publishJSON(e.hub, events.Playlists, events.Everyone(), &api.EventPlaylists{IDs: append([]string{}, ids...)}, nil)
+}
+
 // LastfmChanged returns what the scrobbler calls when a person's connection or
 // outbox changed: that person's devices hear it.
 func LastfmChanged(hub *events.Hub) func(userID int64) {

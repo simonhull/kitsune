@@ -72,20 +72,48 @@ func (s *Scanner) exclusiveDirs(ctx context.Context, root string, dirs []string)
 	if r.skipped {
 		return Stats{SkippedRoots: 1}, ErrRootUnavailable
 	}
-	defer s.refreshNames(ctx)
-	defer s.refreshGenres(ctx)
 	sv := &surveyed{Jobs: r.jobs, Mark: r.mark, Temps: r.temps, Seen: r.seen, IssueDeletes: map[string][]string{}}
 	if len(r.issueDeletes) > 0 {
 		sv.IssueDeletes[root] = r.issueDeletes
 	}
 	stats := Stats{Seen: sv.Seen}
+	defer s.refreshAfter(ctx, &stats)
 	if err = s.applySurvey(ctx, sv, &stats); err != nil {
 		return stats, fmt.Errorf("targeted scan: %w", err)
 	}
 	if _, err = s.read(ctx, sv.Jobs, &stats); err != nil {
 		return stats, fmt.Errorf("targeted scan: %w", err)
 	}
+	if err = s.targetedPlaylists(ctx, &r.playlists, &stats); err != nil {
+		return stats, fmt.Errorf("targeted scan: %w", err)
+	}
 	return stats, nil
+}
+
+// refreshAfter brings genres and search up to date after a targeted scan that
+// read a song or marked one missing; otherwise no song changed, and they are as
+// they were.
+func (s *Scanner) refreshAfter(ctx context.Context, stats *Stats) {
+	if stats.Read > 0 || stats.Missing > 0 {
+		s.refreshGenres(ctx)
+		s.refreshNames(ctx)
+	}
+}
+
+// targetedPlaylists reads the playlist files a targeted scan surveyed and,
+// when it added or moved songs, every file elsewhere with lines that found
+// none, since the new songs may be what they name.
+func (s *Scanner) targetedPlaylists(ctx context.Context, surveyed *playlistSurvey, stats *Stats) error {
+	playlists := []playlistSurvey{*surveyed}
+	changed := stats.Added+stats.Moved > 0
+	if changed {
+		waiting, err := s.waitingPlaylists(ctx, surveyed)
+		if err != nil {
+			return err
+		}
+		playlists = append(playlists, waiting...)
+	}
+	return s.readPlaylists(ctx, playlists, Quick, changed, stats)
 }
 
 // logTargeted logs how a targeted scan went.
@@ -145,6 +173,9 @@ func (s *Scanner) surveyDirs(ctx context.Context, root string, dirs []string) (r
 	if len(l.unreadable) > 0 {
 		s.log.WarnContext(ctx, "some library folders or files are unreadable; leaving their tracks alone",
 			"root", root, "paths", l.unreadable)
+	}
+	if r.playlists, err = s.surveyPlaylists(ctx, root, &l.walked, l.covers); err != nil {
+		return rootSurvey{}, err
 	}
 	return r, nil
 }
@@ -308,7 +339,10 @@ func knowsUnder(states map[string]store.FileState, rel string) bool {
 // holds the subfolder it was in.
 func (l *dirListing) diff(root string, states map[string]store.FileState, reader string) rootSurvey {
 	var r rootSurvey
-	seen := make(map[string]struct{}, len(l.files))
+	seen := make(map[string]struct{}, len(l.files)+len(l.playlists))
+	for i := range l.playlists { // A playlist file's scan issue stays while the file does.
+		seen[l.playlists[i].rel] = struct{}{}
+	}
 	for i := range l.files {
 		f := &l.files[i]
 		seen[f.rel] = struct{}{}

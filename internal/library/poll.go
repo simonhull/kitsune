@@ -155,7 +155,7 @@ func sign(sigs map[string]uint64, resolved, path string, d fs.DirEntry) error {
 		if rel != "." {
 			sigs[filepath.Dir(rel)] += nameHash(d.Name())
 		}
-	case IsAudio(d.Name()):
+	case IsAudio(d.Name()), IsPlaylistFile(d.Name()):
 		sigs[filepath.Dir(rel)] += entryHash(d)
 	}
 	return nil

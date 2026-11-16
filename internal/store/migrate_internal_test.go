@@ -1110,3 +1110,51 @@ func TestPlaylistsStartEmpty(t *testing.T) {
 		t.Errorf("after their person left, playlists and entries = %q, want none", got)
 	}
 }
+
+// TestFilePlaylistsRebuildKeepsPlaylists runs 0022 over a v21 library with a
+// regular and a smart playlist: both keep their rows, ULIDs and entries, the
+// smart one still refuses entries, and a playlist is a file's exactly when it
+// has no owner.
+func TestFilePlaylistsRebuildKeepsPlaylists(t *testing.T) {
+	t.Parallel()
+	steps := shippedSteps(t)
+	at := slices.IndexFunc(steps, func(m migration) bool { return m.name == "0022_file_playlists.sql" })
+	if at < 0 {
+		t.Fatal("0022_file_playlists.sql is not shipped")
+	}
+	d := newScratchDB(t)
+	d.mustSettle(t, steps[:at])
+	seedLibrary(t, d.w)
+	for _, q := range []string{
+		"INSERT INTO playlists (id, ulid, user_id, name, source, created_at, updated_at, added_at) VALUES (7, '01PLAYLIST0000000000000007', 1, 'Mine', 'kitsune', 1, 2, 3)",
+		`INSERT INTO playlists (id, ulid, user_id, name, source, created_at, updated_at, rules, seed) VALUES (9, '01PLAYLIST0000000000000009', 1, 'Smart', 'navidrome', 1, 1, '{"all":[]}', 42)`,
+		"INSERT INTO playlist_tracks (id, playlist_id, position, track_id, added_at) VALUES (5, 7, 65536, 2, 1), (6, 7, 131072, 1, 1)",
+	} {
+		if _, err := d.w.ExecContext(t.Context(), q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	facts := libraryFacts(t, d.w)
+	const playlists = "SELECT id, ulid, user_id, name, source, created_at, updated_at, coalesce(added_at, ''), coalesce(rules, ''), coalesce(seed, '') FROM playlists ORDER BY id"
+	before := rawRows(t, d.w, playlists)
+
+	d.mustSettle(t, steps[:at+1])
+
+	expectFacts(t, d.w, facts)
+	if got := rawRows(t, d.w, playlists); !slices.Equal(got, before) {
+		t.Errorf("playlists = %q, want %q", got, before)
+	}
+	if got := rawRows(t, d.w, "SELECT id, playlist_id, track_id, line IS NULL FROM playlist_tracks ORDER BY position"); !slices.Equal(got, []string{"5 7 2 1", "6 7 1 1"}) {
+		t.Errorf("entries = %q", got)
+	}
+	for q, ok := range map[string]bool{
+		"INSERT INTO playlist_tracks (playlist_id, position, track_id, added_at) VALUES (9, 1, 1, 1)":                                                   false,
+		"INSERT INTO playlists (ulid, user_id, name, source, created_at, updated_at) VALUES ('01PLAYLIST000000000000000A', 1, 'F', 'file', 1, 1)":       false,
+		"INSERT INTO playlists (ulid, user_id, name, source, created_at, updated_at) VALUES ('01PLAYLIST000000000000000B', NULL, 'K', 'kitsune', 1, 1)": false,
+		"INSERT INTO playlists (ulid, user_id, name, source, created_at, updated_at) VALUES ('01PLAYLIST000000000000000C', NULL, 'F', 'file', 1, 1)":    true,
+	} {
+		if _, err := d.w.ExecContext(t.Context(), q); (err == nil) != ok {
+			t.Errorf("%s: err = %v, want it to succeed: %t", q, err, ok)
+		}
+	}
+}

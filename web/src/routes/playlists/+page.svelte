@@ -3,6 +3,9 @@
 	name and size, and a dashed card that turns into a name field in place to make a new one. A smart
 	playlist's card wears the SMART stamp; after New playlist, a fox-dashed card opens the rules
 	editor on a fresh draft, which makes nothing until it's saved.
+
+	Below a hairline, From files: the playlists read from .m3u files in the library, which everyone
+	on the server sees, each with its dog-ear and paper tag.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -10,11 +13,16 @@
 	import Icon from '#lib/shell/Icon.svelte';
 	import Mosaic from '#lib/pages/Mosaic.svelte';
 	import SmartStamp from '#lib/pages/SmartStamp.svelte';
+	import FileTag from '#lib/pages/FileTag.svelte';
+	import { countWithFiles, fileCardLine } from '#lib/pages/fileWords.ts';
+	import type { PlaylistSummary } from '#lib/library/source.ts';
 	import { playlistActions } from '#lib/pages/playlistActions.svelte.ts';
-	import { cardLine, countLine, newPlaylistName } from '#lib/pages/playlistWords.ts';
+	import { cardLine, newPlaylistName } from '#lib/pages/playlistWords.ts';
 
 	const lists = $derived(library.playlists.list);
 	const all = $derived(library.playlists.all);
+	const own = $derived(all.filter(({ source }) => source !== 'file'));
+	const files = $derived(all.filter(({ source }) => source === 'file'));
 	const smartCount = $derived(all.filter(({ smart }) => smart).length);
 
 	let naming = $state(false);
@@ -54,7 +62,7 @@
 	<div class="intro">
 		<h1>Playlists<span class="dot" aria-hidden="true">.</span></h1>
 		{#if lists.kind === 'ready'}
-			<p class="facts">{countLine(all.length, smartCount)}</p>
+			<p class="facts">{countWithFiles(all.length, smartCount, files.length)}</p>
 		{/if}
 	</div>
 
@@ -65,26 +73,8 @@
 		</p>
 	{:else}
 		<div class="grid">
-			{#each all as p (p.id)}
-				{@const pending = p.id.startsWith('pending:')}
-				<a
-					class="card"
-					href={pending ? undefined : resolve('/playlists/[id]', { id: p.id })}
-					aria-disabled={pending ? 'true' : undefined}
-					onpointerenter={() => {
-						early(p.id);
-					}}
-					onfocus={() => {
-						early(p.id);
-					}}
-				>
-					<span class="cover"
-						><Mosaic albums={p.mosaic} radius="var(--radius-24)" />{#if p.smart}<SmartStamp
-							/>{/if}</span
-					>
-					<span class="name">{p.name}</span>
-					<span class="line">{cardLine(p)}</span>
-				</a>
+			{#each own as p (p.id)}
+				{@render card(p)}
 			{/each}
 			<div class="new">
 				{#if naming}
@@ -145,8 +135,50 @@
 				>
 			</a>
 		</div>
+		{#if files.length > 0}
+			<section class="files" aria-labelledby="from-files">
+				<div class="files-head">
+					<h2 id="from-files">From files</h2>
+					<span class="files-note"
+						>.M3U IN THE LIBRARY · EVERYONE ON THIS SERVER SEES THESE · EDIT THE FILE TO CHANGE ONE</span
+					>
+				</div>
+				<div class="grid">
+					{#each files as p (p.id)}
+						{@render card(p)}
+					{/each}
+				</div>
+			</section>
+		{/if}
 	{/if}
 </div>
+
+{#snippet card(p: PlaylistSummary)}
+	{@const pending = p.id.startsWith('pending:')}
+	{@const filed = p.source === 'file' ? fileCardLine(p) : null}
+	<a
+		class="card"
+		href={pending ? undefined : resolve('/playlists/[id]', { id: p.id })}
+		aria-disabled={pending ? 'true' : undefined}
+		onpointerenter={() => {
+			early(p.id);
+		}}
+		onfocus={() => {
+			early(p.id);
+		}}
+	>
+		<span class="cover"
+			><Mosaic albums={p.mosaic} radius="var(--radius-24)" />{#if p.smart}<SmartStamp
+				/>{:else if p.file !== undefined}<FileTag format={p.file.format} />{/if}</span
+		>
+		<span class="name">{p.name}</span>
+		{#if filed === null}
+			<span class="line">{cardLine(p)}</span>
+		{:else}
+			<span class="line">{filed[0]}<span class="lost">{filed[1]}</span></span>
+		{/if}
+	</a>
+{/snippet}
 
 <style>
 	.playlists {
@@ -247,6 +279,38 @@
 		gap: 10px;
 		color: inherit;
 		text-decoration: none;
+	}
+
+	.files {
+		display: flex;
+		flex-direction: column;
+		gap: calc(16px * var(--step));
+		padding-top: calc(18px * var(--step));
+		border-top: 1px solid var(--edge);
+	}
+
+	.files-head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 6px 14px;
+	}
+
+	h2 {
+		font-size: calc(22px * var(--step));
+		font-weight: 800;
+		letter-spacing: -0.03em;
+	}
+
+	.files-note {
+		font-family: var(--font-mono);
+		font-size: calc(11px * var(--step));
+		letter-spacing: 0.08em;
+		color: var(--text-meta);
+	}
+
+	.lost {
+		color: var(--fox-text);
 	}
 
 	.card[aria-disabled='true'] {

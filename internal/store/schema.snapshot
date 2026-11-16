@@ -279,13 +279,39 @@ CREATE TABLE playback (
 --   column cid=10 name=updated_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   foreign key id=0 seq=0 table=users from=user_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 
+-- table playlist_files
+CREATE TABLE playlist_files (
+	playlist_id INTEGER PRIMARY KEY REFERENCES playlists (id) ON DELETE CASCADE,
+	root        TEXT    NOT NULL,
+	rel_path    TEXT    NOT NULL,
+	size        INTEGER NOT NULL,
+	mtime_ms    INTEGER NOT NULL,
+	read_at     INTEGER NOT NULL,
+	reader      INTEGER NOT NULL,
+	lines       INTEGER NOT NULL,
+	past_limit  INTEGER NOT NULL,
+	missing     TEXT    NOT NULL CHECK (json_valid(missing)),
+	UNIQUE (root, rel_path)
+) STRICT;
+--   column cid=0 name=playlist_id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=root type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=rel_path type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=size type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=mtime_ms type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=read_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=reader type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=lines type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=8 name=past_limit type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=9 name=missing type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=playlists from=playlist_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
+
 -- table playlist_tracks
 CREATE TABLE playlist_tracks (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	playlist_id INTEGER NOT NULL REFERENCES playlists (id) ON DELETE CASCADE,
 	position    INTEGER NOT NULL,
 	track_id    INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
-	added_at    INTEGER NOT NULL,
+	added_at    INTEGER NOT NULL, line TEXT,
 	UNIQUE (playlist_id, position)
 ) STRICT;
 --   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
@@ -293,6 +319,7 @@ CREATE TABLE playlist_tracks (
 --   column cid=2 name=position type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=3 name=track_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=4 name=added_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=line type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
 --   foreign key id=0 seq=0 table=tracks from=track_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 --   foreign key id=1 seq=0 table=playlists from=playlist_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 
@@ -313,18 +340,21 @@ CREATE INDEX playlist_tracks_track ON playlist_tracks (track_id);
 CREATE TABLE playlists (
 	id         INTEGER PRIMARY KEY,
 	ulid       TEXT    NOT NULL UNIQUE CHECK (length(ulid) = 26),
-	user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+	user_id    INTEGER REFERENCES users (id) ON DELETE CASCADE,
 	name       TEXT    NOT NULL CHECK (length(name) BETWEEN 1 AND 200), -- not unique
-	source     TEXT    NOT NULL CHECK (source IN ('kitsune', 'navidrome')),
+	source     TEXT    NOT NULL CHECK (source IN ('kitsune', 'navidrome', 'file')),
 	import_key TEXT,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL,
-	added_at   INTEGER, rules TEXT CHECK (rules IS NULL OR json_valid(rules)), seed INTEGER,
-	UNIQUE (user_id, import_key)
+	added_at   INTEGER,
+	rules      TEXT CHECK (rules IS NULL OR json_valid(rules)),
+	seed       INTEGER,
+	UNIQUE (user_id, import_key),
+	CHECK ((source = 'file') = (user_id IS NULL))
 ) STRICT;
 --   column cid=0 name=id type=INTEGER notnull=0 dflt_value=<nil> pk=1 hidden=0
 --   column cid=1 name=ulid type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
---   column cid=2 name=user_id type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=user_id type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
 --   column cid=3 name=name type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=4 name=source type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=5 name=import_key type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0

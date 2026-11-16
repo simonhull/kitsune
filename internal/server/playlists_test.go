@@ -235,6 +235,8 @@ func TestPlaylistsNeedCredentials(t *testing.T) {
 		{method: http.MethodPost, path: playlistPath("x", "tracks"), body: tracksBody("t"), header: h},
 		{method: http.MethodDelete, path: playlistPath("x", "entries"), body: `{"entries":["1"]}`, header: h},
 		{method: http.MethodPost, path: playlistPath("x", "move"), body: `{"entry":"1","after":"2"}`, header: h},
+		{method: http.MethodGet, path: playlistPath("x", "m3u"), header: bearer("nope")},
+		{method: http.MethodPost, path: savePath + "x/save", body: `{"root":"/r","folder":"","name":"n"}`, header: h},
 	} {
 		ts.send(t, c).problem(t, http.StatusUnauthorized)
 	}

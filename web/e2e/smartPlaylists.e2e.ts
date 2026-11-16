@@ -21,7 +21,7 @@ test('a smart card wears its stamp, and New smart playlist makes one from a rule
 	page
 }) => {
 	await page.goto(fixtures('/playlists'));
-	await expect(page.getByText('3 PLAYLISTS · 1 SMART · YOURS ALONE')).toBeVisible();
+	await expect(page.getByText('5 PLAYLISTS · 1 SMART · 2 FROM FILES')).toBeVisible();
 	const card = page.getByRole('link', { name: /Rested and rated/ });
 	await expect(card).toContainText('SMART');
 	await expect(card).toContainText(/3 SONGS · \d+ MIN · LIVE/);
@@ -52,7 +52,7 @@ test('Leave it on a new smart playlist makes nothing', async ({ page }) => {
 	await page.getByRole('button', { name: 'Leave it' }).click();
 	await expect(page).toHaveURL(/\/playlists(\?|$)/);
 	// Once the editor's page has gone: a page leaving stays a moment as the next arrives.
-	await expect(page.getByText('3 PLAYLISTS · 1 SMART · YOURS ALONE')).toHaveCount(1);
+	await expect(page.getByText('5 PLAYLISTS · 1 SMART · 2 FROM FILES')).toHaveCount(1);
 });
 
 test('Edit rules: a star moves the count, a group comes and goes, and Esc leaves it unchanged', async ({
