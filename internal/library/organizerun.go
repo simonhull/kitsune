@@ -99,6 +99,8 @@ type organizeTask struct {
 	total            int
 	rewritePlaylists bool
 
+	release func() // Gives the claim back, once.
+
 	stop     atomic.Bool
 	mu       sync.Mutex
 	progress OrganizeProgress
@@ -228,7 +230,8 @@ func (s *Scanner) startTask(ctx context.Context, t *organizeTask, start *store.O
 	s.organizing.Store(t)
 	s.notifyOrganize(t, true)
 	return OrganizeRun{ID: ulid}, func(ctx context.Context) {
-		defer release()
+		t.release = sync.OnceFunc(release)
+		defer t.release()
 		s.runTask(ctx, t)
 	}, nil
 }
@@ -362,6 +365,10 @@ func (s *Scanner) finishTask(ctx context.Context, t *organizeTask, state string,
 	if t.rewritePlaylists && len(t.moved) > 0 {
 		s.rewritePlaylists(ctx, t)
 	}
+	// Stop is refused from here on: the run is no longer the one going.
+	t.update(func(p *OrganizeProgress) { p.State, p.Album = state, "" })
+	s.organizing.CompareAndSwap(t, nil)
+	t.release() // The library is whole: a scan or the next run may go.
 	if err := s.st.FinishOrganizeRun(ctx, t.id, state, len(t.folders), s.now()); err != nil {
 		s.log.ErrorContext(ctx, "recording the end of an organize run failed", "run", t.ulid, "err", err)
 	}
@@ -371,8 +378,6 @@ func (s *Scanner) finishTask(ctx context.Context, t *organizeTask, state string,
 	if _, err := s.st.PruneOrganizeRuns(ctx, organizeKeep, s.now().Add(-organizeKeepFor)); err != nil {
 		s.log.WarnContext(ctx, "pruning old organize runs failed", "err", err)
 	}
-	t.update(func(p *OrganizeProgress) { p.State, p.Album = state, "" })
-	s.organizing.CompareAndSwap(t, nil)
 	s.notifyOrganize(t, true)
 	s.notifyLibrary(true)
 	p := t.snapshot()

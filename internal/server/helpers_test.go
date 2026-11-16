@@ -166,6 +166,12 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 			return nil
 		}
 	}
+	var runs sync.WaitGroup
+	tb.Cleanup(runs.Wait) // Before the store closes.
+	work := func(fn func(context.Context)) error {
+		runs.Go(func() { fn(context.WithoutCancel(tb.Context())) })
+		return nil
+	}
 	logs := &syncBuffer{}
 	logger := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: o.LogLevel}))
 	var sender *scrobbler.Scrobbler
@@ -211,6 +217,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		SetupCode:     o.SetupCode,
 		FolderRoot:    o.FolderRoot,
 		DataDir:       o.DataDir,
+		Work:          work,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)

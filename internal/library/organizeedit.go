@@ -189,3 +189,10 @@ func (s *Scanner) runEdited(ctx context.Context, p *OrganizePreview) {
 		}
 	}
 }
+
+// OrganizeTarget returns where the saved templates file song: a
+// slash-separated path under its root. Its errors are [organize.ErrNoName]
+// and [organize.ErrTooLong].
+func (s *Scanner) OrganizeTarget(song *store.OrganizeSong) (string, error) {
+	return s.Organize().target(song, firstOf(s.genres.Of(song.Album)))
+}

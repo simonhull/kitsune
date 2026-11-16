@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/simonhull/kitsune/internal/library"
+	"github.com/simonhull/kitsune/internal/organize"
 	"github.com/simonhull/kitsune/internal/settings"
 )
 
@@ -15,6 +18,7 @@ type ownerChanges struct {
 	lastfm   <-chan struct{} // The key and secret: the Last.fm client's.
 	schedule <-chan struct{} // The quick scan's time.
 	level    <-chan struct{} // The log level.
+	organize <-chan struct{} // The organizer's templates and switches.
 }
 
 // subscribe subscribes every owner to its keys in live.
@@ -24,6 +28,8 @@ func subscribe(live *settings.Service) ownerChanges {
 		lastfm:   live.Subscribe(settings.LastfmAPIKey, settings.LastfmSharedSecret),
 		schedule: live.Subscribe(settings.LibraryQuickScan),
 		level:    live.Subscribe(settings.LogLevel),
+		organize: live.Subscribe(settings.OrganizeTemplate, settings.OrganizeCompilations, settings.OrganizeRoots,
+			settings.OrganizeOnEdit, settings.OrganizeCompanions, settings.OrganizeRewritePlaylists),
 	}
 }
 
@@ -66,6 +72,8 @@ func (a *app) followRest(ctx context.Context) {
 			t := a.live.Snapshot().QuickScan
 			a.scanner.SetDaily(library.Daily{Hour: t.Hour, Minute: t.Minute})
 			a.log.InfoContext(ctx, "quick scan rescheduled", "at", t.String())
+		case <-a.changes.organize:
+			a.applyOrganize(ctx)
 		case <-a.changes.level:
 			if a.level != nil {
 				level := a.live.Snapshot().LogLevel
@@ -74,6 +82,43 @@ func (a *app) followRest(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// applyOrganize gives the scanner the organizer's settings. They passed their
+// rules when they were stored, so a template that doesn't parse can't happen;
+// should one, it is logged and the defaults stand.
+func (a *app) applyOrganize(ctx context.Context) {
+	c, err := organizeConfig(a.live.Snapshot())
+	if err != nil {
+		a.log.ErrorContext(ctx, "a stored organize template doesn't parse; the defaults stand", "err", err)
+		return
+	}
+	a.scanner.SetOrganize(&c)
+}
+
+// organizeConfig is the organizer's configuration in snap.
+func organizeConfig(snap *settings.Snapshot) (library.OrganizeConfig, error) {
+	c := library.DefaultOrganize()
+	c.Companions, c.OnEdit, c.RewritePlaylists = snap.OrganizeCompanions, snap.OrganizeOnEdit, snap.OrganizeRewritePlaylists
+	main, err := organize.Parse(snap.OrganizeTemplate)
+	if err != nil {
+		return c, fmt.Errorf("organize.template: %w", err)
+	}
+	comp, err := organize.Parse(snap.OrganizeCompilations)
+	if err != nil {
+		return c, fmt.Errorf("organize.compilations: %w", err)
+	}
+	c.Template, c.Compilations = main, comp
+	c.Roots = make(map[string]organize.Templates, len(snap.OrganizeRoots))
+	for root, ts := range snap.OrganizeRoots {
+		rootMain, mainErr := organize.Parse(ts.Template)
+		rootComp, compErr := organize.Parse(ts.Compilations)
+		if err = errors.Join(mainErr, compErr); err != nil {
+			return c, fmt.Errorf("organize.roots: %w", err)
+		}
+		c.Roots[root] = organize.Templates{Template: rootMain, Compilations: rootComp}
+	}
+	return c, nil
 }
 
 // applyLastfm gives the sender a client for the live key and secret, or none

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/simonhull/kitsune/internal/rating"
 	"github.com/simonhull/kitsune/internal/store/sqlcdb"
 )
 
@@ -200,7 +201,8 @@ type OrganizeClaimant struct {
 	Duration       time.Duration
 	AddedAt        time.Time
 	Digest         *[32]byte
-	Plays, Halves  int // The person's own.
+	Plays          int           // The person's own.
+	Stars          rating.Rating // The person's own; zero for none.
 }
 
 // OrganizeClaimants returns the tracks ids, with the plays and stars of the
@@ -217,7 +219,10 @@ func (s *Store) OrganizeClaimants(ctx context.Context, userID int64, ids []int64
 			ID: r.ID, ULID: r.Ulid, Title: r.Title, Album: r.Album, AlbumID: r.AlbumUlid, Artist: r.Artist,
 			Root: r.Root, RelPath: r.RelPath, Format: r.Format, Bitrate: intOr0(r.Bitrate),
 			Duration: time.Duration(r.DurationMs) * time.Millisecond, AddedAt: fromMS(r.AddedAt),
-			Plays: int(r.Plays), Halves: int(r.Halves),
+			Plays: int(r.Plays),
+		}
+		if r.Halves > 0 {
+			c.Stars, _ = rating.FromHalves(r.Halves) // A stored rating is a valid one.
 		}
 		if len(r.AudioDigest) == len(c.Digest) {
 			d := [32]byte(r.AudioDigest)
