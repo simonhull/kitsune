@@ -7,6 +7,11 @@
 	Shuffle, and its songs in the order the rules give, with nothing to drag or take out. Edit rules
 	opens the rules editor in place of the head and the songs, with a history entry of its own: Back
 	and Esc leave it, and its draft goes with it.
+
+	A file playlist's page reads like a smart one's: the name is a plain heading, since renaming is the
+	file's, and under it the FROM line names the file and when it was read, with a pill that opens the
+	lines that found no song. Copy to a playlist makes it the person's own. Export .m3u, on any
+	playlist's ⋯, opens in place of the buttons.
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
@@ -20,6 +25,16 @@
 	import { editorHistory } from '#lib/pages/editorHistory.svelte.ts';
 	import SmartEditor from '#lib/pages/SmartEditor.svelte';
 	import SmartStamp from '#lib/pages/SmartStamp.svelte';
+	import FileTag from '#lib/pages/FileTag.svelte';
+	import MissingLines from '#lib/pages/MissingLines.svelte';
+	import PlaylistExport from '#lib/pages/PlaylistExport.svelte';
+	import {
+		fileHeadLine,
+		fileMenuNote,
+		filePhoneHeadLine,
+		notFoundPill,
+		readWords
+	} from '#lib/pages/fileWords.ts';
 	import { LivePreview, SmartDraft } from '#lib/pages/smartRules.svelte.ts';
 	import { phoneSentence, sentence, sentenceLead } from '#lib/library/smartlist.ts';
 	import { player } from '#lib/player/player.svelte.ts';
@@ -39,6 +54,14 @@
 	let windowWidth = $state(1280);
 	const phone = $derived(windowWidth < 700);
 	const smart = $derived(known?.smart === true);
+	/** Where a file playlist comes from; undefined for any other. */
+	const file = $derived(known?.file);
+	const lost = $derived(file?.notFound ?? 0);
+	/** Whether the lines that found no song are open, under the head. */
+	let missingOpen = $state(false);
+	/** Whether Export is open, in place of the buttons. */
+	let exporting = $state(false);
+	const now = Date.now();
 	const rules = $derived(known?.rules);
 	/** A Playlist rule's playlist, by name: undefined when it's gone. */
 	const nameOf = (other: string): string | undefined => library.playlists.summary(other)?.name;
@@ -196,46 +219,81 @@
 			<a href={resolve('/playlists')}>All playlists</a>
 		</p>
 	{:else}
-		<div class="hero">
+		<div class="hero" class:exporting>
 			<span class="mosaic">
 				<Mosaic
 					albums={known?.mosaic ?? []}
 					size={phone ? 112 : 200}
 					radius={phone ? 'var(--radius-16)' : 'var(--radius-24)'}
 				/>
-				{#if smart}<SmartStamp size={phone ? 'phone' : 'page'} />{/if}
+				{#if smart}<SmartStamp
+						size={phone ? 'phone' : 'page'}
+					/>{:else if file !== undefined}<FileTag
+						format={file.format}
+						size={phone ? 'phone' : 'page'}
+					/>{/if}
 			</span>
 			<div class="words">
 				<span class="facts"
-					>{known === undefined ? 'PLAYLIST' : phone ? phoneHeadLine(known) : headLine(known)}</span
+					>{known === undefined
+						? 'PLAYLIST'
+						: file !== undefined
+							? phone
+								? filePhoneHeadLine(known)
+								: fileHeadLine(known)
+							: phone
+								? phoneHeadLine(known)
+								: headLine(known)}</span
 				>
-				<input
-					class="name"
-					bind:this={nameField}
-					value={name}
-					aria-label="Playlist name"
-					maxlength="200"
-					autocomplete="off"
-					spellcheck="false"
-					oninput={(event) => {
-						typing = event.currentTarget.value;
-					}}
-					onfocus={() => {
-						typing ??= known?.name ?? '';
-					}}
-					onblur={saveName}
-					onkeydown={(event) => {
-						if (event.key === 'Enter') {
-							event.preventDefault();
-							nameField?.blur();
-						} else if (event.key === 'Escape') {
-							event.preventDefault();
-							event.stopPropagation();
-							typing = null;
-							nameField?.blur();
-						}
-					}}
-				/>
+				{#if file !== undefined}
+					<h1 class="name plain">{known?.name}</h1>
+					<div class="from">
+						<span class="from-words"
+							>FROM <span class="path">{file.path}</span
+							>{#if !phone}{` · ${readWords(file.readAt, now)}`}{/if}</span
+						>
+						{#if lost > 0}
+							<button
+								type="button"
+								class={['pill', missingOpen && 'open']}
+								aria-expanded={missingOpen}
+								onclick={() => {
+									missingOpen = !missingOpen;
+								}}
+								>{notFoundPill(lost, phone)}<span aria-hidden="true">{missingOpen ? '▴' : '›'}</span
+								></button
+							>
+						{/if}
+					</div>
+				{:else}
+					<input
+						class="name"
+						bind:this={nameField}
+						value={name}
+						aria-label="Playlist name"
+						maxlength="200"
+						autocomplete="off"
+						spellcheck="false"
+						oninput={(event) => {
+							typing = event.currentTarget.value;
+						}}
+						onfocus={() => {
+							typing ??= known?.name ?? '';
+						}}
+						onblur={saveName}
+						onkeydown={(event) => {
+							if (event.key === 'Enter') {
+								event.preventDefault();
+								nameField?.blur();
+							} else if (event.key === 'Escape') {
+								event.preventDefault();
+								event.stopPropagation();
+								typing = null;
+								nameField?.blur();
+							}
+						}}
+					/>
+				{/if}
 				{#if smart && rules !== undefined}
 					{#if phone}
 						<button type="button" class="sentence-phone" onclick={editRules}
@@ -252,7 +310,17 @@
 						</p>
 					{/if}
 				{/if}
-				{#if confirming}
+				{#if exporting && known !== undefined}
+					<div class="export-slot">
+						<PlaylistExport
+							playlist={known}
+							{phone}
+							onleave={() => {
+								exporting = false;
+							}}
+						/>
+					</div>
+				{:else if confirming}
 					<span class="confirm" role="group" aria-label="Delete the playlist">
 						<span class="confirm-words">Delete {known?.name}? Its songs stay in your library.</span>
 						<span class="buttons">
@@ -301,6 +369,24 @@
 								><Icon name="rules" size={15} />Edit rules</button
 							>
 						{/if}
+						{#if file !== undefined && !phone}
+							<button type="button" class="edit" onclick={() => void copy()}
+								><svg
+									width="15"
+									height="15"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+									><rect x="8" y="8" width="12" height="12" rx="2"></rect><path
+										d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"
+									></path></svg
+								>Copy to a playlist</button
+							>
+						{/if}
 						<button
 							type="button"
 							class="more"
@@ -324,8 +410,19 @@
 			</div>
 		</div>
 
+		{#if missingOpen && file !== undefined}
+			<MissingLines
+				lines={playlist?.missing ?? []}
+				pastLimit={file.pastLimit}
+				found={known?.songCount ?? 0}
+				{phone}
+				onhide={() => {
+					missingOpen = false;
+				}}
+			/>
+		{/if}
 		{#if playlist !== undefined}
-			<PlaylistSongs {playlist} onplay={playFrom} smartRules={rules} />
+			<PlaylistSongs {playlist} onplay={playFrom} smartRules={rules} file={file !== undefined} />
 		{:else if load.kind === 'unavailable'}
 			<p class="note" role="status">
 				Its songs couldn't be loaded.
@@ -342,35 +439,12 @@
 		x={menu.x}
 		y={menu.y}
 		label={known?.name ?? 'Playlist'}
-		width={240}
+		width={file === undefined ? 240 : 280}
 		onclose={() => {
 			menu = null;
 		}}
 	>
-		<button
-			type="button"
-			role="menuitem"
-			class="item"
-			data-menu-item
-			onclick={() => {
-				menu = null;
-				requestAnimationFrame(() => {
-					nameField?.focus();
-					nameField?.select();
-				});
-			}}>Rename</button
-		>
-		{#if smart}
-			<button
-				type="button"
-				role="menuitem"
-				class="item"
-				data-menu-item
-				onclick={() => {
-					menu = null;
-					editRules();
-				}}>Edit rules</button
-			>
+		{#if file !== undefined}
 			<button
 				type="button"
 				role="menuitem"
@@ -379,9 +453,21 @@
 				onclick={() => {
 					menu = null;
 					void copy();
-				}}>Copy to a playlist</button
+				}}>Copy to a playlist <span class="hint">MAKE IT YOURS</span></button
 			>
-			{#if random}
+			<button
+				type="button"
+				role="menuitem"
+				class="item"
+				data-menu-item
+				onclick={() => {
+					menu = null;
+					confirming = false;
+					missingOpen = false;
+					exporting = true;
+				}}>Export .m3u</button
+			>
+			{#if lost > 0}
 				<button
 					type="button"
 					role="menuitem"
@@ -389,25 +475,82 @@
 					data-menu-item
 					onclick={() => {
 						menu = null;
-						void library.playlists.reseed(id).catch(() => undefined);
-					}}>Pick again</button
+						missingOpen = true;
+					}}>Show what’s not found <span class="hint">{lost}</span></button
 				>
 			{/if}
+			<p class="menu-note">{fileMenuNote}</p>
+		{:else}
+			<button
+				type="button"
+				role="menuitem"
+				class="item"
+				data-menu-item
+				onclick={() => {
+					menu = null;
+					requestAnimationFrame(() => {
+						nameField?.focus();
+						nameField?.select();
+					});
+				}}>Rename</button
+			>
+			{#if smart}
+				<button
+					type="button"
+					role="menuitem"
+					class="item"
+					data-menu-item
+					onclick={() => {
+						menu = null;
+						editRules();
+					}}>Edit rules</button
+				>
+				<button
+					type="button"
+					role="menuitem"
+					class="item"
+					data-menu-item
+					onclick={() => {
+						menu = null;
+						void copy();
+					}}>Copy to a playlist</button
+				>
+				{#if random}
+					<button
+						type="button"
+						role="menuitem"
+						class="item"
+						data-menu-item
+						onclick={() => {
+							menu = null;
+							void library.playlists.reseed(id).catch(() => undefined);
+						}}>Pick again</button
+					>
+				{/if}
+			{/if}
+			<button
+				type="button"
+				role="menuitem"
+				class="item"
+				data-menu-item
+				onclick={() => {
+					menu = null;
+					confirming = false;
+					exporting = true;
+				}}>Export .m3u</button
+			>
+			<div class="rule"></div>
+			<button
+				type="button"
+				role="menuitem"
+				class="item danger"
+				data-menu-item
+				onclick={() => {
+					menu = null;
+					confirming = true;
+				}}><Icon name="trash" size={16} />Delete playlist</button
+			>
 		{/if}
-		<button type="button" role="menuitem" class="item quiet" data-menu-item disabled
-			>Export .m3u <span class="soon">SOON</span></button
-		>
-		<div class="rule"></div>
-		<button
-			type="button"
-			role="menuitem"
-			class="item danger"
-			data-menu-item
-			onclick={() => {
-				menu = null;
-				confirming = true;
-			}}><Icon name="trash" size={16} />Delete playlist</button
-		>
 	</Floating>
 {/if}
 
@@ -668,15 +811,77 @@
 		opacity: 0.6;
 	}
 
-	.quiet {
-		color: var(--text-secondary);
+	.hero.exporting {
+		align-items: flex-start;
 	}
 
-	.soon {
+	.hint {
 		margin-left: auto;
+		white-space: nowrap;
 		font-family: var(--font-mono);
-		font-size: 11px;
+		font-size: 10px;
+		letter-spacing: 0.08em;
 		color: var(--text-meta);
+	}
+
+	.menu-note {
+		margin: 4px 6px 2px;
+		padding: 8px 6px 4px;
+		border-top: 1px solid var(--edge);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		letter-spacing: 0.06em;
+		line-height: 1.5;
+		color: var(--text-meta);
+	}
+
+	.plain {
+		overflow: hidden;
+		white-space: nowrap;
+		line-height: 0.95;
+	}
+
+	.plain:hover {
+		border-bottom-color: transparent;
+	}
+
+	.from {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+		font-family: var(--font-mono);
+		font-size: calc(12px * var(--step));
+		letter-spacing: 0.04em;
+		color: var(--text-meta);
+	}
+
+	.from-words {
+		min-width: 0;
+	}
+
+	.path {
+		color: var(--text);
+	}
+
+	.pill {
+		height: calc(28px * var(--step));
+		padding: 0 calc(12px * var(--step));
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		border: 1.5px dashed color-mix(in srgb, var(--fox-line) 55%, transparent);
+		border-radius: var(--radius-pill);
+		background: transparent;
+		color: var(--fox-text);
+		font: 700 calc(11px * var(--step)) var(--font-mono);
+		letter-spacing: 0.08em;
+		transition: background-color 160ms var(--curve-morph);
+	}
+
+	.pill:hover,
+	.pill.open {
+		background: color-mix(in srgb, var(--fox) 12%, transparent);
 	}
 
 	.danger {
@@ -723,8 +928,39 @@
 			letter-spacing: -0.05em;
 		}
 
+		.name.plain {
+			font-size: 32px;
+			line-height: 1;
+			white-space: normal;
+		}
+
+		/* One line: the path, cut short, and the pill. */
+		.from {
+			grid-column: 1 / -1;
+			grid-row: 3;
+			flex-wrap: nowrap;
+			margin-top: 6px;
+			font-size: 10px;
+		}
+
+		.from-words {
+			flex: 1;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.pill {
+			flex: none;
+			height: 32px;
+			padding: 0 10px;
+			font-size: 10px;
+			letter-spacing: 0.06em;
+		}
+
 		.buttons,
-		.confirm {
+		.confirm,
+		.export-slot {
 			grid-column: 1 / -1;
 			grid-row: 4;
 			margin-top: 12px;

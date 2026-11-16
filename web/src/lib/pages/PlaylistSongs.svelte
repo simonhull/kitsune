@@ -8,6 +8,7 @@
 
 	A smart playlist's songs come in the order its rules give: no grip, no Alt with an arrow, no Del
 	and no Take out of playlist, and after the album the columns its rules read, headed in the fox.
+	A file playlist's songs are the file's, in its order: nothing moves or comes out either.
 -->
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
@@ -23,6 +24,7 @@
 	} from '#lib/library/source.ts';
 	import { ruleColumns } from '#lib/library/smartlist.ts';
 	import { smartFoot } from './playlistWords.ts';
+	import { fileFoot } from './fileWords.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import { rowWindow } from './artistSongs.ts';
 	import type { RowWindow } from './libraryRows.ts';
@@ -58,11 +60,14 @@
 		onplay: (entryId: string) => void;
 		/** A smart playlist's rules: its order is theirs, so nothing moves or comes out. */
 		smartRules?: SmartRules | undefined;
+		/** A file playlist's: its order is the file's, so nothing moves or comes out. */
+		file?: boolean;
 	}
 
-	let { playlist, onplay, smartRules }: Props = $props();
+	let { playlist, onplay, smartRules, file = false }: Props = $props();
 
-	const smart = $derived(smartRules !== undefined);
+	/** Its order isn't the person's to change: a smart or a file playlist's. */
+	const smart = $derived(smartRules !== undefined || file);
 	const rulesRead = $derived(smartRules === undefined ? [] : ruleColumns(smartRules));
 
 	/** How long a finger holds the grip before the song comes up to be moved. */
@@ -431,9 +436,11 @@
 	{/if}
 	{#if entries.length === 0}
 		<p class="empty">
-			{smart
-				? 'No song matches its rules yet. Rate or play some, or edit the rules.'
-				: 'Nothing in it yet. Add songs from any ⋯ menu, or pick some and press Add to…'}
+			{file
+				? 'No line of the file names a song in the library.'
+				: smart
+					? 'No song matches its rules yet. Rate or play some, or edit the rules.'
+					: 'Nothing in it yet. Add songs from any ⋯ menu, or pick some and press Add to…'}
 		</p>
 	{/if}
 	<div
@@ -477,13 +484,17 @@
 	</div>
 	{#if entries.length > 0}
 		<p class="foot">
-			{smart
+			{file
 				? phone
-					? 'LIVE: RATE OR PLAY A SONG AND IT JOINS OR LEAVES'
-					: smartFoot
-				: phone
-					? 'HOLD A GRIP TO MOVE A SONG'
-					: 'DRAG A GRIP TO MOVE A SONG · DEL TAKES IT OUT OF THE PLAYLIST, NEVER THE LIBRARY'}
+					? 'FROM A FILE · EDIT THE FILE TO CHANGE IT'
+					: fileFoot
+				: smart
+					? phone
+						? 'LIVE: RATE OR PLAY A SONG AND IT JOINS OR LEAVES'
+						: smartFoot
+					: phone
+						? 'HOLD A GRIP TO MOVE A SONG'
+						: 'DRAG A GRIP TO MOVE A SONG · DEL TAKES IT OUT OF THE PLAYLIST, NEVER THE LIBRARY'}
 		</p>
 	{/if}
 </section>
