@@ -237,12 +237,12 @@ export function addHeading(songs: number): string {
 
 /**
  * What Add to playlist lists, in its order: most recently added to first, then the newest made. A
- * smart playlist is left out, since nothing is added to one.
+ * smart or file playlist is left out, since nothing is added to one.
  */
 export function byLastAdded(playlists: readonly PlaylistSummary[]): PlaylistSummary[] {
 	const at = (p: PlaylistSummary): number => Date.parse(p.addedAt ?? p.createdAt);
 	return playlists
-		.filter(({ smart }) => !smart)
+		.filter(({ smart, source }) => !smart && source !== 'file')
 		.toSorted((a, b) => at(b) - at(a) || a.name.localeCompare(b.name));
 }
 
