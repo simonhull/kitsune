@@ -9,7 +9,8 @@ const admin: Me = {
 	role: 'admin',
 	createdAt: '2026-01-01T00:00:00Z',
 	canEditTags: true,
-	canTrash: true
+	canTrash: true,
+	canOrganize: true
 };
 
 const albumOf = new Map([['t1', 'a1']]);

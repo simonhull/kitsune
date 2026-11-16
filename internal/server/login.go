@@ -30,7 +30,7 @@ func (s *Server) getMe(w http.ResponseWriter, r *http.Request) {
 	u, _ := currentUser(r.Context()) // authenticate ran, so ok.
 	w.Header().Set("Cache-Control", "no-store")
 	moves := s.scanner.TagWrites() && u.Role == store.RoleAdmin // Both write under a root.
-	body := api.Me{User: toAPIUser(&u), CanEditTags: moves, CanTrash: moves}
+	body := api.Me{User: toAPIUser(&u), CanEditTags: moves, CanTrash: moves, CanOrganize: moves}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
 

@@ -92,6 +92,10 @@ type Config struct {
 	// changed. Nil means a hub of the server's own, which only its handlers
 	// publish to.
 	Events *events.Hub
+	// Work runs fn as the app's background work, so shutdown waits for it: an
+	// organize run, which outlives its request. It returns an error when the
+	// server is stopping. Required; New panics if nil.
+	Work func(fn func(context.Context)) error
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -130,6 +134,8 @@ type Server struct {
 	events        *events.Hub
 	shuffles      *shuffler.Service
 	matcher       *matching.Matcher
+	work          func(fn func(context.Context)) error
+	previews      previews // Organize previews, kept for their pages and runs.
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -144,7 +150,7 @@ type route struct {
 
 // New returns a server for cfg.
 //
-// New panics if cfg.Auth, cfg.Library, cfg.Scanner, cfg.StartScan or cfg.Settings is nil or
+// New panics if cfg.Auth, cfg.Library, cfg.Scanner, cfg.StartScan, cfg.Work or cfg.Settings is nil or
 // cfg.BasePath is malformed, which are programming errors.
 func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built once at startup; a value keeps every caller a plain literal.
 	checkConfig(&cfg)
@@ -179,6 +185,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		watcher:       cfg.Watcher,
 		events:        cfg.Events,
 		matcher:       cfg.Matcher,
+		work:          cfg.Work,
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
@@ -209,6 +216,9 @@ func checkConfig(cfg *Config) {
 	}
 	if cfg.Scanner == nil {
 		panic("server: Config.Scanner is required")
+	}
+	if cfg.Work == nil {
+		panic("server: Config.Work is required")
 	}
 	if cfg.StartScan == nil {
 		panic("server: Config.StartScan is required")
@@ -289,6 +299,14 @@ func (s *Server) serverRoutes() []route {
 		{pattern: "POST /admin/trash/restore", admin: true, handle: s.postTrashRestore},
 		{pattern: "POST /admin/trash/empty", admin: true, handle: s.postTrashEmpty},
 		{pattern: "POST /admin/playlists/{id}/save", admin: true, handle: s.postPlaylistSave},
+		{pattern: "POST /admin/organize/preview", admin: true, handle: s.postOrganizePreview},
+		{pattern: "GET /admin/organize/examples", admin: true, handle: s.getOrganizeExamples},
+		{pattern: "GET /admin/organize/previews/{id}", admin: true, handle: s.getOrganizePreview},
+		{pattern: "GET /admin/organize/runs", admin: true, handle: s.getOrganizeRuns},
+		{pattern: "POST /admin/organize/runs", admin: true, handle: s.postOrganizeRun},
+		{pattern: "GET /admin/organize/runs/{id}", admin: true, handle: s.getOrganizeRun},
+		{pattern: "POST /admin/organize/runs/{id}/stop", admin: true, handle: s.postOrganizeRunStop},
+		{pattern: "POST /admin/organize/runs/{id}/undo", admin: true, handle: s.postOrganizeRunUndo},
 		{pattern: "GET /admin/users", admin: true, handle: s.getUsers},
 		{pattern: "POST /admin/users/{id}/password", admin: true, handle: s.postUserPassword},
 		{pattern: "GET /lastfm/callback", public: true, handle: s.lastfmCallback},

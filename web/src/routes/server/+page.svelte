@@ -240,6 +240,11 @@
 					<a href={resolve('/server/trash')}>{trashNote.toUpperCase()}</a>
 				</p>
 			{/if}
+			{#if library.admin}
+				<p class="mono compact">
+					<a href={resolve('/server/organize')}>ORGANIZE FILES ›</a>
+				</p>
+			{/if}
 		{/if}
 		<dl>
 			{#if facts !== null}
@@ -256,6 +261,10 @@
 				{#if trashBin.can}
 					<dt class="mono">TRASH</dt>
 					<dd><a href={resolve('/server/trash')}>{trashNote}</a></dd>
+				{/if}
+				{#if library.admin}
+					<dt class="mono">FILES</dt>
+					<dd><a href={resolve('/server/organize')}>Organize where they sit</a></dd>
 				{/if}
 			{/if}
 			{#if settings !== null}

@@ -38,6 +38,8 @@
 	import Nav from '#lib/shell/Nav.svelte';
 	import PlayerIsland from '#lib/shell/PlayerIsland.svelte';
 	import TrashToast from '#lib/shell/TrashToast.svelte';
+	import OrganizeToast from '#lib/shell/OrganizeToast.svelte';
+	import { organizer } from '#lib/organize/organizer.svelte.ts';
 	import PlaylistToast from '#lib/shell/PlaylistToast.svelte';
 	import { albumOn, navOf, routeIds } from '#lib/shell/routes.ts';
 	import type { LayoutProps } from './$types';
@@ -197,6 +199,15 @@
 			stopFollowing();
 		};
 	});
+
+	$effect(() => {
+		// An organize run's progress, for the nav's note on every page, while an administrator is in.
+		if (library.admin) {
+			organizer.hear();
+		} else {
+			organizer.deafen();
+		}
+	});
 </script>
 
 <svelte:window
@@ -231,6 +242,9 @@
 		healthIssues={library.admin ? library.facts?.issues : undefined}
 		you={routeId === '/you'}
 		attention={library.lastfm?.state === 'reconnect'}
+		organizing={organizer.run?.state === 'running' && routeId !== '/server/organize'
+			? organizer.run
+			: null}
 	/>
 	<main>
 		{#if library.down && library.facts === null && !atDoor}
@@ -257,7 +271,7 @@
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
 	<AlbumMenu />
-	{#if !atDoor}<TrashToast /><PlaylistToast />{/if}
+	{#if !atDoor}<TrashToast /><PlaylistToast /><OrganizeToast />{/if}
 	{#if library.admin && !atDoor}<MatchSheet />{/if}
 	{#if import.meta.env.DEV}<Hud />{/if}
 </div>

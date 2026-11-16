@@ -154,6 +154,13 @@ func (e *LibraryEvents) PlaylistsChanged(ids []string) {
 	publishJSON(e.hub, events.Playlists, events.Everyone(), &api.EventPlaylists{IDs: append([]string{}, ids...)}, nil)
 }
 
+// OrganizeChanged implements [library.Notifier]: administrators hear an
+// organize run's progress, never a path.
+func (e *LibraryEvents) OrganizeChanged(p *library.OrganizeProgress) {
+	ev := api.EventOrganize{Run: p.Run, State: p.State, Done: p.Done, Total: p.Total, AlbumsDone: p.AlbumsDone, Album: p.Album}
+	publishJSON(e.hub, events.Organize, events.Admins(), &ev, nil)
+}
+
 // LastfmChanged returns what the scrobbler calls when a person's connection or
 // outbox changed: that person's devices hear it.
 func LastfmChanged(hub *events.Hub) func(userID int64) {

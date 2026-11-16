@@ -26,6 +26,7 @@ type libraryRows struct {
 	details      kept[sqlcdb.ListIndexTrackDetailsRow]
 	albumArtists kept[sqlcdb.ListIndexTrackAlbumArtistsRow]
 	tags         kept[sqlcdb.ListIndexTrackTagsRow]
+	files        kept[sqlcdb.ListOrganizeTrackFilesRow] // What the organizer reads beside the rest: where each file is.
 
 	// smart is what evaluating smart rules works out of those rows: the
 	// Library's order and folded names (smartlist.go). Like them, it holds after

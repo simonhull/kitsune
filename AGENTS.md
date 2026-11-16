@@ -142,6 +142,21 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - What a not-found line may show: a relative line as written; an absolute one inside a root as its
   root-relative path; one outside every root only its last two segments after `…/`; a URL only its
   scheme and `//…` (`m3u.Ref.Shown`, `m3u.Shown`). `TestFilePlaylistIsSharedAndNamesNoRoot` holds it.
+- The organizer is eight admin routes under `/admin/organize`. `POST /preview` (`template`,
+  `compilations`, `tracks` or `albums`; the saved templates without them) plans every song, or some,
+  and keeps the plan in memory for 30 minutes (at most 8, the oldest dropped) for `GET
+  /previews/{id}` (200 albums a page, `filter`, `q`, an offset `cursor`) and for its run; a template
+  that doesn't parse is a 422 `OrganizeTemplateProblem` (`field`, `at` in code points). `GET
+  /examples` gives a few songs with what a template reads of them (`OrganizeSong`), so the client's
+  copy of the parser draws them as the template is typed. `POST /runs` (`previewId`, and `tracks` or
+  `albums` to run some) answers 202 at once and the run goes on as `Config.Work`, the app's background
+  work; `GET /runs` (the last 10, a running one first), `GET /runs/{id}` (with up to 500 songs it left
+  and why), `POST /runs/{id}/stop` and `/undo`. A run with tag writes off, a scan, an edit or another
+  run holding the library, or a root that looks down is a 409 (Retry-After when it may pass). Every
+  path in a response is relative to its root, named by its index in `library.roots`; conflicts carry
+  the caller's plays and stars and `sameRecording` (same fingerprint, or artist, title and length
+  within 2 s). Progress is the `organize` event, to administrators: run, state, counts, `albumsDone`
+  and the album in hand by ID, never a path. `Me.canOrganize` is `canTrash`'s rule.
 - `GET /me/home` is Home's history, 25 albums each as `GET /albums` lists them: `recent`, by latest
   play, and `onRepeat`, by plays in the last 90 days (`onRepeatWindow`, the server's clock). Both
   count `plays` (imports included, but undated ones never on repeat, `store.SourceUndated`), never
@@ -275,6 +290,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   path as written (NULL for every other playlist); `WriteFilePlaylist` replaces them in one
   transaction and keeps the ULID while the file is at its path. Entries go with their track as any
   playlist's do, so a trashed song waits in place for Restore and the purge takes it.
+- The organizer's journal (`organize.go`, migration `0023`): `organize_runs` (kind `run`, `undo` or
+  `edit`, state `running`, `done`, `stopped` or `undone`, the template, counts as it goes, `undo_of`)
+  and `organize_moves` (one row per song, companion, folder removed or playlist rewritten; `planned`,
+  then `moved`, `skipped` with a reason, or `undone`). `track_id` is ON DELETE SET NULL, so a purge
+  never breaks a journal. `LandOrganize` sets each moved song's `rel_path` (only from the path the
+  run found it at) and its row's state in one `inLibraryTx`, and notes the albums. `OrganizeLibrary`
+  reads every live song for a plan from the index's kept rows plus `files` (path, size, mtime,
+  original year), kept the same way. The last 10 runs, or 90 days, whichever keeps more, stay; the
+  rest go with their rows.
 
 ## Matching
 - `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
@@ -355,6 +379,12 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   through `os.Root` from `Config.FolderRoot` (`/`), never a file name or size. A symlink is listed as
   the folder it names, and an absolute target is read under the root, since `os.Root` refuses every
   absolute link. The audio count is bounded by time and folders. Tests point the root at a temp dir.
+- The organizer's keys (`settings/organize.go`): `organize.template` and `organize.compilations`
+  (each must parse; the error never quotes it), `organize.roots` (an object of absolute folders, each
+  with both templates), and the switches `organize.companions` (on), `organize.on_edit` and
+  `organize.rewrite_playlists`. server.toml doesn't carry them; a variable or `-set` may seed them.
+  `follow.go` hands them to the scanner (`SetOrganize`), which doesn't wait: a run keeps its preview's
+  templates.
 
 ## Auth
 - `internal/auth` owns credentials. Passwords are Argon2id in PHC format; the store only
@@ -483,6 +513,36 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   its folder, finds its file gone, and never for a root that looks down, by the same rules as tracks.
   Files are read with tag writes off too; only saving writes.
 - A targeted scan refreshes genres and names only when it read a song or marked one missing.
+- `internal/organize` is pure, as `internal/smartlist` is: `Parse` reads a template (`<Field>`,
+  `<A|B>` fallbacks, `<Track:3>` widths, `[…]` groups that go when their fields are empty, `/` the only
+  folder break; it must end in `<Title>` or `<Track>`), `Template.Path` files a `Song`, `Safe` makes a
+  name every filesystem a library is read from can hold (the fixed rule, idempotent, fuzzed; a leading
+  `.` or `@` becomes `_`, since a scan skips such a name), and `MakePlan` works out every song's target
+  and what is in its way: two songs that fold to one path, a song there, or a file Kitsune doesn't know,
+  through a folder-listing func its caller hands it. `testdata/templates.json` holds the parser to the
+  web client's copy.
+- The organizer (`organize*.go`) moves files only through the Trash's `openRoots`: `os.Root`, a link
+  then a remove (`moveBack`), never a copy and never over anything; `EXDEV` is `otherFilesystem`, and
+  a change of case alone goes through a hidden `.<name>.kitsune-organize` in the same folder. A folder
+  that exists only in another case, on a filesystem that ignores case, is refused, not merged.
+  `StartOrganize` and `StartUndo` take the claim (no scan while a run goes) and answer at once; the run
+  takes the library lock one batch at a time, as the passes do (one album, at most 64 songs, so an
+  edit or a scan waits out one batch), and per batch: checks each song is still as the preview found
+  it (path, size and mtime in the store and on disk, else `changed`), journals the moves `planned`,
+  moves the files, lands them, brings the companions (covers, `.cue`, `.log`, `.lrc`, `.txt`: one named
+  for a song follows it; the rest of a folder only when all its songs go to one new folder), and
+  removes the folders it emptied, each journaled, a folder holding anything else left. Stop finishes
+  the batch in hand. A run never starts, or goes on, while a root it touches looks down
+  (`rootLooksDown`, the full scan's test). `RecoverOrganize` runs before anything scans or watches
+  (`serve`) and settles every `planned` row by where its file is, never removing the only copy (a
+  change of case is judged by the names its folder lists); runs left `running` become `stopped`.
+  Undo is a run in reverse over the journal: a song not where the run put it (`movedSince`) or with
+  something at its old path (`taken`) stays. With `organize.on_edit`, an edit notes which of its songs
+  sat where the templates put them, and `RunOrganizeEdits` (the app's background work) files those by
+  their new tags as one run of kind `edit`. With `organize.rewrite_playlists`, a run rewrites the lines
+  of UTF-8 playlist files in its roots that named a moved song (relative stays relative), after
+  linking the original to `<name>.kitsune-bak`; its undo rewrites them back and removes the copy. A
+  test seam, `organizeFault`, stops a run at each step as a crash would.
 
 ## Shuffle
 - `internal/shuffle` is the pure engine: units, weights, a finite order and an endless stream, given
@@ -637,6 +697,17 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   playlist lands on the copy. Export (`PlaylistExport.svelte`) opens on any playlist's ⋯ in place of
   the buttons: Download is a plain link to the `m3u` route, and Save in the library (an admin with
   `canTrash`, never on a phone) uses the folder picker limited to the roots and the overwrite confirm.
+- Server › Organize (`/server/organize`, `lib/organize/`) previews, runs and undoes. Its template field
+  (`TemplateField.svelte`) draws the template as chips with the client's copy of the parser
+  (`template.ts`, held by vitest to `internal/organize/testdata/templates.json`), and the live example
+  draws three songs from `GET /admin/organize/examples` with it; the server parses again and is the
+  authority. The preview pages 200 albums at a time and searches on the server; a run's head follows
+  the `organize` event (`Library.hearOrganize`), and a reload finds a running run in `GET
+  /admin/organize/runs`. The nav says ORGANIZING · n% while one goes. Duplicates (plan 069) shows as
+  SOON: the tab, and the conflict card's Compare in Duplicates, wait on `duplicatesReady` in
+  `lib/organize/duplicates.ts`. The album ⋯ and the selection bar's Organize (More on a phone) show
+  with `canOrganize`: a scoped preview, then the page, or a toast when nothing would move. Nothing is
+  optimistic, and nothing on the play path waits on it.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
@@ -654,9 +725,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   libraries of 1,000 and 50,000 songs, 20 runs each; `internal/server`'s `*Speed` tests time the
   stream's first byte, `GET /library/index`, `GET /me/home`, a 10,000-entry `GET /me/playlists/{id}`,
   a smart playlist's preview, a `GET /me/playlists` of ten smart ones, a 10,000-song `.m3u8` read
-  against 50,000 songs, and a quick scan with 50 unchanged playlist files, held to the same scan
-  without them. Each fails past its budget, and CI's `perf` job runs
-  both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
+  against 50,000 songs, a quick scan with 50 unchanged playlist files, held to the same scan
+  without them, an organize preview of 50,000 songs, and an organize run of 1,000, per song. The
+  browser suite also holds that a song plays on while its file moves. Each fails past its budget,
+  and CI's `perf` job runs both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
   they were set; on CI they are multiplied by `ciMultiplier`, which comes from CI's own numbers.
 - `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes
   only under `$KITSUNE_PERF_DIR` (default `kitsune-perf` in the temp directory) and reuses the

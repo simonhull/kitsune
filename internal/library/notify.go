@@ -31,6 +31,9 @@ type Notifier interface {
 	// PlaylistsChanged says the file playlists with these IDs were read, read
 	// again or deleted.
 	PlaylistsChanged(ids []string)
+	// OrganizeChanged gives an organize run's progress: at its start, after its
+	// albums (at most four times a second), and at its end.
+	OrganizeChanged(p *OrganizeProgress)
 }
 
 // noNotify hears nothing.
@@ -41,6 +44,7 @@ func (noNotify) ScanChanged(Progress)                    {}
 func (noNotify) FingerprintsChanged(FingerprintProgress) {}
 func (noNotify) LoudnessChanged(LoudnessProgress)        {}
 func (noNotify) PlaylistsChanged([]string)               {}
+func (noNotify) OrganizeChanged(*OrganizeProgress)       {}
 
 // throttle says when a running thing may tell again.
 type throttle struct {
@@ -50,11 +54,15 @@ type throttle struct {
 
 // due reports whether notifyEvery has passed since the last time it said yes,
 // or force is set, and if so starts the wait again.
-func (t *throttle) due(force bool) bool {
+func (t *throttle) due(force bool) bool { return t.dueEvery(force, notifyEvery) }
+
+// dueEvery reports whether every has passed since the last time it said yes,
+// or force is set, and if so starts the wait again.
+func (t *throttle) dueEvery(force bool, every time.Duration) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := time.Now()
-	if !force && now.Sub(t.last) < notifyEvery {
+	if !force && now.Sub(t.last) < every {
 		return false
 	}
 	t.last = now

@@ -6,6 +6,7 @@ import { shuffles } from '#lib/shuffle/session.svelte.ts';
 import { selectionSource } from '#lib/shuffle/sources.ts';
 import type { Queued } from '#lib/player/queue.ts';
 import { tagEditor } from './tagEditor.svelte.ts';
+import { organizeEntry } from '#lib/organize/entry.svelte.ts';
 import { trashBin } from './trashBin.svelte.ts';
 
 /** Where each song in the index is: its album, by track ID. */
@@ -189,6 +190,8 @@ export interface SongActions {
 	editTags: (() => void) | undefined;
 	/** Moves them to Trash. Set for an administrator on a server that may change its files. */
 	trash: (() => void) | undefined;
+	/** Previews where the template files them. Set as Trash is. */
+	organize?: (() => void) | undefined;
 }
 
 /**
@@ -250,6 +253,12 @@ export function actionsFor(
 							: undefined;
 					trashBin.moveSongs(trackIds, (id) => albumOf.get(id), title);
 				}
-			: undefined
+			: undefined,
+		organize:
+			organizeEntry.can && trackIds.length > 0
+				? () => {
+						void organizeEntry.songs(trackIds);
+					}
+				: undefined
 	};
 }

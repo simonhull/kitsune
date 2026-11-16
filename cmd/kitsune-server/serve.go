@@ -273,6 +273,7 @@ func buildApp(ctx context.Context, cfg *config.Config, l *launch, st *store.Stor
 		setupCode: setupCode, covers: covers, genres: genres,
 		live: live, level: l.level, lastfmURL: l.lastfmURL, changes: subscribe(live), matcher: matcher,
 	}
+	a.applyOrganize(ctx)
 	a.watcher = library.NewWatcher(a.scanner, library.WatchOptions{OnChange: server.FoldersChanged(hub)})
 	a.http = newHTTPServer(a.handler(ctx, cfg, l, &public), log)
 	if snap.BaseURL != "" && len(snap.TrustedProxies) == 0 {
@@ -309,6 +310,7 @@ func (a *app) handler(ctx context.Context, cfg *config.Config, l *launch, public
 		Watcher:        a.watcher,
 		Events:         a.events,
 		Matcher:        a.matcher,
+		Work:           a.startWork,
 	})
 }
 
@@ -474,6 +476,10 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 			"setupCode", a.setupCode, "url", setupURL(a.baseURL, ln.Addr()))
 	}
 
+	// A run a stop interrupted is settled before anything scans or watches.
+	if err := a.scanner.RecoverOrganize(context.WithoutCancel(ctx)); err != nil {
+		return fmt.Errorf("recover an interrupted organize run: %w", err)
+	}
 	bgCtx, cancelBackground := context.WithCancel(ctx)
 	a.workMu.Lock()
 	a.workCtx = bgCtx
@@ -486,6 +492,7 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.work.Go(func() { a.scanner.RunFingerprints(bgCtx) }) // Readiness never waits for it,
 	a.work.Go(func() { a.scanner.RunLoudness(bgCtx) })     // nor for this.
 	a.work.Go(func() { a.watcher.Run(bgCtx) })
+	a.work.Go(func() { a.scanner.RunOrganizeEdits(bgCtx) })
 
 	served := make(chan error, 1)
 	go func() { served <- a.http.Serve(ln) }()
@@ -524,6 +531,19 @@ func (a *app) startScan(mode library.Mode) error {
 		return fmt.Errorf("start scan: %w", err)
 	}
 	a.work.Go(func() { _, _ = run(ctx) }) // The scanner logs how it went.
+	return nil
+}
+
+// startWork runs fn as background work, which shutdown cancels and waits for.
+// It returns [errStopping] when the app is not serving.
+func (a *app) startWork(fn func(context.Context)) error {
+	a.workMu.Lock()
+	defer a.workMu.Unlock()
+	ctx := a.workCtx
+	if ctx == nil {
+		return errStopping
+	}
+	a.work.Go(func() { fn(ctx) })
 	return nil
 }
 

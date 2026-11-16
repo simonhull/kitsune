@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/api"
+	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
@@ -95,7 +96,7 @@ func TestSettingsReadsEveryKey(t *testing.T) {
 		t.Errorf("Cache-Control = %q, want no-store", cc)
 	}
 	got := decodeSettings(t, r)
-	if len(got.Settings) != 9 || got.Listen != testListen || got.ListenSource != api.SettingDefault || got.Version != testVersion {
+	if len(got.Settings) != len(settings.Keys()) || got.Listen != testListen || got.ListenSource != api.SettingDefault || got.Version != testVersion {
 		t.Errorf("settings = %+v", got)
 	}
 	checkSecret(t, got.Settings, false, api.SettingDefault)
@@ -216,7 +217,7 @@ func TestSettingsApplyNoChange(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
 	sess := ts.sessionFor(t)
-	if got := decodeSettings(t, ts.patchSettings(t, sess.token, `{}`, false)); len(got.Settings) != 9 {
+	if got := decodeSettings(t, ts.patchSettings(t, sess.token, `{}`, false)); len(got.Settings) != len(settings.Keys()) {
 		t.Errorf("settings = %+v", got)
 	}
 }

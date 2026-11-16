@@ -21,6 +21,15 @@ export interface Probe {
 	frames(ms: number): Promise<number[]>;
 	/** Moves the song sounding to `seconds` before its end, as if it had played that far. */
 	toEnd(seconds: number): void;
+	/** Where the `<audio>` element whose source has `src` in it is: -1 when there is none. */
+	sound(src: string): Sound;
+}
+
+/** What an `<audio>` element says of itself. */
+export interface Sound {
+	at: number;
+	paused: boolean;
+	error: boolean;
 }
 
 /**
@@ -213,6 +222,13 @@ export function installProbe(): void {
 				throw new Error('nothing is sounding');
 			}
 			element.currentTime = Math.max(0, element.duration - seconds);
+		},
+		sound(src) {
+			const element = elements.findLast((each) => each.src.includes(src));
+			if (element === undefined) {
+				return { at: -1, paused: true, error: false };
+			}
+			return { at: element.currentTime, paused: element.paused, error: element.error !== null };
 		}
 	};
 

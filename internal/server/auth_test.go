@@ -62,6 +62,7 @@ func TestMeWithBearer(t *testing.T) {
 
 		"canEditTags": false,
 		"canTrash":    false,
+		"canOrganize": false,
 	}
 	if len(got) != len(want) {
 		t.Errorf("body = %v, want exactly the fields of %v", got, want)

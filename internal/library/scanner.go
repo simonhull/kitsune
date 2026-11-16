@@ -120,6 +120,14 @@ type Scanner struct {
 	loudness     atomic.Pointer[LoudnessProgress] // The loudness pass's progress.
 	wantLoudness chan struct{}                    // Holds a token when files may wait for a measure.
 	measuring    sync.Mutex                       // Held by the one loudness pass.
+
+	organizeCfg  atomic.Pointer[OrganizeConfig] // How the organizer files songs.
+	organizing   atomic.Pointer[organizeTask]   // The run going now, if any.
+	organizeNote throttle                       // When the notifier last heard of a run's progress.
+	edits        editsPending                   // Songs edits leave the organizer.
+	// organizeFault, nil but in tests, is told each step of a run: it may stop
+	// the run there, as a crash would, or fail a move.
+	organizeFault func(step, rel string) error
 }
 
 // NewScanner returns a scanner that writes to st.
@@ -129,7 +137,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
 		write: opts.Write, genres: opts.Genres, claim: newLibraryLock(), lock: newLibraryLock(),
 		fingerprint: readFingerprint, wantPass: make(chan struct{}, 1), redaily: make(chan struct{}, 1),
-		measure: measureFile, wantLoudness: make(chan struct{}, 1),
+		measure: measureFile, wantLoudness: make(chan struct{}, 1), edits: editsPending{want: make(chan struct{}, 1)},
 		rerooted: make(chan struct{}, 1), scanEnded: make(chan struct{}, 1),
 	}
 	if s.workers <= 0 {
@@ -159,6 +167,8 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 	s.daily.Store(&daily)
 	s.fingerprints.Store(&FingerprintProgress{})
 	s.loudness.Store(&LoudnessProgress{})
+	organizeDefaults := DefaultOrganize()
+	s.organizeCfg.Store(&organizeDefaults)
 	return s
 }
 

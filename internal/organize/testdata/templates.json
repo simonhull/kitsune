@@ -1,0 +1,143 @@
+{
+  "comment": "Shared by internal/organize's tests and the web client's port of its parser (web/src/lib/organize). Positions count characters (code points).",
+  "parse": [
+    { "template": "<Album Artist>/[<Year> - ]<Album>/[<Disc>-]<Track> - <Title>" },
+    { "template": "Compilations/<Album>/<Track> - <Title>" },
+    { "template": "<album artist|artist>/<Album>/<Track:3> <title>" },
+    { "template": "<Album Artist>/<Album>/[<Disc>/]<Track> <Title>" },
+    { "template": "", "error": { "at": 0, "reason": "a template can't be empty" } },
+    { "template": "<Album>/<Tilte>", "error": { "at": 8, "reason": "no field is called \"Tilte\"" } },
+    { "template": "<Album>/<Track - <Title>", "error": { "at": 8, "reason": "this < is never closed" } },
+    { "template": "<Album>/<Track", "error": { "at": 8, "reason": "this < is never closed" } },
+    { "template": "<Album>/[<Year> - <Title>", "error": { "at": 8, "reason": "this [ is never closed" } },
+    { "template": "<Album>/<Year> - ]<Title>", "error": { "at": 17, "reason": "this ] closes no [" } },
+    { "template": "<Album>/Year> <Title>", "error": { "at": 12, "reason": "this > closes no <" } },
+    { "template": "<Album>/[[<Year>] - ]<Title>", "error": { "at": 9, "reason": "a group can't hold another group" } },
+    { "template": "<Album>/[ - ]<Title>", "error": { "at": 8, "reason": "a group needs a field, or it never shows" } },
+    { "template": "/<Album>/<Title>", "error": { "at": 0, "reason": "a folder name can't be empty" } },
+    { "template": "<Album>//<Title>", "error": { "at": 8, "reason": "a folder name can't be empty" } },
+    { "template": "<Album>/<Title>/", "error": { "at": 15, "reason": "a folder name can't be empty" } },
+    { "template": "<Album>/<Title> (live)", "error": { "at": 22, "reason": "a template ends in <Title> or <Track>" } },
+    { "template": "<Album>/[<Title>]", "error": { "at": 17, "reason": "a template ends in <Title> or <Track>" } },
+    { "template": "<Album>/<Title>.<Ext>", "error": { "at": 16, "reason": "the extension is added for you" } },
+    { "template": "<Album>/<Title:2>", "error": { "at": 8, "reason": "only Track, Disc and Disc Total take a width" } },
+    { "template": "<Album>/<Track:9>", "error": { "at": 8, "reason": "a width is a number from 1 to 4" } },
+    { "template": "アルバム <Album>/<Tilte>", "error": { "at": 13, "reason": "no field is called \"Tilte\"" } }
+  ],
+  "paths": [
+    {
+      "name": "in place",
+      "template": "<Album Artist>/[<Year> - ]<Album>/[<Disc>-]<Track> - <Title>",
+      "song": { "title": "Golden Arrows", "album": "Fangs!", "albumArtist": "Falling Up", "artists": ["Falling Up"], "year": 2009, "disc": 1, "discs": 1, "track": 5, "discSongs": 12 },
+      "ext": ".flac",
+      "path": "Falling Up/2009 - Fangs!/05 - Golden Arrows.flac"
+    },
+    {
+      "name": "no year drops the group",
+      "template": "<Album Artist>/[<Year> - ]<Album>/[<Disc>-]<Track> - <Title>",
+      "song": { "title": "Golden Arrows", "album": "Fangs!", "albumArtist": "Falling Up", "artists": ["Falling Up"], "disc": 1, "discs": 1, "track": 5, "discSongs": 12 },
+      "ext": ".flac",
+      "path": "Falling Up/Fangs!/05 - Golden Arrows.flac"
+    },
+    {
+      "name": "two discs show the disc",
+      "template": "<Album Artist>/[<Year> - ]<Album>/[<Disc>-]<Track> - <Title>",
+      "song": { "title": "Emergence", "album": "Even in Arcadia", "albumArtist": "Sleep Token", "artists": ["Sleep Token"], "year": 2025, "disc": 2, "discs": 2, "track": 2, "discSongs": 10 },
+      "ext": ".flac",
+      "path": "Sleep Token/2025 - Even in Arcadia/2-02 - Emergence.flac"
+    },
+    {
+      "name": "reserved characters",
+      "template": "<Album Artist>/[<Year> - ]<Album>/[<Disc>-]<Track> - <Title>",
+      "song": { "title": "Only The Beginning of The Adventure (From \"The Chronicles of Narnia: The Lion\"/Score)", "album": "The Chronicles of Narnia: The Lion", "albumArtist": "Harry Gregson-Williams", "artists": ["Harry Gregson-Williams"], "year": 2005, "disc": 1, "discs": 1, "track": 13, "discSongs": 34 },
+      "ext": ".flac",
+      "path": "Harry Gregson-Williams/2005 - The Chronicles of Narnia_ The Lion/13 - Only The Beginning of The Adventure (From _The Chronicles of Narnia_ The Lion__Score).flac"
+    },
+    {
+      "name": "three digits past 99 songs",
+      "template": "<Album Artist>/<Album>/<Track> <Title>",
+      "song": { "title": "Theme", "album": "Box", "albumArtist": "Various", "artists": ["A"], "disc": 1, "discs": 1, "track": 7, "discSongs": 120 },
+      "ext": ".mp3",
+      "path": "Various/Box/007 Theme.mp3"
+    },
+    {
+      "name": "forced width",
+      "template": "<Album>/<Track:1>. <Title>",
+      "song": { "title": "Flora", "album": "Falling Up", "artists": ["Falling Up"], "track": 2, "discSongs": 14 },
+      "ext": ".flac",
+      "path": "Falling Up/2. Flora.flac"
+    },
+    {
+      "name": "fallback",
+      "template": "<Album Artist|Artist>/<Album>/<Title>",
+      "song": { "title": "Flora", "album": "Falling Up", "artists": ["Falling Up", "Guest"], "track": 2 },
+      "ext": ".flac",
+      "path": "Falling Up/Falling Up/Flora.flac"
+    },
+    {
+      "name": "many artists",
+      "template": "<Artists>/<Artist>/<Title>",
+      "song": { "title": "Persona", "artists": ["アトラスサウンドチーム", "ATLUS GAME MUSIC"] },
+      "ext": ".flac",
+      "path": "アトラスサウンドチーム, ATLUS GAME MUSIC/アトラスサウンドチーム/Persona.flac"
+    },
+    {
+      "name": "empty album",
+      "template": "<Album Artist>/<Album>/<Track> - <Title>",
+      "song": { "title": "Song", "albumArtist": "X", "artists": ["X"], "track": 1, "discSongs": 1 },
+      "ext": ".flac",
+      "path": "X/_/01 - Song.flac"
+    },
+    {
+      "name": "no track",
+      "template": "<Album>/<Track>",
+      "song": { "title": "Song", "album": "A" },
+      "ext": ".flac",
+      "error": "noTags"
+    },
+    {
+      "name": "hidden and device names",
+      "template": "<Album Artist>/<Album>/<Title>",
+      "song": { "title": "con", "album": ".hack", "albumArtist": "@home", "artists": ["x"] },
+      "ext": ".flac",
+      "path": "_home/_hack/con_.flac"
+    },
+    {
+      "name": "trailing dots",
+      "template": "<Album Artist>/<Album>/<Title>",
+      "song": { "title": "Why...", "album": "Vol. 2...", "albumArtist": "Mr. ", "artists": ["x"] },
+      "ext": ".flac",
+      "path": "Mr/Vol. 2/Why.flac"
+    },
+    {
+      "name": "genre, format, original year, disc total and name",
+      "template": "<Genre>/<Original Year>/<Format>/[<Disc>of<Disc Total> ][<Disc Name> ]<Track> <Title>",
+      "song": { "title": "T", "genre": "Metal", "format": "flac", "originalYear": 1999, "disc": 1, "discs": 2, "discName": "Live", "track": 3, "discSongs": 9 },
+      "ext": ".flac",
+      "path": "Metal/1999/FLAC/1of2 Live 03 T.flac"
+    },
+    {
+      "name": "whitespace and controls",
+      "template": "<Album Artist>/<Title>",
+      "song": { "title": "  A \t\u0007 B  ", "albumArtist": "Café" },
+      "ext": ".flac",
+      "path": "Café/A B.flac"
+    }
+  ],
+  "safe": [
+    { "in": "Clair Obscur: Expedition 33", "out": "Clair Obscur_ Expedition 33" },
+    { "in": "a<b>c:d\"e/f\\g|h?i*j", "out": "a_b_c_d_e_f_g_h_i_j" },
+    { "in": "  two   spaces  ", "out": "two spaces" },
+    { "in": "ends. . .", "out": "ends" },
+    { "in": "CON", "out": "CON_" },
+    { "in": "lpt9.flac", "out": "lpt9_.flac" },
+    { "in": "COM10", "out": "COM10" },
+    { "in": ".hidden", "out": "_hidden" },
+    { "in": "@eaDir", "out": "_eaDir" },
+    { "in": "", "out": "_" },
+    { "in": "...", "out": "_" },
+    { "in": "tab\there", "out": "tabhere" },
+    { "in": "bell\u0007", "out": "bell" },
+    { "in": "é", "out": "é" }
+  ]
+}

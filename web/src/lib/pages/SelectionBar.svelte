@@ -137,6 +137,16 @@
 		{#if edit !== undefined}
 			<button type="button" class="primary" onclick={edit}>{editLabel}</button>
 		{/if}
+		{#if actions.organize !== undefined}
+			{@const organize = actions.organize}
+			<button
+				type="button"
+				class="text organize"
+				onclick={() => {
+					organize();
+				}}>Organize</button
+			>
+		{/if}
 		{#if actions.trash !== undefined}
 			{@const trash = actions.trash}
 			<button
@@ -203,6 +213,18 @@
 						more = false;
 						edit();
 					}}>{editLabel}</button
+				>
+			{/if}
+			{#if actions.organize !== undefined}
+				{@const organize = actions.organize}
+				<button
+					type="button"
+					role="menuitem"
+					class="sheet-item"
+					onclick={() => {
+						more = false;
+						organize();
+					}}>Organize files…</button
 				>
 			{/if}
 			{#if actions.trash !== undefined}
@@ -321,6 +343,18 @@
 		align-items: center;
 		gap: 8px;
 		color: var(--danger);
+	}
+
+	/* Organize: a fox ring, as its board draws it, since it moves files. */
+	.organize {
+		padding: 0 18px;
+		background: color-mix(in srgb, var(--fox) 14%, transparent);
+		box-shadow: inset 0 0 0 1.5px var(--fox-line);
+		font-weight: 700;
+	}
+
+	.organize:hover {
+		background: color-mix(in srgb, var(--fox) 22%, transparent);
 	}
 
 	.clear {
