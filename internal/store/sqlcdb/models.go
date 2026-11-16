@@ -56,6 +56,13 @@ type Artwork struct {
 	Source string
 }
 
+type DuplicateDismissal struct {
+	GroupKey    string
+	Tracks      string
+	ByUser      *int64
+	DismissedAt int64
+}
+
 type LastfmAccount struct {
 	UserID      int64
 	Name        string

@@ -194,13 +194,11 @@ type OrganizeClaimant struct {
 	ID             int64
 	ULID, Title    string
 	Album, AlbumID string // The album's title and ULID.
-	Artist         string // The song's first artist.
 	Root, RelPath  string
 	Format         string
 	Bitrate        int // In kbps; 0 when unknown.
 	Duration       time.Duration
 	AddedAt        time.Time
-	Digest         *[32]byte
 	Plays          int           // The person's own.
 	Stars          rating.Rating // The person's own; zero for none.
 }
@@ -216,17 +214,13 @@ func (s *Store) OrganizeClaimants(ctx context.Context, userID int64, ids []int64
 	for i := range rows {
 		r := &rows[i]
 		c := OrganizeClaimant{
-			ID: r.ID, ULID: r.Ulid, Title: r.Title, Album: r.Album, AlbumID: r.AlbumUlid, Artist: r.Artist,
+			ID: r.ID, ULID: r.Ulid, Title: r.Title, Album: r.Album, AlbumID: r.AlbumUlid,
 			Root: r.Root, RelPath: r.RelPath, Format: r.Format, Bitrate: intOr0(r.Bitrate),
 			Duration: time.Duration(r.DurationMs) * time.Millisecond, AddedAt: fromMS(r.AddedAt),
 			Plays: int(r.Plays),
 		}
 		if r.Halves > 0 {
 			c.Stars, _ = rating.FromHalves(r.Halves) // A stored rating is a valid one.
-		}
-		if len(r.AudioDigest) == len(c.Digest) {
-			d := [32]byte(r.AudioDigest)
-			c.Digest = &d
 		}
 		out[r.ID] = c
 	}

@@ -27,6 +27,14 @@ type libraryRows struct {
 	albumArtists kept[sqlcdb.ListIndexTrackAlbumArtistsRow]
 	tags         kept[sqlcdb.ListIndexTrackTagsRow]
 	files        kept[sqlcdb.ListOrganizeTrackFilesRow] // What the organizer reads beside the rest: where each file is.
+	// duplicateTags are the tags finding duplicates reads: recordings and
+	// release types. Kept apart from tags, which the song columns ask for.
+	duplicateTags kept[sqlcdb.ListIndexTrackTagsRow]
+
+	// digests counts fingerprints stored, which the fingerprint pass writes
+	// outside library writes: what finding duplicates found holds while
+	// neither moves.
+	digests atomic.Uint64
 
 	// smart is what evaluating smart rules works out of those rows: the
 	// Library's order and folded names (smartlist.go). Like them, it holds after
