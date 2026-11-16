@@ -16,6 +16,7 @@ import (
 	"unicode"
 
 	"github.com/simonhull/kitsune/internal/config"
+	"github.com/simonhull/kitsune/internal/organize"
 )
 
 // The keys there are, as server.toml spells them.
@@ -69,6 +70,7 @@ func Keys() []Key {
 	return []Key{
 		LibraryRoots, LibraryTagWrites, LastfmAPIKey, LastfmSharedSecret,
 		LibraryQuickScan, LibraryMissingGrace, ServerBaseURL, ServerTrustedProxies, LogLevel,
+		OrganizeTemplate, OrganizeCompilations, OrganizeRoots, OrganizeOnEdit, OrganizeCompanions, OrganizeRewritePlaylists,
 	}
 }
 
@@ -106,6 +108,12 @@ type Values struct {
 	LogLevel           slog.Level
 	BaseURL            string
 	TrustedProxies     []netip.Prefix
+
+	// The organizer's: its templates, the folders with their own, and its switches.
+	OrganizeTemplate, OrganizeCompilations string
+	OrganizeRoots                          map[string]RootTemplates // Never change it: a snapshot shares it.
+	OrganizeOnEdit, OrganizeCompanions     bool
+	OrganizeRewritePlaylists               bool
 }
 
 // LastfmEnabled reports whether both Last.fm values are set.
@@ -117,6 +125,8 @@ func Defaults() Values {
 	return Values{
 		Roots: []string{}, QuickScan: d.Library.QuickScan, MissingGrace: d.Library.MissingGrace,
 		LogLevel: d.Log.Level, TrustedProxies: []netip.Prefix{},
+		OrganizeTemplate: organize.DefaultTemplate, OrganizeCompilations: organize.DefaultCompilations,
+		OrganizeRoots: map[string]RootTemplates{}, OrganizeCompanions: true,
 	}
 }
 
@@ -216,6 +226,7 @@ func (f field[W]) empty(raw []byte) bool {
 var defs = sync.OnceValue(func() map[Key]def {
 	all := libraryDefs()
 	maps.Copy(all, timeDefs())
+	maps.Copy(all, organizeDefs())
 	return all
 })
 
