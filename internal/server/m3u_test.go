@@ -78,6 +78,17 @@ func (fx *fileFixture) fileList(t *testing.T, token string) api.PlaylistDetail {
 	return d
 }
 
+// wantOneTwoTwice wants songs to be the album's two songs, then the same two
+// again. The two share their tags, so the album's order between them is no
+// guide to which file is which; the export test ties each to its path.
+func wantOneTwoTwice(t *testing.T, songs, album []string) {
+	t.Helper()
+	if len(songs) != 4 || songs[0] == songs[1] || !slices.Equal(songs[:2], songs[2:]) ||
+		!slices.Contains(album, songs[0]) || !slices.Contains(album, songs[1]) {
+		t.Errorf("songs = %v, want one, two, one, two of %v", songs, album)
+	}
+}
+
 // A playlist file in the library is a playlist everyone sees: the file's songs
 // in its order with its repeats, and the lines that found none, with no path
 // that names a root.
@@ -88,10 +99,7 @@ func TestFilePlaylistIsEveryones(t *testing.T) {
 	if d.Name != mixName || d.Smart || d.File == nil || d.File.Path != mixFile || d.File.Format != "m3u8" {
 		t.Fatalf("file playlist = %+v / %+v", d.Playlist, d.File)
 	}
-	one, two := fx.album.Tracks[0].ID, fx.album.Tracks[1].ID
-	if songs, want := entrySongs(&d), []string{one, two, one, two}; !slices.Equal(songs, want) {
-		t.Errorf("songs = %v, want %v", songs, want)
-	}
+	wantOneTwoTwice(t, entrySongs(&d), []string{fx.album.Tracks[0].ID, fx.album.Tracks[1].ID})
 	want := []api.MissingLine{
 		{Line: 7, Text: "https://…", Title: "Radio", Seconds: 30, Reason: api.MissingNotFile},
 		{Line: 8, Text: "…/Dawn Escapes/07 Moonlit.mp3", Reason: api.MissingOutside},
