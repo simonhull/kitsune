@@ -79,6 +79,8 @@ type Stats struct {
 	Covers                                             int // Albums the scan found a cover for.
 	Swept                                              int // Temp files left by an interrupted edit, removed.
 	Hashed                                             int // New files fingerprinted to look for a move.
+	Playlists                                          int // Playlist files read.
+	PlaylistsGone                                      int // File playlists deleted with their files.
 }
 
 // Scanner keeps the store in step with the library roots. It is safe for
@@ -240,6 +242,9 @@ func (s *Scanner) scan(ctx context.Context, mode Mode) (Stats, error) {
 	}
 	hold, err := s.read(ctx, sv.Jobs, &stats)
 	if err != nil {
+		return stats, fmt.Errorf("scan: %w", err)
+	}
+	if err = s.readPlaylists(ctx, sv.Playlists, mode, stats.Added+stats.Moved > 0, &stats); err != nil {
 		return stats, fmt.Errorf("scan: %w", err)
 	}
 	if err = s.finish(ctx, sv.HoldDeletes || hold, &stats); err != nil {

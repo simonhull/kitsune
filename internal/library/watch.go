@@ -494,7 +494,7 @@ func (l *watchLoop) created(ctx context.Context, rs *rootState, path string) {
 		l.deferred[path] = rs
 	case err == nil && info.IsDir():
 		l.watchNew(ctx, rs, path)
-	case !IsAudio(filepath.Base(path)):
+	case !IsAudio(filepath.Base(path)) && !IsPlaylistFile(filepath.Base(path)):
 		return
 	}
 	l.mark(rs, filepath.Dir(path))
@@ -508,7 +508,7 @@ func (l *watchLoop) changed(rs *rootState, ev fsnotify.Event) {
 	case watched && (ev.Has(fsnotify.Remove) || ev.Has(fsnotify.Rename)):
 		l.moved = l.moved || ev.Has(fsnotify.Rename)
 		l.forget(rs, ev.Name)
-	case !IsAudio(filepath.Base(ev.Name)):
+	case !IsAudio(filepath.Base(ev.Name)) && !IsPlaylistFile(filepath.Base(ev.Name)):
 		return
 	}
 	l.mark(rs, filepath.Dir(ev.Name))

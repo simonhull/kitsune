@@ -28,6 +28,9 @@ type Notifier interface {
 	FingerprintsChanged(p FingerprintProgress)
 	// LoudnessChanged gives the loudness pass's progress, the same way.
 	LoudnessChanged(p LoudnessProgress)
+	// PlaylistsChanged says the file playlists with these IDs were read, read
+	// again or deleted.
+	PlaylistsChanged(ids []string)
 }
 
 // noNotify hears nothing.
@@ -37,6 +40,7 @@ func (noNotify) LibraryChanged([]string, bool)           {}
 func (noNotify) ScanChanged(Progress)                    {}
 func (noNotify) FingerprintsChanged(FingerprintProgress) {}
 func (noNotify) LoudnessChanged(LoudnessProgress)        {}
+func (noNotify) PlaylistsChanged([]string)               {}
 
 // throttle says when a running thing may tell again.
 type throttle struct {
