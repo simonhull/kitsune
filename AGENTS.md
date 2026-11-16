@@ -154,9 +154,22 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   and why), `POST /runs/{id}/stop` and `/undo`. A run with tag writes off, a scan, an edit or another
   run holding the library, or a root that looks down is a 409 (Retry-After when it may pass). Every
   path in a response is relative to its root, named by its index in `library.roots`; conflicts carry
-  the caller's plays and stars and `sameRecording` (same fingerprint, or artist, title and length
-  within 2 s). Progress is the `organize` event, to administrators: run, state, counts, `albumsDone`
+  the caller's plays and stars and `sameRecording`, true when Duplicates puts the songs in one group
+  (`why` says by what, `group` names it for `/server/duplicates/{group}`). Progress is the `organize` event, to administrators: run, state, counts, `albumsDone`
   and the album in hand by ID, never a path. `Me.canOrganize` is `canTrash`'s rule.
+- Duplicates is five admin routes under `/admin/duplicates`. `GET` lists the groups (`filter`: `all`,
+  `audio`, `recording`, `probably`, `pairs`, `dismissed`; 100 a page by an offset `cursor`; pairs on the
+  first page only, and under `all` a pair's groups are in its card), with counts and how many songs the
+  fingerprint pass has `checked`. `GET /{group}` is a group (`kind` `group`) or an album pair (`pair`):
+  each copy's facts (root-relative path, everyone's `plays`, `raters` and the caller's own `stars`,
+  never another person's), the suggested `keeper` and its `reasons`, and `plans`, what keeping each copy
+  or album would move. `POST /{group}/merge` (`keep`, `trash`, and the `plan` the confirm showed) is a
+  409 `PlanChangedProblem` with the plan as it is now when that changed, a 409 with tag writes off or
+  while busy, a 422 for copies not of the group; it publishes `marks` (each person whose keeper's stars
+  rose), `playlists` (owners, and everyone for file playlists), `shuffleRules`, and `Forget`s the
+  shuffler's history of everyone whose plays moved; the scanner publishes `library`. `POST` and
+  `DELETE /{group}/dismiss` are Not duplicates and Bring back. A group's key is a hash of its songs'
+  ULIDs (`duplicates.Key`), so a third copy raises a dismissed group again; a pair's, of its albums'.
 - `GET /me/home` is Home's history, 25 albums each as `GET /albums` lists them: `recent`, by latest
   play, and `onRepeat`, by plays in the last 90 days (`onRepeatWindow`, the server's clock). Both
   count `plays` (imports included, but undated ones never on repeat, `store.SourceUndated`), never
@@ -299,6 +312,22 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   reads every live song for a plan from the index's kept rows plus `files` (path, size, mtime,
   original year), kept the same way. The last 10 runs, or 90 days, whichever keeps more, stay; the
   rest go with their rows.
+
+- Duplicates (`duplicates.go`, `duplicatemerge.go`, migration `0024`): `duplicate_dismissals` (key,
+  the ULIDs as JSON, by user, at). `DuplicateLibrary` reads every live song for a find from the index's
+  kept rows plus `duplicateTags` (recordings and release types, kept the same way) and the fingerprints,
+  read every time since the pass stores them outside library writes; `DuplicatesMark` (library writes
+  and fingerprints stored) says when a find is stale. `MergeAndTrash` is one `inLibraryTx`: it reads
+  what the copies hold, works out the plan (`mergeFacts.plan`, the only place a plan is counted) and
+  refuses with `PlanChangedError` unless it is the one the confirm showed, then per trashed copy: plays
+  and listens repointed; each person's higher stars (with the trashed copy's `rated_at`) on the keeper
+  through `loveCrossed`; kept hearts moved unless the keeper has one, the earlier kept; playlist entries
+  (file playlists' too) repointed in place, so a playlist holding both holds the keeper twice;
+  exclusions carried (the union); a Combine place taken by the keeper unless the person has it in a run
+  already, when the copy just leaves (`shuffle_runs_need_two` tidies); `replace` of the quoted ULID in
+  `playback.queue`; the copy's own ratings, hearts and exclusions deleted; then `markTrashed`, as
+  `MarkTrashed` does. The Last.fm outbox, edit history, lookups and the copy's loudness, fingerprint and
+  artwork are left alone.
 
 ## Matching
 - `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
@@ -486,7 +515,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   song is at an old path (`PathTakenError`), and links before it removes so nothing slips in. Thirty
   days on (`TrashRetention`) `PurgeTrash` deletes the file, then the row through `deleteTracks`, the
   one way a track leaves the store, after each scheduled scan and the start's, in batches like the
-  fingerprint pass, and never with tag writes off.
+  fingerprint pass, and never with tag writes off. A copy trashed by a Duplicates merge has given
+  its plays, listens, stars, hearts, playlist entries, exclusions and Combine places to its keeper, so
+  Restore brings it back bare.
 - Loudness is measured where ReplayGain is missing (`loudness.go`, `Scanner.RunLoudness`): every file
   of an album with a song that has no gain tagged, then the album from its files' gated blocks pooled
   (`loudness.Pool`), never their mean. `internal/loudness` is the pure BS.1770-4 / R 128 meter, held
@@ -513,6 +544,22 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   its folder, finds its file gone, and never for a root that looks down, by the same rules as tracks.
   Files are read with tag writes off too; only saving writes.
 - A targeted scan refreshes genres and names only when it read a song or marked one missing.
+- `internal/duplicates` is pure: `Find` buckets songs by fingerprint (same audio), MusicBrainz
+  recording (lengths within 10 s) and first artist's `MatchKey` plus title folded as a search folds,
+  a trailing remaster note taken off (within 2 s), and joins songs inside a bucket only, sorted by
+  length, so it is linear. `VersionWords` (one in a title and not the other) and another disc of one
+  album keep songs apart for the last two; a bucket of more than `MostInBucket` (16) songs is no
+  evidence (the same silence, a placeholder ID). A group's confidence is the strongest any two earn.
+  Three or more groups pairing two albums make an `AlbumPair`, with each album's songs the other lacks
+  (`Only`), never trashed. `Keeper` orders copies: lossless, then an original album (its owner is the
+  song's first artist, not a compilation, and no release type `compilation` or `soundtrack`, from
+  `keysReleaseType`), a bitrate over 5% higher, in place by the organizer's templates, more plays,
+  added first; its reasons are each way the keeper beats every other copy.
+- `Scanner.FindDuplicates` keeps its find until `DuplicatesMark` moves. `Scanner.MergeDuplicates`
+  holds the library lock (`exclusive`, so `ErrBusy` while a scan, an edit or a run holds it), checks
+  tag writes and that every song is live, runs `MergeAndTrash`, then moves the files into the Trash as
+  `TrashTracks` does. A file that won't move puts every file back and unmarks the copies: they return
+  bare, since what they held is already on the keeper.
 - `internal/organize` is pure, as `internal/smartlist` is: `Parse` reads a template (`<Field>`,
   `<A|B>` fallbacks, `<Track:3>` widths, `[…]` groups that go when their fields are empty, `/` the only
   folder break; it must end in `<Title>` or `<Track>`), `Template.Path` files a `Song`, `Safe` makes a
@@ -703,11 +750,19 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   draws three songs from `GET /admin/organize/examples` with it; the server parses again and is the
   authority. The preview pages 200 albums at a time and searches on the server; a run's head follows
   the `organize` event (`Library.hearOrganize`), and a reload finds a running run in `GET
-  /admin/organize/runs`. The nav says ORGANIZING · n% while one goes. Duplicates (plan 069) shows as
-  SOON: the tab, and the conflict card's Compare in Duplicates, wait on `duplicatesReady` in
-  `lib/organize/duplicates.ts`. The album ⋯ and the selection bar's Organize (More on a phone) show
+  /admin/organize/runs`. The nav says ORGANIZING · n% while one goes. `ToolTabs.svelte` heads both
+  pages (Organize · Duplicates); a conflict card's Compare in Duplicates opens the group its `group`
+  names (`openDuplicates`). The album ⋯ and the selection bar's Organize (More on a phone) show
   with `canOrganize`: a scoped preview, then the page, or a toast when nothing would move. Nothing is
   optimistic, and nothing on the play path waits on it.
+- Server › Duplicates (`/server/duplicates`, `/server/duplicates/[group]`, `lib/duplicates/`): the list
+  under its filter chips (pairs first, then groups), a group's copies side by side (`CopyCard`, up to
+  four across, stacked keeper first on a phone), and the confirm (`MergeConfirm`: in place, a sheet on a
+  phone) worded from the server's plan (`words.ts`). The merge sends back the plan it showed; on a 409
+  the confirm shows the new one. The list hides a merged group at the press and brings it back if the
+  merge fails (`duplicates.svelte.ts`); the toast after it links to the Trash. Play on a copy plays that
+  song alone (`queuedCopy`), fetching nothing. The fixtures (`lib/duplicates/fixture.ts`) are the
+  boards' groups and the Blackstar pair; a merge sends their copies to the fixture Trash.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
@@ -726,7 +781,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   stream's first byte, `GET /library/index`, `GET /me/home`, a 10,000-entry `GET /me/playlists/{id}`,
   a smart playlist's preview, a `GET /me/playlists` of ten smart ones, a 10,000-song `.m3u8` read
   against 50,000 songs, a quick scan with 50 unchanged playlist files, held to the same scan
-  without them, an organize preview of 50,000 songs, and an organize run of 1,000, per song. The
+  without them, an organize preview of 50,000 songs, an organize run of 1,000, per song, and a find of duplicates over
+  50,000 songs after a fingerprint landed. The
   browser suite also holds that a song plays on while its file moves. Each fails past its budget,
   and CI's `perf` job runs both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
   they were set; on CI they are multiplied by `ciMultiplier`, which comes from CI's own numbers.
