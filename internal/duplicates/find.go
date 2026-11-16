@@ -33,6 +33,10 @@ const (
 	keyBytes = 12
 	// minGroup is the fewest songs a group holds.
 	minGroup = 2
+	// MostInBucket is the most songs one fingerprint, recording or artist and
+	// title may name and still be evidence. Past it, they are not copies but
+	// something many songs share: the same silence, or a placeholder ID.
+	MostInBucket = 16
 )
 
 // Song is one live song as Find reads it.
@@ -122,7 +126,8 @@ type Result struct {
 //   - they have the same first artist and the same title, once a trailing
 //     remaster note is taken off, with lengths within [SameTagsWithin].
 //
-// Neither of the last two holds when a version word is in one title and not
+// A fingerprint, recording, or artist and title that more than [MostInBucket]
+// songs share is no evidence at all. Neither of the last two holds when a version word is in one title and not
 // the other ([VersionWords]), or when they are on different discs of one
 // album, since a song repeated on an album is usually a reprise. A group is
 // every song joined to another by any of these.
@@ -180,7 +185,7 @@ func (f *finder) bucket(keys func(i int, add func(string)), c Confidence, window
 	}
 	for _, b := range buckets {
 		switch {
-		case len(b) < minGroup:
+		case len(b) < minGroup, len(b) > MostInBucket:
 		case window == 0:
 			for _, j := range b[1:] {
 				f.join(b[0], j, c)

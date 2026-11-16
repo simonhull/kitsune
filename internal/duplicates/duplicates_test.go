@@ -169,6 +169,24 @@ func TestFind(t *testing.T) {
 	}
 }
 
+// A fingerprint more songs share than a library holds copies of one song is
+// the same silence, not duplicates.
+func TestCrowdedEvidenceIsNone(t *testing.T) {
+	t.Parallel()
+	songs := make([]duplicates.Song, duplicates.MostInBucket+1)
+	for i := range songs {
+		songs[i] = song(fmt.Sprintf("s%d", i), fmt.Sprintf("track %d", i), fmt.Sprintf("album %d", i), 30, func(s *duplicates.Song) {
+			s.Digest = "silence"
+		})
+	}
+	if r := duplicates.Find(songs); len(r.Groups) != 0 {
+		t.Errorf("groups = %d, want none for %d songs of one silence", len(r.Groups), len(songs))
+	}
+	if r := duplicates.Find(songs[:duplicates.MostInBucket]); len(r.Groups) != 1 {
+		t.Errorf("groups = %d, want one for %d copies", len(r.Groups), duplicates.MostInBucket)
+	}
+}
+
 func TestVersionWords(t *testing.T) {
 	t.Parallel()
 	want := []string{"live", "acoustic", "demo", "instrumental", "remix", "edit", "mix", "version", "reimagined"}
