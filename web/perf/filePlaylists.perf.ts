@@ -84,17 +84,18 @@ test('Playlists: open a file playlist of 500 songs from its card', async ({ page
 
 test('Export: press Download, to the file arriving', async ({ page, perf }) => {
 	const id = await makePlaylist(page, `Perf export ${String(Date.now())}`, songs);
-	await page.goto(`/playlists/${id}`);
-	await page.locator('main section.songs .row[data-track]').first().waitFor();
-	await page.getByRole('button', { name: 'More for this playlist' }).click();
-	await page.getByRole('menuitem', { name: 'Export .m3u' }).click();
-	const link = page.getByRole('link', { name: 'Download' });
-	await link.waitFor();
-	await atRest(page);
 	const press = perf.samples('export-download');
 	for (let i = 0; i < runs; i++) {
-		// The download starts once the response's headers are in: the server has written its first
-		// byte, every song of the playlist read and its file begun.
+		// A page load before each press: Chromium holds back a page's repeated downloads.
+		await page.goto(`/playlists/${id}`);
+		await page.locator('main section.songs .row[data-track]').first().waitFor();
+		await page.getByRole('button', { name: 'More for this playlist' }).click();
+		await page.getByRole('menuitem', { name: 'Export .m3u' }).click();
+		const link = page.getByRole('link', { name: 'Download' });
+		await link.waitFor();
+		await atRest(page);
+		// The download starts once the response's headers are in: the server has written its
+		// first byte, every song of the playlist read and its file begun.
 		const started = page.waitForEvent('download');
 		const at = performance.now();
 		await link.click();
