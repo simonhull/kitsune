@@ -6,6 +6,8 @@ import { discOf, discsOf } from './format.ts';
 import { partOf } from './indexPatch.ts';
 import { createPlaybackFixture, type PlaybackFixture } from './playbackFixture.ts';
 import { createPlaylistsFixture } from './playlistsFixture.ts';
+import { createOrganizeFixture } from '#lib/organize/fixture.ts';
+import { defaultCompilations, defaultTemplate } from '#lib/organize/template.ts';
 import type { SongFacts } from './smartEval.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
 import {
@@ -475,7 +477,8 @@ const user: Me = {
 	role: 'admin',
 	createdAt: '2026-01-01T00:00:00Z',
 	canEditTags: true,
-	canTrash: true
+	canTrash: true,
+	canOrganize: true
 };
 
 /** The boards' counts, the real library's: the fake one is only a window onto it. */
@@ -903,6 +906,8 @@ export interface FixtureOptions {
 	tagWrites?: 'off' | undefined;
 	/** `board`: Trash opens with the board's six songs in it, gone from the lists. */
 	trash?: 'board' | undefined;
+	/** How long each album of an organize run takes, in milliseconds. */
+	organizeAlbumMs?: number | undefined;
 }
 
 /** A song in a fixture Trash: where it came from, and when. */
@@ -949,7 +954,13 @@ function neutralWhy(stars: number | null): ShuffleWhy {
 export function createFixtureSource(options: FixtureOptions = {}): LibrarySource {
 	const { latencyMs = 0, health = 'idle', role = 'admin' } = options;
 	const writes = role === 'admin' && options.tagWrites !== 'off';
-	const signedIn: Me = { ...user, role, canEditTags: writes, canTrash: writes };
+	const signedIn: Me = {
+		...user,
+		role,
+		canEditTags: writes,
+		canTrash: writes,
+		canOrganize: writes
+	};
 	/** Songs in Trash, by ID, and songs deleted from it for good. */
 	const bin = new Map<string, Binned>();
 	const deleted = new Set<string>();
@@ -1761,6 +1772,20 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				}
 				return lists.savePlaylist(id, request);
 			}),
+		organize: createOrganizeFixture({
+			albums: () => [...held.values()],
+			templates: () => ({
+				template: settings.settings['organize.template']?.value ?? defaultTemplate,
+				compilations: settings.settings['organize.compilations']?.value ?? defaultCompilations
+			}),
+			writes: () => signedIn.canOrganize,
+			...(options.organizeAlbumMs === undefined ? {} : { albumMs: options.organizeAlbumMs }),
+			respond: (answer) =>
+				respond(() => {
+					adminOnly();
+					return answer();
+				})
+		}),
 		changeSettings: (change) =>
 			respond(() => {
 				adminOnly();

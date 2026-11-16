@@ -20,6 +20,7 @@ import { patchIndex } from './indexPatch.ts';
 import { Trashed } from './trashed.svelte.ts';
 import type { PlaybackFixture } from './playbackFixture.ts';
 import { eventsUrl, Live, type EventStream } from './live.ts';
+import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
 import { Marks } from './marks.svelte.ts';
 import { Playlists } from './playlists.svelte.ts';
 import { ListenOutbox, Outbox } from './outbox.ts';
@@ -397,6 +398,11 @@ export class Library {
 						playlists: ({ ids }) => {
 							this.playlists.heard(ids);
 						},
+						organize: (event) => {
+							for (const heard of this.#organizeHeard) {
+								heard(event);
+							}
+						},
 						settings: () => {
 							this.settingsHeard += 1;
 							void this.#readSettled();
@@ -406,6 +412,27 @@ export class Library {
 							this.probe();
 						}
 					});
+	}
+
+	/** Who hears an organize run's progress: the Organize page and the nav's note. */
+	readonly #organizeHeard = new SvelteSet<(event: OrganizeEvent) => void>();
+
+	/** The organizer's routes. */
+	get organize(): OrganizeSource {
+		return this.#source.organize;
+	}
+
+	/**
+	 * Calls `heard` with every organize run's progress, from the server's events, or from the
+	 * fixtures' own clock. Returns what stops it.
+	 */
+	hearOrganize(heard: (event: OrganizeEvent) => void): () => void {
+		this.#organizeHeard.add(heard);
+		const stopFixture = this.#source.organize.listen?.(heard);
+		return () => {
+			this.#organizeHeard.delete(heard);
+			stopFixture?.();
+		};
 	}
 
 	/** Whether the server's events are arriving: then nothing polls for what they say. */
@@ -1895,6 +1922,7 @@ function fromQuery(): Library {
 	const history = query.get('history') === 'none' ? 'none' : undefined;
 	const tagWrites = query.get('tagWrites') === 'off' ? 'off' : undefined;
 	const trash = query.get('trash') === 'board' ? 'board' : undefined;
+	const organizeAlbum = Number(query.get('organizeAlbum') ?? 0);
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
@@ -1910,7 +1938,8 @@ function fromQuery(): Library {
 				playback,
 				history,
 				tagWrites,
-				trash
+				trash,
+				...(organizeAlbum > 0 ? { organizeAlbumMs: organizeAlbum } : {})
 			}),
 			{
 				readyMemory,

@@ -4,6 +4,7 @@
 	import { flowingPill } from './flowingPill.ts';
 	import Icon from './Icon.svelte';
 	import type { NavItem, NavLook } from './routes.ts';
+	import { navNote } from '#lib/organize/words.ts';
 
 	interface Props {
 		look: NavLook;
@@ -13,9 +14,11 @@
 		you: boolean;
 		/** Last.fm needs reconnecting: plays are piling up. */
 		attention: boolean;
+		/** An organize run going, for its small note. */
+		organizing?: { done: number; total: number } | null;
 	}
 
-	let { look, current, healthIssues, you, attention }: Props = $props();
+	let { look, current, healthIssues, you, attention, organizing = null }: Props = $props();
 </script>
 
 <header class="bar" data-route={look} inert={look === 'gone' || look === 'door'}>
@@ -56,6 +59,14 @@
 			href={resolve('/playlists')}
 			aria-current={current === 'playlists' ? 'page' : undefined}>Playlists</a
 		>
+		{#if organizing !== null}
+			<a
+				class="organizing"
+				href={resolve('/server/organize')}
+				aria-label={`Organizing: ${String(organizing.done)} of ${String(organizing.total)} songs`}
+				>{navNote(organizing.done, organizing.total)}</a
+			>
+		{/if}
 		<span class="fold wide home-only" inert={look === 'album'}>
 			<span class="fold-in">
 				<a class="item health" href={resolve('/health')}>
@@ -345,5 +356,18 @@
 			padding: 0 3px;
 			font-size: 13px;
 		}
+	}
+
+	/* An organize run going: a small mono note, which opens its page. */
+	.organizing {
+		padding: 0 12px;
+		font: 600 11px var(--font-mono);
+		letter-spacing: 0.06em;
+		color: var(--fox-text);
+		text-decoration: none;
+	}
+
+	.organizing:hover {
+		color: var(--text);
 	}
 </style>

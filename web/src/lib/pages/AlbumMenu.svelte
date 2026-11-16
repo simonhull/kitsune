@@ -126,6 +126,19 @@
 				>
 			{/if}
 		{/if}
+		{#if actions.organize !== undefined}
+			{#if actions.editTags === undefined}<div class="rule"></div>{/if}
+			<button
+				type="button"
+				role="menuitem"
+				class="item organize"
+				data-menu-item
+				onclick={then(actions.organize)}
+				><span class="organize-name">Organize files…</span><span class="organize-note"
+					>PREVIEWS THESE {String(album?.tracks.length ?? open.entry.trackCount)} · MOVES NOTHING YET</span
+				></button
+			>
+		{/if}
 		{#if actions.goToArtist !== undefined}
 			<div class="rule"></div>
 			<button
@@ -218,6 +231,20 @@
 
 	.grow {
 		flex: 1;
+	}
+
+	.organize {
+		height: auto;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 2px;
+		padding: 9px 12px;
+	}
+
+	.organize-note {
+		font: 400 10.5px var(--font-mono);
+		letter-spacing: 0.04em;
+		color: var(--fox-text);
 	}
 
 	.quiet {

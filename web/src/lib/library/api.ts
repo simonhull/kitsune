@@ -62,6 +62,8 @@ import {
 	type User
 } from './source.ts';
 
+import { createOrganizeApi } from '#lib/organize/api.ts';
+
 const base = '/api/v1';
 
 /** When the server gives no usable `Retry-After`, come back in a minute. */
@@ -804,6 +806,8 @@ export function createApiSource({
 			}
 			return (await response.json()) as PlaylistSaved;
 		},
+
+		organize: createOrganizeApi(call, onUnauthorized),
 
 		async changeSettings(change) {
 			const response = await call('/admin/settings', {

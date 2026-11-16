@@ -1,3 +1,4 @@
+import { defaultCompilations, defaultTemplate } from '#lib/organize/template.ts';
 import type {
 	FolderKind,
 	FolderListing,
@@ -15,7 +16,13 @@ const defaults = {
 	'library.missing_grace': '24h0m0s',
 	'log.level': 'info',
 	'server.base_url': '',
-	'server.trusted_proxies': [] as string[]
+	'server.trusted_proxies': [] as string[],
+	'organize.template': defaultTemplate,
+	'organize.compilations': defaultCompilations,
+	'organize.roots': {},
+	'organize.on_edit': false,
+	'organize.companions': true,
+	'organize.rewrite_playlists': false
 } as const;
 
 function unset<T>(value: T, restartRequired = false): Setting<T> {
@@ -38,7 +45,13 @@ export function settingsFixture(lastfmConfigured: boolean): ServerSettings {
 			'library.missing_grace': { value: '720h0m0s', source: 'web' },
 			'log.level': unset('info'),
 			'server.base_url': unset('', true),
-			'server.trusted_proxies': unset([], true)
+			'server.trusted_proxies': unset([], true),
+			'organize.template': unset(defaultTemplate),
+			'organize.compilations': unset(defaultCompilations),
+			'organize.roots': unset({}),
+			'organize.on_edit': unset(false),
+			'organize.companions': unset(true),
+			'organize.rewrite_playlists': unset(false)
 		},
 		listen: ':4533',
 		listenSource: 'server.toml',
@@ -107,8 +120,8 @@ export function changedSettings(current: ServerSettings, change: SettingsChange)
 			continue;
 		}
 		const cleared = value === null || value === '' || (Array.isArray(value) && value.length === 0);
-		const setting = s[key] as Setting<unknown>;
-		const restart = setting.restartRequired === true;
+		const setting = s[key] as Setting<unknown> | undefined;
+		const restart = setting?.restartRequired === true;
 		Object.assign(
 			s,
 			Object.fromEntries([

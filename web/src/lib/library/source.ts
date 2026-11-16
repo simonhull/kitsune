@@ -1,5 +1,6 @@
 /** The contract's types, by name: see `api/openapi.yaml`. Real tags are messy, so much is optional. */
 
+import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
 import type { ThemeChoice } from '#lib/theme/theme.svelte.ts';
 import type { AlbumOrder, ArtistOrder, ArtistSongs, LibrarySort, Sort } from './sorts.ts';
 
@@ -16,6 +17,8 @@ export interface Me extends User {
 	canEditTags: boolean;
 	/** May move songs to Trash: an administrator, on a server with tag writes on. */
 	canTrash: boolean;
+	/** May run the organizer: the same rule. Without it an administrator still previews. */
+	canOrganize: boolean;
 }
 
 /** What `POST /admin/trash` moves: songs, or whole albums. */
@@ -715,6 +718,7 @@ export interface ServerEvents {
 	lastfm: Record<string, never>;
 	settings: { keys: string[] };
 	playlists: { ids: string[] };
+	organize: OrganizeEvent;
 }
 
 export type ServerEventKind = keyof ServerEvents;
@@ -979,7 +983,7 @@ export interface ServerSettings {
 		'log.level': Setting<LogLevel>;
 		'server.base_url': Setting<string>;
 		'server.trusted_proxies': Setting<string[]>;
-	};
+	} & Partial<OrganizeSettings>;
 	listen: string;
 	listenSource: 'server.toml' | 'default';
 	version: string;
@@ -987,6 +991,22 @@ export interface ServerSettings {
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/** A library folder's own templates, for `organize.roots`. */
+export interface FolderTemplates {
+	template: string;
+	compilations: string;
+}
+
+/** The organizer's settings, which its page sets, not the Server form. */
+export interface OrganizeSettings {
+	'organize.template': Setting<string>;
+	'organize.compilations': Setting<string>;
+	'organize.roots': Setting<Record<string, FolderTemplates>>;
+	'organize.on_edit': Setting<boolean>;
+	'organize.companions': Setting<boolean>;
+	'organize.rewrite_playlists': Setting<boolean>;
+}
 
 /** The settings to change. Null clears one: it takes its default, and the next start seeds it. */
 export type SettingsChange = Partial<{
@@ -999,6 +1019,12 @@ export type SettingsChange = Partial<{
 	'log.level': LogLevel | null;
 	'server.base_url': string | null;
 	'server.trusted_proxies': string[] | null;
+	'organize.template': string | null;
+	'organize.compilations': string | null;
+	'organize.roots': Record<string, FolderTemplates> | null;
+	'organize.on_edit': boolean | null;
+	'organize.companions': boolean | null;
+	'organize.rewrite_playlists': boolean | null;
 }>;
 
 export interface IssueCounts {
@@ -1355,6 +1381,8 @@ export interface LibrarySource {
 	 * take.
 	 */
 	savePlaylist(id: string, save: PlaylistSave): Promise<PlaylistSaved>;
+	/** The organizer's routes, for administrators. */
+	readonly organize: OrganizeSource;
 }
 
 /** A save found a file where it was going: nothing was written. */

@@ -8,6 +8,7 @@ import { player } from '#lib/player/player.svelte.ts';
 import { shuffles } from '#lib/shuffle/session.svelte.ts';
 import { albumSource } from '#lib/shuffle/sources.ts';
 import { tagEditor } from './tagEditor.svelte.ts';
+import { organizeEntry } from '#lib/organize/entry.svelte.ts';
 import { trashBin } from './trashBin.svelte.ts';
 
 /** What can be done with a whole album, in album order: its ⋯ menu's actions. */
@@ -24,6 +25,8 @@ export interface AlbumActions {
 	goToArtist: (() => void) | undefined;
 	/** Moves every song on it to Trash. Set for an administrator on a server that may change files. */
 	trash: (() => void) | undefined;
+	/** Previews where the template files its songs. Set as Trash is. */
+	organize: (() => void) | undefined;
 }
 
 /** The songs of an album, ready to queue. */
@@ -90,6 +93,11 @@ export function albumActions(entry: AlbumEntry, album: Album | undefined): Album
 					if (page.route.id === '/album/[id]' && page.params['id'] === id) {
 						void goto(resolve('/albums'));
 					}
+				}
+			: undefined,
+		organize: organizeEntry.can
+			? () => {
+					void organizeEntry.album(id);
 				}
 			: undefined
 	};
