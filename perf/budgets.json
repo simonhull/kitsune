@@ -146,12 +146,12 @@
       "p95Ms": 70
     },
     "open-organize": {
-      "interaction": "Organize: click it on the Server page, to the template's chips painted (not yet measured: a first guess)",
-      "p95Ms": 300
+      "interaction": "Organize: click it on the Server page, to the template's chips painted",
+      "p95Ms": 55
     },
     "preview-paint": {
-      "interaction": "Organize: press Preview over the whole library, to the first album's rows (not yet measured: a first guess)",
-      "p95Ms": 1500
+      "interaction": "Organize: press Preview over the whole library, to the first album's rows",
+      "p95Ms": 1100
     }
   },
   "server": {

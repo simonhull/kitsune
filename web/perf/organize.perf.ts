@@ -1,20 +1,11 @@
 import type { Page } from '@playwright/test';
 import { expect, runs, test } from './fixture.ts';
 import { atRest, nextLoudAlbum, openLibrary } from './pages.ts';
+import type { Sound } from './probe.ts';
 
 /** What the `<audio>` element that plays a track's stream says of itself now. */
-async function sound(
-	page: Page,
-	trackId: string
-): Promise<{ at: number; paused: boolean; error: boolean }> {
-	return page.evaluate((src) => {
-		const audio = [...document.querySelectorAll('audio')].find((a) => a.src.includes(src));
-		return {
-			at: audio?.currentTime ?? -1,
-			paused: audio?.paused ?? true,
-			error: audio?.error !== null && audio?.error !== undefined
-		};
-	}, `/tracks/${trackId}/stream`);
+async function sound(page: Page, trackId: string): Promise<Sound> {
+	return page.evaluate((src) => window.perf.sound(src), `/tracks/${trackId}/stream`);
 }
 
 /** Waits for the run `id` to end, and returns how. */
@@ -71,7 +62,7 @@ test('Organize: open the page from Server, to the template painted', async ({ pa
 	const open = perf.samples('open-organize');
 	for (let i = 0; i < runs; i++) {
 		await page.goto('/server');
-		const link = page.getByRole('link', { name: 'ORGANIZE FILES ›' });
+		const link = page.getByRole('link', { name: 'Organize where they sit' });
 		await link.waitFor();
 		await atRest(page);
 		await perf.time(
