@@ -125,6 +125,7 @@ type Scanner struct {
 	organizing   atomic.Pointer[organizeTask]   // The run going now, if any.
 	organizeNote throttle                       // When the notifier last heard of a run's progress.
 	edits        editsPending                   // Songs edits leave the organizer.
+	dupes        atomic.Pointer[keptDuplicates] // The last find of duplicates, while it holds.
 	// organizeFault, nil but in tests, is told each step of a run: it may stop
 	// the run there, as a crash would, or fail a move.
 	organizeFault func(step, rel string) error

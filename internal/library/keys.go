@@ -1,6 +1,7 @@
 package library
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 
@@ -61,10 +62,15 @@ var (
 	// read only by the tag editor.
 	keysReleaseGroupMBID = []string{"MUSICBRAINZ_RELEASEGROUPID", "MUSICBRAINZ RELEASE GROUP ID"}
 	keysReleaseTrackMBID = []string{"MUSICBRAINZ_RELEASETRACKID", "MUSICBRAINZ RELEASE TRACK ID"}
-	keysGenre            = []string{"GENRE", "TCON", "\xA9gen", "IGNR"}
-	keysComposer         = []string{"COMPOSER", "TCOM", "\xA9wrt"}
-	keysDate             = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day", keyICRD}
-	keysOriginalDate     = []string{"TDOR", "TORY", "ORIGINALDATE"}
+	// keysReleaseType hold the release's type as MusicBrainz Picard writes it:
+	// a Vorbis RELEASETYPE, and a TXXX or freeform "MusicBrainz Album Type"
+	// elsewhere, one type a value ("album", "compilation", "soundtrack"), or
+	// several in one value split by "; ". Only Duplicates reads them.
+	keysReleaseType  = []string{"RELEASETYPE", "MUSICBRAINZ ALBUM TYPE"}
+	keysGenre        = []string{"GENRE", "TCON", "\xA9gen", "IGNR"}
+	keysComposer     = []string{"COMPOSER", "TCOM", "\xA9wrt"}
+	keysDate         = []string{"DATE", "YEAR", "TDRC", "TYER", "\xA9day", keyICRD}
+	keysOriginalDate = []string{"TDOR", "TORY", "ORIGINALDATE"}
 	// keysDiscSubtitle hold a disc's name. ID3v2.4 has a frame for it, which
 	// ID3v2.3 lacks: there, and in Vorbis and M4A, it is a DISCSUBTITLE text.
 	keysDiscSubtitle = []string{"TSST", "DISCSUBTITLE"}
@@ -84,6 +90,10 @@ func ComposerKeys() []string { return storedKeys(FieldComposers) }
 // TrackMBIDKeys returns the raw tag keys that hold a track's MusicBrainz ID,
 // as the store keeps them.
 func TrackMBIDKeys() []string { return storedKeys(FieldMusicBrainzRecordingID) }
+
+// ReleaseTypeKeys returns the raw tag keys that hold a release's type, as the
+// store keeps them.
+func ReleaseTypeKeys() []string { return slices.Clone(keysReleaseType) }
 
 // ReleaseTrackMBIDKeys returns the raw tag keys that hold the MusicBrainz ID
 // of a track on its release, as the store keeps them.
