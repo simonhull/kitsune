@@ -194,23 +194,9 @@ func (s *Scanner) StartOrganize(ctx context.Context, p *OrganizePreview, pick fu
 
 // startTask claims the scanner for t, records it and returns its run func.
 func (s *Scanner) startTask(ctx context.Context, t *organizeTask, start *store.OrganizeRunStart) (OrganizeRun, func(context.Context), error) {
-	if !s.live().TagWrites {
-		return OrganizeRun{}, nil, ErrTagWritesOff
-	}
-	if !s.claim.tryLock(heldByScan) {
-		return OrganizeRun{}, nil, ErrBusy
-	}
-	release := s.claim.unlock
-	ok, err := s.lock.lockUnlessBusy(ctx, heldByPass) // A scan or an edit holding it now is a refusal.
-	if err != nil || !ok {
-		release()
-		return OrganizeRun{}, nil, cmpErr(err, ErrBusy)
-	}
-	s.lock.unlock()
-	if root := s.downRoot(t); root != "" {
-		release()
-		s.log.WarnContext(ctx, "not organizing: a library root looks down", "root", root)
-		return OrganizeRun{}, nil, ErrRootDown
+	release, err := s.claimRun(ctx, "organizing", t.roots())
+	if err != nil {
+		return OrganizeRun{}, nil, err
 	}
 	for i := range t.batches {
 		t.total += len(t.batches[i].songs)
@@ -305,22 +291,49 @@ func songItem(song *store.OrganizeSong, pl *organize.Planned) organizeItem {
 // foldEqual reports whether a and b differ only in case.
 func foldEqual(a, b string) bool { return a != b && strings.EqualFold(a, b) }
 
-// downRoot returns a root t would touch that looks down, or "".
-func (s *Scanner) downRoot(t *organizeTask) string {
-	seen := map[string]bool{}
+// roots returns the roots t would touch, each once.
+func (t *organizeTask) roots() []string {
+	var out []string
 	for i := range t.batches {
 		for j := range t.batches[i].songs {
-			root := t.batches[i].songs[j].root
-			if seen[root] {
-				continue
-			}
-			seen[root] = true
-			if rootLooksDown(root) {
-				return root
+			if root := t.batches[i].songs[j].root; !slices.Contains(out, root) {
+				out = append(out, root)
 			}
 		}
 	}
-	return ""
+	return out
+}
+
+// claimRun claims the scanner for a run that writes under roots, and returns
+// the func that gives the claim back. The run holds the claim from start to
+// end, so no scan starts meanwhile, and takes the library lock one batch at a
+// time. doing names the run for the log.
+//
+// It returns [ErrTagWritesOff] while tag writes are off; [ErrBusy] while a
+// scan, an edit or another run holds the library; and [ErrRootDown] when one
+// of roots looks down.
+func (s *Scanner) claimRun(ctx context.Context, doing string, roots []string) (func(), error) {
+	if !s.live().TagWrites {
+		return nil, ErrTagWritesOff
+	}
+	if !s.claim.tryLock(heldByScan) {
+		return nil, ErrBusy
+	}
+	release := s.claim.unlock
+	ok, err := s.lock.lockUnlessBusy(ctx, heldByPass) // A scan or an edit holding it now is a refusal.
+	if err != nil || !ok {
+		release()
+		return nil, cmpErr(err, ErrBusy)
+	}
+	s.lock.unlock()
+	for _, root := range roots {
+		if rootLooksDown(root) {
+			release()
+			s.log.WarnContext(ctx, "not "+doing+": a library root looks down", "root", root)
+			return nil, ErrRootDown
+		}
+	}
+	return release, nil
 }
 
 // rootLooksDown reports whether root looks down by the full scan's test: it

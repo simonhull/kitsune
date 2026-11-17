@@ -34,6 +34,9 @@ type Notifier interface {
 	// OrganizeChanged gives an organize run's progress: at its start, after its
 	// albums (at most four times a second), and at its end.
 	OrganizeChanged(p *OrganizeProgress)
+	// GainChanged gives a ReplayGain run's progress: at its start, after its
+	// albums (at most four times a second), and at its end.
+	GainChanged(p *GainProgress)
 }
 
 // noNotify hears nothing.
@@ -45,6 +48,7 @@ func (noNotify) FingerprintsChanged(FingerprintProgress) {}
 func (noNotify) LoudnessChanged(LoudnessProgress)        {}
 func (noNotify) PlaylistsChanged([]string)               {}
 func (noNotify) OrganizeChanged(*OrganizeProgress)       {}
+func (noNotify) GainChanged(*GainProgress)               {}
 
 // throttle says when a running thing may tell again.
 type throttle struct {

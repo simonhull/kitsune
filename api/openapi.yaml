@@ -1502,7 +1502,8 @@ paths:
         (`EventLibrary`), `scan` (`ScanStatus`, with the failure's reason for
         administrators only) and `ready`/`resync` (`EventStream`) go to
         everyone; `fingerprints` (`FingerprintStatus`), `loudness`
-        (`LoudnessStatus`), `organize` (`EventOrganize`) and `settings`
+        (`LoudnessStatus`), `organize` (`EventOrganize`), `replaygain`
+        (`EventReplayGain`) and `settings`
         (`EventSettings`) to administrators; `marks` (`EventMarks`), `prefs`
         (`EventPrefs`), `shuffle-rules` (`EventShuffleRules`), `shuffle`
         (`EventShuffle`), `listening`
@@ -2762,6 +2763,187 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OrganizeRun" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/LibraryConflict"
+  /admin/replaygain:
+    get:
+      operationId: getReplayGain
+      summary: Read what Kitsune measured and can write into the files.
+      description: >-
+        For administrators. The songs whose loudness Kitsune measured, which
+        carry no ReplayGain of their own and could be written now (`songs`, on
+        `albums`, by format, with the four biggest albums), how many still wait
+        for the loudness pass (`waiting`) or can't be measured
+        (`unmeasurable`), the run going, if any, and the last 10 runs. No file
+        is read, and no path is sent.
+      responses:
+        "200":
+          description: The status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReplayGainStatus" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+  /admin/replaygain/runs:
+    post:
+      operationId: postReplayGainRun
+      summary: Write Kitsune's measure into the files.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on, else a
+        409. Writes the track gain and true peak of each measured song with no
+        ReplayGain of its own, and its album's pooled gain and peak, at −18
+        LUFS (ReplayGain 2.0), into every writable album or just the `albums`
+        named, and answers 202 with the run at once; its progress comes as
+        `replaygain` events. A run takes one album at a time under the library
+        lock: it checks each song is as the last scan found it, journals the
+        album, writes each file (in place where the tags fit and no stream has
+        it open, else by an atomic rewrite) and reads it back, so the song
+        plays from its tags, exactly as it played from the measure. A song
+        that changed since is left as it was, named in the run. A run, a scan
+        or an edit holding the library is a 409 with Retry-After, and so is a
+        library folder the run would touch that looks down. Albums named of
+        which nothing can be written now are a 422.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GainRunRequest" }
+      responses:
+        "202":
+          description: The run, started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GainRun" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/LibraryConflict"
+        "422":
+          $ref: "#/components/responses/Problem"
+  /admin/replaygain/runs/{id}:
+    get:
+      operationId: getReplayGainRun
+      summary: Read one run, its albums and the songs it left as they were.
+      description: >-
+        For administrators. The run, its albums in the order it takes them,
+        each written, writing, waiting or left, and up to 500 of the songs it
+        left as they were, each with why, by path relative to its library
+        folder. A run past the last 10 kept, or 90 days, is a 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The run.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GainRunDetail" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /admin/replaygain/runs/{id}/stop:
+    post:
+      operationId: postReplayGainRunStop
+      summary: Stop a run once the album in hand is written.
+      description: >-
+        For administrators. The run finishes the album it is writing and stops;
+        its `replaygain` event says `stopped`. A run that isn't running is a
+        409.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: The run, stopping.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GainRun" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+  /admin/replaygain/runs/{id}/undo:
+    post:
+      operationId: postReplayGainRunUndo
+      summary: Take out what a run wrote.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on, else a
+        409. A run in reverse over what the run wrote, with the same batches,
+        journal and events: each song's file gets back exactly the ReplayGain
+        tags it had before (none, but where the run wrote over a peak or a
+        zero gain), found by song, so one moved since is still undone. A song
+        whose ReplayGain tags no longer read what the run wrote is left, and
+        named. Answers 202 with the undo, a run of its own. A run already
+        undone, one running, an undo, or a 409 as for a run. An unknown run is
+        a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: The undo, started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GainRun" }
         "401":
           description: Credentials are missing, invalid or expired.
           headers:
@@ -6292,6 +6474,155 @@ components:
       properties:
         run: { type: string }
         state: { $ref: "#/components/schemas/OrganizeState" }
+        done: { type: integer }
+        total: { type: integer }
+        albumsDone: { type: integer }
+        album: { type: string }
+    ReplayGainStatus:
+      type: object
+      additionalProperties: false
+      description: >-
+        What a ReplayGain run would write now: `songs` measured songs with no
+        ReplayGain of their own on `albums` albums, their `formats`, most songs
+        first, and the four albums with the most (`biggest`). `waiting` songs
+        still wait for the loudness pass to measure them or pool their album;
+        `unmeasurable` ones can't be measured. `run` is the run going, and
+        `runs` the last 10, a running one first, then newest first.
+      required: [songs, albums, formats, biggest, waiting, unmeasurable, runs]
+      properties:
+        songs: { type: integer }
+        albums: { type: integer }
+        formats:
+          type: array
+          items: { type: string }
+        biggest:
+          type: array
+          maxItems: 4
+          items: { $ref: "#/components/schemas/GainAlbum" }
+        waiting: { type: integer }
+        unmeasurable: { type: integer }
+        run: { $ref: "#/components/schemas/GainRun" }
+        runs:
+          type: array
+          maxItems: 10
+          items: { $ref: "#/components/schemas/GainRun" }
+    GainAlbum:
+      type: object
+      additionalProperties: false
+      description: An album with songs a run writes or wrote; `songs` counts those.
+      required: [id, title, artist, formats, songs]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        year: { type: integer }
+        artwork: { $ref: "#/components/schemas/Artwork" }
+        formats:
+          type: array
+          items: { type: string }
+        songs: { type: integer }
+    GainRunRequest:
+      type: object
+      additionalProperties: false
+      description: The albums to write, by ID, at most 1,000; none writes every album that can be.
+      properties:
+        albums:
+          type: array
+          maxItems: 1000
+          items: { type: string }
+    GainState:
+      type: string
+      description: "`running`, `done`, `stopped` (by Stop, or by the server stopping), or `undone`."
+      enum: [running, done, stopped, undone]
+    GainRun:
+      type: object
+      additionalProperties: false
+      description: >-
+        A run, or an undo of one (`undoOf`). `done` counts the songs dealt with
+        of `total`; `written` the files it wrote (for an undo, put back), `left`
+        the songs it left as they were and `failed` those whose write failed.
+        `albums` counts its albums, `albumsDone` those finished, and `album` is
+        the one in hand. `undoable` while an undo would take something out.
+      required: [id, kind, state, startedAt, total, done, written, left, failed, albums, albumsDone, undoable]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [run, undo] }
+        state: { $ref: "#/components/schemas/GainState" }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        by: { type: string, description: The administrator who ran it, while their account is. }
+        total: { type: integer }
+        done: { type: integer }
+        written: { type: integer }
+        left: { type: integer }
+        failed: { type: integer }
+        albums: { type: integer }
+        albumsDone: { type: integer }
+        album: { type: string }
+        stopping: { type: boolean }
+        undoable: { type: boolean }
+        undoOf: { type: string }
+        undoneBy: { type: string }
+    GainRunDetail:
+      type: object
+      additionalProperties: false
+      required: [run, albums, left]
+      properties:
+        run: { $ref: "#/components/schemas/GainRun" }
+        albums:
+          type: array
+          description: The run's albums in the order it takes them.
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, title, artist, formats, songs, state, written, left]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              artist: { type: string }
+              year: { type: integer }
+              artwork: { $ref: "#/components/schemas/Artwork" }
+              formats:
+                type: array
+                items: { type: string }
+              songs: { type: integer }
+              state: { type: string, enum: [written, writing, waiting, left] }
+              written: { type: integer }
+              left: { type: integer }
+        left:
+          type: array
+          description: Songs the run left as they were, at most 500, each with why.
+          items:
+            type: object
+            additionalProperties: false
+            required: [track, title, path, root, reason]
+            properties:
+              track: { type: string }
+              title: { type: string }
+              path: { type: string, description: Relative to its library folder. }
+              root: { type: integer, description: Its library folder, as an index into `library.roots`. }
+              reason:
+                type: string
+                description: >-
+                  `changed`: the file isn't as the last scan found it, or
+                  another tool put ReplayGain in it; `unwritable`: the file
+                  can't be written; `stale`: its measure is out of date;
+                  `trashed`, `missing`; `retagged` (an undo): its tags no
+                  longer read what the run wrote; `interrupted`: the server
+                  stopped before it was written; `failed`.
+                enum: [changed, unwritable, stale, trashed, missing, retagged, interrupted, failed]
+    EventReplayGain:
+      type: object
+      additionalProperties: false
+      description: >-
+        A ReplayGain run's progress, to administrators: at its start, about
+        every quarter second, after each album, and at its end. `albumsDone`
+        counts the albums it has finished; `album` is the one in hand. Never a
+        path.
+      required: [run, state, done, total, albumsDone]
+      properties:
+        run: { type: string }
+        state: { $ref: "#/components/schemas/GainState" }
         done: { type: integer }
         total: { type: integer }
         albumsDone: { type: integer }

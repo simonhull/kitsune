@@ -461,10 +461,10 @@ func TestEditNeedsJSON(t *testing.T) {
 // holdingWrite returns a write that signals entered and waits for release
 // before really writing.
 func holdingWrite(entered chan<- struct{}, release <-chan struct{}) library.WriteFunc {
-	return func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+	return func(ctx context.Context, path string, edit func(*audiometa.File) error, opts ...audiometa.WriteOption) error {
 		entered <- struct{}{}
 		<-release
-		return audiometa.WriteContext(ctx, path, edit)
+		return audiometa.WriteContext(ctx, path, edit, opts...)
 	}
 }
 
@@ -559,11 +559,11 @@ func readOnly(rels ...string) func(*testing.T, *editFixture) {
 // failingWrite really writes the first n files, then fails.
 func failingWrite(n int32) library.WriteFunc {
 	var writes atomic.Int32
-	return func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+	return func(ctx context.Context, path string, edit func(*audiometa.File) error, opts ...audiometa.WriteOption) error {
 		if writes.Add(1) > n {
 			return errors.New("disk full")
 		}
-		return audiometa.WriteContext(ctx, path, edit)
+		return audiometa.WriteContext(ctx, path, edit, opts...)
 	}
 }
 
@@ -599,11 +599,11 @@ func TestAlbumEditStoppedPartwayReportsHowFarItGot(t *testing.T) {
 func TestFileChangedDuringAWriteSaysHowFarTheEditGot(t *testing.T) {
 	t.Parallel()
 	var writes atomic.Int32
-	write := func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+	write := func(ctx context.Context, path string, edit func(*audiometa.File) error, opts ...audiometa.WriteOption) error {
 		if writes.Add(1) == 2 {
 			return audiometa.ErrConcurrentModification
 		}
-		return audiometa.WriteContext(ctx, path, edit)
+		return audiometa.WriteContext(ctx, path, edit, opts...)
 	}
 	fx := newEditFixture(t, &testServerOptions{TagWrites: true, Write: write}, twoFLACs())
 	p := decodeEditProblem(t, fx.post(t, fx.album.Etag, yearBody), http.StatusPreconditionFailed)
@@ -616,11 +616,11 @@ func TestRetryAfterAStopFinishesTheEdit(t *testing.T) {
 	t.Parallel()
 	samples := map[string]string{"album/1.flac": sampleFLAC, "album/2.flac": sampleFLAC, "album/3.flac": sampleFLAC}
 	var writes atomic.Int32
-	write := func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+	write := func(ctx context.Context, path string, edit func(*audiometa.File) error, opts ...audiometa.WriteOption) error {
 		if writes.Add(1) == 2 {
 			return errors.New("disk full")
 		}
-		return audiometa.WriteContext(ctx, path, edit)
+		return audiometa.WriteContext(ctx, path, edit, opts...)
 	}
 	fx := newEditFixture(t, &testServerOptions{TagWrites: true, Write: write}, samples)
 	stale := fx.album.Etag

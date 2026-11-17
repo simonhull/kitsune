@@ -29,12 +29,12 @@ func renameAlbum() *AlbumEdit {
 func (l *editLib) failWrite(n int) error {
 	boom := errors.New("disk full")
 	writes := 0
-	l.scanner.write = func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+	l.scanner.write = func(ctx context.Context, path string, edit func(*audiometa.File) error, opts ...audiometa.WriteOption) error {
 		writes++
 		if writes == n {
 			return boom
 		}
-		return audiometa.WriteContext(ctx, path, edit)
+		return audiometa.WriteContext(ctx, path, edit, opts...)
 	}
 	return boom
 }
@@ -81,9 +81,7 @@ func TestARetryFinishesARename(t *testing.T) {
 	if half.ID != l.album.ID || len(half.Tracks) != len(l.album.Tracks) {
 		t.Fatalf("after a stop the album is %s with %d tracks, want %s with all %d", half.ID, len(half.Tracks), l.album.ID, len(l.album.Tracks))
 	}
-	l.scanner.write = func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
-		return audiometa.WriteContext(ctx, path, edit)
-	}
+	l.scanner.write = audiometa.WriteContext
 	if _, err := l.scanner.EditAlbum(t.Context(), half.ID, half.ETag, renameAlbum()); err != nil {
 		t.Fatal(err)
 	}

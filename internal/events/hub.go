@@ -38,6 +38,7 @@ const (
 	Settings     Kind = "settings"      // Server settings changed, by key: admins.
 	Playlists    Kind = "playlists"     // A person's playlists changed, by ID.
 	Organize     Kind = "organize"      // An organize run's progress: admins.
+	ReplayGain   Kind = "replaygain"    // A ReplayGain run's progress: admins.
 	// Resync tells a subscriber it missed events the hub no longer has: it
 	// must fetch everything again. The hub sends it; nothing publishes it.
 	Resync Kind = "resync"

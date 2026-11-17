@@ -28,6 +28,7 @@ import (
 	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/shuffler"
 	"github.com/simonhull/kitsune/internal/store"
+	"github.com/simonhull/kitsune/internal/stream"
 )
 
 // ErrStarting is what a [Config] Ready func returns while the server is still
@@ -96,6 +97,9 @@ type Config struct {
 	// organize run, which outlives its request. It returns an error when the
 	// server is stopping. Required; New panics if nil.
 	Work func(fn func(context.Context)) error
+	// Streams counts the track files streams hold open, which the scanner asks
+	// before it writes one in place. Nil counts nothing.
+	Streams *stream.Files
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -136,6 +140,7 @@ type Server struct {
 	matcher       *matching.Matcher
 	work          func(fn func(context.Context)) error
 	previews      previews // Organize previews, kept for their pages and runs.
+	streams       *stream.Files
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -173,6 +178,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		resetLimiter:  newLoginLimiter(maxLimiterKeys),
 		lastfm:        cfg.Lastfm,
 		publicURL:     cfg.PublicURL,
+		streams:       cfg.Streams,
 		lastfmStates:  lastfmStates{byUser: map[int64]pendingState{}},
 		setup:         newSetupState(cfg.SetupCode),
 		settings:      cfg.Settings,
@@ -307,6 +313,11 @@ func (s *Server) serverRoutes() []route {
 		{pattern: "GET /admin/organize/runs/{id}", admin: true, handle: s.getOrganizeRun},
 		{pattern: "POST /admin/organize/runs/{id}/stop", admin: true, handle: s.postOrganizeRunStop},
 		{pattern: "POST /admin/organize/runs/{id}/undo", admin: true, handle: s.postOrganizeRunUndo},
+		{pattern: "GET /admin/replaygain", admin: true, handle: s.getReplayGain},
+		{pattern: "POST /admin/replaygain/runs", admin: true, handle: s.postReplayGainRun},
+		{pattern: "GET /admin/replaygain/runs/{id}", admin: true, handle: s.getReplayGainRun},
+		{pattern: "POST /admin/replaygain/runs/{id}/stop", admin: true, handle: s.postReplayGainRunStop},
+		{pattern: "POST /admin/replaygain/runs/{id}/undo", admin: true, handle: s.postReplayGainRunUndo},
 		{pattern: "GET /admin/duplicates", admin: true, handle: s.getDuplicates},
 		{pattern: "GET /admin/duplicates/{group}", admin: true, handle: s.getDuplicate},
 		{pattern: "POST /admin/duplicates/{group}/merge", admin: true, handle: s.postDuplicateMerge},

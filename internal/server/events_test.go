@@ -38,6 +38,7 @@ var eventSchemas = map[string]string{ //nolint:gochecknoglobals // A read-only t
 	string(events.Settings):     "EventSettings",
 	string(events.Playlists):    "EventPlaylists",
 	string(events.Organize):     "EventOrganize",
+	string(events.ReplayGain):   "EventReplayGain",
 	string(events.Ready):        "EventStream",
 	string(events.Resync):       "EventStream",
 }
@@ -378,16 +379,22 @@ func TestNoEventHoldsASecret(t *testing.T) {
 	made := fx.makePlaylist(t, token, &api.PlaylistCreate{Name: mixName, Tracks: []string{fx.album.Tracks[0].ID}})
 	writeUnder(t, fx.root, mixFile, mixLines(fx.root))
 	fx.send(t, saveCall(made.Playlist.ID, token, jsonBody(t, api.PlaylistSave{Root: fx.root, Folder: savedDir, Name: mixName})))
-	if _, err := fx.Scanner.Scan(t.Context(), library.Full); err != nil {
+	sine, err := os.ReadFile(filepath.Join("..", "library", "testdata", sineFLAC))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fx.Scanner.MeasureLoudness(t.Context()); err != nil {
+	writeUnder(t, fx.root, "sines/one.flac", string(sine))
+	if _, err = fx.Scanner.Scan(t.Context(), library.Full); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(fx.root); err != nil {
+	if _, err = fx.Scanner.MeasureLoudness(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fx.Scanner.Scan(t.Context(), library.Quick); err != nil {
+	fx.waitGain(t, fx.startGain(t, gainRunsPath, `{}`).ID)
+	if err = os.RemoveAll(fx.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = fx.Scanner.Scan(t.Context(), library.Quick); err != nil {
 		t.Fatal(err)
 	}
 	fx.send(t, changeCall(t, token, api.PasswordChange{Current: "a password", New: newPassword}))

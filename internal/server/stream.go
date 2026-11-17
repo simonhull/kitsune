@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/simonhull/kitsune/internal/store"
-	"github.com/simonhull/kitsune/internal/stream"
 )
 
 // getTrackStream serves a track's original file.
@@ -16,7 +15,7 @@ func (s *Server) getTrackStream(w http.ResponseWriter, r *http.Request) {
 		s.trackLookupFailed(w, r, err)
 		return
 	}
-	if err = stream.Serve(w, r, file); err != nil {
+	if err = s.streams.Serve(w, r, file); err != nil {
 		s.trackLookupFailed(w, r, err)
 	}
 }
