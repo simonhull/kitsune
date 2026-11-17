@@ -40,7 +40,8 @@ const kinds: readonly ServerEventKind[] = [
 	'lastfm',
 	'settings',
 	'playlists',
-	'organize'
+	'organize',
+	'replaygain'
 ];
 
 /**

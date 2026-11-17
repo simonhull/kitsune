@@ -3,6 +3,7 @@
 	import { staleFor } from '#lib/library/health.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import MatchingCard from '#lib/matching/MatchingCard.svelte';
+	import ReplayGainCard from '#lib/replaygain/ReplayGainCard.svelte';
 	import IssuesPanel from '#lib/pages/IssuesPanel.svelte';
 	import ScanPanel from '#lib/pages/ScanPanel.svelte';
 
@@ -72,7 +73,10 @@
 	<div class="page-frame health">
 		<ScanPanel {facts} {admin} down={library.down} {now} />
 		<IssuesPanel {facts} {admin} issues={library.issues} {gaveUp} {retry} />
-		{#if admin}<div class="matching"><MatchingCard /></div>{/if}
+		{#if admin}
+			<div class="replaygain"><ReplayGainCard /></div>
+			<div class="matching"><MatchingCard /></div>
+		{/if}
 	</div>
 {/if}
 
@@ -91,9 +95,21 @@
 		gap: calc(24px * var(--step));
 	}
 
-	/* Under the panels, a card as wide as the scan's. */
+	/* Under the panels: MusicBrainz as wide as the scan, ReplayGain as wide as the issues. */
 	.matching {
+		grid-row: 2;
 		grid-column: 1;
+	}
+
+	.replaygain {
+		grid-row: 2;
+		grid-column: 2;
+	}
+
+	/* An empty slot takes no room: neither card is drawn on every library. */
+	.matching:empty,
+	.replaygain:empty {
+		display: none;
 	}
 
 	@media (max-width: 900px) {
@@ -102,6 +118,12 @@
 
 			grid-template-columns: minmax(0, 1fr);
 			gap: 16px;
+		}
+
+		.matching,
+		.replaygain {
+			grid-row: auto;
+			grid-column: auto;
 		}
 	}
 

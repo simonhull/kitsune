@@ -5,6 +5,7 @@
 	import Icon from './Icon.svelte';
 	import type { NavItem, NavLook } from './routes.ts';
 	import { navNote } from '#lib/organize/words.ts';
+	import { navNote as gainNote } from '#lib/replaygain/words.ts';
 
 	interface Props {
 		look: NavLook;
@@ -16,9 +17,19 @@
 		attention: boolean;
 		/** An organize run going, for its small note. */
 		organizing?: { done: number; total: number } | null;
+		/** A ReplayGain run going: its note takes the same slot, since the two never run at once. */
+		writingGain?: { done: number; total: number } | null;
 	}
 
-	let { look, current, healthIssues, you, attention, organizing = null }: Props = $props();
+	let {
+		look,
+		current,
+		healthIssues,
+		you,
+		attention,
+		organizing = null,
+		writingGain = null
+	}: Props = $props();
 </script>
 
 <header class="bar" data-route={look} inert={look === 'gone' || look === 'door'}>
@@ -65,6 +76,13 @@
 				href={resolve('/server/organize')}
 				aria-label={`Organizing: ${String(organizing.done)} of ${String(organizing.total)} songs`}
 				>{navNote(organizing.done, organizing.total)}</a
+			>
+		{:else if writingGain !== null}
+			<a
+				class="organizing"
+				href={resolve('/health')}
+				aria-label={`Writing ReplayGain: ${String(writingGain.done)} of ${String(writingGain.total)} songs`}
+				>{gainNote(writingGain.done, writingGain.total)}</a
 			>
 		{/if}
 		<span class="fold wide home-only" inert={look === 'album'}>

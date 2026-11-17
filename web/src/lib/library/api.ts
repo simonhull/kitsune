@@ -64,6 +64,7 @@ import {
 
 import { createDuplicatesApi } from '#lib/duplicates/api.ts';
 import { createOrganizeApi } from '#lib/organize/api.ts';
+import { createReplayGainApi } from '#lib/replaygain/api.ts';
 
 const base = '/api/v1';
 
@@ -811,6 +812,8 @@ export function createApiSource({
 		organize: createOrganizeApi(call, onUnauthorized),
 
 		duplicates: createDuplicatesApi(call, onUnauthorized),
+
+		replayGain: createReplayGainApi(call, onUnauthorized),
 
 		async changeSettings(change) {
 			const response = await call('/admin/settings', {

@@ -22,6 +22,8 @@ import type { PlaybackFixture } from './playbackFixture.ts';
 import { eventsUrl, Live, type EventStream } from './live.ts';
 import type { DuplicatesSource } from '#lib/duplicates/types.ts';
 import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
+import { gainFixture } from '#lib/replaygain/fixture.ts';
+import type { ReplayGainEvent, ReplayGainSource } from '#lib/replaygain/types.ts';
 import { Marks } from './marks.svelte.ts';
 import { Playlists } from './playlists.svelte.ts';
 import { ListenOutbox, Outbox } from './outbox.ts';
@@ -404,6 +406,11 @@ export class Library {
 								heard(event);
 							}
 						},
+						replaygain: (event) => {
+							for (const heard of this.#gainHeard) {
+								heard(event);
+							}
+						},
 						settings: () => {
 							this.settingsHeard += 1;
 							void this.#readSettled();
@@ -413,10 +420,35 @@ export class Library {
 							this.probe();
 						}
 					});
+		// The fixtures say what a ReplayGain run changed as the server's `library` events would.
+		this.#source.replayGain.changed?.((albums) => {
+			void this.#heardLibrary({ albums, all: false });
+		});
 	}
 
 	/** Who hears an organize run's progress: the Organize page and the nav's note. */
 	readonly #organizeHeard = new SvelteSet<(event: OrganizeEvent) => void>();
+
+	/** Who hears a ReplayGain run's progress: Health's card, the nav's note and the album toast. */
+	readonly #gainHeard = new SvelteSet<(event: ReplayGainEvent) => void>();
+
+	/** The ReplayGain routes. */
+	get replayGain(): ReplayGainSource {
+		return this.#source.replayGain;
+	}
+
+	/**
+	 * Calls `heard` with every ReplayGain run's progress, from the server's events, or from the
+	 * fixtures' own clock. Returns what stops it.
+	 */
+	hearReplayGain(heard: (event: ReplayGainEvent) => void): () => void {
+		this.#gainHeard.add(heard);
+		const stopFixture = this.#source.replayGain.listen?.(heard);
+		return () => {
+			this.#gainHeard.delete(heard);
+			stopFixture?.();
+		};
+	}
 
 	/** The organizer's routes. */
 	get organize(): OrganizeSource {
@@ -1929,6 +1961,8 @@ function fromQuery(): Library {
 	const tagWrites = query.get('tagWrites') === 'off' ? 'off' : undefined;
 	const trash = query.get('trash') === 'board' ? 'board' : undefined;
 	const organizeAlbum = Number(query.get('organizeAlbum') ?? 0);
+	const gain = gainFixture(query.get('gain'));
+	const gainAlbum = Number(query.get('gainAlbum') ?? 0);
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
@@ -1945,7 +1979,9 @@ function fromQuery(): Library {
 				history,
 				tagWrites,
 				trash,
-				...(organizeAlbum > 0 ? { organizeAlbumMs: organizeAlbum } : {})
+				gain,
+				...(organizeAlbum > 0 ? { organizeAlbumMs: organizeAlbum } : {}),
+				...(gainAlbum > 0 ? { gainAlbumMs: gainAlbum } : {})
 			}),
 			{
 				readyMemory,

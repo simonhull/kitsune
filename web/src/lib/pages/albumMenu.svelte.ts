@@ -9,6 +9,7 @@ import { shuffles } from '#lib/shuffle/session.svelte.ts';
 import { albumSource } from '#lib/shuffle/sources.ts';
 import { tagEditor } from './tagEditor.svelte.ts';
 import { organizeEntry } from '#lib/organize/entry.svelte.ts';
+import { replayGain } from '#lib/replaygain/gain.svelte.ts';
 import { trashBin } from './trashBin.svelte.ts';
 
 /** What can be done with a whole album, in album order: its ⋯ menu's actions. */
@@ -27,6 +28,16 @@ export interface AlbumActions {
 	trash: (() => void) | undefined;
 	/** Previews where the template files its songs. Set as Trash is. */
 	organize: (() => void) | undefined;
+	/**
+	 * Writes Kitsune's measure into the files of its songs with no gain tagged, once confirmed:
+	 * resolves whether the run started. Set as Trash is, once the album is here and holds such songs.
+	 */
+	writeGain: (() => Promise<boolean>) | undefined;
+}
+
+/** An album's songs with no ReplayGain tagged, which Kitsune measured. */
+export function measuredSongs(album: Album): Album['tracks'] {
+	return album.tracks.filter((track) => track.replayGain?.source === 'measured');
 }
 
 /** The songs of an album, ready to queue. */
@@ -99,7 +110,11 @@ export function albumActions(entry: AlbumEntry, album: Album | undefined): Album
 			? () => {
 					void organizeEntry.album(id);
 				}
-			: undefined
+			: undefined,
+		writeGain:
+			replayGain.can && album !== undefined && measuredSongs(album).length > 0
+				? () => replayGain.writeAlbum(id, entry.title)
+				: undefined
 	};
 }
 

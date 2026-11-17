@@ -5,12 +5,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { library } from '#lib/library/library.svelte.ts';
 	import { matchQueue } from './api.ts';
 	import type { MatchQueue } from './types.ts';
 
 	let queue = $state.raw<MatchQueue | null>(null);
 
 	onMount(() => {
+		if (library.simulated) {
+			return; // The fixtures have no MusicBrainz queue: no server to ask.
+		}
 		matchQueue()
 			.then((q) => {
 				queue = q;

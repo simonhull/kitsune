@@ -8,6 +8,7 @@ import { createPlaybackFixture, type PlaybackFixture } from './playbackFixture.t
 import { createPlaylistsFixture } from './playlistsFixture.ts';
 import { createDuplicatesFixture } from '#lib/duplicates/fixture.ts';
 import { createOrganizeFixture } from '#lib/organize/fixture.ts';
+import { createReplayGainFixture, type GainFixture } from '#lib/replaygain/fixture.ts';
 import { defaultCompilations, defaultTemplate } from '#lib/organize/template.ts';
 import type { SongFacts } from './smartEval.ts';
 import { createHealthFixture, type HealthFixture } from './healthFixtures.ts';
@@ -211,6 +212,35 @@ const albums = new Map<string, Album>(
 	].map((album) => [album.id, album])
 );
 
+/** An album whose songs have no gain tagged, which Kitsune measured: its pool says the album's. */
+function measured(album: Album): Album {
+	return {
+		...album,
+		tracks: album.tracks.map((track, index) => ({
+			...track,
+			replayGain: {
+				trackGain: -(8 + ((index * 37) % 25) / 10),
+				trackPeak: 0.9 + ((index * 13) % 10) / 100,
+				albumGain: -8.62,
+				albumPeak: 1,
+				source: 'measured' as const
+			}
+		}))
+	};
+}
+
+/** The same album once a ReplayGain run wrote these songs (`written`), or an undo took it out. */
+function gainWritten(album: Album, ids: ReadonlySet<string>, written: boolean): Album {
+	return {
+		...album,
+		tracks: album.tracks.map((track) =>
+			ids.has(track.id) && track.replayGain !== undefined
+				? { ...track, replayGain: { ...track.replayGain, source: written ? 'tags' : 'measured' } }
+				: track
+		)
+	};
+}
+
 /** Named by a title, a length and who it's by, if that's not the album's own artist. */
 type Song = [title: string, seconds: number, by?: string];
 
@@ -350,7 +380,12 @@ function fieldsOf(
 	}
 	// Most files carry their gain; one in seven doesn't, so "no RG" has something to show, and
 	// one in five more was measured by Kitsune.
-	if (fields.has('gain') && seed % 7 !== 0) {
+	// A measured album's (one with an album gain of Kitsune's) says its own, before and after it's written.
+	const measuredGain = track.replayGain?.albumGain === undefined ? undefined : track.replayGain;
+	if (fields.has('gain') && measuredGain?.trackGain !== undefined) {
+		out.trackGain = measuredGain.trackGain;
+		out.trackGainSource = measuredGain.source;
+	} else if (fields.has('gain') && seed % 7 !== 0) {
 		out.trackGain = -((seed % 110) / 10);
 		out.trackGainSource = seed % 5 === 0 ? 'measured' : 'tags';
 	}
@@ -909,6 +944,10 @@ export interface FixtureOptions {
 	trash?: 'board' | undefined;
 	/** How long each album of an organize run takes, in milliseconds. */
 	organizeAlbumMs?: number | undefined;
+	/** Where ReplayGain's fixtures start: `ready` unless said. */
+	gain?: GainFixture | undefined;
+	/** How long each album of a ReplayGain run takes, in milliseconds. */
+	gainAlbumMs?: number | undefined;
 }
 
 /** A song in a fixture Trash: where it came from, and when. */
@@ -978,6 +1017,14 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	let fault = options.editFault;
 	// Each source has its own: an edit is for this tab, until a reload.
 	const held = new Map(albums);
+	const gainStart = options.gain ?? 'ready';
+	if (gainStart === 'ready' || gainStart === 'measuring') {
+		// The one album of the library with no ReplayGain tagged: Kitsune measured its songs.
+		const lantern = held.get(tinLantern.id);
+		if (lantern !== undefined) {
+			held.set(lantern.id, measured(lantern));
+		}
+	}
 	const heldTags = new Map<string, AlbumTags>();
 	// So are the marks, like the server's are each person's.
 	const hearts = new Set(boardHearts);
@@ -1794,6 +1841,23 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				return lists.savePlaylist(id, request);
 			}),
 		duplicates,
+		replayGain: createReplayGainFixture({
+			start: gainStart,
+			albums: () => [...held.values()],
+			wrote: (albumId, trackIds, written) => {
+				const album = held.get(albumId);
+				if (album !== undefined) {
+					held.set(albumId, gainWritten(album, new Set(trackIds), written));
+				}
+			},
+			writes: () => signedIn.canTrash,
+			...(options.gainAlbumMs === undefined ? {} : { albumMs: options.gainAlbumMs }),
+			respond: (answer) =>
+				respond(() => {
+					adminOnly();
+					return answer();
+				})
+		}),
 		organize: createOrganizeFixture({
 			albums: () => [...held.values()],
 			templates: () => ({
