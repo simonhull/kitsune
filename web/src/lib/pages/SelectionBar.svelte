@@ -252,9 +252,13 @@
 		x={adding.x}
 		y={adding.y}
 		heading={addHeading(count)}
-		onclose={(_done, refocus) => {
+		onclose={(done, refocus) => {
 			adding = null;
-			closedAt = performance.now();
+			// Only a press outside closes it with no refocus: if that press was on Add to…, its click
+			// must not open it again. Choosing a playlist or Esc leaves the button free at once.
+			if (!done && !refocus) {
+				closedAt = performance.now();
+			}
 			if (refocus) {
 				addButton?.focus();
 			}
