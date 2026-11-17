@@ -498,24 +498,27 @@ func (q *Queries) Undigested(ctx context.Context, arg UndigestedParams) ([]Undig
 const updateTrack = `-- name: UpdateTrack :execrows
 UPDATE tracks SET
     root = ?1, rel_path = ?2, size = ?3, mtime = ?4,
-    -- A write without a fingerprint keeps the stored one only while the file is unchanged.
+    -- A write without a fingerprint keeps the stored one only while the file is
+    -- unchanged, or when only its tags were rewritten (retagged): audiometa
+    -- verified the audio is the same, and the fingerprint covers audio alone.
     audio_digest = CASE
         WHEN ?5 IS NOT NULL THEN ?5
         WHEN tracks.size = ?3 AND tracks.mtime = ?4 THEN tracks.audio_digest
+        WHEN CAST(?6 AS INTEGER) = 1 THEN tracks.audio_digest
     END,
-    album_id = ?6,
-    format = ?7, codec = ?8, duration_ms = ?9,
-    sample_rate = ?10, bit_depth = ?11, channels = ?12,
-    bitrate = ?13, lossless = ?14,
-    title = ?15, sort_title = ?16,
-    track_no = ?17, track_total = ?18,
-    disc_no = ?19, disc_total = ?20, disc_subtitle = ?21,
-    year = ?22, original_year = ?23,
-    compilation = ?24,
-    rg_track_gain = ?25, rg_track_peak = ?26,
-    rg_album_gain = ?27, rg_album_peak = ?28,
-    scan_warnings = ?29, missing_since = NULL
-WHERE id = ?30
+    album_id = ?7,
+    format = ?8, codec = ?9, duration_ms = ?10,
+    sample_rate = ?11, bit_depth = ?12, channels = ?13,
+    bitrate = ?14, lossless = ?15,
+    title = ?16, sort_title = ?17,
+    track_no = ?18, track_total = ?19,
+    disc_no = ?20, disc_total = ?21, disc_subtitle = ?22,
+    year = ?23, original_year = ?24,
+    compilation = ?25,
+    rg_track_gain = ?26, rg_track_peak = ?27,
+    rg_album_gain = ?28, rg_album_peak = ?29,
+    scan_warnings = ?30, missing_since = NULL
+WHERE id = ?31
 `
 
 type UpdateTrackParams struct {
@@ -524,6 +527,7 @@ type UpdateTrackParams struct {
 	Size         int64
 	Mtime        int64
 	AudioDigest  interface{}
+	Retagged     int64
 	AlbumID      int64
 	Format       string
 	Codec        string
@@ -558,6 +562,7 @@ func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (int64
 		arg.Size,
 		arg.Mtime,
 		arg.AudioDigest,
+		arg.Retagged,
 		arg.AlbumID,
 		arg.Format,
 		arg.Codec,
