@@ -157,7 +157,10 @@ func TestFullScanKeepsFingerprints(t *testing.T) {
 	}
 }
 
-func TestEditClearsTheFingerprintAndAsksForAPass(t *testing.T) {
+// An edit rewrites only tags, which audiometa verifies, so the files keep the
+// fingerprints the pass read: the pass it asks for, for the albums it moved,
+// has nothing to read.
+func TestEditKeepsTheFingerprintAndAsksForAPass(t *testing.T) {
 	t.Parallel()
 	l := newEditLib(t)
 	l.fingerprint()
@@ -165,16 +168,16 @@ func TestEditClearsTheFingerprintAndAsksForAPass(t *testing.T) {
 	if err := l.editAlbum(); err != nil {
 		t.Fatal(err)
 	}
-	if got := l.undigested(); got != 2 {
-		t.Errorf("undigested = %d after the edit, want 2", got)
+	if got := l.undigested(); got != 0 {
+		t.Errorf("undigested = %d after the edit, want 0", got)
 	}
 	select {
 	case <-l.scanner.wantPass:
 	default:
 		t.Error("the edit did not ask for a pass")
 	}
-	if stats := l.fingerprint(); stats.Stored != 2 {
-		t.Errorf("pass = %+v, want Stored 2", stats)
+	if stats := l.fingerprint(); stats != (FingerprintStats{}) {
+		t.Errorf("pass = %+v, want nothing to read", stats)
 	}
 }
 

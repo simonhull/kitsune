@@ -178,7 +178,8 @@ func (s *Scanner) edit(ctx context.Context, edits []fileEdit, live map[int64]int
 		return stopped(edits, 0, err)
 	}
 	// Tracks written before a failure hold the edit, and a canceled edit still counts.
-	// A rewritten file loses its fingerprint, which the pass makes again.
+	// A rewritten file keeps its fingerprint and its loudness measure: audiometa
+	// verified its audio is the same. The passes look again for albums it moved.
 	defer s.askForPass()
 	written := 0
 	defer func() {
@@ -196,7 +197,7 @@ func (s *Scanner) edit(ctx context.Context, edits []fileEdit, live map[int64]int
 		}
 		written = i + 1
 		// The file has changed, so a canceled edit still indexes it.
-		if err = s.reindex(context.WithoutCancel(ctx), file.ID, file.Root, file.RelPath); err != nil {
+		if _, err = s.reindexFile(context.WithoutCancel(ctx), file.ID, file.Root, file.RelPath, true); err != nil {
 			return stopped(edits, i+1, err)
 		}
 	}
