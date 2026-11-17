@@ -62,6 +62,10 @@ type Options struct {
 	Genres       *Genres          // Refreshed after scans and edits. Nil means a private one.
 	QuickScan    Daily            // When Run scans every day.
 	Notify       Notifier         // Hears what the scanner changes. Nil hears nothing.
+	// OrganizeStep, nil but in tests, is told each step of an organize run, as
+	// the library's own tests' fault hook is: one that blocks holds the run
+	// there, so a test can act on a run that is still going.
+	OrganizeStep func(step, rel string) error
 	// Reader names the tag reader, stamped on the issues it raises so that a
 	// newer one reads their files again. Empty means audiometa's version.
 	Reader string
@@ -136,7 +140,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 	s := &Scanner{
 		st: st, reader: cmp.Or(opts.Reader, audiometa.GetVersion()), workers: opts.Workers,
 		batchSize: defaultBatchSize, log: opts.Logger, now: opts.Now, artwork: opts.Artwork,
-		write: opts.Write, genres: opts.Genres, claim: newLibraryLock(), lock: newLibraryLock(),
+		write: opts.Write, genres: opts.Genres, claim: newLibraryLock(), lock: newLibraryLock(), organizeFault: opts.OrganizeStep,
 		fingerprint: readFingerprint, wantPass: make(chan struct{}, 1), redaily: make(chan struct{}, 1),
 		measure: measureFile, wantLoudness: make(chan struct{}, 1), edits: editsPending{want: make(chan struct{}, 1)},
 		rerooted: make(chan struct{}, 1), scanEnded: make(chan struct{}, 1),
