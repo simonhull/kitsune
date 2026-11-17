@@ -32,7 +32,7 @@ type GetShuffleSessionRow struct {
 }
 
 func (q *Queries) GetShuffleSession(ctx context.Context, arg GetShuffleSessionParams) (GetShuffleSessionRow, error) {
-	row := q.queryRow(ctx, q.getShuffleSessionStmt, getShuffleSession, arg.UserID, arg.Ulid)
+	row := q.db.QueryRowContext(ctx, getShuffleSession, arg.UserID, arg.Ulid)
 	var i GetShuffleSessionRow
 	err := row.Scan(
 		&i.Ulid,
@@ -65,7 +65,7 @@ type InsertShuffleSessionParams struct {
 }
 
 func (q *Queries) InsertShuffleSession(ctx context.Context, arg InsertShuffleSessionParams) error {
-	_, err := q.exec(ctx, q.insertShuffleSessionStmt, insertShuffleSession,
+	_, err := q.db.ExecContext(ctx, insertShuffleSession,
 		arg.Ulid,
 		arg.UserID,
 		arg.Scope,
@@ -91,7 +91,7 @@ type ListArtistLinksByIDRow struct {
 }
 
 func (q *Queries) ListArtistLinksByID(ctx context.Context, ids string) ([]ListArtistLinksByIDRow, error) {
-	rows, err := q.query(ctx, q.listArtistLinksByIDStmt, listArtistLinksByID, ids)
+	rows, err := q.db.QueryContext(ctx, listArtistLinksByID, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ WHERE ar.ulid = ?
 
 // The songs an artist is on, as an artist or an album artist.
 func (q *Queries) ListArtistTrackIDs(ctx context.Context, ulid string) ([]int64, error) {
-	rows, err := q.query(ctx, q.listArtistTrackIDsStmt, listArtistTrackIDs, ulid)
+	rows, err := q.db.QueryContext(ctx, listArtistTrackIDs, ulid)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ type ListShuffleLastPlaysRow struct {
 }
 
 func (q *Queries) ListShuffleLastPlays(ctx context.Context, userID int64) ([]ListShuffleLastPlaysRow, error) {
-	rows, err := q.query(ctx, q.listShuffleLastPlaysStmt, listShuffleLastPlays, userID)
+	rows, err := q.db.QueryContext(ctx, listShuffleLastPlays, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +215,7 @@ type ListShuffleListensRow struct {
 // much of a song is heard, and only a skip counts against it: stopped and
 // interrupted ones say nothing.
 func (q *Queries) ListShuffleListens(ctx context.Context, arg ListShuffleListensParams) ([]ListShuffleListensRow, error) {
-	rows, err := q.query(ctx, q.listShuffleListensStmt, listShuffleListens, arg.EarlyMs, arg.Since, arg.UserID)
+	rows, err := q.db.QueryContext(ctx, listShuffleListens, arg.EarlyMs, arg.Since, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ type ListShuffleRunsRow struct {
 }
 
 func (q *Queries) ListShuffleRuns(ctx context.Context, userID int64) ([]ListShuffleRunsRow, error) {
-	rows, err := q.query(ctx, q.listShuffleRunsStmt, listShuffleRuns, userID)
+	rows, err := q.db.QueryContext(ctx, listShuffleRuns, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +299,7 @@ type ListShuffleSittingsRow struct {
 // with each song's primary artist: what co-listening is counted from. Listens
 // in a shuffle are left out, so flow never learns from its own picks.
 func (q *Queries) ListShuffleSittings(ctx context.Context, arg ListShuffleSittingsParams) ([]ListShuffleSittingsRow, error) {
-	rows, err := q.query(ctx, q.listShuffleSittingsStmt, listShuffleSittings, arg.UserID, arg.StartedAt)
+	rows, err := q.db.QueryContext(ctx, listShuffleSittings, arg.UserID, arg.StartedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +337,7 @@ type ListShuffleTrackArtistsRow struct {
 // Each live song's own artists, the primary first. On a compilation they are the
 // song's, not Various Artists.
 func (q *Queries) ListShuffleTrackArtists(ctx context.Context) ([]ListShuffleTrackArtistsRow, error) {
-	rows, err := q.query(ctx, q.listShuffleTrackArtistsStmt, listShuffleTrackArtists)
+	rows, err := q.db.QueryContext(ctx, listShuffleTrackArtists)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +384,7 @@ type ListShuffleTracksRow struct {
 // own artists, the person's rating and rules on it, and their listening. ids is a
 // JSON array, so one prepared statement serves any number of them.
 func (q *Queries) ListShuffleTracks(ctx context.Context, userID int64) ([]ListShuffleTracksRow, error) {
-	rows, err := q.query(ctx, q.listShuffleTracksStmt, listShuffleTracks, userID)
+	rows, err := q.db.QueryContext(ctx, listShuffleTracks, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -423,7 +423,7 @@ type ListTrackRowIDsRow struct {
 }
 
 func (q *Queries) ListTrackRowIDs(ctx context.Context, ids string) ([]ListTrackRowIDsRow, error) {
-	rows, err := q.query(ctx, q.listTrackRowIDsStmt, listTrackRowIDs, ids)
+	rows, err := q.db.QueryContext(ctx, listTrackRowIDs, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +465,7 @@ type PruneShuffleSessionsParams struct {
 // Keeps a person's latest few shuffles, and the one their remembered playback
 // names, so a long-paused shuffle can still go on.
 func (q *Queries) PruneShuffleSessions(ctx context.Context, arg PruneShuffleSessionsParams) error {
-	_, err := q.exec(ctx, q.pruneShuffleSessionsStmt, pruneShuffleSessions, arg.UserID, arg.Keep)
+	_, err := q.db.ExecContext(ctx, pruneShuffleSessions, arg.UserID, arg.Keep)
 	return err
 }
 
@@ -484,7 +484,7 @@ type UpdateShuffleSessionParams struct {
 }
 
 func (q *Queries) UpdateShuffleSession(ctx context.Context, arg UpdateShuffleSessionParams) (int64, error) {
-	result, err := q.exec(ctx, q.updateShuffleSessionStmt, updateShuffleSession,
+	result, err := q.db.ExecContext(ctx, updateShuffleSession,
 		arg.Position,
 		arg.State,
 		arg.UpdatedAt,

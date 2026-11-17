@@ -39,7 +39,7 @@ type ListAlbumHitsRow struct {
 }
 
 func (q *Queries) ListAlbumHits(ctx context.Context, ids string) ([]ListAlbumHitsRow, error) {
-	rows, err := q.query(ctx, q.listAlbumHitsStmt, listAlbumHits, ids)
+	rows, err := q.db.QueryContext(ctx, listAlbumHits, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ type ListAlbumNamesRow struct {
 }
 
 func (q *Queries) ListAlbumNames(ctx context.Context) ([]ListAlbumNamesRow, error) {
-	rows, err := q.query(ctx, q.listAlbumNamesStmt, listAlbumNames)
+	rows, err := q.db.QueryContext(ctx, listAlbumNames)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ type ListArtistHitsRow struct {
 }
 
 func (q *Queries) ListArtistHits(ctx context.Context, ids string) ([]ListArtistHitsRow, error) {
-	rows, err := q.query(ctx, q.listArtistHitsStmt, listArtistHits, ids)
+	rows, err := q.db.QueryContext(ctx, listArtistHits, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ type ListArtistNamesRow struct {
 
 // The name index covers what is live, read whole after each scan.
 func (q *Queries) ListArtistNames(ctx context.Context) ([]ListArtistNamesRow, error) {
-	rows, err := q.query(ctx, q.listArtistNamesStmt, listArtistNames)
+	rows, err := q.db.QueryContext(ctx, listArtistNames)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ type ListTrackHitArtistsRow struct {
 }
 
 func (q *Queries) ListTrackHitArtists(ctx context.Context, ids string) ([]ListTrackHitArtistsRow, error) {
-	rows, err := q.query(ctx, q.listTrackHitArtistsStmt, listTrackHitArtists, ids)
+	rows, err := q.db.QueryContext(ctx, listTrackHitArtists, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +258,7 @@ type ListTrackHitsRow struct {
 // fetch what a result shows. ids is a JSON array of track IDs, so one prepared
 // statement serves any number of them.
 func (q *Queries) ListTrackHits(ctx context.Context, ids string) ([]ListTrackHitsRow, error) {
-	rows, err := q.query(ctx, q.listTrackHitsStmt, listTrackHits, ids)
+	rows, err := q.db.QueryContext(ctx, listTrackHits, ids)
 	if err != nil {
 		return nil, err
 	}

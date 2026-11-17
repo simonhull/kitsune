@@ -16,7 +16,7 @@ SELECT group_key FROM albums WHERE id = ?
 
 // Tag edits: the rows an edit moves before it writes, so its tracks land on them.
 func (q *Queries) AlbumGroupKey(ctx context.Context, id int64) (string, error) {
-	row := q.queryRow(ctx, q.albumGroupKeyStmt, albumGroupKey, id)
+	row := q.db.QueryRowContext(ctx, albumGroupKey, id)
 	var group_key string
 	err := row.Scan(&group_key)
 	return group_key, err
@@ -36,7 +36,7 @@ type ArtistToRenameRow struct {
 }
 
 func (q *Queries) ArtistToRename(ctx context.Context, matchKey string) (ArtistToRenameRow, error) {
-	row := q.queryRow(ctx, q.artistToRenameStmt, artistToRename, matchKey)
+	row := q.db.QueryRowContext(ctx, artistToRename, matchKey)
 	var i ArtistToRenameRow
 	err := row.Scan(
 		&i.ID,
@@ -53,7 +53,7 @@ SELECT count(*) FROM tracks WHERE album_id = ?
 `
 
 func (q *Queries) CountAlbumTracks(ctx context.Context, albumID int64) (int64, error) {
-	row := q.queryRow(ctx, q.countAlbumTracksStmt, countAlbumTracks, albumID)
+	row := q.db.QueryRowContext(ctx, countAlbumTracks, albumID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -64,7 +64,7 @@ SELECT EXISTS (SELECT 1 FROM albums WHERE group_key = ?)
 `
 
 func (q *Queries) GroupKeyTaken(ctx context.Context, groupKey string) (bool, error) {
-	row := q.queryRow(ctx, q.groupKeyTakenStmt, groupKeyTaken, groupKey)
+	row := q.db.QueryRowContext(ctx, groupKeyTaken, groupKey)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -82,7 +82,7 @@ type ListAlbumCoverFilesRow struct {
 }
 
 func (q *Queries) ListAlbumCoverFiles(ctx context.Context, albumID int64) ([]ListAlbumCoverFilesRow, error) {
-	rows, err := q.query(ctx, q.listAlbumCoverFilesStmt, listAlbumCoverFiles, albumID)
+	rows, err := q.db.QueryContext(ctx, listAlbumCoverFiles, albumID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ SELECT EXISTS (SELECT 1 FROM artists WHERE match_key = ?)
 `
 
 func (q *Queries) MatchKeyTaken(ctx context.Context, matchKey string) (bool, error) {
-	row := q.queryRow(ctx, q.matchKeyTakenStmt, matchKeyTaken, matchKey)
+	row := q.db.QueryRowContext(ctx, matchKeyTaken, matchKey)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -130,7 +130,7 @@ type MergeAlbumIntoParams struct {
 // The album a merge lands in keeps its cover, or takes the other's, and was
 // first seen when the older of the two was.
 func (q *Queries) MergeAlbumInto(ctx context.Context, arg MergeAlbumIntoParams) error {
-	_, err := q.exec(ctx, q.mergeAlbumIntoStmt, mergeAlbumInto, arg.FromID, arg.IntoID)
+	_, err := q.db.ExecContext(ctx, mergeAlbumInto, arg.FromID, arg.IntoID)
 	return err
 }
 
@@ -146,7 +146,7 @@ type MoveAlbumHeartsParams struct {
 }
 
 func (q *Queries) MoveAlbumHearts(ctx context.Context, arg MoveAlbumHeartsParams) error {
-	_, err := q.exec(ctx, q.moveAlbumHeartsStmt, moveAlbumHearts, arg.IntoID, arg.FromID)
+	_, err := q.db.ExecContext(ctx, moveAlbumHearts, arg.IntoID, arg.FromID)
 	return err
 }
 
@@ -164,7 +164,7 @@ type RenameArtistParams struct {
 }
 
 func (q *Queries) RenameArtist(ctx context.Context, arg RenameArtistParams) error {
-	_, err := q.exec(ctx, q.renameArtistStmt, renameArtist,
+	_, err := q.db.ExecContext(ctx, renameArtist,
 		arg.MatchKey,
 		arg.Name,
 		arg.SortName,
@@ -184,7 +184,7 @@ type SetAlbumArtworkParams struct {
 }
 
 func (q *Queries) SetAlbumArtwork(ctx context.Context, arg SetAlbumArtworkParams) error {
-	_, err := q.exec(ctx, q.setAlbumArtworkStmt, setAlbumArtwork, arg.Hash, arg.ID)
+	_, err := q.db.ExecContext(ctx, setAlbumArtwork, arg.Hash, arg.ID)
 	return err
 }
 
@@ -198,7 +198,7 @@ type SetAlbumGroupKeyParams struct {
 }
 
 func (q *Queries) SetAlbumGroupKey(ctx context.Context, arg SetAlbumGroupKeyParams) error {
-	_, err := q.exec(ctx, q.setAlbumGroupKeyStmt, setAlbumGroupKey, arg.GroupKey, arg.ID)
+	_, err := q.db.ExecContext(ctx, setAlbumGroupKey, arg.GroupKey, arg.ID)
 	return err
 }
 
@@ -223,7 +223,7 @@ WHERE albums.id = ?
 // live tracks before missing. The scanner's covers rank tracks the same way.
 // An album's year and compilation flag are its first track's.
 func (q *Queries) SettleAlbum(ctx context.Context, id int64) error {
-	_, err := q.exec(ctx, q.settleAlbumStmt, settleAlbum, id)
+	_, err := q.db.ExecContext(ctx, settleAlbum, id)
 	return err
 }
 
@@ -232,7 +232,7 @@ SELECT album_id FROM tracks WHERE id = ?
 `
 
 func (q *Queries) TrackAlbumRow(ctx context.Context, id int64) (int64, error) {
-	row := q.queryRow(ctx, q.trackAlbumRowStmt, trackAlbumRow, id)
+	row := q.db.QueryRowContext(ctx, trackAlbumRow, id)
 	var album_id int64
 	err := row.Scan(&album_id)
 	return album_id, err

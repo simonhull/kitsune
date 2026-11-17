@@ -24,7 +24,7 @@ type CreateSessionParams struct {
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
-	_, err := q.exec(ctx, q.createSessionStmt, createSession,
+	_, err := q.db.ExecContext(ctx, createSession,
 		arg.TokenHash,
 		arg.UserID,
 		arg.CreatedAt,
@@ -40,7 +40,7 @@ DELETE FROM sessions WHERE expires_at <= ?
 `
 
 func (q *Queries) DeleteExpiredSessions(ctx context.Context, expiresAt int64) (int64, error) {
-	result, err := q.exec(ctx, q.deleteExpiredSessionsStmt, deleteExpiredSessions, expiresAt)
+	result, err := q.db.ExecContext(ctx, deleteExpiredSessions, expiresAt)
 	if err != nil {
 		return 0, err
 	}
@@ -57,7 +57,7 @@ type DeleteOtherSessionsOfParams struct {
 }
 
 func (q *Queries) DeleteOtherSessionsOf(ctx context.Context, arg DeleteOtherSessionsOfParams) (int64, error) {
-	result, err := q.exec(ctx, q.deleteOtherSessionsOfStmt, deleteOtherSessionsOf, arg.UserID, arg.TokenHash)
+	result, err := q.db.ExecContext(ctx, deleteOtherSessionsOf, arg.UserID, arg.TokenHash)
 	if err != nil {
 		return 0, err
 	}
@@ -69,7 +69,7 @@ DELETE FROM sessions WHERE token_hash = ?
 `
 
 func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
-	_, err := q.exec(ctx, q.deleteSessionStmt, deleteSession, tokenHash)
+	_, err := q.db.ExecContext(ctx, deleteSession, tokenHash)
 	return err
 }
 
@@ -78,7 +78,7 @@ DELETE FROM sessions WHERE user_id = ?
 `
 
 func (q *Queries) DeleteSessionsOf(ctx context.Context, userID int64) (int64, error) {
-	result, err := q.exec(ctx, q.deleteSessionsOfStmt, deleteSessionsOf, userID)
+	result, err := q.db.ExecContext(ctx, deleteSessionsOf, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -105,7 +105,7 @@ type SessionByTokenHashRow struct {
 }
 
 func (q *Queries) SessionByTokenHash(ctx context.Context, tokenHash []byte) (SessionByTokenHashRow, error) {
-	row := q.queryRow(ctx, q.sessionByTokenHashStmt, sessionByTokenHash, tokenHash)
+	row := q.db.QueryRowContext(ctx, sessionByTokenHash, tokenHash)
 	var i SessionByTokenHashRow
 	err := row.Scan(
 		&i.CreatedAt,
@@ -131,6 +131,6 @@ type TouchSessionParams struct {
 }
 
 func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) error {
-	_, err := q.exec(ctx, q.touchSessionStmt, touchSession, arg.LastSeen, arg.ExpiresAt, arg.TokenHash)
+	_, err := q.db.ExecContext(ctx, touchSession, arg.LastSeen, arg.ExpiresAt, arg.TokenHash)
 	return err
 }

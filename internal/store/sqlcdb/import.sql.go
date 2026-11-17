@@ -21,7 +21,7 @@ type ImportArtistsRow struct {
 }
 
 func (q *Queries) ImportArtists(ctx context.Context) ([]ImportArtistsRow, error) {
-	rows, err := q.query(ctx, q.importArtistsStmt, importArtists)
+	rows, err := q.db.QueryContext(ctx, importArtists)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ type ImportTrackRatingParams struct {
 
 // A rating already there is kept: it was given since the switch, so it is newer.
 func (q *Queries) ImportTrackRating(ctx context.Context, arg ImportTrackRatingParams) (int64, error) {
-	result, err := q.exec(ctx, q.importTrackRatingStmt, importTrackRating,
+	result, err := q.db.ExecContext(ctx, importTrackRating,
 		arg.UserID,
 		arg.TrackID,
 		arg.Halves,
@@ -95,7 +95,7 @@ func (q *Queries) ImportTrackTags(ctx context.Context, keys []string) ([]ImportT
 	} else {
 		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ type ImportTracksRow struct {
 // An import from another server: what it resolves against, and its writes. None
 // of them queues anything for Last.fm.
 func (q *Queries) ImportTracks(ctx context.Context) ([]ImportTracksRow, error) {
-	rows, err := q.query(ctx, q.importTracksStmt, importTracks)
+	rows, err := q.db.QueryContext(ctx, importTracks)
 	if err != nil {
 		return nil, err
 	}

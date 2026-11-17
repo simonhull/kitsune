@@ -14,7 +14,7 @@ SELECT EXISTS (SELECT 1 FROM tracks WHERE missing_since IS NOT NULL AND trashed_
 `
 
 func (q *Queries) AnyMissingWithDigest(ctx context.Context) (bool, error) {
-	row := q.queryRow(ctx, q.anyMissingWithDigestStmt, anyMissingWithDigest)
+	row := q.db.QueryRowContext(ctx, anyMissingWithDigest)
 	var found bool
 	err := row.Scan(&found)
 	return found, err
@@ -25,7 +25,7 @@ SELECT count(*) FROM tracks INDEXED BY tracks_undigested WHERE audio_digest IS N
 `
 
 func (q *Queries) CountUndigested(ctx context.Context) (int64, error) {
-	row := q.queryRow(ctx, q.countUndigestedStmt, countUndigested)
+	row := q.db.QueryRowContext(ctx, countUndigested)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -41,7 +41,7 @@ type DeleteScanIssueParams struct {
 }
 
 func (q *Queries) DeleteScanIssue(ctx context.Context, arg DeleteScanIssueParams) error {
-	_, err := q.exec(ctx, q.deleteScanIssueStmt, deleteScanIssue, arg.Root, arg.RelPath)
+	_, err := q.db.ExecContext(ctx, deleteScanIssue, arg.Root, arg.RelPath)
 	return err
 }
 
@@ -50,7 +50,7 @@ DELETE FROM track_artists WHERE track_id = ?
 `
 
 func (q *Queries) DeleteTrackArtists(ctx context.Context, trackID int64) error {
-	_, err := q.exec(ctx, q.deleteTrackArtistsStmt, deleteTrackArtists, trackID)
+	_, err := q.db.ExecContext(ctx, deleteTrackArtists, trackID)
 	return err
 }
 
@@ -59,7 +59,7 @@ DELETE FROM track_tags WHERE track_id = ?
 `
 
 func (q *Queries) DeleteTrackTags(ctx context.Context, trackID int64) error {
-	_, err := q.exec(ctx, q.deleteTrackTagsStmt, deleteTrackTags, trackID)
+	_, err := q.db.ExecContext(ctx, deleteTrackTags, trackID)
 	return err
 }
 
@@ -115,7 +115,7 @@ type InsertTrackParams struct {
 }
 
 func (q *Queries) InsertTrack(ctx context.Context, arg InsertTrackParams) (int64, error) {
-	row := q.queryRow(ctx, q.insertTrackStmt, insertTrack,
+	row := q.db.QueryRowContext(ctx, insertTrack,
 		arg.Ulid,
 		arg.Root,
 		arg.RelPath,
@@ -165,7 +165,7 @@ type InsertTrackArtistParams struct {
 }
 
 func (q *Queries) InsertTrackArtist(ctx context.Context, arg InsertTrackArtistParams) error {
-	_, err := q.exec(ctx, q.insertTrackArtistStmt, insertTrackArtist,
+	_, err := q.db.ExecContext(ctx, insertTrackArtist,
 		arg.TrackID,
 		arg.Role,
 		arg.Ord,
@@ -186,7 +186,7 @@ type InsertTrackTagParams struct {
 }
 
 func (q *Queries) InsertTrackTag(ctx context.Context, arg InsertTrackTagParams) error {
-	_, err := q.exec(ctx, q.insertTrackTagStmt, insertTrackTag,
+	_, err := q.db.ExecContext(ctx, insertTrackTag,
 		arg.TrackID,
 		arg.Key,
 		arg.Ord,
@@ -209,7 +209,7 @@ type IssueStatesRow struct {
 }
 
 func (q *Queries) IssueStates(ctx context.Context, root string) ([]IssueStatesRow, error) {
-	rows, err := q.query(ctx, q.issueStatesStmt, issueStates, root)
+	rows, err := q.db.QueryContext(ctx, issueStates, root)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ SELECT root FROM tracks WHERE trashed_at IS NULL UNION SELECT root FROM scan_iss
 `
 
 func (q *Queries) KnownRoots(ctx context.Context) ([]string, error) {
-	rows, err := q.query(ctx, q.knownRootsStmt, knownRoots)
+	rows, err := q.db.QueryContext(ctx, knownRoots)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ type MarkMissingParams struct {
 }
 
 func (q *Queries) MarkMissing(ctx context.Context, arg MarkMissingParams) error {
-	_, err := q.exec(ctx, q.markMissingStmt, markMissing, arg.MissingSince, arg.ID)
+	_, err := q.db.ExecContext(ctx, markMissing, arg.MissingSince, arg.ID)
 	return err
 }
 
@@ -291,7 +291,7 @@ type MissingByDigestRow struct {
 }
 
 func (q *Queries) MissingByDigest(ctx context.Context, audioDigest []byte) ([]MissingByDigestRow, error) {
-	rows, err := q.query(ctx, q.missingByDigestStmt, missingByDigest, audioDigest)
+	rows, err := q.db.QueryContext(ctx, missingByDigest, audioDigest)
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +318,7 @@ DELETE FROM albums WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE tracks.album_id 
 `
 
 func (q *Queries) PruneAlbums(ctx context.Context) (int64, error) {
-	result, err := q.exec(ctx, q.pruneAlbumsStmt, pruneAlbums)
+	result, err := q.db.ExecContext(ctx, pruneAlbums)
 	if err != nil {
 		return 0, err
 	}
@@ -330,7 +330,7 @@ DELETE FROM artists WHERE NOT EXISTS (SELECT 1 FROM track_artists WHERE track_ar
 `
 
 func (q *Queries) PruneArtists(ctx context.Context) (int64, error) {
-	result, err := q.exec(ctx, q.pruneArtistsStmt, pruneArtists)
+	result, err := q.db.ExecContext(ctx, pruneArtists)
 	if err != nil {
 		return 0, err
 	}
@@ -343,7 +343,7 @@ RETURNING hash
 `
 
 func (q *Queries) PruneArtwork(ctx context.Context) ([][]byte, error) {
-	rows, err := q.query(ctx, q.pruneArtworkStmt, pruneArtwork)
+	rows, err := q.db.QueryContext(ctx, pruneArtwork)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +378,7 @@ type SetDigestParams struct {
 }
 
 func (q *Queries) SetDigest(ctx context.Context, arg SetDigestParams) (int64, error) {
-	result, err := q.exec(ctx, q.setDigestStmt, setDigest,
+	result, err := q.db.ExecContext(ctx, setDigest,
 		arg.AudioDigest,
 		arg.ID,
 		arg.Size,
@@ -395,7 +395,7 @@ SELECT a.ulid FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.id = ?
 `
 
 func (q *Queries) TrackAlbumULID(ctx context.Context, id int64) (string, error) {
-	row := q.queryRow(ctx, q.trackAlbumULIDStmt, trackAlbumULID, id)
+	row := q.db.QueryRowContext(ctx, trackAlbumULID, id)
 	var ulid string
 	err := row.Scan(&ulid)
 	return ulid, err
@@ -416,7 +416,7 @@ type TrackStatesRow struct {
 }
 
 func (q *Queries) TrackStates(ctx context.Context, root string) ([]TrackStatesRow, error) {
-	rows, err := q.query(ctx, q.trackStatesStmt, trackStates, root)
+	rows, err := q.db.QueryContext(ctx, trackStates, root)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +467,7 @@ type UndigestedRow struct {
 }
 
 func (q *Queries) Undigested(ctx context.Context, arg UndigestedParams) ([]UndigestedRow, error) {
-	rows, err := q.query(ctx, q.undigestedStmt, undigested, arg.Root, arg.RelPath, arg.N)
+	rows, err := q.db.QueryContext(ctx, undigested, arg.Root, arg.RelPath, arg.N)
 	if err != nil {
 		return nil, err
 	}
@@ -552,7 +552,7 @@ type UpdateTrackParams struct {
 }
 
 func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (int64, error) {
-	result, err := q.exec(ctx, q.updateTrackStmt, updateTrack,
+	result, err := q.db.ExecContext(ctx, updateTrack,
 		arg.Root,
 		arg.RelPath,
 		arg.Size,
@@ -623,7 +623,7 @@ type UpsertAlbumRow struct {
 }
 
 func (q *Queries) UpsertAlbum(ctx context.Context, arg UpsertAlbumParams) (UpsertAlbumRow, error) {
-	row := q.queryRow(ctx, q.upsertAlbumStmt, upsertAlbum,
+	row := q.db.QueryRowContext(ctx, upsertAlbum,
 		arg.Ulid,
 		arg.GroupKey,
 		arg.Name,
@@ -660,7 +660,7 @@ type UpsertArtistParams struct {
 
 // A track with no sort name keeps the artist's: a new artist sorts by its name.
 func (q *Queries) UpsertArtist(ctx context.Context, arg UpsertArtistParams) (int64, error) {
-	row := q.queryRow(ctx, q.upsertArtistStmt, upsertArtist,
+	row := q.db.QueryRowContext(ctx, upsertArtist,
 		arg.Ulid,
 		arg.MatchKey,
 		arg.Name,
@@ -693,7 +693,7 @@ type UpsertArtworkParams struct {
 }
 
 func (q *Queries) UpsertArtwork(ctx context.Context, arg UpsertArtworkParams) error {
-	_, err := q.exec(ctx, q.upsertArtworkStmt, upsertArtwork,
+	_, err := q.db.ExecContext(ctx, upsertArtwork,
 		arg.Hash,
 		arg.Width,
 		arg.Height,
@@ -728,7 +728,7 @@ type UpsertScanIssueParams struct {
 }
 
 func (q *Queries) UpsertScanIssue(ctx context.Context, arg UpsertScanIssueParams) error {
-	_, err := q.exec(ctx, q.upsertScanIssueStmt, upsertScanIssue,
+	_, err := q.db.ExecContext(ctx, upsertScanIssue,
 		arg.Root,
 		arg.RelPath,
 		arg.Kind,
