@@ -269,6 +269,14 @@ const journeyPairs: readonly (readonly [RouteName, RouteName])[] = [
 	['album', 'home'],
 	['album', 'library'],
 	['album', 'albums'],
+	['album', 'artist'],
+	['artists', 'artist'],
+	['library', 'artist'],
+	['albums', 'artist'],
+	['search', 'artist'],
+	['artist', 'artists'],
+	['artist', 'library'],
+	['artist', 'albums'],
 	['home', 'now-playing'],
 	['album', 'now-playing'],
 	['now-playing', 'home'],
@@ -366,6 +374,12 @@ describe('choreographyFor', () => {
 		const { arriving } = choreographyFor('album', 'albums');
 		expect(arriving.card?.gather).toBeDefined();
 		expect(arriving.card?.from.scale).toBeLessThan(1);
+	});
+
+	it('lets the artist’s name take the stage a beat after the album’s headline has gone', () => {
+		const { travel } = choreographyFor('album', 'artist');
+		expect(travel?.leads).toEqual(['name:to', 'cover:from']);
+		expect(travel?.waits?.name).toBe(40);
 	});
 
 	it('reshapes the island exactly when Now playing is involved', () => {

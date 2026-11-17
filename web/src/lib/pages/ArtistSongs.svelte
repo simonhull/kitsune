@@ -962,6 +962,8 @@
 
 <section
 	class="songs song-list"
+	data-morph-part="panel"
+	data-morph-key="songs"
 	class:expanded
 	class:pinned
 	class:grouped

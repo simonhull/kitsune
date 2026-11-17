@@ -3,6 +3,7 @@
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { morph } from '#lib/morph/registry.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { emWidth } from '#lib/library/fit.ts';
 	import { resultsOf, searchLine, spotlight } from '#lib/library/search.svelte.ts';
@@ -164,7 +165,9 @@
 						{#each found.artists as artist (artist.id)}
 							<li>
 								<a class="artist" href={resolve('/artists/[id]', { id: artist.id })}
-									>{artist.name}</a
+									><span use:morph={{ id: `name:${artist.id}`, slot: 'row', kind: 'title' }}
+										>{artist.name}</span
+									></a
 								>
 							</li>
 						{/each}

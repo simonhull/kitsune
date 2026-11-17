@@ -536,6 +536,89 @@ const albumToAlbums: Choreography = {
 };
 
 /**
+ * Album to Artist: the name takes the stage. The artist's name grows from its line under the
+ * headline into the artist page's headline, a beat after the rest so it never crosses the album's
+ * title on its way out, and the cover lands on its song in Top songs. The artist page rises in front.
+ */
+const albumToArtist: Choreography = {
+	name: 'album-to-artist',
+	grain: 'gathering',
+	motion: base,
+	travel: {
+		subject: 'pages',
+		leads: ['name:to', 'cover:from'],
+		sourceSlots: ['hero'],
+		targetSlots: ['hero', 'thumb', 'card'],
+		waits: { name: 40 }
+	},
+	...albumGivesWay,
+	// The shelves' covers are units of their own, and come with the songs.
+	arriving: { words: rise(12, 90), panel: rise(24, 90), card: rise(24, 90) },
+	stages: {},
+	bloom: null,
+	island: null
+};
+
+/**
+ * The name's door, from the Artists list, a Library heading, a search result or an album card's
+ * menu: the name grows out of the list into the headline, the list falls back around it, and Top
+ * songs rise last. No stage: an artist has no art.
+ */
+const nameDoor: Choreography = {
+	name: 'name-door',
+	grain: 'opening',
+	motion: slow,
+	travel: {
+		subject: 'pages',
+		leads: ['name:to'],
+		sourceSlots: ['row', 'card', 'hero'],
+		targetSlots: ['hero']
+	},
+	leaving: fallBack,
+	arriving: { words: rise(20, 160), panel: rise(48, 160, slow), card: rise(48, 160, slow) },
+	stages: {},
+	held: {},
+	bloom: null,
+	island: null
+};
+
+/**
+ * Artist to Artists: set in the roll. The headline settles into its line in the list, and the list
+ * gathers around it, in front, while the artist gives way.
+ */
+const artistToArtists: Choreography = {
+	name: 'artist-to-artists',
+	grain: 'gathering',
+	motion: base,
+	travel: {
+		subject: 'pages',
+		leads: ['name:from'],
+		sourceSlots: ['hero'],
+		targetSlots: ['row']
+	},
+	leaving: giveWay(),
+	leavingByRole: { panel: giveWay(base), card: giveWay(base) },
+	arriving: { intro: gather(0.14, 60), card: gather(0.14, 60) },
+	stages: {},
+	held: {},
+	bloom: null,
+	island: null
+};
+
+/** Artist to Library: the headline settles into the artist's heading, and the list gathers round. */
+const artistToLibrary: Choreography = { ...artistToArtists, name: 'artist-to-library' };
+
+/**
+ * Artist to Albums, back from an album card's Go to artist: the headline settles into the card's
+ * artist line it grew from, and the grid gathers round it.
+ */
+const artistToAlbums: Choreography = {
+	...artistToArtists,
+	name: 'artist-to-albums',
+	travel: { subject: 'pages', leads: ['name:from'], sourceSlots: ['hero'], targetSlots: ['card'] }
+};
+
+/**
  * Home to Now playing: two levels down in one move. The island's cover rises to the center of
  * the stage and the song's name follows it up, the rest of the island gathers into the pill
  * controls, and the poster title climbs out from behind the cover, a line at a time.
@@ -708,6 +791,14 @@ const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
 	'album>home': albumToHome,
 	'album>library': albumToLibrary,
 	'album>albums': albumToAlbums,
+	'album>artist': albumToArtist,
+	'artists>artist': nameDoor,
+	'library>artist': nameDoor,
+	'albums>artist': nameDoor,
+	'search>artist': nameDoor,
+	'artist>artists': artistToArtists,
+	'artist>library': artistToLibrary,
+	'artist>albums': artistToAlbums,
 	'home>now-playing': homeToNowPlaying,
 	'now-playing>home': nowPlayingToHome,
 	'album>now-playing': albumToNowPlaying,

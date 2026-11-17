@@ -3,6 +3,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { emWidth } from '#lib/library/fit.ts';
+	import { morph } from '#lib/morph/registry.ts';
 	import { artistHoldings, clock, libraryLine } from '#lib/library/format.ts';
 	import { emptyLine } from '#lib/library/home.ts';
 	import { library } from '#lib/library/library.svelte.ts';
@@ -572,6 +573,7 @@
 								title={name}
 								style:--all={emWidth(name, nameWeight, nameTracking)}
 								style:--word={widest(name)}
+								use:morph={{ id: `name:${id ?? ''}`, slot: 'row', kind: 'title' }}
 							>
 								{#if id === undefined}
 									{name}
