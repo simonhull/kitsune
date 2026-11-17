@@ -80,7 +80,13 @@ class ReplayGain {
 		this.#stopHearing = library.hearReplayGain((event) => {
 			this.heard(event);
 		});
-		void this.refresh();
+		// Once the page has painted and gone quiet: a run found after a reload is never worth the
+		// first rows' time, and its events say what goes on meanwhile.
+		afterQuiet(() => {
+			if (this.#stopHearing !== undefined && this.status === null) {
+				void this.refresh();
+			}
+		});
 	}
 
 	/** Stops hearing, and forgets, at sign-out. */
@@ -352,6 +358,18 @@ class ReplayGain {
 				.catch(() => undefined);
 		}, pollMs);
 	}
+}
+
+/** How long a page may stay busy before the deferred read goes anyway. */
+const quietWithin = 3000;
+
+/** Calls `fn` once the browser is idle after the page's load, or within `quietWithin`. */
+function afterQuiet(fn: () => void): void {
+	if (typeof requestIdleCallback === 'function') {
+		requestIdleCallback(fn, { timeout: quietWithin });
+		return;
+	}
+	setTimeout(fn, quietWithin / 2);
 }
 
 /** The server's words for a refusal, when it gave any. */
