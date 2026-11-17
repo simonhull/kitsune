@@ -141,6 +141,29 @@ export function weighPart(part: Part, weight: number): Part {
 	return { ...part, from: weighPose(part.from, weight), to: weighPose(part.to, weight) };
 }
 
+/**
+ * How a page assembles in front of you around the thing you were in: the opposite of a ripple's
+ * idea, for arriving. Every unit starts at once (an entrance never queues), but one far from where
+ * the shared element lands comes from deeper than one beside it, which is all but there already.
+ */
+export interface Gather {
+	/** How much of the depth is left beside the landing, from 0 to 1. */
+	near: number;
+}
+
+/** How much of the depth a unit `share` of the way across the page comes from, 0 at the landing. */
+export function gatherWeight({ near }: Gather, share: number): number {
+	return near + (1 - near) * share;
+}
+
+/** Scales only the depth: every unit of a gathering rises the same way, and fades the same way. */
+export function weighGather(part: Part, weight: number): Part {
+	const { scale } = part.from;
+	return scale === undefined
+		? part
+		: { ...part, from: { ...part.from, scale: 1 + (scale - 1) * weight } };
+}
+
 /** One thing that moves, from one pose to another, starting `delay` into the morph. */
 export interface Part {
 	from: Pose;
@@ -151,6 +174,7 @@ export interface Part {
 	/** A curve of its own for the opacity, for something that's solid long before it arrives. */
 	fade?: MotionSpec;
 	ripple?: Ripple;
+	gather?: Gather;
 }
 
 /** What a page's unit is, from `data-morph-part`. It decides how the unit arrives. */
@@ -177,9 +201,21 @@ export type RouteName =
 
 export type ChoreographyName =
 	| 'home-to-album'
-	| 'album-to-home'
 	| 'library-to-album'
+	| 'album-door'
+	| 'album-into-continue'
+	| 'album-to-home'
 	| 'album-to-library'
+	| 'album-to-albums'
+	| 'album-to-artist'
+	| 'album-to-playlist'
+	| 'album-to-album'
+	| 'name-door'
+	| 'artist-to-artists'
+	| 'artist-to-library'
+	| 'artist-to-albums'
+	| 'mosaic-door'
+	| 'playlist-to-playlists'
 	| 'home-to-now-playing'
 	| 'now-playing-to-home'
 	| 'album-to-now-playing'
@@ -189,16 +225,39 @@ export type ChoreographyName =
 	| 'deck-to-home'
 	| 'blend';
 
+/**
+ * Which way a journey goes through the library's grain. Opening is into something the page you
+ * leave holds (Home to an album); gathering is into something that holds it (an album to Home, or to
+ * its artist); crossing is between two of one kind (an album to another). The grain picks the lead
+ * and who gets out of whose way, never a direction on the screen: every journey is further in.
+ */
+export type Grain = 'opening' | 'gathering' | 'crossing';
+
+/** What can travel between two pages: an album's parts, an artist's name, a playlist's mosaic… */
+export type Lead =
+	'cover' | 'title' | 'artist' | 'surface' | 'play' | 'name' | 'mosaic' | 'listname';
+
+/** A lead and whose it is: the page's at the start of the journey, or at its end. */
+export type LeadOf = `${Lead}:${'from' | 'to'}`;
+
 interface SharedTravel {
-	/** Whose things travel: the album at either end of the journey, what's playing, or the mark. */
-	subject: 'from' | 'to' | 'playing' | 'fox';
+	/** Whose things travel: the pages' own, what's playing, or the mark. */
+	subject: 'pages' | 'playing' | 'fox';
+	/** For `pages`, what travels. */
+	leads?: readonly LeadOf[];
 	sourceSlots: readonly MorphSlot[];
 	targetSlots: readonly MorphSlot[];
+	/**
+	 * The unit (`data-morph-key`) whose target wins: where the page you go to now holds the one you
+	 * leave, before where it came from.
+	 */
+	landIn?: string;
+	/** Leads that leave this long after the rest, in milliseconds, for something in their way. */
+	waits?: Partial<Record<Lead, number>>;
 }
 
-/** The light around the cover: its scale at the cover and at full size, and its strength. */
+/** The light opening out of the cover: its scale at the cover and at full size, and its strength. */
 export interface Bloom {
-	direction: 'out' | 'in';
 	rest: number;
 	full: number;
 	peak: number;
@@ -206,17 +265,21 @@ export interface Bloom {
 
 export interface Choreography {
 	name: ChoreographyName;
+	grain: Grain;
 	/** The curve shared elements fly on. */
 	motion: MotionSpec;
 	travel: SharedTravel | null;
-	/** Every unit of the outgoing page. */
+	/** Every unit of the outgoing page, unless its role has a part of its own. */
 	leaving: Part;
+	leavingByRole?: Partial<Record<Role, Part>>;
 	/** The incoming page's units, by role. */
 	arriving: Partial<Record<Role, Part>>;
 	/** The few units that arrive their own way whatever their role, by `data-morph-key`. */
 	arrivingByKey?: Readonly<Record<string, Part>>;
-	/** The two full-bleed stages behind the page. */
+	/** The stages behind the page you go to: they come up over everything you leave. */
 	stages: Partial<Record<StageName, Part>>;
+	/** Pictures of the stages behind the page you leave, which give way under it. */
+	held: Partial<Record<StageName, Part>>;
 	bloom: Bloom | null;
 	/** What's inside the island, when it changes shape on this journey. */
 	island: Part | null;
@@ -224,7 +287,7 @@ export interface Choreography {
 	islandForms?: Part;
 }
 
-const bloomShape = { rest: 0.12, full: 2.6, peak: 0.9 } as const;
+const bloomShape: Bloom = { rest: 0.12, full: 2.6, peak: 0.9 };
 
 // All critically damped: a tap carries no momentum, so nothing has a reason to overshoot.
 const slow: MotionSpec = { token: '--morph-slow', bounce: 0 };
@@ -233,11 +296,14 @@ const quick: MotionSpec = { token: '--morph-fast', bounce: 0 };
 /** Exits go together and go fast: the user has already decided to leave. */
 const exit: MotionSpec = { ...quick, pace: 0.7 };
 
-// The app is one axis of depth: Home, then Album, then Now playing. Every journey is built from
-// the same few verbs on that axis, so going deeper and coming back are opposite directions of
-// one path. Going deeper, the art comes toward you, the page you're on falls back in a ripple
-// from it, and what's next rises from below. Coming back is the same path the other way,
-// shorter: the deep page sinks, and the shallower one comes forward around the art.
+// Every navigation is one step further in: depth is how far you've come, not where a page sits.
+// The In-Front Rule makes that visible: the page you go to is always drawn in front of the page you
+// leave, and the page you leave never moves away to show what is under it. What both pages show
+// travels and becomes the new page's; what only the old page shows gives way under the new one;
+// what only the new page shows arrives in front, built around what travelled. Opening into
+// something the page held, its world floods out and the old page may still fall back, because the
+// new stage covers it. Gathering into something that holds the page, the larger page assembles in
+// front around where it now holds the one you were in. Gathering is quicker than opening.
 
 const fallBack: Part = {
 	from: {},
@@ -247,16 +313,27 @@ const fallBack: Part = {
 	ripple: { spread: 40, floor: 0.08 }
 };
 
-const sink: Part = { from: {}, to: { opacity: 0, y: 56 }, delay: 0, motion: exit };
+/**
+ * Give way: to nothing where it stands, under the page arriving. No travel and no scale, because
+ * anything that moves away uncovers what's behind it, and that is a backstack.
+ */
+function giveWay(motion: MotionSpec = exit, delay = 0): Part {
+	return { from: {}, to: { opacity: 0 }, delay, motion };
+}
 
-/** Held back only until the deeper page has mostly gone, so two pages never compete. */
-const comeForward: Part = {
-	from: { opacity: 0, scale: 0.9 },
-	to: {},
-	delay: 90,
-	motion: base,
-	ripple: { spread: 0, floor: 0.08 }
-};
+/**
+ * Gather: the page assembles around where the shared element lands, every unit at once, from
+ * `deep` of depth at the far edge and almost none beside the landing. `y` lifts every unit alike.
+ */
+function gather(deep: number, delay: number, y?: number): Part {
+	return {
+		from: { opacity: 0, scale: 1 - deep, ...(y === undefined ? {} : { y }) },
+		to: {},
+		delay,
+		motion: base,
+		gather: { near: 0.15 }
+	};
+}
 
 /**
  * A cover thrown down on the deck, from well above and well off the table, still turning. It takes
@@ -289,6 +366,12 @@ function fadeIn(delay: number, motion: MotionSpec): Part {
 	return { from: { opacity: 0 }, to: {}, delay, motion };
 }
 
+/**
+ * A unit a journey has nothing for: it comes up in front where it stands, because a unit that
+ * simply appeared over the page leaving would be a cut.
+ */
+export const plainArrival: Part = fadeIn(0, quick);
+
 /** The poster title: behind the cover, in its wake, one line after the other. */
 function posterLine(delay: number): Part {
 	return { from: { opacity: 0, y: 72, scale: 0.85 }, to: {}, delay, motion: slow };
@@ -314,54 +397,118 @@ const playing = {
 	out: { subject: 'playing', sourceSlots: ['poster'] }
 } as const;
 
+const albumParts = ['cover', 'title', 'artist'] as const;
+
+function albumLeads(side: 'from' | 'to'): LeadOf[] {
+	return albumParts.map((part): LeadOf => `${part}:${side}`);
+}
+
 /**
- * Home to Album. The cover lifts out of the grid and grows into the hero; its color breaks out
- * around it and floods the stage; the card's label swells into the headline. Home sinks away
- * behind all of it, and the tracks rise last, because they are what you came for.
+ * The album's door, from any cover a room or a record shows: a grid's cell, a shelf, a song's thumb.
+ * The cover lifts out and grows into the hero; its color breaks out around it and floods the stage,
+ * which comes up over the page falling back behind it; the card's label swells into the headline,
+ * and the tracks rise last, because they are what you came for.
  */
-const homeToAlbum: Choreography = {
-	name: 'home-to-album',
+const albumDoor: Choreography = {
+	name: 'album-door',
+	grain: 'opening',
 	motion: slow,
-	travel: { subject: 'to', sourceSlots: ['card', 'deck'], targetSlots: ['hero'] },
+	travel: {
+		subject: 'pages',
+		leads: albumLeads('to'),
+		sourceSlots: ['card', 'deck', 'thumb'],
+		targetSlots: ['hero']
+	},
 	leaving: fallBack,
-	arriving: { words: rise(20, 160), panel: rise(96, 160, slow) },
+	// The art only arrives on its own when no cover flew to it.
+	arriving: { art: rise(48, 160, slow), words: rise(20, 160), panel: rise(96, 160, slow) },
 	stages: { album: { from: { opacity: 0, scale: 1.08 }, to: {}, delay: 120, motion: slow } },
-	bloom: { direction: 'out', ...bloomShape },
+	held: {},
+	bloom: bloomShape,
+	island: null
+};
+
+const homeToAlbum: Choreography = { ...albumDoor, name: 'home-to-album' };
+const libraryToAlbum: Choreography = { ...albumDoor, name: 'library-to-album' };
+
+/** How an album gives way when a larger page gathers around it. */
+const albumGivesWay: Pick<Choreography, 'leaving' | 'leavingByRole' | 'held'> = {
+	leaving: giveWay(),
+	// The songs sat lowest and widest: they stay longest to be covered.
+	leavingByRole: { panel: giveWay(base) },
+	held: { album: giveWay(base) }
+};
+
+/**
+ * Album to Home, when the album is Continue's (playing, or paused there): Into Continue. The hero
+ * is the Continue card. The album's stage reshapes, at its true size and radius, into the card, with
+ * the cover and Play riding into their places on it, and Home gathers in front around it.
+ */
+const albumIntoContinue: Choreography = {
+	name: 'album-into-continue',
+	grain: 'gathering',
+	motion: base,
+	travel: {
+		subject: 'pages',
+		leads: ['surface:from', 'cover:from', 'play:from'],
+		sourceSlots: ['hero'],
+		targetSlots: ['card', 'island'],
+		landIn: 'feature'
+	},
+	// Everything else on the album sat on the surface, and is gone well before it is small.
+	leaving: giveWay(),
+	arriving: { intro: gather(0.12, 90), card: gather(0.12, 90) },
+	// The card's own words come last, onto a surface that has landed.
+	arrivingByKey: { feature: fadeIn(200, base) },
+	stages: {},
+	// Only when nothing reshapes: a hero scrolled away leaves its stage behind.
+	held: { album: giveWay(base) },
+	bloom: null,
 	island: null
 };
 
 /**
- * Album to Home, the same journey played back and shorter: leaving is easier than arriving.
- * The hero drops into the card it came from, the color drains back into it, and Home comes
- * forward out of the depth it sank into.
+ * Album to Home otherwise: Set among the others. You were just there, so Home now holds it first in
+ * Recently played: the cover and its words land there, Home rises in front around it, and the album
+ * gives way where it stands. It lands where Home holds it, not where it came from.
  */
 const albumToHome: Choreography = {
 	name: 'album-to-home',
+	grain: 'gathering',
 	motion: base,
-	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['card', 'deck', 'island'] },
-	leaving: sink,
-	arriving: { intro: comeForward, card: comeForward },
-	stages: { album: fadeOut(0, base) },
-	bloom: { direction: 'in', ...bloomShape },
+	travel: {
+		subject: 'pages',
+		leads: albumLeads('from'),
+		sourceSlots: ['hero'],
+		targetSlots: ['card', 'deck', 'island'],
+		landIn: 'played'
+	},
+	...albumGivesWay,
+	arriving: { intro: gather(0.08, 90, 24), card: gather(0.08, 90, 24) },
+	stages: {},
+	bloom: null,
 	island: null
 };
 
-/** Library to Album: the cover leaves its songs as it leaves a card on Home. */
-const libraryToAlbum: Choreography = { ...homeToAlbum, name: 'library-to-album' };
-
 /**
- * Album to Library, which is not that played back: nothing falls, and no color drains into the
- * cover. The album stays where it is and thins out as the list rises through it, the artist first
- * and then the songs, and the cover takes its place among them. The page never leaves to uncover
- * one behind it: this is a list arriving, which is why it has no bloom.
+ * Album to Library: the album stays where it is and gives way as the list rises in front of it, the
+ * artist first and then the songs, and the cover takes its place among them. No color drains into
+ * the cover: this is a list arriving, which is why it has no bloom.
  */
 const albumToLibrary: Choreography = {
 	name: 'album-to-library',
+	grain: 'gathering',
 	motion: base,
-	travel: { subject: 'from', sourceSlots: ['hero'], targetSlots: ['card'] },
-	leaving: fadeOut(0, exit),
+	travel: {
+		subject: 'pages',
+		leads: albumLeads('from'),
+		sourceSlots: ['hero'],
+		targetSlots: ['card']
+	},
+	leaving: giveWay(),
 	arriving: { intro: rise(16, 60), card: rise(40, 90) },
-	stages: { album: fadeOut(0, base) },
+	stages: {},
+	held: { album: giveWay(base) },
 	bloom: null,
 	island: null
 };
@@ -373,61 +520,76 @@ const albumToLibrary: Choreography = {
  */
 const homeToNowPlaying: Choreography = {
 	name: 'home-to-now-playing',
+	grain: 'opening',
 	motion: slow,
 	travel: { ...playing.in, sourceSlots: ['island'] },
 	leaving: fallBack,
 	arriving: nowPlayingArrives,
 	stages: { poster: fadeIn(120, slow) },
-	bloom: { direction: 'out', ...bloomShape },
+	held: {},
+	bloom: bloomShape,
 	island: islandOpens
 };
 
-/** Now playing to Home: everything condenses back into the island, and Home comes forward. */
+/**
+ * Now playing to Home, until the player's own milestone gives it a journey of its own: everything
+ * condenses back into the island while the moment gives way where it stands, and Home gathers in
+ * front around the island. Nothing sinks and no light drains: that was the way in, played back.
+ */
 const nowPlayingToHome: Choreography = {
 	name: 'now-playing-to-home',
+	grain: 'gathering',
 	motion: base,
 	travel: { ...playing.out, targetSlots: ['island'] },
-	leaving: sink,
+	leaving: giveWay(),
 	arriving: {
 		// Held until the poster title clears: two words that size can't share a stage.
-		intro: { ...comeForward, delay: 140 },
-		card: comeForward
+		intro: gather(0.08, 140),
+		card: gather(0.08, 90)
 	},
-	stages: { poster: fadeOut(0, base) },
-	bloom: { direction: 'in', ...bloomShape },
+	stages: {},
+	held: { poster: giveWay(base) },
+	bloom: null,
 	island: islandCloses
 };
 
 /**
  * Album to Now playing: one level deeper. The stage is already this album's, so nothing blooms;
- * it stays and deepens. The hero moves to the center if it can; otherwise the island's cover
+ * the poster comes up over it. The hero moves to the center if it can; otherwise the island's cover
  * rises and the hero falls back with the page. The album's headline gives way to the song's.
  */
 const albumToNowPlaying: Choreography = {
 	name: 'album-to-now-playing',
+	grain: 'opening',
 	motion: slow,
 	travel: { ...playing.in, sourceSlots: ['hero', 'island'] },
 	leaving: fallBack,
 	// Later than from Home: the album's headline is in the way until it has fallen back.
 	arriving: { ...nowPlayingArrives, 'line-1': posterLine(200), 'line-2': posterLine(290) },
-	stages: { poster: fadeIn(60, slow), album: fadeOut(460, quick) },
+	stages: { poster: fadeIn(60, slow) },
+	held: { album: fadeOut(460, quick) },
 	bloom: null,
 	island: islandOpens
 };
 
-/** Now playing to Album: the poster lifts off the stage it was deepening, and the album returns. */
+/**
+ * Now playing to Album, until the player's own milestone: the poster gives way under the album,
+ * whose stage comes up in front, and the album gathers around the cover landing in its hero.
+ */
 const nowPlayingToAlbum: Choreography = {
 	name: 'now-playing-to-album',
+	grain: 'gathering',
 	motion: base,
 	travel: { ...playing.out, targetSlots: ['hero', 'island'] },
-	leaving: sink,
+	leaving: giveWay(),
 	arriving: {
-		art: comeForward,
+		art: gather(0.06, 90),
 		// The headline waits for the poster title to clear: two words that size can't share a stage.
-		words: { ...comeForward, ripple: undefined, delay: 140 },
+		words: { ...gather(0.06, 140), gather: undefined },
 		panel: rise(72, 90)
 	},
-	stages: { poster: fadeOut(0, base) },
+	stages: { album: fadeIn(0, base) },
+	held: { poster: giveWay(base) },
 	bloom: null,
 	island: islandCloses
 };
@@ -438,18 +600,20 @@ const throughTheDoor = { subject: 'fox', sourceSlots: ['door'], targetSlots: ['n
 const islandForms = rise(32, 220);
 
 /**
- * Login to Home. The door is the shallowest place on the axis, so this is going deeper: the fox
+ * Login to Home. The door is the shallowest place there is, so this is going deeper: the fox
  * leaves the form and takes its seat in the nav as the glass forms around it, the form falls back,
- * and Home rises under them with the island closing the frame from below. Login to Now playing
+ * and Home rises in front of it with the island closing the frame from below. Login to Now playing
  * has no fox's journey to make: it blends, and so does anything back to the door.
  */
 const loginToHome: Choreography = {
 	name: 'login-to-home',
+	grain: 'opening',
 	motion: slow,
 	travel: throughTheDoor,
 	leaving: fallBack,
 	arriving: { intro: rise(20, 160), card: rise(48, 160, slow) },
 	stages: {},
+	held: {},
 	bloom: null,
 	island: null,
 	islandForms
@@ -458,11 +622,13 @@ const loginToHome: Choreography = {
 /** Login to Album: the same door, returning after an expired session to the album left behind. */
 const loginToAlbum: Choreography = {
 	name: 'login-to-album',
+	grain: 'opening',
 	motion: slow,
 	travel: throughTheDoor,
 	leaving: fallBack,
 	arriving: { art: rise(48, 160, slow), words: rise(20, 160), panel: rise(96, 160, slow) },
-	stages: homeToAlbum.stages,
+	stages: albumDoor.stages,
+	held: {},
 	bloom: null,
 	island: null,
 	islandForms
@@ -480,12 +646,14 @@ const landingPad = fadeIn(40, base);
  */
 export const deckToHome: Choreography = {
 	name: 'deck-to-home',
+	grain: 'opening',
 	motion: quick,
 	travel: null,
 	leaving: { from: {}, to: { opacity: 0, scale: 0.86 }, delay: 0, motion: exit },
 	arriving: { card: rise(48, 160, slow) },
 	arrivingByKey: { feature: landingPad, recent: landingPad },
 	stages: {},
+	held: {},
 	bloom: null,
 	island: null,
 	islandForms
@@ -494,22 +662,24 @@ export const deckToHome: Choreography = {
 /** The deck's count line, once there's a Home to say it instead. */
 export const countFades = fadeOut(0, quick);
 
-/** All of reduced motion: never a hard cut. */
+/** All of reduced motion, and every pair with no journey yet: never a hard cut. */
 export const blend: Choreography = {
 	name: 'blend',
+	grain: 'crossing',
 	motion: quick,
 	travel: null,
 	leaving: { from: {}, to: { opacity: 0 }, delay: 0, motion: quick },
 	arriving: {},
 	stages: {},
+	held: {},
 	bloom: null,
 	island: null
 };
 
 const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
 	'home>album': homeToAlbum,
-	'album>home': albumToHome,
 	'library>album': libraryToAlbum,
+	'album>home': albumToHome,
 	'album>library': albumToLibrary,
 	'home>now-playing': homeToNowPlaying,
 	'now-playing>home': nowPlayingToHome,
@@ -518,6 +688,24 @@ const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
 	'login>home': loginToHome,
 	'login>album': loginToAlbum
 };
+
+/** What decides a journey beyond its two routes: one pair can have two journeys. */
+export interface JourneyContext {
+	/** Whether the album being left is the one on Home's Continue card. */
+	continues?: boolean;
+}
+
+/** Finds the choreography between two routes. */
+export function choreographyFor(
+	from: RouteName,
+	to: RouteName,
+	{ continues = false }: JourneyContext = {}
+): Choreography {
+	if (from === 'album' && to === 'home' && continues) {
+		return albumIntoContinue;
+	}
+	return journeys[`${from}>${to}`] ?? blend;
+}
 
 /**
  * How strong the bloom is at a given openness, from 0 at the cover to 1 at full size. This is
@@ -536,11 +724,6 @@ export function bloomOpenness(scale: number, { rest, full }: Bloom): number {
 
 /** The length of a blend, in milliseconds. */
 export const blendDuration = 120;
-
-/** Finds the choreography between two routes. */
-export function choreographyFor(from: RouteName, to: RouteName): Choreography {
-	return journeys[`${from}>${to}`] ?? blend;
-}
 
 /** Reads a motion's duration from its token. */
 export function resolveMotion(spec: MotionSpec, read: (token: MotionToken) => number): Motion {

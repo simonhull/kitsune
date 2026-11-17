@@ -29,9 +29,10 @@ describe('the way up from Now playing', () => {
 	const hero: Candidate = { id: cover, slot: 'hero' };
 	const island: Candidate = { id: cover, slot: 'island' };
 
-	it('is the same journey however it was reached: direction comes from depth, not history', () => {
+	it('is the same journey however it was reached: the grain decides, not history', () => {
 		expect(travel?.sourceSlots).toEqual(['poster']);
-		expect(leaving.to.y).toBeGreaterThan(0);
+		// Now playing gives way where it stands: nothing moves away to uncover the album.
+		expect(leaving.to).toEqual({ opacity: 0 });
 		expect(leaving.ripple).toBeUndefined();
 		expect(motion.token).toBe('--morph');
 	});

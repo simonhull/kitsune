@@ -235,6 +235,8 @@
 	style:--wash={palette?.wash}
 	style:--stage={palette?.stage}
 >
+	<!-- Under everything: the page you go to is always drawn in front of the page you leave. -->
+	<div class="ghost-layer" aria-hidden="true"></div>
 	<Backdrop
 		albumId={stageAlbum}
 		{palette}
@@ -261,7 +263,6 @@
 	</main>
 	<p class="visually-hidden" role="status">{markTrouble}</p>
 	{#if !atDoor}<EditorHost />{/if}
-	<div class="ghost-layer" aria-hidden="true"></div>
 	{#if palette !== null}<Bloom {palette} />{/if}
 	{#if library.playing !== null && !atDoor}
 		<PlayerIsland
@@ -310,11 +311,14 @@
 		color: var(--text-secondary);
 	}
 
-	/* Under the shell: what's left of the outgoing page. */
+	/*
+	 * At the bottom, under the stages and the page: what's left of the page you leave, which gives
+	 * way where it stands while the page you go to comes up in front of it (The In-Front Rule).
+	 */
 	.ghost-layer {
 		position: fixed;
 		inset: 0;
-		z-index: 2;
+		z-index: 0;
 		overflow: clip;
 		pointer-events: none;
 	}

@@ -5,6 +5,8 @@ import {
 	parseTime,
 	resolveMotion,
 	type Choreography,
+	type Lead,
+	type LeadOf,
 	type Motion,
 	type MotionSpec,
 	type MotionToken
@@ -15,7 +17,7 @@ import { markClick } from './hud.svelte.ts';
 import { pick, recordOrigins, type Origins } from './pairs.ts';
 import { albumExit } from './path.ts';
 import { registry, type MorphEntry } from './registry.ts';
-import { albumOn, journeyOf } from '#lib/shell/routes.ts';
+import { albumOn, artistOn, journeyOf, playlistOn, type RouteTarget } from '#lib/shell/routes.ts';
 
 /** One navigation's plan. */
 export interface Journey {
@@ -23,9 +25,33 @@ export interface Journey {
 	/** The shared ids of this navigation; empty when nothing travels. */
 	ids: string[];
 	sources: Map<string, MorphEntry>;
+	/** How long each id waits before it leaves, in milliseconds, when it waits at all. */
+	waits: Map<string, number>;
 }
 
-const origins: Origins = new Map();
+/**
+ * Where each journey left from, by the page it left: the way back to that page lands on the same
+ * card. Only a few pages are remembered, since only the last few can be gone back to quickly.
+ */
+const originsByPage = new Map<string, Origins>();
+const pagesRemembered = 16;
+
+function originsOf(path: string | undefined): Origins | undefined {
+	return path === undefined ? undefined : originsByPage.get(path);
+}
+
+function rememberOrigins(path: string): Origins {
+	const known = originsByPage.get(path) ?? new Map();
+	originsByPage.delete(path);
+	originsByPage.set(path, known);
+	for (const old of originsByPage.keys()) {
+		if (originsByPage.size <= pagesRemembered) {
+			break;
+		}
+		originsByPage.delete(old);
+	}
+	return known;
+}
 
 const playerParts = ['control:previous', 'control:pause', 'control:next', 'progress'];
 
@@ -36,6 +62,18 @@ let navigations = 0;
 /** The page behind Now playing in the history stack, when that's known. */
 let behindNowPlaying: string | null = null;
 let landAtTop = false;
+/** One navigation's borrowed lead: an id with no source of its own, and what stands in for it. */
+let lent: { id: string; from: string } | null = null;
+/** Where a borrowed lead left from, by page: the way back lands it on the same stand-in. */
+const lentFrom = new Map<string, { id: string; from: string }>();
+
+/**
+ * Lends a lead to the next navigation: `id` leaves from wherever `from` is. An album card's menu
+ * goes to its artist this way, from the card's own artist line, which only knows the album.
+ */
+export function lend(id: string, from: string): void {
+	lent = { id, from };
+}
 
 /** Reports whether there's a page of ours to go back to. */
 export function hasInAppHistory(): boolean {
@@ -73,6 +111,14 @@ function preloadFor(link: HTMLAnchorElement | null): void {
 	} else if (link?.pathname === '/now-playing') {
 		void preload(library.playing?.album.artwork, 'stage');
 	}
+}
+
+/**
+ * The page on screen: the shell's own `main`. A ghost is a picture of a `main`, and it sits before
+ * the real one in the shell, so a plain query would find the page being left.
+ */
+export function pageMain(): HTMLElement | null {
+	return document.querySelector('.shell')?.querySelector<HTMLElement>(':scope > main') ?? null;
 }
 
 export function reducedMotion(): boolean {
@@ -113,44 +159,102 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 	if (fromRoute === 'home') {
 		homeScroll = scrollY;
 	}
-	const choreography = reducedMotion() ? blend : choreographyFor(fromRoute, toRoute);
+	const borrowed = lent;
+	lent = null;
+	const continues = albumOn(from) !== undefined && albumOn(from) === library.playing?.album.id;
+	const choreography = reducedMotion() ? blend : choreographyFor(fromRoute, toRoute, { continues });
 	const { travel } = choreography;
 	if (travel === null) {
-		return { choreography, ids: [], sources: new Map() };
+		return { choreography, ids: [], sources: new Map(), waits: new Map() };
 	}
 
-	const ids = idsFor(travel.subject, navigation);
+	const leads = leadsFor(travel, navigation);
+	const ids = [...leads.keys()];
+	const waits = new Map(
+		[...leads].flatMap(([id, lead]) => {
+			const wait = travel.waits?.[lead];
+			return wait === undefined ? [] : [[id, wait] as const];
+		})
+	);
 	if (ids.length === 0) {
-		return { choreography, ids, sources: new Map() };
+		return { choreography, ids, sources: new Map(), waits };
 	}
-	const scope = type === 'link' ? clickedScope() : null;
-	const candidates = registry.list();
+	const scopes = type === 'link' ? clickedScopes() : [];
+	const candidates = registry.of(borrowed === null ? ids : [...ids, borrowed.from]);
+	const clicked =
+		scopes.length === 0
+			? undefined
+			: ({ element }: MorphEntry) => scopes.some((scope) => scope.contains(element));
 	const sources = pick(candidates, {
 		ids,
 		slots: travel.sourceSlots,
-		clicked: scope === null ? undefined : ({ element }) => scope.contains(element),
+		clicked,
 		visible: onScreen,
 		eligible: canTravel,
 		// Forward through history has no click: go back to the card the album was opened from.
-		origins: type === 'popstate' ? origins : undefined
+		origins: type === 'popstate' ? originsOf(from?.url.pathname) : undefined
 	});
-	if (choreography.name === 'home-to-album') {
-		recordOrigins(candidates, ids, 'card', sources, origins);
+	if (borrowed !== null && ids.includes(borrowed.id) && !sources.has(borrowed.id)) {
+		const stand = pick(candidates, {
+			ids: [borrowed.from],
+			slots: [...travel.sourceSlots, 'card'],
+			visible: onScreen,
+			eligible: canTravel
+		}).get(borrowed.from);
+		if (stand !== undefined) {
+			sources.set(borrowed.id, stand);
+			if (from !== null) {
+				lentFrom.delete(from.url.pathname);
+				lentFrom.set(from.url.pathname, borrowed);
+				for (const old of lentFrom.keys()) {
+					if (lentFrom.size <= pagesRemembered) {
+						break;
+					}
+					lentFrom.delete(old);
+				}
+			}
+		}
 	}
-	return { choreography, ids, sources };
+	if (choreography.grain === 'opening' && travel.subject === 'pages' && from !== null) {
+		const usual = travel.sourceSlots[0] ?? 'card';
+		recordOrigins(candidates, ids, usual, sources, rememberOrigins(from.url.pathname));
+	}
+	return { choreography, ids, sources, waits };
 }
 
-/** Lists what travels on a journey. */
-function idsFor(subject: 'from' | 'to' | 'playing' | 'fox', { from, to }: OnNavigate): string[] {
-	if (subject === 'fox') {
-		return ['fox'];
+/** The page a lead belongs to: an album's parts are an album page's, a name an artist's… */
+function ownerOf(lead: Lead, target: RouteTarget | null): string | undefined {
+	switch (lead) {
+		case 'name':
+			return artistOn(target);
+		case 'mosaic':
+		case 'listname':
+			return playlistOn(target);
+		default:
+			return albumOn(target);
 	}
-	if (subject === 'playing') {
+}
+
+/** Lists what travels on a journey, each id with the lead it is. */
+function leadsFor(
+	travel: NonNullable<Choreography['travel']>,
+	{ from, to }: OnNavigate
+): Map<string, Lead> {
+	if (travel.subject === 'fox') {
+		return new Map([['fox', 'cover']]);
+	}
+	if (travel.subject === 'playing') {
 		const id = library.playing?.album.id;
-		return id === undefined ? [] : [`cover:${id}`, 'song', ...playerParts];
+		const ids = id === undefined ? [] : [`cover:${id}`, 'song', ...playerParts];
+		return new Map(ids.map((each) => [each, 'cover']));
 	}
-	const id = albumOn(subject === 'to' ? to : from);
-	return id === undefined ? [] : [`cover:${id}`, `title:${id}`, `artist:${id}`];
+	return new Map(
+		(travel.leads ?? []).flatMap((leadOf: LeadOf) => {
+			const [lead, side] = leadOf.split(':') as [Lead, 'from' | 'to'];
+			const owner = ownerOf(lead, side === 'from' ? from : to);
+			return owner === undefined ? [] : [[`${lead}:${owner}`, lead] as const];
+		})
+	);
 }
 
 /** A hero scrolled off screen stays with its page: the island's cover travels instead. */
@@ -158,13 +262,26 @@ function canTravel(entry: MorphEntry): boolean {
 	return entry.slot !== 'hero' || onScreen(entry);
 }
 
-function clickedScope(): Element | null {
-	return lastClick instanceof Element ? lastClick.closest('a') : null;
+/**
+ * Where the click was: its link, then its row. A song's album link is beside its thumb, not around
+ * it, and the thumb is what leaves.
+ */
+function clickedScopes(): Element[] {
+	if (!(lastClick instanceof Element)) {
+		return [];
+	}
+	return [lastClick.closest('a'), lastClick.closest('[data-track]')].filter(
+		(scope): scope is Element => scope !== null
+	);
 }
 
 /** Resolves the targets once the new page is in the DOM and the scroll is final. */
-export function landJourney(journey: Journey, scrollToOrigin: boolean): Map<string, MorphEntry> {
-	const { travel, name } = journey.choreography;
+export function landJourney(
+	journey: Journey,
+	scrollToOrigin: boolean,
+	path: string
+): Map<string, MorphEntry> {
+	const { travel, name, grain } = journey.choreography;
 	if (landAtTop) {
 		landAtTop = false;
 		scrollTo({ top: 0, behavior: 'instant' });
@@ -172,23 +289,39 @@ export function landJourney(journey: Journey, scrollToOrigin: boolean): Map<stri
 	if (travel === null) {
 		return new Map();
 	}
-	const landingOnHome = name === 'album-to-home';
+	const landingOnHome = name === 'album-to-home' || name === 'album-into-continue';
 	if (landingOnHome && scrollToOrigin) {
 		scrollTo({ top: homeScroll, behavior: 'instant' });
 	}
-	const targets = pick(registry.list(), {
+	const { landIn } = travel;
+	const home =
+		landIn === undefined
+			? null
+			: (pageMain()?.querySelector(`[data-morph-key="${CSS.escape(landIn)}"]`) ?? null);
+	const targets = pick(registry.of(journey.ids), {
 		ids: journey.ids,
 		slots: travel.targetSlots,
-		origins,
+		// Where the page now holds what you were in wins over where it came from.
+		clicked: home === null ? undefined : ({ element }) => home.contains(element),
+		origins: originsOf(path),
 		// With no origin, a card already in the clear wins, so the page stays where it was left.
 		visible: ({ element }) => inTheClear(element),
 		eligible: canTravel
 	});
-	if (landingOnHome) {
-		const cover = [...targets.values()].find((entry) => entry.kind === 'cover');
-		if (cover !== undefined && cover.slot === 'card') {
-			bringIntoView(cover.element);
+	const borrowed = lentFrom.get(path);
+	if (borrowed !== undefined && journey.ids.includes(borrowed.id) && !targets.has(borrowed.id)) {
+		const stand = pick(registry.of([borrowed.from]), {
+			ids: [borrowed.from],
+			slots: travel.targetSlots,
+			visible: ({ element }) => inTheClear(element)
+		}).get(borrowed.from);
+		if (stand !== undefined) {
+			targets.set(borrowed.id, stand);
 		}
+	}
+	const lead = targets.get(journey.ids.at(0) ?? '');
+	if (grain === 'gathering' && lead !== undefined && lead.slot !== 'hero') {
+		bringIntoView(lead.element);
 	}
 	return targets;
 }
@@ -231,8 +364,32 @@ export function dealTargets(): Map<string, MorphEntry> {
 	return pick(clear, { ids, slots: ['card'] });
 }
 
-/** Scrolls instantly, under the outgoing page, so a card isn't behind the nav or the island. */
+/** Finds the nearest box that scrolls sideways around an element: a row of covers on a phone. */
+function sidewaysScroller(element: HTMLElement): HTMLElement | null {
+	for (let box = element.parentElement; box !== null; box = box.parentElement) {
+		const { overflowX } = getComputedStyle(box);
+		if ((overflowX === 'auto' || overflowX === 'scroll') && box.scrollWidth > box.clientWidth) {
+			return box;
+		}
+	}
+	return null;
+}
+
+/**
+ * Scrolls instantly, under the outgoing page, so a card isn't behind the nav or the island, nor
+ * off the side of a row that scrolls sideways.
+ */
 function bringIntoView(element: HTMLElement): void {
+	const row = sidewaysScroller(element);
+	if (row !== null) {
+		const box = row.getBoundingClientRect();
+		const { left, right } = element.getBoundingClientRect();
+		if (left < box.left) {
+			row.scrollBy({ left: left - box.left, behavior: 'instant' });
+		} else if (right > box.right) {
+			row.scrollBy({ left: Math.min(right - box.right, left - box.left), behavior: 'instant' });
+		}
+	}
 	const { top, bottom } = element.getBoundingClientRect();
 	const limit = clearBottom();
 	if (top < clearTop) {

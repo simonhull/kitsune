@@ -67,3 +67,13 @@ export interface RouteTarget {
 export function albumOn(target: RouteTarget | null | undefined): string | undefined {
 	return target?.route.id === '/album/[id]' ? target.params?.['id'] : undefined;
 }
+
+/** Finds the artist a page is on. */
+export function artistOn(target: RouteTarget | null | undefined): string | undefined {
+	return target?.route.id === '/artists/[id]' ? target.params?.['id'] : undefined;
+}
+
+/** Finds the playlist a page is on: a new smart one isn't one yet. */
+export function playlistOn(target: RouteTarget | null | undefined): string | undefined {
+	return target?.route.id === '/playlists/[id]' ? target.params?.['id'] : undefined;
+}
