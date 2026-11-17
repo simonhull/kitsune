@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, fixtures, test } from './fixture';
+import { expect, fixtures, landed, test } from './fixture';
 
 /** A row of the playlist on screen, by its place, from 0. */
 const rowAt = (page: Page, at: number) => page.locator('section.songs .slot [data-track]').nth(at);
@@ -12,6 +12,7 @@ async function openEssentials(page: Page): Promise<void> {
 	await page.getByRole('link', { name: /Falling Up essentials/ }).click();
 	await expect(page).toHaveURL(/\/playlists\/falling-up-essentials/);
 	await expect(rowAt(page, 0)).toBeVisible();
+	await landed(page);
 }
 
 async function openExport(page: Page): Promise<void> {

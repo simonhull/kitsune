@@ -270,6 +270,7 @@ const journeyPairs: readonly (readonly [RouteName, RouteName])[] = [
 	['album', 'library'],
 	['album', 'albums'],
 	['album', 'artist'],
+	['album', 'playlist'],
 	['artists', 'artist'],
 	['library', 'artist'],
 	['albums', 'artist'],
@@ -277,6 +278,8 @@ const journeyPairs: readonly (readonly [RouteName, RouteName])[] = [
 	['artist', 'artists'],
 	['artist', 'library'],
 	['artist', 'albums'],
+	['playlists', 'playlist'],
+	['playlist', 'playlists'],
 	['home', 'now-playing'],
 	['album', 'now-playing'],
 	['now-playing', 'home'],
@@ -380,6 +383,23 @@ describe('choreographyFor', () => {
 		const { travel } = choreographyFor('album', 'artist');
 		expect(travel?.leads).toEqual(['name:to', 'cover:from']);
 		expect(travel?.waits?.name).toBe(40);
+	});
+
+	it('opens every record through its own door, the same from every room', () => {
+		for (const from of ['home', 'library', 'albums', 'artist', 'playlist', 'search'] as const) {
+			expect(choreographyFor(from, 'album').travel?.leads, from).toEqual([
+				'cover:to',
+				'title:to',
+				'artist:to'
+			]);
+		}
+		for (const from of ['artists', 'library', 'albums', 'search'] as const) {
+			expect(choreographyFor(from, 'artist').name, from).toBe('name-door');
+		}
+		expect(choreographyFor('playlists', 'playlist').travel?.leads).toEqual([
+			'mosaic:to',
+			'listname:to'
+		]);
 	});
 
 	it('reshapes the island exactly when Now playing is involved', () => {

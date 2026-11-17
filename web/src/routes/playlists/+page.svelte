@@ -11,6 +11,7 @@
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
 	import Icon from '#lib/shell/Icon.svelte';
+	import { morph } from '#lib/morph/registry.ts';
 	import Mosaic from '#lib/pages/Mosaic.svelte';
 	import SmartStamp from '#lib/pages/SmartStamp.svelte';
 	import FileTag from '#lib/pages/FileTag.svelte';
@@ -59,7 +60,7 @@
 </svelte:head>
 
 <div class="page-frame playlists">
-	<div class="intro">
+	<div class="intro" data-morph-part="intro" data-morph-key="intro">
 		<h1>Playlists<span class="dot" aria-hidden="true">.</span></h1>
 		{#if lists.kind === 'ready'}
 			<p class="facts">{countWithFiles(all.length, smartCount, files.length)}</p>
@@ -67,7 +68,7 @@
 	</div>
 
 	{#if lists.kind === 'unavailable'}
-		<p class="note" role="status">
+		<p class="note" role="status" data-morph-part="intro" data-morph-key="note">
 			Your playlists couldn't be loaded.
 			<button type="button" onclick={() => void library.playlists.load()}>Try again</button>
 		</p>
@@ -76,7 +77,7 @@
 			{#each own as p (p.id)}
 				{@render card(p)}
 			{/each}
-			<div class="new">
+			<div class="new" data-morph-part="card" data-morph-key="new">
 				{#if naming}
 					<form
 						class="naming"
@@ -127,7 +128,12 @@
 					>
 				{/if}
 			</div>
-			<a class="dashed smart" href={resolve('/playlists/smart')}>
+			<a
+				class="dashed smart"
+				href={resolve('/playlists/smart')}
+				data-morph-part="card"
+				data-morph-key="new-smart"
+			>
 				<span class="dashed-in"
 					><Icon name="rules" size={28} /><span>New smart playlist</span><span class="sub"
 						>RULES CHOOSE THE SONGS</span
@@ -137,7 +143,7 @@
 		</div>
 		{#if files.length > 0}
 			<section class="files" aria-labelledby="from-files">
-				<div class="files-head">
+				<div class="files-head" data-morph-part="intro" data-morph-key="files-head">
 					<h2 id="from-files">From files</h2>
 					<span class="files-note"
 						>.M3U IN THE LIBRARY · EVERYONE ON THIS SERVER SEES THESE · EDIT THE FILE TO CHANGE ONE</span
@@ -158,6 +164,8 @@
 	{@const filed = p.source === 'file' ? fileCardLine(p) : null}
 	<a
 		class="card"
+		data-morph-part="card"
+		data-morph-key={`playlist:${p.id}`}
 		href={pending ? undefined : resolve('/playlists/[id]', { id: p.id })}
 		aria-disabled={pending ? 'true' : undefined}
 		onpointerenter={() => {
@@ -167,11 +175,13 @@
 			early(p.id);
 		}}
 	>
-		<span class="cover"
+		<span class="cover" use:morph={{ id: `mosaic:${p.id}`, slot: 'card', kind: 'cover' }}
 			><Mosaic albums={p.mosaic} radius="var(--radius-24)" />{#if p.smart}<SmartStamp
 				/>{:else if p.file !== undefined}<FileTag format={p.file.format} />{/if}</span
 		>
-		<span class="name">{p.name}</span>
+		<span class="name" use:morph={{ id: `listname:${p.id}`, slot: 'card', kind: 'title' }}
+			>{p.name}</span
+		>
 		{#if filed === null}
 			<span class="line">{cardLine(p)}</span>
 		{:else}

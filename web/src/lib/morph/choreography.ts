@@ -560,6 +560,22 @@ const albumToArtist: Choreography = {
 };
 
 /**
+ * Album to Playlist, only ever by Back: the playlist holds the album's song, so it gathers. The
+ * cover lands on the song's thumb it was opened from, and the playlist rises in front around it.
+ */
+const albumToPlaylist: Choreography = {
+	...albumToArtist,
+	name: 'album-to-playlist',
+	travel: {
+		subject: 'pages',
+		leads: ['cover:from'],
+		sourceSlots: ['hero'],
+		targetSlots: ['thumb']
+	},
+	arriving: { art: rise(12, 90), words: rise(12, 90), panel: rise(24, 90) }
+};
+
+/**
  * The name's door, from the Artists list, a Library heading, a search result or an album card's
  * menu: the name grows out of the list into the headline, the list falls back around it, and Top
  * songs rise last. No stage: an artist has no art.
@@ -616,6 +632,51 @@ const artistToAlbums: Choreography = {
 	...artistToArtists,
 	name: 'artist-to-albums',
 	travel: { subject: 'pages', leads: ['name:from'], sourceSlots: ['hero'], targetSlots: ['card'] }
+};
+
+/**
+ * The mosaic's door, Playlists to Playlist: the tile's mosaic grows into the head's and its name
+ * into the headline, the wall falls back, and the songs rise last.
+ */
+const mosaicDoor: Choreography = {
+	name: 'mosaic-door',
+	grain: 'opening',
+	motion: slow,
+	travel: {
+		subject: 'pages',
+		leads: ['mosaic:to', 'listname:to'],
+		sourceSlots: ['card'],
+		targetSlots: ['hero']
+	},
+	leaving: fallBack,
+	arriving: { art: rise(48, 160, slow), words: rise(20, 160), panel: rise(96, 160, slow) },
+	stages: {},
+	held: {},
+	bloom: null,
+	island: null
+};
+
+/**
+ * Playlist to Playlists: set in the wall. The mosaic and the name settle into their tile, and the
+ * wall gathers around it, in front, while the playlist gives way.
+ */
+const playlistToPlaylists: Choreography = {
+	name: 'playlist-to-playlists',
+	grain: 'gathering',
+	motion: base,
+	travel: {
+		subject: 'pages',
+		leads: ['mosaic:from', 'listname:from'],
+		sourceSlots: ['hero'],
+		targetSlots: ['card']
+	},
+	leaving: giveWay(),
+	leavingByRole: { panel: giveWay(base) },
+	arriving: { intro: gather(0.14, 60), card: gather(0.14, 60) },
+	stages: {},
+	held: {},
+	bloom: null,
+	island: null
 };
 
 /**
@@ -792,6 +853,7 @@ const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
 	'album>library': albumToLibrary,
 	'album>albums': albumToAlbums,
 	'album>artist': albumToArtist,
+	'album>playlist': albumToPlaylist,
 	'artists>artist': nameDoor,
 	'library>artist': nameDoor,
 	'albums>artist': nameDoor,
@@ -799,6 +861,8 @@ const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
 	'artist>artists': artistToArtists,
 	'artist>library': artistToLibrary,
 	'artist>albums': artistToAlbums,
+	'playlists>playlist': mosaicDoor,
+	'playlist>playlists': playlistToPlaylists,
 	'home>now-playing': homeToNowPlaying,
 	'now-playing>home': nowPlayingToHome,
 	'album>now-playing': albumToNowPlaying,

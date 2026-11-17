@@ -418,6 +418,8 @@
 
 <section
 	class="songs song-list"
+	data-morph-part="panel"
+	data-morph-key="songs"
 	class:dragging={dragging !== null}
 	aria-label={`Songs in ${playlist.name}`}
 	bind:this={root}
