@@ -177,3 +177,38 @@ test('off on the last song of an album goes on to the next album in the Library'
 	expect(back?.tracks.slice(back.index, back.index + 2)).toEqual([ids[last], ids[last + 1]]);
 	expect(back?.continues).toBe(nextAlbum);
 });
+
+test('Now playing in a shuffle names its album, its artist is a link, and the song playing has a ⋯ menu', async ({
+	page
+}) => {
+	const { ids, titles } = await openLibrary(page);
+	const title = titles[0] ?? '';
+	const island = await playFromLibrary(page, ids[0] ?? '', title);
+	await page.keyboard.press('n');
+	await expect(page).toHaveURL(/\/now-playing/);
+	const shuffle = island.getByRole('button', { name: 'Shuffle', exact: true });
+	await shuffle.click();
+	await expect(page.getByText('NOW PLAYING · SHUFFLING THE LIBRARY').first()).toBeVisible();
+
+	// The top line keeps the album while shuffling.
+	await expect(
+		page.locator('.where').getByRole('link', { name: /^Go to the album / })
+	).toBeVisible();
+
+	// The song playing heads Up next, and its ⋯ opens the menu any song's does, with nothing to
+	// take out of the queue.
+	const upNextRegion = page.getByRole('region', { name: 'Up next' });
+	await upNextRegion.getByRole('button', { name: `More for ${title}`, exact: true }).click();
+	const menu = page.getByRole('menu', { name: title, exact: true });
+	await expect(menu).toBeVisible();
+	await expect(menu.getByRole('menuitem', { name: 'Go to album' })).toBeVisible();
+	await expect(menu.getByRole('menuitem', { name: 'Remove from queue' })).toHaveCount(0);
+	await menu.getByRole('menuitem', { name: 'Go to artist' }).click();
+	await expect(page).toHaveURL(/\/artists\//);
+
+	// Back on Now playing, the artist's name is the way to the artist too.
+	await page.goBack();
+	await expect(page).toHaveURL(/\/now-playing/);
+	await page.locator('.names').getByRole('link').first().click();
+	await expect(page).toHaveURL(/\/artists\//);
+});

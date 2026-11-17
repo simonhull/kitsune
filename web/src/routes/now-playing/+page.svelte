@@ -24,6 +24,8 @@
 	const shuffle = $derived(shuffles.current?.active === true ? shuffles.current : null);
 	const lines = $derived(playing === null ? ['', ''] : balancedLines(playing.track.title));
 	const longest = $derived(Math.max(...lines.map((line) => emWidth(line, 900, -0.075)), 1));
+	/** Who the album is by, as a page: none for a compilation or Various Artists. */
+	const artistId = $derived(playing?.album.artists.at(0)?.id);
 	const others = $derived(
 		playing === null ? undefined : credit(playing.track, playing.album.artist)
 	);
@@ -87,18 +89,18 @@
 				>
 				<span class="where">
 					{#if shuffle !== null}
-						NOW PLAYING · SHUFFLING {shuffle.source.label}
+						NOW PLAYING · SHUFFLING {shuffle.source.label} ·
 					{:else}
 						NOW PLAYING ·
-						<a
-							class="album-link"
-							href={resolve('/album/[id]', { id: playing.album.id })}
-							aria-label={`Go to the album ${playing.album.title}`}
-							data-sveltekit-replacestate
-							onclick={goUp}>{playing.album.title.toUpperCase()}</a
-						>
-						· {playing.index + 1} / {playing.trackCount}
 					{/if}
+					<a
+						class="album-link"
+						href={resolve('/album/[id]', { id: playing.album.id })}
+						aria-label={`Go to the album ${playing.album.title}`}
+						data-sveltekit-replacestate
+						onclick={goUp}>{playing.album.title.toUpperCase()}</a
+					>
+					{#if shuffle === null}· {playing.index + 1} / {playing.trackCount}{/if}
 				</span>
 				<span class="chips">
 					<span class="chip">{playing.format}</span>
@@ -131,7 +133,13 @@
 				<div class="names">
 					<h1 use:morph={{ id: 'song', slot: 'poster', kind: 'title' }}>{playing.track.title}</h1>
 					<span class="artist" data-morph-part="details">
-						<strong>{playing.album.artist}</strong>
+						{#if artistId !== undefined}
+							<a class="artist-link" href={resolve('/artists/[id]', { id: artistId })}
+								><strong>{playing.album.artist}</strong></a
+							>
+						{:else}
+							<strong>{playing.album.artist}</strong>
+						{/if}
 						{#if others !== undefined}{others}{/if}
 					</span>
 					<span class="rate" data-morph-part="details"
@@ -161,7 +169,8 @@
 							title: playing.track.title,
 							artist: playing.track.artists.at(0) ?? playing.album.artist,
 							durationMs: playing.track.durationMs,
-							album: playing.album
+							album: playing.album,
+							artistId
 						}}
 						items={shuffle.upNext}
 						mode={shuffle.source.mode}
@@ -377,6 +386,16 @@
 		font-size: calc(16px * var(--step));
 		color: var(--wash);
 		max-width: min(calc(640px * var(--step)), 100cqw - 32px);
+	}
+
+	.artist-link {
+		color: inherit;
+		text-decoration: none;
+		text-underline-offset: 3px;
+	}
+
+	.artist-link:hover {
+		text-decoration: underline;
 	}
 
 	.artist strong {
