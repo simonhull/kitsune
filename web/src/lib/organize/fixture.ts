@@ -7,6 +7,7 @@
  * on a clock, telling its listeners as the server's events would.
  */
 
+import { bestItsGonnaGet } from '#lib/duplicates/fixture.ts';
 import type { Album } from '#lib/library/source.ts';
 import {
 	defaultCompilations,
@@ -225,6 +226,13 @@ const boardAlbums: readonly BoardAlbum[] = [
 		]
 	}
 ];
+
+/** The group of the Duplicates fixture a conflict's songs are in: Blackstar's, by its title. */
+function duplicateGroup(d: DiskSong): string {
+	return d.song.title === 'The Best It’s Gonna Get'
+		? bestItsGonnaGet
+		: `dup-blackstar-${String(d.song.track)}`;
+}
 
 /** Files on the fixture disk that are no song's: one in a song's way. */
 const unknownFiles = ['Braid/1998 - Frame & Canvas/03 - Killing a Camera.flac'];
@@ -452,7 +460,7 @@ export function createOrganizeFixture(options: OrganizeFixtureOptions): Organize
 						self: claimant(p.disk, false),
 						with: blockers.map((b) => claimant(b, b === there)),
 						sameRecording: same,
-						...(same ? { why: 'tags' as const } : {})
+						...(same ? { why: 'tags' as const, group: duplicateGroup(p.disk) } : {})
 					}
 				};
 			} else if (unknown.has(key)) {

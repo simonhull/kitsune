@@ -1,13 +1,16 @@
 /**
- * The way to Duplicates (plan 069), from the Organize · Duplicates tabs and a conflict card's
- * "Compare in Duplicates ›". Until it is built both are marked SOON; plan 069 sets
- * `duplicatesReady` and makes `openDuplicates` go to its page, and nothing else changes here.
+ * The way to Duplicates (plan 069) from Organize: a conflict card's "Compare in Duplicates ›" opens
+ * the group the server says its songs are in, or the list when it names none.
  */
 
-/** Whether the Duplicates page is built. */
-export const duplicatesReady: boolean = false;
+import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
 
-/** Opens Duplicates, on the group holding these songs when given. Plan 069 fills this in. */
-export function openDuplicates(tracks: readonly string[] = []): void {
-	void tracks;
+/** Opens Duplicates, on the group with this key when given. */
+export function openDuplicates(group?: string): void {
+	void goto(
+		group === undefined
+			? resolve('/server/duplicates')
+			: resolve('/server/duplicates/[group]', { group })
+	);
 }

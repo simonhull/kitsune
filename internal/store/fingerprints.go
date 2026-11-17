@@ -53,6 +53,9 @@ func (s *Store) SetDigest(ctx context.Context, id, size int64, mtime time.Time, 
 	if err != nil {
 		return false, named(fmt.Errorf("set digest of track %d: %w", id, err))
 	}
+	if n == 1 {
+		s.library.digests.Add(1)
+	}
 	return n == 1, nil
 }
 

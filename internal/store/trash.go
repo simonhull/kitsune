@@ -138,28 +138,11 @@ func (s *Store) PathTaken(ctx context.Context, root, relPath string) (bool, erro
 // their albums changed. It returns an error wrapping [ErrNotFound], and marks
 // none, when a track is not live.
 func (s *Store) MarkTrashed(ctx context.Context, tracks []Trashing, by int64, at time.Time) error {
-	var who *int64
-	if by != 0 {
-		who = &by
-	}
 	var touched []string
 	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
-		touched = touched[:0] // The writer may retry a transaction.
-		for _, t := range tracks {
-			album, err := q.TrackAlbumULID(ctx, t.ID)
-			if err != nil {
-				return fmt.Errorf("track %d: %w", t.ID, notFound(err))
-			}
-			n, err := q.MarkTrashed(ctx, sqlcdb.MarkTrashedParams{At: new(ms(at)), By: who, TrashPath: t.TrashPath, ID: t.ID})
-			if err != nil {
-				return fmt.Errorf("track %d: %w", t.ID, err)
-			}
-			if n == 0 {
-				return fmt.Errorf("track %d: %w", t.ID, ErrNotFound)
-			}
-			touched = append(touched, album)
-		}
-		return nil
+		var err error
+		touched, err = markTrashed(ctx, q, tracks, by, at)
+		return err
 	})
 	if err != nil {
 		return fmt.Errorf("mark trashed: %w", err)

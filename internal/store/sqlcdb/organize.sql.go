@@ -434,9 +434,7 @@ func (q *Queries) MovedOrganizeMoves(ctx context.Context, runID int64) ([]MovedO
 
 const organizeClaimants = `-- name: OrganizeClaimants :many
 SELECT t.id, t.ulid, t.title, a.name AS album, a.ulid AS album_ulid, t.root, t.rel_path, t.format, t.bitrate,
-       t.duration_ms, t.added_at, t.audio_digest,
-       CAST(COALESCE((SELECT ar.name FROM track_artists ta JOIN artists ar ON ar.id = ta.artist_id
-                 WHERE ta.track_id = t.id AND ta.role = 'artist' ORDER BY ta.ord LIMIT 1), '') AS TEXT) AS artist,
+       t.duration_ms, t.added_at,
        (SELECT COUNT(*) FROM plays p WHERE p.track_id = t.id AND p.user_id = ?1) AS plays,
        CAST(COALESCE((SELECT r.halves FROM track_ratings r WHERE r.track_id = t.id AND r.user_id = ?1), 0) AS INTEGER) AS halves
 FROM tracks t
@@ -450,21 +448,19 @@ type OrganizeClaimantsParams struct {
 }
 
 type OrganizeClaimantsRow struct {
-	ID          int64
-	Ulid        string
-	Title       string
-	Album       string
-	AlbumUlid   string
-	Root        string
-	RelPath     string
-	Format      string
-	Bitrate     *int64
-	DurationMs  int64
-	AddedAt     int64
-	AudioDigest []byte
-	Artist      string
-	Plays       int64
-	Halves      int64
+	ID         int64
+	Ulid       string
+	Title      string
+	Album      string
+	AlbumUlid  string
+	Root       string
+	RelPath    string
+	Format     string
+	Bitrate    *int64
+	DurationMs int64
+	AddedAt    int64
+	Plays      int64
+	Halves     int64
 }
 
 // The songs of a conflict, with what tells them apart, plays and stars the
@@ -501,8 +497,6 @@ func (q *Queries) OrganizeClaimants(ctx context.Context, arg OrganizeClaimantsPa
 			&i.Bitrate,
 			&i.DurationMs,
 			&i.AddedAt,
-			&i.AudioDigest,
-			&i.Artist,
 			&i.Plays,
 			&i.Halves,
 		); err != nil {

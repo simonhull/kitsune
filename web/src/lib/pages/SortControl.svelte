@@ -68,7 +68,11 @@
 
 	function close(refocus: boolean): void {
 		open = null;
-		closedAt = performance.now();
+		// A press outside closes it with no refocus: if that press was on the button, its click must
+		// not open it again. Choosing or Esc leaves the button free at once.
+		if (!refocus) {
+			closedAt = performance.now();
+		}
 		if (refocus) {
 			button?.focus();
 		}

@@ -149,6 +149,10 @@
       "interaction": "Organize: click it on the Server page, to the template's chips painted",
       "p95Ms": 55
     },
+    "open-duplicates": {
+      "interaction": "Duplicates: click its tab on Organize, to the first groups painted",
+      "p95Ms": 300
+    },
     "preview-paint": {
       "interaction": "Organize: press Preview over the whole library, to the first album's rows",
       "p95Ms": 1100
@@ -194,6 +198,10 @@
     "organize-preview": {
       "interaction": "POST /admin/organize/preview, 50k songs, a fifth of them to move",
       "p95Ms": 340
+    },
+    "duplicates-find": {
+      "interaction": "GET /admin/duplicates, 50k songs, 2% in groups, found again after a fingerprint landed",
+      "p95Ms": 125
     },
     "organize-run": {
       "interaction": "An organize run of 1,000 songs in 100 albums, all moved and journaled, per song",

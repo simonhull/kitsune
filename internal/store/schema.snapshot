@@ -125,6 +125,19 @@ CREATE TABLE artwork (
 --   column cid=4 name=ground type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=5 name=source type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
 
+-- table duplicate_dismissals
+CREATE TABLE duplicate_dismissals (
+	group_key    TEXT    PRIMARY KEY,
+	tracks       TEXT    NOT NULL CHECK (json_valid(tracks) AND json_type(tracks) = 'array'),
+	by_user      INTEGER REFERENCES users (id) ON DELETE SET NULL,
+	dismissed_at INTEGER NOT NULL
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=group_key type=TEXT notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=tracks type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=2 name=by_user type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
+--   column cid=3 name=dismissed_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   foreign key id=0 seq=0 table=users from=by_user to=id on_update=NO ACTION on_delete=SET NULL match=NONE
+
 -- table lastfm_accounts
 CREATE TABLE lastfm_accounts (
 	user_id      INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,

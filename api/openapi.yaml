@@ -2776,6 +2776,199 @@ paths:
           $ref: "#/components/responses/Problem"
         "409":
           $ref: "#/components/responses/LibraryConflict"
+  /admin/duplicates:
+    get:
+      operationId: getDuplicates
+      summary: Copies of one recording, found across the library.
+      description: >-
+        For administrators. Songs are grouped when they have the same audio (the
+        fingerprint pass's hash), name one MusicBrainz recording with lengths
+        within 10 s, or have the same first artist and title (a trailing
+        remaster note aside) with lengths within 2 s; a version word in one
+        title and not the other, or another disc of one album, keeps them
+        apart. Three or more groups pairing the same two albums make an album
+        pair. The find is worked out from what the server keeps of the library
+        and kept until the next library write. `filter` is `all` (the pairs,
+        then the groups in no pair), `audio`, `recording` or `probably` (the
+        groups by confidence), `pairs`, or `dismissed`. Groups come by
+        confidence, then most copies, then most plays, 100 a page from
+        `cursor`; pairs only on the first page.
+      parameters:
+        - name: filter
+          in: query
+          schema: { type: string, enum: [all, audio, recording, probably, pairs, dismissed] }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: The counts and one page.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DuplicateList" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+  /admin/duplicates/{group}:
+    get:
+      operationId: getDuplicate
+      summary: One group of duplicates, or an album pair, side by side.
+      description: >-
+        For administrators. A group's copies with what tells them apart, the
+        copy suggested to keep and why, and what keeping each would move; an
+        album pair's track lists matched row by row, the album suggested, and
+        what keeping each would move. Plays and raters are totals and counts:
+        `stars` is the caller's own, and no other person's rating is sent. A
+        key no group has now is a 404.
+      parameters:
+        - name: group
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The group or the pair.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DuplicateDetail" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /admin/duplicates/{group}/merge:
+    post:
+      operationId: postDuplicateMerge
+      summary: Keep one copy, merge the others into it, and trash them.
+      description: >-
+        For administrators, on a server with `library.tag_writes` on, else a
+        409. `keep` is a copy of the group and `trash` others of it, or for an
+        album pair `keep` is one album and `trash` the other: each song of the
+        pair's groups on the trashed album merges into its copy on the kept
+        one, and songs only one album has stay. In one transaction under the
+        library lock, plays, listens, stars (the higher, a love queued when
+        that crosses a person's love line), hearts kept from before, playlist
+        entries, shuffle exclusions, Combine runs and remembered queues move
+        to the keeper; then the copies go to the Trash, and Restore brings
+        back a song with none of it. `plan` is the plan the confirm showed:
+        when the merge would move something else now, nothing happens and the
+        409 carries the new plan. `library`, `marks`, `playlists` and
+        `shuffleRules` events follow.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: group
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MergeRequest" }
+      responses:
+        "200":
+          description: What was kept, and what went to the Trash.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merged" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: >-
+            An RFC 9457 problem: tag writes are off, a file won't move, or a
+            scan, an edit or a run holds the library (Retry-After says how long
+            to wait); or the plan changed, and `plan` is what the merge would
+            move now.
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again, while the library is busy.
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/PlanChangedProblem" }
+        "422":
+          $ref: "#/components/responses/Problem"
+  /admin/duplicates/{group}/dismiss:
+    post:
+      operationId: postDuplicateDismiss
+      summary: Say a group or an album pair is not duplicates.
+      description: >-
+        For administrators. Kept as the group's songs, so a third copy turning
+        up raises it again. It lists under the `dismissed` filter.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: group
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Dismissed.
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteDuplicateDismiss
+      summary: Bring a dismissed group or album pair back.
+      description: For administrators. One that wasn't dismissed is a 404.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: group
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Back in the list.
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
   /library:
     get:
       operationId: getLibrary
@@ -5697,8 +5890,9 @@ components:
       description: >-
         A song in a `claimed` conflict, beside the songs in its way: the one
         already at the path (`here`) and any others that want it.
-        `sameRecording` says they look like one recording, by fingerprint
-        (`why` `digest`) or by artist, title and length (`tags`).
+        `sameRecording` says they are copies of one recording, in one group of
+        Duplicates (`group`): by fingerprint (`why` `digest`), by MusicBrainz
+        recording (`recording`), or by artist, title and length (`tags`).
       required: [self, with, sameRecording]
       properties:
         self: { $ref: "#/components/schemas/OrganizeClaimant" }
@@ -5706,7 +5900,8 @@ components:
           type: array
           items: { $ref: "#/components/schemas/OrganizeClaimant" }
         sameRecording: { type: boolean }
-        why: { type: string, enum: [digest, tags] }
+        why: { type: string, enum: [digest, recording, tags] }
+        group: { type: string, description: "The group of duplicates, for GET /admin/duplicates/{group}." }
     OrganizeClaimant:
       type: object
       additionalProperties: false
@@ -5818,6 +6013,273 @@ components:
         requestId: { type: string }
         field: { type: string, enum: [template, compilations] }
         at: { type: integer, description: Where, in characters from the start. }
+    DuplicateCounts:
+      type: object
+      additionalProperties: false
+      description: >-
+        A find's totals. `groups`, `songs` and `pairs` leave out what was
+        dismissed; `audio`, `recording` and `probably` count groups by
+        confidence. `library` counts the live songs and `checked` those the
+        fingerprint pass has read, which alone can be found as the same audio.
+      required: [groups, songs, pairs, audio, recording, probably, dismissed, library, checked]
+      properties:
+        groups: { type: integer }
+        songs: { type: integer }
+        pairs: { type: integer }
+        audio: { type: integer }
+        recording: { type: integer }
+        probably: { type: integer }
+        dismissed: { type: integer }
+        library: { type: integer }
+        checked: { type: integer }
+    DuplicateAlbum:
+      type: object
+      additionalProperties: false
+      required: [id, title, artist]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        year: { type: integer }
+        artwork: { $ref: "#/components/schemas/Artwork" }
+    DuplicateGroupSummary:
+      type: object
+      additionalProperties: false
+      description: >-
+        A group as the list shows it: each copy's format and length in order,
+        the albums each once, and everyone's plays across the copies. `pair`
+        names the album pair it belongs to.
+      required: [key, title, artist, confidence, copies, formats, albums, durationMs, plays]
+      properties:
+        key: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        confidence: { type: string, enum: [audio, recording, probably] }
+        copies: { type: integer }
+        formats: { type: array, items: { type: string } }
+        albums: { type: array, items: { $ref: "#/components/schemas/DuplicateAlbum" } }
+        durationMs: { type: array, items: { type: integer, format: int64 } }
+        plays: { type: integer }
+        pair: { type: string }
+        dismissed: { type: boolean }
+    DuplicatePairSummary:
+      type: object
+      additionalProperties: false
+      description: >-
+        An album pair as the list shows it. `both` counts the songs in both,
+        and `only` each album's songs the other lacks, at the same index.
+      required: [key, albums, both, only]
+      properties:
+        key: { type: string }
+        albums:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { $ref: "#/components/schemas/DuplicateAlbum" }
+        both: { type: integer }
+        only:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { type: integer }
+        dismissed: { type: boolean }
+    DuplicateList:
+      type: object
+      additionalProperties: false
+      required: [counts, filter, matching, pairs, groups]
+      properties:
+        counts: { $ref: "#/components/schemas/DuplicateCounts" }
+        filter: { type: string, enum: [all, audio, recording, probably, pairs, dismissed] }
+        matching: { type: integer, description: Groups and pairs under the filter. }
+        pairs: { type: array, items: { $ref: "#/components/schemas/DuplicatePairSummary" } }
+        groups: { type: array, items: { $ref: "#/components/schemas/DuplicateGroupSummary" } }
+        nextCursor: { type: string }
+    DuplicateCopy:
+      type: object
+      additionalProperties: false
+      description: >-
+        One copy, as a group's page compares it. `path` is relative to the
+        library folder `root` indexes in `library.roots`. `plays` are
+        everyone's, `raters` how many people rated it, and `stars` the
+        caller's own (0 for none). `inPlace` says it sits where the
+        organizer's template puts it, and `original` that it is on an album
+        its own artist released, not a compilation, best-of or soundtrack.
+      required: [track, title, album, path, root, format, lossless, durationMs, plays, stars, raters, playlists, addedAt, inPlace, original]
+      properties:
+        track: { type: string }
+        title: { type: string }
+        album: { $ref: "#/components/schemas/DuplicateAlbum" }
+        disc: { type: integer }
+        trackNo: { type: integer }
+        path: { type: string }
+        root: { type: integer }
+        format: { type: string }
+        bitrate: { type: integer, description: In kb/s. }
+        sampleRate: { type: integer }
+        bitDepth: { type: integer }
+        lossless: { type: boolean }
+        durationMs: { type: integer, format: int64 }
+        plays: { type: integer }
+        stars: { type: number, minimum: 0, maximum: 5, multipleOf: 0.5 }
+        raters: { type: integer }
+        playlists: { type: integer }
+        addedAt: { type: string, format: date-time }
+        inPlace: { type: boolean }
+        original: { type: boolean }
+    MergePlan:
+      type: object
+      additionalProperties: false
+      description: >-
+        What a merge moves, as its confirm words it: counts, the caller's own
+        stars, and the names of the caller's own playlists and the file
+        playlists that hold a trashed copy. Other people's ratings and
+        playlists are only counted. A merge is sent back with the plan its
+        confirm showed.
+      required: [plays, listens, stars, loves, hearts, entries, playlists, otherPlaylists, excluded, runs, queues]
+      properties:
+        plays: { type: integer }
+        listens: { type: integer }
+        stars:
+          type: object
+          additionalProperties: false
+          description: >-
+            `yours` is the caller's own in a merge of one group in which they
+            rated a trashed copy: the keeper's, the highest a trashed copy had,
+            and the keeper's after (0 for none). `come` counts the ratings
+            that come over (higher, or the keeper unrated), and `stay` those
+            where the keeper's own is as high; for one group, not the caller's.
+          required: [come, stay]
+          properties:
+            yours:
+              type: object
+              additionalProperties: false
+              required: [keeper, other, after]
+              properties:
+                keeper: { type: number, minimum: 0, maximum: 5, multipleOf: 0.5 }
+                other: { type: number, minimum: 0, maximum: 5, multipleOf: 0.5 }
+                after: { type: number, minimum: 0, maximum: 5, multipleOf: 0.5 }
+            come: { type: integer }
+            stay: { type: integer }
+        loves: { type: integer, description: Last.fm loves the stars that come over queue. }
+        hearts: { type: integer, description: Hearts kept from before that move. }
+        entries: { type: integer, description: Playlist entries repointed, in any playlist. }
+        playlists:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, name]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              file: { type: boolean }
+        otherPlaylists: { type: integer }
+        excluded: { type: integer, description: People a trashed copy was excluded from shuffle for. }
+        runs: { type: integer, description: Places in Combine runs that move or go. }
+        queues: { type: integer, description: People whose remembered queue names a trashed copy. }
+    KeepPlan:
+      type: object
+      additionalProperties: false
+      description: What keeping one copy, or one album of a pair, would move.
+      required: [keep, plan]
+      properties:
+        keep: { type: string }
+        plan: { $ref: "#/components/schemas/MergePlan" }
+    DuplicateGroup:
+      type: object
+      additionalProperties: false
+      description: >-
+        A group, its copies side by side. `keeper` is the copy suggested and
+        `reasons` why: each way it beats every other copy, in the order they
+        decide (`lossless`, `original`, `bitrate`, `inPlace`, `plays`,
+        `earlier`). `plans` say what keeping each copy would move.
+      required: [key, title, artist, confidence, keeper, reasons, copies, plans]
+      properties:
+        key: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        confidence: { type: string, enum: [audio, recording, probably] }
+        dismissed: { type: boolean }
+        pair: { type: string }
+        keeper: { type: string }
+        reasons:
+          type: array
+          items: { type: string, enum: [lossless, original, bitrate, inPlace, plays, earlier] }
+        copies: { type: array, items: { $ref: "#/components/schemas/DuplicateCopy" } }
+        plans: { type: array, items: { $ref: "#/components/schemas/KeepPlan" } }
+    DuplicatePair:
+      type: object
+      additionalProperties: false
+      description: >-
+        An album pair, its track lists matched row by row: each row holds the
+        copy on each album at the same index, or null where only the other
+        album has the song. `keeper` is the album suggested.
+      required: [key, albums, keeper, rows, plans]
+      properties:
+        key: { type: string }
+        albums:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { $ref: "#/components/schemas/DuplicateAlbum" }
+        dismissed: { type: boolean }
+        keeper: { type: string }
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [copies]
+            properties:
+              group: { type: string }
+              copies:
+                type: array
+                minItems: 2
+                maxItems: 2
+                items:
+                  oneOf:
+                    - $ref: "#/components/schemas/DuplicateCopy"
+                    - type: "null"
+        plans: { type: array, items: { $ref: "#/components/schemas/KeepPlan" } }
+    DuplicateDetail:
+      type: object
+      additionalProperties: false
+      description: A group (`kind` `group`) or an album pair (`pair`).
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [group, pair] }
+        group: { $ref: "#/components/schemas/DuplicateGroup" }
+        pair: { $ref: "#/components/schemas/DuplicatePair" }
+    MergeRequest:
+      type: object
+      additionalProperties: false
+      required: [keep, trash, plan]
+      properties:
+        keep: { type: string }
+        trash:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: { type: string }
+        plan: { $ref: "#/components/schemas/MergePlan" }
+    Merged:
+      type: object
+      additionalProperties: false
+      required: [kept, trashed]
+      properties:
+        kept: { type: array, items: { type: string } }
+        trashed: { $ref: "#/components/schemas/TrashChange" }
+    PlanChangedProblem:
+      type: object
+      description: An RFC 9457 problem; when the plan changed, `plan` is what the merge would move now.
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string, description: What is wrong, for a person. }
+        requestId: { type: string }
+        plan: { $ref: "#/components/schemas/MergePlan" }
     EventOrganize:
       type: object
       additionalProperties: false
