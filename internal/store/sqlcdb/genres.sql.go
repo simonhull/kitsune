@@ -39,7 +39,7 @@ func (q *Queries) ListAlbumTagCounts(ctx context.Context, tagKeys []string) ([]L
 	} else {
 		query = strings.Replace(query, "/*SLICE:tag_keys*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

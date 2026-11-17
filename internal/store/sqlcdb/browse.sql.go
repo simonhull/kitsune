@@ -16,7 +16,7 @@ WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since
 `
 
 func (q *Queries) CountLiveAlbums(ctx context.Context) (int64, error) {
-	row := q.queryRow(ctx, q.countLiveAlbumsStmt, countLiveAlbums)
+	row := q.db.QueryRowContext(ctx, countLiveAlbums)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -32,7 +32,7 @@ type CountScanIssuesByKindRow struct {
 }
 
 func (q *Queries) CountScanIssuesByKind(ctx context.Context) ([]CountScanIssuesByKindRow, error) {
-	rows, err := q.query(ctx, q.countScanIssuesByKindStmt, countScanIssuesByKind)
+	rows, err := q.db.QueryContext(ctx, countScanIssuesByKind)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ SELECT count(*) FROM tracks WHERE missing_since IS NULL AND scan_warnings <> '[]
 `
 
 func (q *Queries) CountWarnedTracks(ctx context.Context) (int64, error) {
-	row := q.queryRow(ctx, q.countWarnedTracksStmt, countWarnedTracks)
+	row := q.db.QueryRowContext(ctx, countWarnedTracks)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -95,7 +95,7 @@ type GetAlbumRow struct {
 }
 
 func (q *Queries) GetAlbum(ctx context.Context, ulid string) (GetAlbumRow, error) {
-	row := q.queryRow(ctx, q.getAlbumStmt, getAlbum, ulid)
+	row := q.db.QueryRowContext(ctx, getAlbum, ulid)
 	var i GetAlbumRow
 	err := row.Scan(
 		&i.ID,
@@ -124,7 +124,7 @@ WHERE t.ulid = ? AND t.missing_since IS NULL
 `
 
 func (q *Queries) GetTrackAlbum(ctx context.Context, ulid string) (string, error) {
-	row := q.queryRow(ctx, q.getTrackAlbumStmt, getTrackAlbum, ulid)
+	row := q.db.QueryRowContext(ctx, getTrackAlbum, ulid)
 	var ulid_2 string
 	err := row.Scan(&ulid_2)
 	return ulid_2, err
@@ -143,7 +143,7 @@ type GetTrackFileRow struct {
 }
 
 func (q *Queries) GetTrackFile(ctx context.Context, ulid string) (GetTrackFileRow, error) {
-	row := q.queryRow(ctx, q.getTrackFileStmt, getTrackFile, ulid)
+	row := q.db.QueryRowContext(ctx, getTrackFile, ulid)
 	var i GetTrackFileRow
 	err := row.Scan(&i.Root, &i.RelPath, &i.Format)
 	return i, err
@@ -169,7 +169,7 @@ type ListAlbumFilesRow struct {
 }
 
 func (q *Queries) ListAlbumFiles(ctx context.Context, ulid string) ([]ListAlbumFilesRow, error) {
-	rows, err := q.query(ctx, q.listAlbumFilesStmt, listAlbumFiles, ulid)
+	rows, err := q.db.QueryContext(ctx, listAlbumFiles, ulid)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func (q *Queries) ListAlbumTagValues(ctx context.Context, arg ListAlbumTagValues
 	} else {
 		query = strings.Replace(query, "/*SLICE:tag_keys*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +268,7 @@ type ListAlbumTrackArtistsRow struct {
 }
 
 func (q *Queries) ListAlbumTrackArtists(ctx context.Context, albumID int64) ([]ListAlbumTrackArtistsRow, error) {
-	rows, err := q.query(ctx, q.listAlbumTrackArtistsStmt, listAlbumTrackArtists, albumID)
+	rows, err := q.db.QueryContext(ctx, listAlbumTrackArtists, albumID)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +341,7 @@ type ListAlbumTracksRow struct {
 // With Kitsune's own loudness measure of each file, and of the album it was
 // pooled into: see migrations/0013_loudness.sql.
 func (q *Queries) ListAlbumTracks(ctx context.Context, albumID int64) ([]ListAlbumTracksRow, error) {
-	rows, err := q.query(ctx, q.listAlbumTracksStmt, listAlbumTracks, albumID)
+	rows, err := q.db.QueryContext(ctx, listAlbumTracks, albumID)
 	if err != nil {
 		return nil, err
 	}
@@ -425,7 +425,7 @@ type ListAlbumsByAddedRow struct {
 }
 
 func (q *Queries) ListAlbumsByAdded(ctx context.Context, arg ListAlbumsByAddedParams) ([]ListAlbumsByAddedRow, error) {
-	rows, err := q.query(ctx, q.listAlbumsByAddedStmt, listAlbumsByAdded, arg.BeforeAdded, arg.BeforeID, arg.PageSize)
+	rows, err := q.db.QueryContext(ctx, listAlbumsByAdded, arg.BeforeAdded, arg.BeforeID, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -505,7 +505,7 @@ type ListAlbumsByNameRow struct {
 // albums_sort and albums_added. The collation of sort_name comes from the
 // column; a COLLATE here would stop the row-value comparison from seeking.
 func (q *Queries) ListAlbumsByName(ctx context.Context, arg ListAlbumsByNameParams) ([]ListAlbumsByNameRow, error) {
-	rows, err := q.query(ctx, q.listAlbumsByNameStmt, listAlbumsByName, arg.AfterName, arg.AfterID, arg.PageSize)
+	rows, err := q.db.QueryContext(ctx, listAlbumsByName, arg.AfterName, arg.AfterID, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -591,7 +591,7 @@ type ListIndexAlbumsRow struct {
 // album. An album's owner is its first one, by the test in artists.sql, repeated
 // here because a query can't share it. The order is orderIndex's business.
 func (q *Queries) ListIndexAlbums(ctx context.Context) ([]ListIndexAlbumsRow, error) {
-	rows, err := q.query(ctx, q.listIndexAlbumsStmt, listIndexAlbums)
+	rows, err := q.db.QueryContext(ctx, listIndexAlbums)
 	if err != nil {
 		return nil, err
 	}
@@ -646,7 +646,7 @@ type ListIndexPlaysRow struct {
 
 // plays_recent leads with user_id, so this reads only the person's plays.
 func (q *Queries) ListIndexPlays(ctx context.Context, userID int64) ([]ListIndexPlaysRow, error) {
-	rows, err := q.query(ctx, q.listIndexPlaysStmt, listIndexPlays, userID)
+	rows, err := q.db.QueryContext(ctx, listIndexPlays, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -690,7 +690,7 @@ type ListIndexPlaysByArtistRow struct {
 }
 
 func (q *Queries) ListIndexPlaysByArtist(ctx context.Context, arg ListIndexPlaysByArtistParams) ([]ListIndexPlaysByArtistRow, error) {
-	rows, err := q.query(ctx, q.listIndexPlaysByArtistStmt, listIndexPlaysByArtist, arg.UserID, arg.ArtistID)
+	rows, err := q.db.QueryContext(ctx, listIndexPlaysByArtist, arg.UserID, arg.ArtistID)
 	if err != nil {
 		return nil, err
 	}
@@ -745,7 +745,7 @@ func (q *Queries) ListIndexPlaysOf(ctx context.Context, arg ListIndexPlaysOfPara
 	} else {
 		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -782,7 +782,7 @@ type ListIndexTrackAlbumArtistsRow struct {
 }
 
 func (q *Queries) ListIndexTrackAlbumArtists(ctx context.Context) ([]ListIndexTrackAlbumArtistsRow, error) {
-	rows, err := q.query(ctx, q.listIndexTrackAlbumArtistsStmt, listIndexTrackAlbumArtists)
+	rows, err := q.db.QueryContext(ctx, listIndexTrackAlbumArtists)
 	if err != nil {
 		return nil, err
 	}
@@ -820,7 +820,7 @@ type ListIndexTrackAlbumArtistsByArtistRow struct {
 }
 
 func (q *Queries) ListIndexTrackAlbumArtistsByArtist(ctx context.Context, artistID int64) ([]ListIndexTrackAlbumArtistsByArtistRow, error) {
-	rows, err := q.query(ctx, q.listIndexTrackAlbumArtistsByArtistStmt, listIndexTrackAlbumArtistsByArtist, artistID)
+	rows, err := q.db.QueryContext(ctx, listIndexTrackAlbumArtistsByArtist, artistID)
 	if err != nil {
 		return nil, err
 	}
@@ -869,7 +869,7 @@ func (q *Queries) ListIndexTrackAlbumArtistsOf(ctx context.Context, albums []str
 	} else {
 		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -906,7 +906,7 @@ type ListIndexTrackArtistsRow struct {
 }
 
 func (q *Queries) ListIndexTrackArtists(ctx context.Context) ([]ListIndexTrackArtistsRow, error) {
-	rows, err := q.query(ctx, q.listIndexTrackArtistsStmt, listIndexTrackArtists)
+	rows, err := q.db.QueryContext(ctx, listIndexTrackArtists)
 	if err != nil {
 		return nil, err
 	}
@@ -944,7 +944,7 @@ type ListIndexTrackArtistsByArtistRow struct {
 }
 
 func (q *Queries) ListIndexTrackArtistsByArtist(ctx context.Context, artistID int64) ([]ListIndexTrackArtistsByArtistRow, error) {
-	rows, err := q.query(ctx, q.listIndexTrackArtistsByArtistStmt, listIndexTrackArtistsByArtist, artistID)
+	rows, err := q.db.QueryContext(ctx, listIndexTrackArtistsByArtist, artistID)
 	if err != nil {
 		return nil, err
 	}
@@ -993,7 +993,7 @@ func (q *Queries) ListIndexTrackArtistsOf(ctx context.Context, albums []string) 
 	} else {
 		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -1036,7 +1036,7 @@ type ListIndexTrackDetailsRow struct {
 // What the song columns ask for, read only when they do: an index without them
 // stays as fast as it was.
 func (q *Queries) ListIndexTrackDetails(ctx context.Context) ([]ListIndexTrackDetailsRow, error) {
-	rows, err := q.query(ctx, q.listIndexTrackDetailsStmt, listIndexTrackDetails)
+	rows, err := q.db.QueryContext(ctx, listIndexTrackDetails)
 	if err != nil {
 		return nil, err
 	}
@@ -1086,7 +1086,7 @@ type ListIndexTrackDetailsByArtistRow struct {
 }
 
 func (q *Queries) ListIndexTrackDetailsByArtist(ctx context.Context, artistID int64) ([]ListIndexTrackDetailsByArtistRow, error) {
-	rows, err := q.query(ctx, q.listIndexTrackDetailsByArtistStmt, listIndexTrackDetailsByArtist, artistID)
+	rows, err := q.db.QueryContext(ctx, listIndexTrackDetailsByArtist, artistID)
 	if err != nil {
 		return nil, err
 	}
@@ -1146,7 +1146,7 @@ func (q *Queries) ListIndexTrackDetailsOf(ctx context.Context, albums []string) 
 	} else {
 		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -1195,7 +1195,7 @@ type ListIndexTrackMeasuresRow struct {
 // the loudness pass, outside library writes, so this is read every time and
 // never kept with the library's rows.
 func (q *Queries) ListIndexTrackMeasures(ctx context.Context) ([]ListIndexTrackMeasuresRow, error) {
-	rows, err := q.query(ctx, q.listIndexTrackMeasuresStmt, listIndexTrackMeasures)
+	rows, err := q.db.QueryContext(ctx, listIndexTrackMeasures)
 	if err != nil {
 		return nil, err
 	}
@@ -1233,7 +1233,7 @@ type ListIndexTrackMeasuresByArtistRow struct {
 }
 
 func (q *Queries) ListIndexTrackMeasuresByArtist(ctx context.Context, artistID int64) ([]ListIndexTrackMeasuresByArtistRow, error) {
-	rows, err := q.query(ctx, q.listIndexTrackMeasuresByArtistStmt, listIndexTrackMeasuresByArtist, artistID)
+	rows, err := q.db.QueryContext(ctx, listIndexTrackMeasuresByArtist, artistID)
 	if err != nil {
 		return nil, err
 	}
@@ -1282,7 +1282,7 @@ func (q *Queries) ListIndexTrackMeasuresOf(ctx context.Context, albums []string)
 	} else {
 		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -1329,7 +1329,7 @@ func (q *Queries) ListIndexTrackTags(ctx context.Context, tagKeys []string) ([]L
 	} else {
 		query = strings.Replace(query, "/*SLICE:tag_keys*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -1384,7 +1384,7 @@ func (q *Queries) ListIndexTrackTagsByArtist(ctx context.Context, arg ListIndexT
 	} else {
 		query = strings.Replace(query, "/*SLICE:tag_keys*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -1446,7 +1446,7 @@ func (q *Queries) ListIndexTrackTagsOf(ctx context.Context, arg ListIndexTrackTa
 	} else {
 		query = strings.Replace(query, "/*SLICE:tag_keys*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -1487,7 +1487,7 @@ type ListIndexTracksRow struct {
 }
 
 func (q *Queries) ListIndexTracks(ctx context.Context) ([]ListIndexTracksRow, error) {
-	rows, err := q.query(ctx, q.listIndexTracksStmt, listIndexTracks)
+	rows, err := q.db.QueryContext(ctx, listIndexTracks)
 	if err != nil {
 		return nil, err
 	}
@@ -1543,7 +1543,7 @@ type ListIndexTracksByArtistRow struct {
 // Each has the columns of its whole-library twin above, in the same order. The
 // songs come from track_artists_artist, and each track by its row ID.
 func (q *Queries) ListIndexTracksByArtist(ctx context.Context, artistID int64) ([]ListIndexTracksByArtistRow, error) {
-	rows, err := q.query(ctx, q.listIndexTracksByArtistStmt, listIndexTracksByArtist, artistID)
+	rows, err := q.db.QueryContext(ctx, listIndexTracksByArtist, artistID)
 	if err != nil {
 		return nil, err
 	}
@@ -1610,7 +1610,7 @@ func (q *Queries) ListIndexTracksOf(ctx context.Context, albums []string) ([]Lis
 	} else {
 		query = strings.Replace(query, "/*SLICE:albums*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -1655,7 +1655,7 @@ type ListScanIssuesRow struct {
 }
 
 func (q *Queries) ListScanIssues(ctx context.Context) ([]ListScanIssuesRow, error) {
-	rows, err := q.query(ctx, q.listScanIssuesStmt, listScanIssues)
+	rows, err := q.db.QueryContext(ctx, listScanIssues)
 	if err != nil {
 		return nil, err
 	}
@@ -1699,7 +1699,7 @@ type ListWarnedTracksRow struct {
 }
 
 func (q *Queries) ListWarnedTracks(ctx context.Context) ([]ListWarnedTracksRow, error) {
-	rows, err := q.query(ctx, q.listWarnedTracksStmt, listWarnedTracks)
+	rows, err := q.db.QueryContext(ctx, listWarnedTracks)
 	if err != nil {
 		return nil, err
 	}
@@ -1741,7 +1741,7 @@ type LiveTrackFactsRow struct {
 // without it the planner picks a slower path (about 21 ms against 10 ms at 100,000
 // tracks). Renaming tracks_live makes this query fail to prepare; a test checks that.
 func (q *Queries) LiveTrackFacts(ctx context.Context) (LiveTrackFactsRow, error) {
-	row := q.queryRow(ctx, q.liveTrackFactsStmt, liveTrackFacts)
+	row := q.db.QueryRowContext(ctx, liveTrackFacts)
 	var i LiveTrackFactsRow
 	err := row.Scan(&i.Tracks, &i.DurationMs)
 	return i, err

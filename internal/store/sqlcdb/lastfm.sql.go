@@ -20,7 +20,7 @@ type DeferLastfmParams struct {
 }
 
 func (q *Queries) DeferLastfm(ctx context.Context, arg DeferLastfmParams) error {
-	_, err := q.exec(ctx, q.deferLastfmStmt, deferLastfm, arg.NextAt, arg.UserID)
+	_, err := q.db.ExecContext(ctx, deferLastfm, arg.NextAt, arg.UserID)
 	return err
 }
 
@@ -29,7 +29,7 @@ DELETE FROM lastfm_accounts WHERE user_id = ?
 `
 
 func (q *Queries) DeleteLastfmAccount(ctx context.Context, userID int64) error {
-	_, err := q.exec(ctx, q.deleteLastfmAccountStmt, deleteLastfmAccount, userID)
+	_, err := q.db.ExecContext(ctx, deleteLastfmAccount, userID)
 	return err
 }
 
@@ -43,7 +43,7 @@ type DeleteLastfmItemParams struct {
 }
 
 func (q *Queries) DeleteLastfmItem(ctx context.Context, arg DeleteLastfmItemParams) error {
-	_, err := q.exec(ctx, q.deleteLastfmItemStmt, deleteLastfmItem, arg.ID, arg.UserID)
+	_, err := q.db.ExecContext(ctx, deleteLastfmItem, arg.ID, arg.UserID)
 	return err
 }
 
@@ -57,7 +57,7 @@ type DropOldLastfmScrobblesParams struct {
 }
 
 func (q *Queries) DropOldLastfmScrobbles(ctx context.Context, arg DropOldLastfmScrobblesParams) (int64, error) {
-	result, err := q.exec(ctx, q.dropOldLastfmScrobblesStmt, dropOldLastfmScrobbles, arg.UserID, arg.At)
+	result, err := q.db.ExecContext(ctx, dropOldLastfmScrobbles, arg.UserID, arg.At)
 	if err != nil {
 		return 0, err
 	}
@@ -82,7 +82,7 @@ type EnqueueLastfmParams struct {
 }
 
 func (q *Queries) EnqueueLastfm(ctx context.Context, arg EnqueueLastfmParams) error {
-	_, err := q.exec(ctx, q.enqueueLastfmStmt, enqueueLastfm,
+	_, err := q.db.ExecContext(ctx, enqueueLastfm,
 		arg.Kind,
 		arg.TrackID,
 		arg.At,
@@ -122,7 +122,7 @@ type GetLastfmAccountRow struct {
 // earlier row's of the same user: a new row starts at the latest next_at there is,
 // and a deferral moves them all. Sending by (next_at, id) is then sending in order.
 func (q *Queries) GetLastfmAccount(ctx context.Context, userID int64) (GetLastfmAccountRow, error) {
-	row := q.queryRow(ctx, q.getLastfmAccountStmt, getLastfmAccount, userID)
+	row := q.db.QueryRowContext(ctx, getLastfmAccount, userID)
 	var i GetLastfmAccountRow
 	err := row.Scan(
 		&i.Name,
@@ -146,7 +146,7 @@ SELECT love_from FROM lastfm_accounts WHERE user_id = ?
 `
 
 func (q *Queries) GetLastfmLoveFrom(ctx context.Context, userID int64) (int64, error) {
-	row := q.queryRow(ctx, q.getLastfmLoveFromStmt, getLastfmLoveFrom, userID)
+	row := q.db.QueryRowContext(ctx, getLastfmLoveFrom, userID)
 	var love_from int64
 	err := row.Scan(&love_from)
 	return love_from, err
@@ -191,7 +191,7 @@ func (q *Queries) GetLastfmTrack(ctx context.Context, arg GetLastfmTrackParams) 
 		query = strings.Replace(query, "/*SLICE:mbid_keys*/?", "NULL", 1)
 	}
 	queryParams = append(queryParams, arg.Ulid)
-	row := q.queryRow(ctx, nil, query, queryParams...)
+	row := q.db.QueryRowContext(ctx, query, queryParams...)
 	var i GetLastfmTrackRow
 	err := row.Scan(
 		&i.TrackRow,
@@ -268,7 +268,7 @@ func (q *Queries) ListLastfmDue(ctx context.Context, arg ListLastfmDueParams) ([
 		query = strings.Replace(query, "/*SLICE:kinds*/?", "NULL", 1)
 	}
 	queryParams = append(queryParams, arg.Limit)
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +311,7 @@ ORDER BY o.user_id
 `
 
 func (q *Queries) ListLastfmDueUsers(ctx context.Context, nextAt int64) ([]int64, error) {
-	rows, err := q.query(ctx, q.listLastfmDueUsersStmt, listLastfmDueUsers, nextAt)
+	rows, err := q.db.QueryContext(ctx, listLastfmDueUsers, nextAt)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +357,7 @@ func (q *Queries) ListTrackArtistNames(ctx context.Context, trackIds []int64) ([
 	} else {
 		query = strings.Replace(query, "/*SLICE:track_ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +389,7 @@ type MarkLastfmSentParams struct {
 }
 
 func (q *Queries) MarkLastfmSent(ctx context.Context, arg MarkLastfmSentParams) error {
-	_, err := q.exec(ctx, q.markLastfmSentStmt, markLastfmSent, arg.LastSentAt, arg.UserID)
+	_, err := q.db.ExecContext(ctx, markLastfmSent, arg.LastSentAt, arg.UserID)
 	return err
 }
 
@@ -403,7 +403,7 @@ type ResetLastfmOutboxParams struct {
 }
 
 func (q *Queries) ResetLastfmOutbox(ctx context.Context, arg ResetLastfmOutboxParams) error {
-	_, err := q.exec(ctx, q.resetLastfmOutboxStmt, resetLastfmOutbox, arg.NextAt, arg.UserID)
+	_, err := q.db.ExecContext(ctx, resetLastfmOutbox, arg.NextAt, arg.UserID)
 	return err
 }
 
@@ -417,7 +417,7 @@ type SetLastfmStateParams struct {
 }
 
 func (q *Queries) SetLastfmState(ctx context.Context, arg SetLastfmStateParams) error {
-	_, err := q.exec(ctx, q.setLastfmStateStmt, setLastfmState, arg.State, arg.UserID)
+	_, err := q.db.ExecContext(ctx, setLastfmState, arg.State, arg.UserID)
 	return err
 }
 
@@ -437,7 +437,7 @@ type UpdateLastfmSwitchesParams struct {
 }
 
 func (q *Queries) UpdateLastfmSwitches(ctx context.Context, arg UpdateLastfmSwitchesParams) (int64, error) {
-	result, err := q.exec(ctx, q.updateLastfmSwitchesStmt, updateLastfmSwitches,
+	result, err := q.db.ExecContext(ctx, updateLastfmSwitches,
 		arg.Scrobble,
 		arg.NowPlaying,
 		arg.Loves,
@@ -465,7 +465,7 @@ type UpsertLastfmAccountParams struct {
 }
 
 func (q *Queries) UpsertLastfmAccount(ctx context.Context, arg UpsertLastfmAccountParams) error {
-	_, err := q.exec(ctx, q.upsertLastfmAccountStmt, upsertLastfmAccount,
+	_, err := q.db.ExecContext(ctx, upsertLastfmAccount,
 		arg.UserID,
 		arg.Name,
 		arg.SessionKey,

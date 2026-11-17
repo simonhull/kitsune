@@ -18,7 +18,7 @@ SELECT id FROM albums WHERE ulid = ?
 // A write finds its item by row ID, which the caller looked up by ULID in the same
 // transaction, so an unknown ULID is known apart from a mark that was already there.
 func (q *Queries) AlbumRowID(ctx context.Context, ulid string) (int64, error) {
-	row := q.queryRow(ctx, q.albumRowIDStmt, albumRowID, ulid)
+	row := q.db.QueryRowContext(ctx, albumRowID, ulid)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -29,7 +29,7 @@ SELECT id FROM artists WHERE ulid = ?
 `
 
 func (q *Queries) ArtistRowID(ctx context.Context, ulid string) (int64, error) {
-	row := q.queryRow(ctx, q.artistRowIDStmt, artistRowID, ulid)
+	row := q.db.QueryRowContext(ctx, artistRowID, ulid)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -40,7 +40,7 @@ SELECT count(*) FROM album_hearts WHERE user_id = ?
 `
 
 func (q *Queries) CountAlbumHearts(ctx context.Context, userID int64) (int64, error) {
-	row := q.queryRow(ctx, q.countAlbumHeartsStmt, countAlbumHearts, userID)
+	row := q.db.QueryRowContext(ctx, countAlbumHearts, userID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -51,7 +51,7 @@ SELECT count(*) FROM artist_hearts WHERE user_id = ?
 `
 
 func (q *Queries) CountArtistHearts(ctx context.Context, userID int64) (int64, error) {
-	row := q.queryRow(ctx, q.countArtistHeartsStmt, countArtistHearts, userID)
+	row := q.db.QueryRowContext(ctx, countArtistHearts, userID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -74,7 +74,7 @@ type CountHeartedTracksByRatingRow struct {
 
 // The hearts a person kept, for the one-time change that turns them into stars.
 func (q *Queries) CountHeartedTracksByRating(ctx context.Context, userID int64) ([]CountHeartedTracksByRatingRow, error) {
-	rows, err := q.query(ctx, q.countHeartedTracksByRatingStmt, countHeartedTracksByRating, userID)
+	rows, err := q.db.QueryContext(ctx, countHeartedTracksByRating, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ DELETE FROM album_hearts WHERE user_id = ?
 `
 
 func (q *Queries) DeleteAlbumHearts(ctx context.Context, userID int64) (int64, error) {
-	result, err := q.exec(ctx, q.deleteAlbumHeartsStmt, deleteAlbumHearts, userID)
+	result, err := q.db.ExecContext(ctx, deleteAlbumHearts, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -113,7 +113,7 @@ DELETE FROM artist_hearts WHERE user_id = ?
 `
 
 func (q *Queries) DeleteArtistHearts(ctx context.Context, userID int64) (int64, error) {
-	result, err := q.exec(ctx, q.deleteArtistHeartsStmt, deleteArtistHearts, userID)
+	result, err := q.db.ExecContext(ctx, deleteArtistHearts, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -125,7 +125,7 @@ DELETE FROM track_hearts WHERE user_id = ?
 `
 
 func (q *Queries) DeleteTrackHearts(ctx context.Context, userID int64) (int64, error) {
-	result, err := q.exec(ctx, q.deleteTrackHeartsStmt, deleteTrackHearts, userID)
+	result, err := q.db.ExecContext(ctx, deleteTrackHearts, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -142,7 +142,7 @@ type DeleteTrackRatingParams struct {
 }
 
 func (q *Queries) DeleteTrackRating(ctx context.Context, arg DeleteTrackRatingParams) error {
-	_, err := q.exec(ctx, q.deleteTrackRatingStmt, deleteTrackRating, arg.UserID, arg.TrackID)
+	_, err := q.db.ExecContext(ctx, deleteTrackRating, arg.UserID, arg.TrackID)
 	return err
 }
 
@@ -156,7 +156,7 @@ type GetTrackRatingParams struct {
 }
 
 func (q *Queries) GetTrackRating(ctx context.Context, arg GetTrackRatingParams) (int64, error) {
-	row := q.queryRow(ctx, q.getTrackRatingStmt, getTrackRating, arg.UserID, arg.TrackID)
+	row := q.db.QueryRowContext(ctx, getTrackRating, arg.UserID, arg.TrackID)
 	var halves int64
 	err := row.Scan(&halves)
 	return halves, err
@@ -174,7 +174,7 @@ type InsertAlbumHeartParams struct {
 }
 
 func (q *Queries) InsertAlbumHeart(ctx context.Context, arg InsertAlbumHeartParams) error {
-	_, err := q.exec(ctx, q.insertAlbumHeartStmt, insertAlbumHeart, arg.UserID, arg.AlbumID, arg.HeartedAt)
+	_, err := q.db.ExecContext(ctx, insertAlbumHeart, arg.UserID, arg.AlbumID, arg.HeartedAt)
 	return err
 }
 
@@ -190,7 +190,7 @@ type InsertArtistHeartParams struct {
 }
 
 func (q *Queries) InsertArtistHeart(ctx context.Context, arg InsertArtistHeartParams) error {
-	_, err := q.exec(ctx, q.insertArtistHeartStmt, insertArtistHeart, arg.UserID, arg.ArtistID, arg.HeartedAt)
+	_, err := q.db.ExecContext(ctx, insertArtistHeart, arg.UserID, arg.ArtistID, arg.HeartedAt)
 	return err
 }
 
@@ -206,7 +206,7 @@ type InsertTrackHeartParams struct {
 }
 
 func (q *Queries) InsertTrackHeart(ctx context.Context, arg InsertTrackHeartParams) error {
-	_, err := q.exec(ctx, q.insertTrackHeartStmt, insertTrackHeart, arg.UserID, arg.TrackID, arg.HeartedAt)
+	_, err := q.db.ExecContext(ctx, insertTrackHeart, arg.UserID, arg.TrackID, arg.HeartedAt)
 	return err
 }
 
@@ -231,7 +231,7 @@ type ListAlbumTrackRatingsRow struct {
 
 // One album's ratings, for its page.
 func (q *Queries) ListAlbumTrackRatings(ctx context.Context, arg ListAlbumTrackRatingsParams) ([]ListAlbumTrackRatingsRow, error) {
-	rows, err := q.query(ctx, q.listAlbumTrackRatingsStmt, listAlbumTrackRatings, arg.UserID, arg.Album)
+	rows, err := q.db.QueryContext(ctx, listAlbumTrackRatings, arg.UserID, arg.Album)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ type ListTrackRatingsRow struct {
 
 // Every rating a person has, by ULID, for the library index.
 func (q *Queries) ListTrackRatings(ctx context.Context, userID int64) ([]ListTrackRatingsRow, error) {
-	rows, err := q.query(ctx, q.listTrackRatingsStmt, listTrackRatings, userID)
+	rows, err := q.db.QueryContext(ctx, listTrackRatings, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +314,7 @@ type ListUnratedHeartedTracksRow struct {
 }
 
 func (q *Queries) ListUnratedHeartedTracks(ctx context.Context, arg ListUnratedHeartedTracksParams) ([]ListUnratedHeartedTracksRow, error) {
-	rows, err := q.query(ctx, q.listUnratedHeartedTracksStmt, listUnratedHeartedTracks, arg.UserID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listUnratedHeartedTracks, arg.UserID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -354,7 +354,7 @@ type UpsertTrackRatingParams struct {
 }
 
 func (q *Queries) UpsertTrackRating(ctx context.Context, arg UpsertTrackRatingParams) error {
-	_, err := q.exec(ctx, q.upsertTrackRatingStmt, upsertTrackRating,
+	_, err := q.db.ExecContext(ctx, upsertTrackRating,
 		arg.UserID,
 		arg.TrackID,
 		arg.Halves,

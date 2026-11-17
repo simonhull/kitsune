@@ -99,16 +99,17 @@ type testServerOptions struct {
 	Artwork       *artwork.Cache
 	Roots         int // Empty library roots to configure, beside LibraryRoot.
 	TagWrites     bool
-	LibraryRoot   string                   // "" means a scanner with no roots.
-	Write         library.WriteFunc        // Nil means real writes.
-	StartScan     func(library.Mode) error // Nil means claim and run on the scanner.
-	Web           fs.FS                    // Nil means no web client.
-	Lastfm        *lastfmtest.Server       // Nil means Last.fm is not set up; else the sender runs against it.
-	SetupCode     string                   // "" means the server started with accounts.
-	FolderRoot    string                   // What the folder picker calls /. "" means the real /.
-	DataDir       string                   // Kitsune's data folder, as the picker sees it.
-	Watch         bool                     // Run a folder watcher over the roots.
-	MusicBrainz   *musicbrainztest.Server  // Nil means matching is not set up; else it asks the stand-in.
+	LibraryRoot   string                       // "" means a scanner with no roots.
+	Write         library.WriteFunc            // Nil means real writes.
+	StartScan     func(library.Mode) error     // Nil means claim and run on the scanner.
+	Web           fs.FS                        // Nil means no web client.
+	Lastfm        *lastfmtest.Server           // Nil means Last.fm is not set up; else the sender runs against it.
+	SetupCode     string                       // "" means the server started with accounts.
+	FolderRoot    string                       // What the folder picker calls /. "" means the real /.
+	DataDir       string                       // Kitsune's data folder, as the picker sees it.
+	Watch         bool                         // Run a folder watcher over the roots.
+	MusicBrainz   *musicbrainztest.Server      // Nil means matching is not set up; else it asks the stand-in.
+	OrganizeStep  func(step, rel string) error // Told each step of an organize run; nil hears nothing.
 }
 
 // testServer is a running API over a real store and auth service.
@@ -154,7 +155,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	streams := &stream.Files{}
 	scanner := library.NewScanner(st, library.Options{
 		Roots: roots, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
-		Notify: NewLibraryEvents(hub), Streams: streams,
+		Notify: NewLibraryEvents(hub), Streams: streams, OrganizeStep: o.OrganizeStep,
 	})
 	if o.StartScan == nil {
 		var scans sync.WaitGroup

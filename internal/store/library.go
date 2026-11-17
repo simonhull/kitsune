@@ -221,10 +221,12 @@ func (s *Store) inTx(ctx context.Context, fn func(q *sqlcdb.Queries, tx *sql.Tx)
 	})
 }
 
-// inPreparedTx runs fn in a writer transaction, with every sqlc query prepared on it.
-// The ncruces driver prepares, steps and finalizes every statement that has
-// arguments, so preparing once per transaction saves thousands of prepares for a write
-// that runs its statements many times, such as a library batch.
+// inPreparedTx runs fn in a writer transaction whose sqlc queries are each
+// prepared the first time they run and kept until it ends ([stmtCache]). The
+// ncruces driver prepares, steps and finalizes every statement that has
+// arguments, so keeping them saves thousands of prepares for a write that runs
+// its statements many times, such as a library batch, and preparing only what
+// runs keeps a small write as cheap as the statements it runs.
 // It commits if fn returns nil, as [inTransaction] does.
 func (s *Store) inPreparedTx(ctx context.Context, fn func(q *sqlcdb.Queries, tx *sql.Tx) error) (err error) {
 	conn, err := s.w.Conn(ctx)
@@ -233,17 +235,8 @@ func (s *Store) inPreparedTx(ctx context.Context, fn func(q *sqlcdb.Queries, tx 
 	}
 	defer func() { err = errors.Join(err, conn.Close()) }()
 	return inTransaction(ctx, conn, func(tx *sql.Tx) error {
-		q, prepErr := sqlcdb.Prepare(ctx, tx)
-		if prepErr != nil {
-			return fmt.Errorf("prepare: %w", prepErr)
-		}
-		if fnErr := fn(q, tx); fnErr != nil {
-			return errors.Join(fnErr, q.Close())
-		}
-		if closeErr := q.Close(); closeErr != nil {
-			return fmt.Errorf("close statements: %w", closeErr)
-		}
-		return nil
+		stmts := newStmtCache(tx)
+		return errors.Join(fn(sqlcdb.New(stmts), tx), stmts.close())
 	})
 }
 

@@ -14,7 +14,7 @@ SELECT count(*) FROM playlist_tracks WHERE playlist_id = ?
 `
 
 func (q *Queries) CountPlaylistEntries(ctx context.Context, playlistID int64) (int64, error) {
-	row := q.queryRow(ctx, q.countPlaylistEntriesStmt, countPlaylistEntries, playlistID)
+	row := q.db.QueryRowContext(ctx, countPlaylistEntries, playlistID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -30,7 +30,7 @@ type DeletePlaylistParams struct {
 }
 
 func (q *Queries) DeletePlaylist(ctx context.Context, arg DeletePlaylistParams) (int64, error) {
-	result, err := q.exec(ctx, q.deletePlaylistStmt, deletePlaylist, arg.UserID, arg.Ulid)
+	result, err := q.db.ExecContext(ctx, deletePlaylist, arg.UserID, arg.Ulid)
 	if err != nil {
 		return 0, err
 	}
@@ -49,7 +49,7 @@ type DeletePlaylistEntriesParams struct {
 }
 
 func (q *Queries) DeletePlaylistEntries(ctx context.Context, arg DeletePlaylistEntriesParams) ([]int64, error) {
-	rows, err := q.query(ctx, q.deletePlaylistEntriesStmt, deletePlaylistEntries, arg.PlaylistID, arg.Ids)
+	rows, err := q.db.QueryContext(ctx, deletePlaylistEntries, arg.PlaylistID, arg.Ids)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ type EntryPositionParams struct {
 }
 
 func (q *Queries) EntryPosition(ctx context.Context, arg EntryPositionParams) (int64, error) {
-	row := q.queryRow(ctx, q.entryPositionStmt, entryPosition, arg.PlaylistID, arg.ID)
+	row := q.db.QueryRowContext(ctx, entryPosition, arg.PlaylistID, arg.ID)
 	var position int64
 	err := row.Scan(&position)
 	return position, err
@@ -114,7 +114,7 @@ type InsertPlaylistParams struct {
 // read of what a playlist holds keeps to live tracks, so a trashed song's
 // entries wait, unseen, for Restore.
 func (q *Queries) InsertPlaylist(ctx context.Context, arg InsertPlaylistParams) (int64, error) {
-	row := q.queryRow(ctx, q.insertPlaylistStmt, insertPlaylist,
+	row := q.db.QueryRowContext(ctx, insertPlaylist,
 		arg.Ulid,
 		arg.UserID,
 		arg.Name,
@@ -153,7 +153,7 @@ type InsertPlaylistEntriesRow struct {
 // Puts songs in, from a JSON array of [position, track row] pairs, in one
 // statement however many there are. Entry IDs follow the array's order.
 func (q *Queries) InsertPlaylistEntries(ctx context.Context, arg InsertPlaylistEntriesParams) ([]InsertPlaylistEntriesRow, error) {
-	rows, err := q.query(ctx, q.insertPlaylistEntriesStmt, insertPlaylistEntries, arg.PlaylistID, arg.AddedAt, arg.Entries)
+	rows, err := q.db.QueryContext(ctx, insertPlaylistEntries, arg.PlaylistID, arg.AddedAt, arg.Entries)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ SELECT CAST(coalesce(max(position), 0) AS INTEGER) FROM playlist_tracks WHERE pl
 `
 
 func (q *Queries) LastPlaylistPosition(ctx context.Context, playlistID int64) (int64, error) {
-	row := q.queryRow(ctx, q.lastPlaylistPositionStmt, lastPlaylistPosition, playlistID)
+	row := q.db.QueryRowContext(ctx, lastPlaylistPosition, playlistID)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -201,7 +201,7 @@ type ListAlbumTracksToAddRow struct {
 
 // An album's live songs in the order the Library lists them, for adding it.
 func (q *Queries) ListAlbumTracksToAdd(ctx context.Context, ulid string) ([]ListAlbumTracksToAddRow, error) {
-	rows, err := q.query(ctx, q.listAlbumTracksToAddStmt, listAlbumTracksToAdd, ulid)
+	rows, err := q.db.QueryContext(ctx, listAlbumTracksToAdd, ulid)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +229,7 @@ SELECT id FROM playlist_tracks WHERE playlist_id = ? ORDER BY position
 
 // A playlist's entries in order, to renumber them.
 func (q *Queries) ListEntryRows(ctx context.Context, playlistID int64) ([]int64, error) {
-	rows, err := q.query(ctx, q.listEntryRowsStmt, listEntryRows, playlistID)
+	rows, err := q.db.QueryContext(ctx, listEntryRows, playlistID)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +277,7 @@ type ListPlaylistAlbumsRow struct {
 
 // The albums a playlist page or a mosaic shows, by row ID.
 func (q *Queries) ListPlaylistAlbums(ctx context.Context, ids string) ([]ListPlaylistAlbumsRow, error) {
-	rows, err := q.query(ctx, q.listPlaylistAlbumsStmt, listPlaylistAlbums, ids)
+	rows, err := q.db.QueryContext(ctx, listPlaylistAlbums, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +332,7 @@ type ListPlaylistEntriesRow struct {
 
 // A playlist's live entries in order, each with its song as the index has it.
 func (q *Queries) ListPlaylistEntries(ctx context.Context, playlistID int64) ([]ListPlaylistEntriesRow, error) {
-	rows, err := q.query(ctx, q.listPlaylistEntriesStmt, listPlaylistEntries, playlistID)
+	rows, err := q.db.QueryContext(ctx, listPlaylistEntries, playlistID)
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +382,7 @@ type ListPlaylistRatingsRow struct {
 
 // The person's stars for the songs in a playlist.
 func (q *Queries) ListPlaylistRatings(ctx context.Context, arg ListPlaylistRatingsParams) ([]ListPlaylistRatingsRow, error) {
-	rows, err := q.query(ctx, q.listPlaylistRatingsStmt, listPlaylistRatings, arg.UserID, arg.PlaylistID)
+	rows, err := q.db.QueryContext(ctx, listPlaylistRatings, arg.UserID, arg.PlaylistID)
 	if err != nil {
 		return nil, err
 	}
@@ -423,7 +423,7 @@ type ListPlaylistSongsRow struct {
 // What every playlist a person sees holds that is live, in order: enough to
 // count it, time it, find its mosaic and say which songs it holds.
 func (q *Queries) ListPlaylistSongs(ctx context.Context, userID int64) ([]ListPlaylistSongsRow, error) {
-	rows, err := q.query(ctx, q.listPlaylistSongsStmt, listPlaylistSongs, userID)
+	rows, err := q.db.QueryContext(ctx, listPlaylistSongs, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +467,7 @@ type ListPlaylistSongsOfRow struct {
 
 // ListPlaylistSongs for one playlist.
 func (q *Queries) ListPlaylistSongsOf(ctx context.Context, playlistID int64) ([]ListPlaylistSongsOfRow, error) {
-	rows, err := q.query(ctx, q.listPlaylistSongsOfStmt, listPlaylistSongsOf, playlistID)
+	rows, err := q.db.QueryContext(ctx, listPlaylistSongsOf, playlistID)
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +510,7 @@ type ListPlaylistTrackArtistsRow struct {
 
 // The artists of every song in a playlist, as ListIndexTrackArtists has them.
 func (q *Queries) ListPlaylistTrackArtists(ctx context.Context, playlistID int64) ([]ListPlaylistTrackArtistsRow, error) {
-	rows, err := q.query(ctx, q.listPlaylistTrackArtistsStmt, listPlaylistTrackArtists, playlistID)
+	rows, err := q.db.QueryContext(ctx, listPlaylistTrackArtists, playlistID)
 	if err != nil {
 		return nil, err
 	}
@@ -539,7 +539,7 @@ SELECT DISTINCT track_id FROM playlist_tracks WHERE playlist_id = ?
 // Every song a playlist holds, live or not, once: what shuffle's scope keeps
 // and what an add finds already there.
 func (q *Queries) ListPlaylistTrackRows(ctx context.Context, playlistID int64) ([]int64, error) {
-	rows, err := q.query(ctx, q.listPlaylistTrackRowsStmt, listPlaylistTrackRows, playlistID)
+	rows, err := q.db.QueryContext(ctx, listPlaylistTrackRows, playlistID)
 	if err != nil {
 		return nil, err
 	}
@@ -582,7 +582,7 @@ type ListPlaylistsRow struct {
 
 // The playlists a person sees: their own and the server's file playlists.
 func (q *Queries) ListPlaylists(ctx context.Context, userID int64) ([]ListPlaylistsRow, error) {
-	rows, err := q.query(ctx, q.listPlaylistsStmt, listPlaylists, userID)
+	rows, err := q.db.QueryContext(ctx, listPlaylists, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -625,7 +625,7 @@ type ListSmartPlaylistRulesRow struct {
 
 // A person's smart playlists' rules: what a check for a cycle walks.
 func (q *Queries) ListSmartPlaylistRules(ctx context.Context, userID int64) ([]ListSmartPlaylistRulesRow, error) {
-	rows, err := q.query(ctx, q.listSmartPlaylistRulesStmt, listSmartPlaylistRules, userID)
+	rows, err := q.db.QueryContext(ctx, listSmartPlaylistRules, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -658,7 +658,7 @@ type ListSmartRatingsRow struct {
 
 // A person's stars, by track row: what smart rules read of them.
 func (q *Queries) ListSmartRatings(ctx context.Context, userID int64) ([]ListSmartRatingsRow, error) {
-	rows, err := q.query(ctx, q.listSmartRatingsStmt, listSmartRatings, userID)
+	rows, err := q.db.QueryContext(ctx, listSmartRatings, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -694,7 +694,7 @@ type ListSmartSkipsRow struct {
 
 // How often a person skipped each song: listens that ended skipped.
 func (q *Queries) ListSmartSkips(ctx context.Context, userID int64) ([]ListSmartSkipsRow, error) {
-	rows, err := q.query(ctx, q.listSmartSkipsStmt, listSmartSkips, userID)
+	rows, err := q.db.QueryContext(ctx, listSmartSkips, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -730,7 +730,7 @@ type ListTracksToAddRow struct {
 
 // The songs named to go into a playlist, by ULID, and whether each is live.
 func (q *Queries) ListTracksToAdd(ctx context.Context, ids string) ([]ListTracksToAddRow, error) {
-	rows, err := q.query(ctx, q.listTracksToAddStmt, listTracksToAdd, ids)
+	rows, err := q.db.QueryContext(ctx, listTracksToAdd, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -758,7 +758,7 @@ UPDATE playlist_tracks SET position = -1 - position WHERE playlist_id = ?
 
 // Moves every position below zero, in order, so a renumber can't collide.
 func (q *Queries) ParkPositions(ctx context.Context, playlistID int64) error {
-	_, err := q.exec(ctx, q.parkPositionsStmt, parkPositions, playlistID)
+	_, err := q.db.ExecContext(ctx, parkPositions, playlistID)
 	return err
 }
 
@@ -772,7 +772,7 @@ type PlaylistByImportKeyParams struct {
 }
 
 func (q *Queries) PlaylistByImportKey(ctx context.Context, arg PlaylistByImportKeyParams) (int64, error) {
-	row := q.queryRow(ctx, q.playlistByImportKeyStmt, playlistByImportKey, arg.UserID, arg.ImportKey)
+	row := q.db.QueryRowContext(ctx, playlistByImportKey, arg.UserID, arg.ImportKey)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -803,7 +803,7 @@ type PlaylistRowRow struct {
 
 // A playlist the person sees: their own, or one of the server's file playlists.
 func (q *Queries) PlaylistRow(ctx context.Context, arg PlaylistRowParams) (PlaylistRowRow, error) {
-	row := q.queryRow(ctx, q.playlistRowStmt, playlistRow, arg.Ulid, arg.UserID)
+	row := q.db.QueryRowContext(ctx, playlistRow, arg.Ulid, arg.UserID)
 	var i PlaylistRowRow
 	err := row.Scan(
 		&i.ID,
@@ -831,7 +831,7 @@ type PositionAfterParams struct {
 
 // The position of the entry just after the given one, or -1 at the end.
 func (q *Queries) PositionAfter(ctx context.Context, arg PositionAfterParams) (int64, error) {
-	row := q.queryRow(ctx, q.positionAfterStmt, positionAfter, arg.PlaylistID, arg.Position)
+	row := q.db.QueryRowContext(ctx, positionAfter, arg.PlaylistID, arg.Position)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -849,7 +849,7 @@ type PositionBeforeParams struct {
 
 // The position of the entry just before the given one, or 0 at the start.
 func (q *Queries) PositionBefore(ctx context.Context, arg PositionBeforeParams) (int64, error) {
-	row := q.queryRow(ctx, q.positionBeforeStmt, positionBefore, arg.PlaylistID, arg.Position)
+	row := q.db.QueryRowContext(ctx, positionBefore, arg.PlaylistID, arg.Position)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -866,7 +866,7 @@ type RenamePlaylistParams struct {
 }
 
 func (q *Queries) RenamePlaylist(ctx context.Context, arg RenamePlaylistParams) error {
-	_, err := q.exec(ctx, q.renamePlaylistStmt, renamePlaylist, arg.Name, arg.UpdatedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, renamePlaylist, arg.Name, arg.UpdatedAt, arg.ID)
 	return err
 }
 
@@ -881,7 +881,7 @@ type SetEntryPositionParams struct {
 }
 
 func (q *Queries) SetEntryPosition(ctx context.Context, arg SetEntryPositionParams) (int64, error) {
-	result, err := q.exec(ctx, q.setEntryPositionStmt, setEntryPosition, arg.Position, arg.PlaylistID, arg.ID)
+	result, err := q.db.ExecContext(ctx, setEntryPosition, arg.Position, arg.PlaylistID, arg.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -900,7 +900,7 @@ type SetPlaylistRulesParams struct {
 }
 
 func (q *Queries) SetPlaylistRules(ctx context.Context, arg SetPlaylistRulesParams) error {
-	_, err := q.exec(ctx, q.setPlaylistRulesStmt, setPlaylistRules,
+	_, err := q.db.ExecContext(ctx, setPlaylistRules,
 		arg.Rules,
 		arg.Seed,
 		arg.UpdatedAt,
@@ -920,7 +920,7 @@ type SetPlaylistSeedParams struct {
 }
 
 func (q *Queries) SetPlaylistSeed(ctx context.Context, arg SetPlaylistSeedParams) error {
-	_, err := q.exec(ctx, q.setPlaylistSeedStmt, setPlaylistSeed, arg.Seed, arg.UpdatedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, setPlaylistSeed, arg.Seed, arg.UpdatedAt, arg.ID)
 	return err
 }
 
@@ -934,7 +934,7 @@ type TouchPlaylistParams struct {
 }
 
 func (q *Queries) TouchPlaylist(ctx context.Context, arg TouchPlaylistParams) error {
-	_, err := q.exec(ctx, q.touchPlaylistStmt, touchPlaylist, arg.UpdatedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, touchPlaylist, arg.UpdatedAt, arg.ID)
 	return err
 }
 
@@ -948,6 +948,6 @@ type TouchPlaylistAddedParams struct {
 }
 
 func (q *Queries) TouchPlaylistAdded(ctx context.Context, arg TouchPlaylistAddedParams) error {
-	_, err := q.exec(ctx, q.touchPlaylistAddedStmt, touchPlaylistAdded, arg.At, arg.ID)
+	_, err := q.db.ExecContext(ctx, touchPlaylistAdded, arg.At, arg.ID)
 	return err
 }

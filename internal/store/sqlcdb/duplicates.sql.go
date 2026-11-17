@@ -15,7 +15,7 @@ DELETE FROM duplicate_dismissals WHERE group_key = ?
 `
 
 func (q *Queries) BringBackDuplicates(ctx context.Context, groupKey string) (int64, error) {
-	result, err := q.exec(ctx, q.bringBackDuplicatesStmt, bringBackDuplicates, groupKey)
+	result, err := q.db.ExecContext(ctx, bringBackDuplicates, groupKey)
 	if err != nil {
 		return 0, err
 	}
@@ -27,7 +27,7 @@ DELETE FROM shuffle_excluded WHERE track_id = ?
 `
 
 func (q *Queries) DeleteExcludedOfTrack(ctx context.Context, trackID int64) error {
-	_, err := q.exec(ctx, q.deleteExcludedOfTrackStmt, deleteExcludedOfTrack, trackID)
+	_, err := q.db.ExecContext(ctx, deleteExcludedOfTrack, trackID)
 	return err
 }
 
@@ -36,7 +36,7 @@ DELETE FROM track_hearts WHERE track_id = ?
 `
 
 func (q *Queries) DeleteHeartsOfTrack(ctx context.Context, trackID int64) error {
-	_, err := q.exec(ctx, q.deleteHeartsOfTrackStmt, deleteHeartsOfTrack, trackID)
+	_, err := q.db.ExecContext(ctx, deleteHeartsOfTrack, trackID)
 	return err
 }
 
@@ -45,7 +45,7 @@ DELETE FROM track_ratings WHERE track_id = ?
 `
 
 func (q *Queries) DeleteTrackRatings(ctx context.Context, trackID int64) error {
-	_, err := q.exec(ctx, q.deleteTrackRatingsStmt, deleteTrackRatings, trackID)
+	_, err := q.db.ExecContext(ctx, deleteTrackRatings, trackID)
 	return err
 }
 
@@ -63,7 +63,7 @@ type DismissDuplicatesParams struct {
 }
 
 func (q *Queries) DismissDuplicates(ctx context.Context, arg DismissDuplicatesParams) error {
-	_, err := q.exec(ctx, q.dismissDuplicatesStmt, dismissDuplicates,
+	_, err := q.db.ExecContext(ctx, dismissDuplicates,
 		arg.GroupKey,
 		arg.Tracks,
 		arg.ByUser,
@@ -83,7 +83,7 @@ type DropRunTrackParams struct {
 
 // shuffle_runs_need_two tidies a run left with one song.
 func (q *Queries) DropRunTrack(ctx context.Context, arg DropRunTrackParams) error {
-	_, err := q.exec(ctx, q.dropRunTrackStmt, dropRunTrack, arg.RunID, arg.Position)
+	_, err := q.db.ExecContext(ctx, dropRunTrack, arg.RunID, arg.Position)
 	return err
 }
 
@@ -151,7 +151,7 @@ func (q *Queries) DuplicateCopies(ctx context.Context, arg DuplicateCopiesParams
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +210,7 @@ type ListDuplicateDismissalsRow struct {
 }
 
 func (q *Queries) ListDuplicateDismissals(ctx context.Context) ([]ListDuplicateDismissalsRow, error) {
-	rows, err := q.query(ctx, q.listDuplicateDismissalsStmt, listDuplicateDismissals)
+	rows, err := q.db.QueryContext(ctx, listDuplicateDismissals)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +250,7 @@ type ListTrackDigestsRow struct {
 // moves from the copies it trashes onto the one it keeps.
 // Every live track the fingerprint pass has read, with its fingerprint.
 func (q *Queries) ListTrackDigests(ctx context.Context) ([]ListTrackDigestsRow, error) {
-	rows, err := q.query(ctx, q.listTrackDigestsStmt, listTrackDigests)
+	rows, err := q.db.QueryContext(ctx, listTrackDigests)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +302,7 @@ func (q *Queries) MergeEntries(ctx context.Context, ids []int64) ([]MergeEntries
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +351,7 @@ func (q *Queries) MergeExcluded(ctx context.Context, ids []int64) ([]MergeExclud
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +388,7 @@ func (q *Queries) MergeHearts(ctx context.Context, ids []int64) ([]TrackHeart, e
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +431,7 @@ func (q *Queries) MergeListens(ctx context.Context, ids []int64) ([]MergeListens
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -476,7 +476,7 @@ func (q *Queries) MergePlays(ctx context.Context, ids []int64) ([]MergePlaysRow,
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -516,7 +516,7 @@ type MergeQueuesRow struct {
 // Where people left off, when their queue names any of the songs: each named
 // as a JSON string, so a ULID is found only whole.
 func (q *Queries) MergeQueues(ctx context.Context, ulids string) ([]MergeQueuesRow, error) {
-	rows, err := q.query(ctx, q.mergeQueuesStmt, mergeQueues, ulids)
+	rows, err := q.db.QueryContext(ctx, mergeQueues, ulids)
 	if err != nil {
 		return nil, err
 	}
@@ -567,7 +567,7 @@ func (q *Queries) MergeRatings(ctx context.Context, ids []int64) ([]MergeRatings
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -611,7 +611,7 @@ func (q *Queries) MergeRunTracks(ctx context.Context, ids []int64) ([]ShuffleRun
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -650,7 +650,7 @@ type MoveExcludedParams struct {
 }
 
 func (q *Queries) MoveExcluded(ctx context.Context, arg MoveExcludedParams) error {
-	_, err := q.exec(ctx, q.moveExcludedStmt, moveExcluded, arg.Keep, arg.Trash)
+	_, err := q.db.ExecContext(ctx, moveExcluded, arg.Keep, arg.Trash)
 	return err
 }
 
@@ -668,7 +668,7 @@ type MoveTrackHeartsParams struct {
 // A heart kept from before goes to the keeper unless one is there; the
 // earlier stays.
 func (q *Queries) MoveTrackHearts(ctx context.Context, arg MoveTrackHeartsParams) error {
-	_, err := q.exec(ctx, q.moveTrackHeartsStmt, moveTrackHearts, arg.Keep, arg.Trash)
+	_, err := q.db.ExecContext(ctx, moveTrackHearts, arg.Keep, arg.Trash)
 	return err
 }
 
@@ -684,7 +684,7 @@ type RepointEntriesParams struct {
 // Entries keep their IDs and places: a playlist holding both copies holds the
 // keeper twice.
 func (q *Queries) RepointEntries(ctx context.Context, arg RepointEntriesParams) error {
-	_, err := q.exec(ctx, q.repointEntriesStmt, repointEntries, arg.Keep, arg.Trash)
+	_, err := q.db.ExecContext(ctx, repointEntries, arg.Keep, arg.Trash)
 	return err
 }
 
@@ -698,7 +698,7 @@ type RepointListensParams struct {
 }
 
 func (q *Queries) RepointListens(ctx context.Context, arg RepointListensParams) error {
-	_, err := q.exec(ctx, q.repointListensStmt, repointListens, arg.Keep, arg.Trash)
+	_, err := q.db.ExecContext(ctx, repointListens, arg.Keep, arg.Trash)
 	return err
 }
 
@@ -712,7 +712,7 @@ type RepointPlaysParams struct {
 }
 
 func (q *Queries) RepointPlays(ctx context.Context, arg RepointPlaysParams) error {
-	_, err := q.exec(ctx, q.repointPlaysStmt, repointPlays, arg.Keep, arg.Trash)
+	_, err := q.db.ExecContext(ctx, repointPlays, arg.Keep, arg.Trash)
 	return err
 }
 
@@ -727,7 +727,7 @@ type RepointQueuesParams struct {
 }
 
 func (q *Queries) RepointQueues(ctx context.Context, arg RepointQueuesParams) error {
-	_, err := q.exec(ctx, q.repointQueuesStmt, repointQueues, arg.Trash, arg.Keep)
+	_, err := q.db.ExecContext(ctx, repointQueues, arg.Trash, arg.Keep)
 	return err
 }
 
@@ -742,6 +742,6 @@ type RepointRunTrackParams struct {
 }
 
 func (q *Queries) RepointRunTrack(ctx context.Context, arg RepointRunTrackParams) error {
-	_, err := q.exec(ctx, q.repointRunTrackStmt, repointRunTrack, arg.Keep, arg.RunID, arg.Position)
+	_, err := q.db.ExecContext(ctx, repointRunTrack, arg.Keep, arg.RunID, arg.Position)
 	return err
 }

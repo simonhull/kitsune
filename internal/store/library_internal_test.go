@@ -524,3 +524,21 @@ func TestAlbumSchemaForBrowse(t *testing.T) {
 		t.Errorf("albums_sort collation on sort_name = %q, want NOCASE", coll)
 	}
 }
+
+// BenchmarkWriteOneSong writes one song, as a targeted scan or an edit does:
+// what the transaction costs around the statements a write runs.
+func BenchmarkWriteOneSong(b *testing.B) {
+	batch := benchBatch()
+	s := openBench(b)
+	b.Cleanup(func() { _ = s.Close() })
+	if err := s.WriteBatch(b.Context(), batch); err != nil {
+		b.Fatal(err)
+	}
+	one := &Batch{Tracks: slices.Clone(batch.Tracks[:1])}
+	one.Tracks[0].ID = 1
+	for b.Loop() {
+		if err := s.WriteBatch(b.Context(), one); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

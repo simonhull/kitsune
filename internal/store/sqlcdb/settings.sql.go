@@ -14,7 +14,7 @@ DELETE FROM settings WHERE key = ?
 `
 
 func (q *Queries) DeleteSetting(ctx context.Context, key string) (int64, error) {
-	result, err := q.exec(ctx, q.deleteSettingStmt, deleteSetting, key)
+	result, err := q.db.ExecContext(ctx, deleteSetting, key)
 	if err != nil {
 		return 0, err
 	}
@@ -34,7 +34,7 @@ type InsertSettingIfAbsentParams struct {
 }
 
 func (q *Queries) InsertSettingIfAbsent(ctx context.Context, arg InsertSettingIfAbsentParams) (int64, error) {
-	result, err := q.exec(ctx, q.insertSettingIfAbsentStmt, insertSettingIfAbsent,
+	result, err := q.db.ExecContext(ctx, insertSettingIfAbsent,
 		arg.Key,
 		arg.Value,
 		arg.Source,
@@ -53,7 +53,7 @@ SELECT key, value, source, updated_at FROM settings ORDER BY key
 
 // Server settings, by key. The value is JSON the caller has checked.
 func (q *Queries) ListSettings(ctx context.Context) ([]Setting, error) {
-	rows, err := q.query(ctx, q.listSettingsStmt, listSettings)
+	rows, err := q.db.QueryContext(ctx, listSettings)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ type RootStatsRow struct {
 
 // What each library root holds now: its live tracks and their bytes.
 func (q *Queries) RootStats(ctx context.Context) ([]RootStatsRow, error) {
-	rows, err := q.query(ctx, q.rootStatsStmt, rootStats)
+	rows, err := q.db.QueryContext(ctx, rootStats)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ type UpsertSettingParams struct {
 }
 
 func (q *Queries) UpsertSetting(ctx context.Context, arg UpsertSettingParams) error {
-	_, err := q.exec(ctx, q.upsertSettingStmt, upsertSetting,
+	_, err := q.db.ExecContext(ctx, upsertSetting,
 		arg.Key,
 		arg.Value,
 		arg.Source,

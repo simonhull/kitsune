@@ -14,7 +14,7 @@ DELETE FROM playlist_tracks WHERE playlist_id = ?
 `
 
 func (q *Queries) ClearPlaylistEntries(ctx context.Context, playlistID int64) error {
-	_, err := q.exec(ctx, q.clearPlaylistEntriesStmt, clearPlaylistEntries, playlistID)
+	_, err := q.db.ExecContext(ctx, clearPlaylistEntries, playlistID)
 	return err
 }
 
@@ -30,7 +30,7 @@ type DeleteFilePlaylistParams struct {
 }
 
 func (q *Queries) DeleteFilePlaylist(ctx context.Context, arg DeleteFilePlaylistParams) (string, error) {
-	row := q.queryRow(ctx, q.deleteFilePlaylistStmt, deleteFilePlaylist, arg.Root, arg.RelPath)
+	row := q.db.QueryRowContext(ctx, deleteFilePlaylist, arg.Root, arg.RelPath)
 	var ulid string
 	err := row.Scan(&ulid)
 	return ulid, err
@@ -57,7 +57,7 @@ type FilePlaylistAtRow struct {
 }
 
 func (q *Queries) FilePlaylistAt(ctx context.Context, arg FilePlaylistAtParams) (FilePlaylistAtRow, error) {
-	row := q.queryRow(ctx, q.filePlaylistAtStmt, filePlaylistAt, arg.Root, arg.RelPath)
+	row := q.db.QueryRowContext(ctx, filePlaylistAt, arg.Root, arg.RelPath)
 	var i FilePlaylistAtRow
 	err := row.Scan(
 		&i.PlaylistID,
@@ -74,7 +74,7 @@ SELECT DISTINCT root FROM playlist_files ORDER BY root
 `
 
 func (q *Queries) FilePlaylistRoots(ctx context.Context) ([]string, error) {
-	rows, err := q.query(ctx, q.filePlaylistRootsStmt, filePlaylistRoots)
+	rows, err := q.db.QueryContext(ctx, filePlaylistRoots)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ type FilePlaylistStatesRow struct {
 // What the store knows of every playlist file under a root: what a scan
 // compares the walk with.
 func (q *Queries) FilePlaylistStates(ctx context.Context, root string) ([]FilePlaylistStatesRow, error) {
-	rows, err := q.query(ctx, q.filePlaylistStatesStmt, filePlaylistStates, root)
+	rows, err := q.db.QueryContext(ctx, filePlaylistStates, root)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ type InsertFileEntriesParams struct {
 // A file playlist's entries, from a JSON array of [line number, track row,
 // line] triples, in one statement: the line's number is the position.
 func (q *Queries) InsertFileEntries(ctx context.Context, arg InsertFileEntriesParams) error {
-	_, err := q.exec(ctx, q.insertFileEntriesStmt, insertFileEntries, arg.PlaylistID, arg.AddedAt, arg.Entries)
+	_, err := q.db.ExecContext(ctx, insertFileEntries, arg.PlaylistID, arg.AddedAt, arg.Entries)
 	return err
 }
 
@@ -184,7 +184,7 @@ type InsertFilePlaylistParams struct {
 }
 
 func (q *Queries) InsertFilePlaylist(ctx context.Context, arg InsertFilePlaylistParams) (int64, error) {
-	row := q.queryRow(ctx, q.insertFilePlaylistStmt, insertFilePlaylist, arg.Ulid, arg.Name, arg.At)
+	row := q.db.QueryRowContext(ctx, insertFilePlaylist, arg.Ulid, arg.Name, arg.At)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -204,7 +204,7 @@ type ListExportArtistsRow struct {
 }
 
 func (q *Queries) ListExportArtists(ctx context.Context, ids string) ([]ListExportArtistsRow, error) {
-	rows, err := q.query(ctx, q.listExportArtistsStmt, listExportArtists, ids)
+	rows, err := q.db.QueryContext(ctx, listExportArtists, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +243,7 @@ type ListExportTracksRow struct {
 // The live songs an export writes, by row: where each is and what its
 // #EXTINF says.
 func (q *Queries) ListExportTracks(ctx context.Context, ids string) ([]ListExportTracksRow, error) {
-	rows, err := q.query(ctx, q.listExportTracksStmt, listExportTracks, ids)
+	rows, err := q.db.QueryContext(ctx, listExportTracks, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +287,7 @@ type ListFileEntryLinesRow struct {
 // The lines of a file playlist's last read that found a song still live: what
 // keeps a moved song when the file is read again.
 func (q *Queries) ListFileEntryLines(ctx context.Context, playlistID int64) ([]ListFileEntryLinesRow, error) {
-	rows, err := q.query(ctx, q.listFileEntryLinesStmt, listFileEntryLines, playlistID)
+	rows, err := q.db.QueryContext(ctx, listFileEntryLines, playlistID)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +326,7 @@ type ListGoneFileEntriesRow struct {
 // A file playlist's entries whose song is no longer live: in the Trash, or
 // missing since the file was read.
 func (q *Queries) ListGoneFileEntries(ctx context.Context, playlistID int64) ([]ListGoneFileEntriesRow, error) {
-	rows, err := q.query(ctx, q.listGoneFileEntriesStmt, listGoneFileEntries, playlistID)
+	rows, err := q.db.QueryContext(ctx, listGoneFileEntries, playlistID)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +369,7 @@ type ListPlaylistFilesRow struct {
 // Every file playlist's file, with its lines that found no song when it was
 // read, and its entries whose song has left the library since.
 func (q *Queries) ListPlaylistFiles(ctx context.Context) ([]ListPlaylistFilesRow, error) {
-	rows, err := q.query(ctx, q.listPlaylistFilesStmt, listPlaylistFiles)
+	rows, err := q.db.QueryContext(ctx, listPlaylistFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -414,7 +414,7 @@ type PlaylistFileOfRow struct {
 }
 
 func (q *Queries) PlaylistFileOf(ctx context.Context, playlistID int64) (PlaylistFileOfRow, error) {
-	row := q.queryRow(ctx, q.playlistFileOfStmt, playlistFileOf, playlistID)
+	row := q.db.QueryRowContext(ctx, playlistFileOf, playlistID)
 	var i PlaylistFileOfRow
 	err := row.Scan(
 		&i.RelPath,
@@ -437,7 +437,7 @@ type SetFilePlaylistNameParams struct {
 }
 
 func (q *Queries) SetFilePlaylistName(ctx context.Context, arg SetFilePlaylistNameParams) error {
-	_, err := q.exec(ctx, q.setFilePlaylistNameStmt, setFilePlaylistName, arg.Name, arg.UpdatedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, setFilePlaylistName, arg.Name, arg.UpdatedAt, arg.ID)
 	return err
 }
 
@@ -458,7 +458,7 @@ type TrackPathsRow struct {
 // Every track's path, where its file goes back to while it is in the Trash:
 // what a playlist file's lines are matched against.
 func (q *Queries) TrackPaths(ctx context.Context) ([]TrackPathsRow, error) {
-	rows, err := q.query(ctx, q.trackPathsStmt, trackPaths)
+	rows, err := q.db.QueryContext(ctx, trackPaths)
 	if err != nil {
 		return nil, err
 	}
@@ -507,7 +507,7 @@ type UpsertPlaylistFileParams struct {
 }
 
 func (q *Queries) UpsertPlaylistFile(ctx context.Context, arg UpsertPlaylistFileParams) error {
-	_, err := q.exec(ctx, q.upsertPlaylistFileStmt, upsertPlaylistFile,
+	_, err := q.db.ExecContext(ctx, upsertPlaylistFile,
 		arg.PlaylistID,
 		arg.Root,
 		arg.RelPath,

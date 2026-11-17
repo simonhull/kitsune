@@ -27,7 +27,7 @@ type CarryTrackLoudnessParams struct {
 // A file whose tags alone were rewritten keeps its measure: the audio is the
 // same, as audiometa verified. Only a measure of the file before moves along.
 func (q *Queries) CarryTrackLoudness(ctx context.Context, arg CarryTrackLoudnessParams) error {
-	_, err := q.exec(ctx, q.carryTrackLoudnessStmt, carryTrackLoudness, arg.Size, arg.Mtime, arg.ID)
+	_, err := q.db.ExecContext(ctx, carryTrackLoudness, arg.Size, arg.Mtime, arg.ID)
 	return err
 }
 
@@ -46,7 +46,7 @@ type CountGainRunParams struct {
 }
 
 func (q *Queries) CountGainRun(ctx context.Context, arg CountGainRunParams) error {
-	_, err := q.exec(ctx, q.countGainRunStmt, countGainRun,
+	_, err := q.db.ExecContext(ctx, countGainRun,
 		arg.Written,
 		arg.LeftCount,
 		arg.Failed,
@@ -72,7 +72,7 @@ type CreateGainRunParams struct {
 }
 
 func (q *Queries) CreateGainRun(ctx context.Context, arg CreateGainRunParams) (int64, error) {
-	row := q.queryRow(ctx, q.createGainRunStmt, createGainRun,
+	row := q.db.QueryRowContext(ctx, createGainRun,
 		arg.Ulid,
 		arg.Kind,
 		arg.ByUser,
@@ -97,7 +97,7 @@ type FinishGainRunParams struct {
 }
 
 func (q *Queries) FinishGainRun(ctx context.Context, arg FinishGainRunParams) error {
-	_, err := q.exec(ctx, q.finishGainRunStmt, finishGainRun, arg.State, arg.FinishedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, finishGainRun, arg.State, arg.FinishedAt, arg.ID)
 	return err
 }
 
@@ -136,7 +136,7 @@ func (q *Queries) GainAlbumFacts(ctx context.Context, ulids []string) ([]GainAlb
 	} else {
 		query = strings.Replace(query, "/*SLICE:ulids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +232,7 @@ type GainCandidatesRow struct {
 // In the Library's album order is the caller's: rows come by album, then disc
 // and track.
 func (q *Queries) GainCandidates(ctx context.Context) ([]GainCandidatesRow, error) {
-	rows, err := q.query(ctx, q.gainCandidatesStmt, gainCandidates)
+	rows, err := q.db.QueryContext(ctx, gainCandidates)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +313,7 @@ type GainRunRow struct {
 }
 
 func (q *Queries) GainRun(ctx context.Context, ulid string) (GainRunRow, error) {
-	row := q.queryRow(ctx, q.gainRunStmt, gainRun, ulid)
+	row := q.db.QueryRowContext(ctx, gainRun, ulid)
 	var i GainRunRow
 	err := row.Scan(
 		&i.ID,
@@ -359,7 +359,7 @@ type GainRunAlbumsRow struct {
 
 // A run's albums in the order it took them, with what it did to each.
 func (q *Queries) GainRunAlbums(ctx context.Context, runID int64) ([]GainRunAlbumsRow, error) {
-	rows, err := q.query(ctx, q.gainRunAlbumsStmt, gainRunAlbums, runID)
+	rows, err := q.db.QueryContext(ctx, gainRunAlbums, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +437,7 @@ func (q *Queries) GainTrackStates(ctx context.Context, ids []int64) ([]GainTrack
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -499,7 +499,7 @@ type LeftGainWritesRow struct {
 
 // The songs a run left as they were, and why.
 func (q *Queries) LeftGainWrites(ctx context.Context, arg LeftGainWritesParams) ([]LeftGainWritesRow, error) {
-	rows, err := q.query(ctx, q.leftGainWritesStmt, leftGainWrites, arg.RunID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, leftGainWrites, arg.RunID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -562,7 +562,7 @@ type ListGainRunsRow struct {
 // The latest runs, a running one first. undoable says a file the run wrote is
 // still as it left it.
 func (q *Queries) ListGainRuns(ctx context.Context, limit int64) ([]ListGainRunsRow, error) {
-	rows, err := q.query(ctx, q.listGainRunsStmt, listGainRuns, limit)
+	rows, err := q.db.QueryContext(ctx, listGainRuns, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -626,7 +626,7 @@ type PlanGainWriteParams struct {
 
 // Planned, or skipped at once with its reason: a song the batch leaves.
 func (q *Queries) PlanGainWrite(ctx context.Context, arg PlanGainWriteParams) (int64, error) {
-	row := q.queryRow(ctx, q.planGainWriteStmt, planGainWrite,
+	row := q.db.QueryRowContext(ctx, planGainWrite,
 		arg.RunID,
 		arg.TrackID,
 		arg.Album,
@@ -673,7 +673,7 @@ type PlannedGainWritesRow struct {
 
 // Writes a run journaled and never settled: what a server stopped midway left.
 func (q *Queries) PlannedGainWrites(ctx context.Context) ([]PlannedGainWritesRow, error) {
-	rows, err := q.query(ctx, q.plannedGainWritesStmt, plannedGainWrites)
+	rows, err := q.db.QueryContext(ctx, plannedGainWrites)
 	if err != nil {
 		return nil, err
 	}
@@ -722,7 +722,7 @@ type PruneGainRunsParams struct {
 
 // Runs past the last kept, and older than the cutoff, go with their journals.
 func (q *Queries) PruneGainRuns(ctx context.Context, arg PruneGainRunsParams) (int64, error) {
-	result, err := q.exec(ctx, q.pruneGainRunsStmt, pruneGainRuns, arg.Cutoff, arg.Keep)
+	result, err := q.db.ExecContext(ctx, pruneGainRuns, arg.Cutoff, arg.Keep)
 	if err != nil {
 		return 0, err
 	}
@@ -739,7 +739,7 @@ type SetGainRunStateParams struct {
 }
 
 func (q *Queries) SetGainRunState(ctx context.Context, arg SetGainRunStateParams) error {
-	_, err := q.exec(ctx, q.setGainRunStateStmt, setGainRunState, arg.State, arg.ID)
+	_, err := q.db.ExecContext(ctx, setGainRunState, arg.State, arg.ID)
 	return err
 }
 
@@ -753,7 +753,7 @@ type SetGainWriteStateParams struct {
 }
 
 func (q *Queries) SetGainWriteState(ctx context.Context, arg SetGainWriteStateParams) error {
-	_, err := q.exec(ctx, q.setGainWriteStateStmt, setGainWriteState, arg.State, arg.ID)
+	_, err := q.db.ExecContext(ctx, setGainWriteState, arg.State, arg.ID)
 	return err
 }
 
@@ -770,7 +770,7 @@ type SettleGainWriteParams struct {
 }
 
 func (q *Queries) SettleGainWrite(ctx context.Context, arg SettleGainWriteParams) error {
-	_, err := q.exec(ctx, q.settleGainWriteStmt, settleGainWrite,
+	_, err := q.db.ExecContext(ctx, settleGainWrite,
 		arg.State,
 		arg.Reason,
 		arg.SizeAfter,
@@ -786,7 +786,7 @@ UPDATE gain_runs SET state = 'stopped', finished_at = ? WHERE state = 'running'
 
 // Runs a stopped server left running: stopped, as Stop leaves them.
 func (q *Queries) StopRunningGainRuns(ctx context.Context, finishedAt *int64) (int64, error) {
-	result, err := q.exec(ctx, q.stopRunningGainRunsStmt, stopRunningGainRuns, finishedAt)
+	result, err := q.db.ExecContext(ctx, stopRunningGainRuns, finishedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -819,7 +819,7 @@ type WrittenGainWritesRow struct {
 
 // What a run wrote, for its undo, with where each song is now.
 func (q *Queries) WrittenGainWrites(ctx context.Context, runID int64) ([]WrittenGainWritesRow, error) {
-	rows, err := q.query(ctx, q.writtenGainWritesStmt, writtenGainWrites, runID)
+	rows, err := q.db.QueryContext(ctx, writtenGainWrites, runID)
 	if err != nil {
 		return nil, err
 	}

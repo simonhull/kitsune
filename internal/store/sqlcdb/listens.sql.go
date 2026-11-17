@@ -34,7 +34,7 @@ type RecentListensRow struct {
 }
 
 func (q *Queries) RecentListens(ctx context.Context, arg RecentListensParams) ([]RecentListensRow, error) {
-	rows, err := q.query(ctx, q.recentListensStmt, recentListens, arg.UserID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, recentListens, arg.UserID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ type TrackForListenRow struct {
 
 // Every listen a person starts, and how it ended.
 func (q *Queries) TrackForListen(ctx context.Context, ulid string) (TrackForListenRow, error) {
-	row := q.queryRow(ctx, q.trackForListenStmt, trackForListen, ulid)
+	row := q.db.QueryRowContext(ctx, trackForListen, ulid)
 	var i TrackForListenRow
 	err := row.Scan(&i.ID, &i.DurationMs)
 	return i, err
@@ -108,7 +108,7 @@ type UpsertListenParams struct {
 // know, the shuffle's session ID included, and once a listen has ended nothing
 // changes it.
 func (q *Queries) UpsertListen(ctx context.Context, arg UpsertListenParams) error {
-	_, err := q.exec(ctx, q.upsertListenStmt, upsertListen,
+	_, err := q.db.ExecContext(ctx, upsertListen,
 		arg.UserID,
 		arg.TrackID,
 		arg.ClientID,
