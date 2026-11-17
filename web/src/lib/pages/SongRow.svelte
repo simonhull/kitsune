@@ -8,6 +8,7 @@
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import Cover from '#lib/cover/Cover.svelte';
+	import { morph } from '#lib/morph/registry.ts';
 	import { trackLabel } from '#lib/library/format.ts';
 	import type { ColumnId, LibraryTrack, MovableId } from '#lib/library/source.ts';
 	import Icon from '#lib/shell/Icon.svelte';
@@ -264,7 +265,9 @@
 		><PickBox state={picked ? 'all' : 'none'} label={`Select ${track.title}`} /></span
 	>
 	{#if parts.cover}
-		<span class="cover"><Cover albumId={album.id} entry={album} place="small" lazy /></span>
+		<span class="cover" use:morph={{ id: `cover:${album.id}`, slot: 'thumb', kind: 'cover' }}
+			><Cover albumId={album.id} entry={album} place="small" lazy /></span
+		>
 	{/if}
 	{#if phone}
 		{#if parts.number}{@render number()}{/if}

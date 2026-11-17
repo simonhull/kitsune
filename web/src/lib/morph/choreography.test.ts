@@ -6,6 +6,8 @@ import {
 	deckToHome,
 	drop,
 	choreographyFor,
+	gatherWeight,
+	weighGather,
 	linearEasing,
 	parseTime,
 	resolveMotion,
@@ -260,8 +262,13 @@ function grainOf(from: RouteName, to: RouteName): Grain {
 const journeyPairs: readonly (readonly [RouteName, RouteName])[] = [
 	['home', 'album'],
 	['library', 'album'],
+	['albums', 'album'],
+	['artist', 'album'],
+	['playlist', 'album'],
+	['search', 'album'],
 	['album', 'home'],
 	['album', 'library'],
+	['album', 'albums'],
 	['home', 'now-playing'],
 	['album', 'now-playing'],
 	['now-playing', 'home'],
@@ -355,6 +362,12 @@ describe('choreographyFor', () => {
 		expect(among.travel?.leads).not.toContain('surface:from');
 	});
 
+	it('grows the grid from the album: the Albums page gathers around the cell it lands in', () => {
+		const { arriving } = choreographyFor('album', 'albums');
+		expect(arriving.card?.gather).toBeDefined();
+		expect(arriving.card?.from.scale).toBeLessThan(1);
+	});
+
 	it('reshapes the island exactly when Now playing is involved', () => {
 		for (const [from, to] of journeyPairs) {
 			expect(choreographyFor(from, to).island !== null, `${from} → ${to}`).toBe(
@@ -390,6 +403,30 @@ describe('choreographyFor', () => {
 		}
 		expect(choreographyFor('album', 'search')).toBe(blend);
 		expect(choreographyFor('artist', 'artist')).toBe(blend);
+	});
+});
+
+describe('gather', () => {
+	const { arriving } = choreographyFor('album', 'albums');
+	const part = arriving.card;
+
+	it('is all but there beside the landing, and deepest at the far edge', () => {
+		const near = { near: 0.15 };
+		expect(gatherWeight(near, 0)).toBeCloseTo(0.15);
+		expect(gatherWeight(near, 1)).toBe(1);
+		expect(gatherWeight(near, 0.2)).toBeLessThan(gatherWeight(near, 0.8));
+	});
+
+	it('weighs only the depth: every unit fades and starts the same', () => {
+		if (part === undefined) {
+			throw new Error('Album → Albums has no card part');
+		}
+		const near = weighGather(part, 0.15);
+		const far = weighGather(part, 1);
+		expect(near.from.scale).toBeGreaterThan(far.from.scale ?? 1);
+		expect(near.from.opacity).toBe(far.from.opacity);
+		expect(near.delay).toBe(far.delay);
+		expect(far.from.scale).toBe(part.from.scale);
 	});
 });
 

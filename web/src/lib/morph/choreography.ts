@@ -514,6 +514,28 @@ const albumToLibrary: Choreography = {
 };
 
 /**
+ * Album to Albums: the grid grows from it. The cover and its words land in their cell, and the grid
+ * assembles around it, all at once: the cells beside it all but there, the far ones from deeper.
+ * The grid is built from the album, so the album was never put back.
+ */
+const albumToAlbums: Choreography = {
+	name: 'album-to-albums',
+	grain: 'gathering',
+	motion: base,
+	travel: {
+		subject: 'pages',
+		leads: albumLeads('from'),
+		sourceSlots: ['hero'],
+		targetSlots: ['card']
+	},
+	...albumGivesWay,
+	arriving: { intro: gather(0.16, 60), card: gather(0.16, 60) },
+	stages: {},
+	bloom: null,
+	island: null
+};
+
+/**
  * Home to Now playing: two levels down in one move. The island's cover rises to the center of
  * the stage and the song's name follows it up, the rest of the island gathers into the pill
  * controls, and the poster title climbs out from behind the cover, a line at a time.
@@ -679,8 +701,13 @@ export const blend: Choreography = {
 const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
 	'home>album': homeToAlbum,
 	'library>album': libraryToAlbum,
+	'albums>album': albumDoor,
+	'artist>album': albumDoor,
+	'playlist>album': albumDoor,
+	'search>album': albumDoor,
 	'album>home': albumToHome,
 	'album>library': albumToLibrary,
+	'album>albums': albumToAlbums,
 	'home>now-playing': homeToNowPlaying,
 	'now-playing>home': nowPlayingToHome,
 	'album>now-playing': albumToNowPlaying,
