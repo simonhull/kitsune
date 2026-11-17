@@ -5,6 +5,7 @@ import {
 	albumOf,
 	albumRun,
 	appended,
+	backOnList,
 	extended,
 	continued,
 	currentOf,
@@ -26,6 +27,7 @@ import {
 	shuffledOff,
 	shuffledOn,
 	takenIn,
+	takenUp,
 	throughList,
 	reordered,
 	upcoming,
@@ -500,5 +502,53 @@ describe("the player's own shuffle", () => {
 		expect(isShuffling(queue)).toBe(true);
 		expect(shuffledOn(queue, 1)).toBe(queue);
 		expect(shuffledOff(queue)).toBe(queue);
+	});
+});
+
+describe('a shuffle session taken up by a queue going through a list', () => {
+	const other = {
+		...album(3),
+		id: 'b',
+		tracks: album(3).tracks.map((t) => ({ ...t, id: `b${t.id}` }))
+	};
+	const ref = { id: 'pending-1', endless: true };
+
+	it('keeps the song playing and what played, and lets the session say what comes next', () => {
+		const queue = continued(throughList(inOrder(album(3), 2)), other);
+		const up = takenUp(queue, ref);
+		expect(ids(up.tracks)).toEqual(['t0', 't1', 't2']);
+		expect(up.index).toBe(2);
+		expect(currentOf(up)?.id).toBe('t2');
+		expect(up.shuffle).toBe(ref);
+		expect(up.continues).toBeUndefined();
+		expect(up.ordered).toBe(false);
+		expect(onwardOf(up)).toBe('shuffle');
+		expect(isShuffling(up)).toBe(true);
+	});
+
+	it('goes back on through the list from the song playing, its album in order, at album gain', () => {
+		const up = takenUp(throughList(inOrder(album(3))), ref);
+		// The session played a song of another album, then went off on it.
+		const grown = extended(up, [{ album: other, track: other.tracks[1] as Track }]);
+		const back = backOnList({ ...grown, index: 1 }, other);
+		expect(ids(back.tracks)).toEqual(['t0', 'bt1', 'bt2']);
+		expect(back.index).toBe(1);
+		expect(back.continues).toEqual({ album: 'b' });
+		expect(back.shuffle).toBeUndefined();
+		expect(back.ordered).toBe(true);
+		expect(onwardOf(back)).toBe('list');
+		expect(isShuffling(back)).toBe(false);
+		expect(back.tracks.map((track) => albumOf(back, track).id)).toEqual(['a', 'b', 'b']);
+		// The list puts its next album after this one, as from any song started in it.
+		const on = continued(back, album(2));
+		expect(on.continues?.ahead).toEqual({ at: 3, count: 2, after: 'b' });
+	});
+
+	it('goes on from the album with nothing of it ahead, for its last song', () => {
+		const up = takenUp(throughList(inOrder(other, 2)), ref);
+		const back = backOnList(up, other);
+		expect(ids(back.tracks)).toEqual(ids(other.tracks));
+		expect(upcoming(back)).toBeUndefined();
+		expect(back.continues).toEqual({ album: 'b' });
 	});
 });

@@ -426,3 +426,105 @@ describe('Shuffle pressed', () => {
 		expect(player.queue?.later?.at(0)?.trackId).toBe('d-0');
 	});
 });
+
+describe('Shuffle pressed on a queue going on through the Library', () => {
+	/** Plays album c from its second song, as a song started from the Library does. */
+	async function fromTheLibrary(overrides: Partial<LibrarySource> = {}) {
+		const parts = setup(overrides);
+		await parts.library.loadAlbum('c');
+		const album = parts.library.album('c');
+		if (album === undefined) {
+			throw new Error('no album c');
+		}
+		parts.player.play(album, 1, 'list');
+		parts.shuffles.throughList = () => sourceOf([]);
+		return parts;
+	}
+
+	it('takes up a session of the Library from the song playing, which plays on', async () => {
+		const { player, shuffles, starts } = await fromTheLibrary();
+		const listed = vi.fn();
+		player.onward.list = listed;
+		shuffles.toggle();
+		expect(player.current?.id).toBe('c-1');
+		expect(player.sounding).toBe(true);
+		expect(player.shuffling).toBe(true);
+		expect(player.endless).toBe(true);
+		expect(player.queue?.continues).toBeUndefined();
+		expect(player.queue?.tracks.map(({ id }) => id)).toEqual(['c-0', 'c-1']);
+		expect(starts).toEqual([{ scope: { kind: 'library' }, mode: 'endless', first: 'c-1' }]);
+		await settle();
+		expect(shuffles.current?.ref.id).toBe('S1');
+		expect(shuffles.current?.fromList).toBe(true);
+		// What comes next is the session's, never the rest of the album.
+		expect(player.queue?.tracks.slice(1, 5).map(({ id }) => id)).toEqual([
+			'c-1',
+			'a-0',
+			'a-1',
+			'a-2'
+		]);
+		player.next();
+		expect(player.current?.id).toBe('a-0');
+		expect(listed).not.toHaveBeenCalled();
+	});
+
+	it('goes back on through the Library from the song playing when it goes off', async () => {
+		const { player, shuffles, nexts } = await fromTheLibrary();
+		shuffles.toggle();
+		await settle();
+		player.next();
+		const listed = vi.fn();
+		player.onward.list = listed;
+		const asked = nexts.length;
+		shuffles.toggle();
+		expect(player.current?.id).toBe('a-0');
+		expect(player.sounding).toBe(true);
+		expect(player.shuffling).toBe(false);
+		expect(player.queue?.shuffle).toBeUndefined();
+		expect(player.queue?.continues).toEqual({ album: 'a' });
+		expect(player.queue?.tracks.slice(2).map(({ id }) => id)).toEqual(['a-0', 'a-1', 'a-2']);
+		expect(player.queue?.ordered).toBe(true);
+		// The list is told at once, so its next album follows this one.
+		expect(listed).toHaveBeenCalledTimes(1);
+		expect(shuffles.current?.active).toBe(false);
+		await settle();
+		expect(nexts.length).toBe(asked);
+		// On again, it takes up a new session from the song playing.
+		shuffles.toggle();
+		expect(player.queue?.shuffle).toBeDefined();
+		expect(shuffles.current?.fromList).toBe(true);
+	});
+
+	it('goes on through a run it was taken up partway through, and leaves out what played', async () => {
+		const run: ShufflePick = {
+			...pick('c-0'),
+			songs: ['c-0', 'c-1', 'c-2'].flatMap((id) => pick(id).songs)
+		};
+		const { player, shuffles } = await fromTheLibrary({
+			startShuffle: () =>
+				Promise.resolve({ ...page(0, 'c-1'), picks: [run, ...page(0, 'c-1').picks.slice(1)] })
+		});
+		shuffles.toggle();
+		await settle();
+		expect(player.queue?.tracks.slice(1, 4).map(({ id }) => id)).toEqual(['c-1', 'c-2', 'a-0']);
+	});
+
+	it("keeps the player's own shuffle for any other queue, or with no Library to take up", async () => {
+		const { library, player, shuffles, starts } = await fromTheLibrary();
+		const album = library.album('c');
+		if (album === undefined) {
+			throw new Error('no album c');
+		}
+		player.play(album, 1);
+		shuffles.toggle();
+		expect(player.queue?.shuffled).toBeDefined();
+		expect(player.queue?.shuffle).toBeUndefined();
+		shuffles.toggle();
+		player.play(album, 1, 'list');
+		shuffles.throughList = null;
+		shuffles.toggle();
+		expect(player.queue?.shuffled).toBeDefined();
+		expect(player.queue?.continues).toEqual({ album: 'c' });
+		expect(starts).toEqual([]);
+	});
+});

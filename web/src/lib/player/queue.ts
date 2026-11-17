@@ -564,6 +564,50 @@ export function shuffledOff(queue: Queue): Queue {
 	};
 }
 
+/**
+ * A shuffle session taken up by the queue playing, from its song: the song plays on, what was to
+ * come after it goes, and the session's songs come after it as they arrive. It no longer goes on
+ * through a list, and plays each song's own gain, as any session's queue does.
+ */
+export function takenUp(queue: Queue, shuffle: ShuffleRef): Queue {
+	return {
+		...queue,
+		tracks: queue.tracks.slice(0, queue.index + 1),
+		ordered: false,
+		shuffle,
+		shuffled: undefined,
+		continues: undefined,
+		later: undefined
+	};
+}
+
+/**
+ * Leaves a shuffle session for the list it was taken up from, as a queue started from the song
+ * playing in that list: the rest of `album`, the song's, in the album's order, and then the list
+ * goes on after it. What played stays behind. Album gain plays again, since what's ahead is whole
+ * albums in their own order, as when the list was playing.
+ */
+export function backOnList(queue: Queue, album: Album): Queue {
+	const current = currentOf(queue);
+	const at = album.tracks.findIndex(({ id }) => id === current?.id);
+	const rest = at < 0 ? [] : album.tracks.slice(at + 1);
+	const behind = queue.tracks.slice(0, queue.index + 1);
+	const albums = new Map(behind.map((track) => [track.id, albumOf(queue, track)]));
+	for (const track of rest) {
+		albums.set(track.id, album);
+	}
+	return {
+		...queue,
+		tracks: [...behind, ...rest],
+		ordered: true,
+		albums,
+		shuffle: undefined,
+		shuffled: undefined,
+		later: undefined,
+		continues: { album: album.id }
+	};
+}
+
 /** Returns the track the queue is on. */
 export function currentOf({ tracks, index }: Queue): Track | undefined {
 	return tracks.at(index);

@@ -692,7 +692,12 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   mode and outlives a queue; an endless shuffle skips `all`. Shuffle belongs to the queue: the
   player's own (`Queue.shuffled`, a seed and the queue's own order to go back to, `shuffledOn`/
   `shuffledOff`) or a session's (`Queue.shuffle`), which turning off leaves for its scope's order
-  from the song playing (`Shuffles.toggle`, `scopeOrder.ts`). Both join the playback record
+  from the song playing (`Shuffles.toggle`, `scopeOrder.ts`). A queue going on through the Library
+  (`continues`) is the exception: Shuffle takes up a session of what the Library's own Shuffle
+  shuffles under its filter (`Shuffles.throughList`, set by `libraryView`), with the song playing as
+  `first` (`takenUp`), and off goes back on through the Library from the song playing then
+  (`backOnList`), its sort and filter as shown; a session restored from a record goes off into its
+  scope's order. Both join the playback record
   (`repeat`, `shuffled`); one saved before them is off and off, and `shuffled.order` counts against
   the 1,000. A press reorders in memory and never stops the song; the save follows. The island is
   one Tab stop (`roving.ts`), and the player's keys are `playerKey` in `lib/player/keys.ts`.

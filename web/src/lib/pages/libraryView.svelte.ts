@@ -3,6 +3,8 @@ import { library } from '#lib/library/library.svelte.ts';
 import { sortIndex, turnedLetterTarget } from '#lib/library/libraryOrder.ts';
 import type { LibraryIndex } from '#lib/library/source.ts';
 import { player } from '#lib/player/player.svelte.ts';
+import { shuffles } from '#lib/shuffle/session.svelte.ts';
+import { librarySource } from '#lib/shuffle/sources.ts';
 import {
 	artistAt,
 	keepFor,
@@ -217,6 +219,8 @@ class LibraryView {
 		player.onward.list = () => {
 			this.#continues.keep();
 		};
+		// Shuffle pressed on a queue going on through the list shuffles what the list's Shuffle does.
+		shuffles.throughList = () => librarySource(this.filter);
 		// A list that changes under a queue going through it: a live event, or another filter. The
 		// list is only read while one is.
 		$effect.root(() => {
