@@ -8,6 +8,7 @@ import { HtmlOutput, mediaTypeOf, SilentOutput, type AudioOutput } from './outpu
 import {
 	albumOf,
 	albumRun,
+	backOnList,
 	appended,
 	continued,
 	currentOf,
@@ -29,6 +30,7 @@ import {
 	shuffledOff,
 	shuffledOn,
 	takenIn,
+	takenUp,
 	without,
 	reordered,
 	throughList,
@@ -224,6 +226,35 @@ export class Player implements PlayerView {
 						this.#lookup
 					);
 		this.#reordered();
+	}
+
+	/**
+	 * Takes up a shuffle session on the queue playing, from its song ({@link takenUp}): the song
+	 * plays on untouched, and the session's songs come after it as they arrive.
+	 */
+	takeUpShuffle(shuffle: ShuffleRef): void {
+		const { queue } = this;
+		if (queue === null || isShuffling(queue)) {
+			return;
+		}
+		this.queue = takenUp(queue, shuffle);
+		this.#reordered();
+	}
+
+	/**
+	 * Leaves a shuffle session for the list it was taken up from ({@link backOnList}): the song
+	 * playing plays on, and the list goes on from it, as though it had been started there.
+	 */
+	leaveShuffleForList(): void {
+		const { queue, album } = this;
+		if (queue?.shuffle === undefined || album === null) {
+			return;
+		}
+		const back = backOnList(queue, this.#library.album(album.id) ?? album);
+		this.queue = back;
+		this.#reordered();
+		// The list looks at what comes after: its next album, when this is its album's last song.
+		this.onward[onwardOf(back)]?.(back);
 	}
 
 	/** The songs to come have changed under the one playing: show it, preload again, save it later. */

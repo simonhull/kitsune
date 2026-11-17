@@ -15,6 +15,7 @@ import {
 	albumOf,
 	currentOf,
 	isShuffling,
+	type Queue,
 	type Queued,
 	type ShuffleRef
 } from '#lib/player/queue.ts';
@@ -120,6 +121,11 @@ export class Shuffle {
 	/** The client's ID at first, the server's session once it answers: what listens name. */
 	readonly ref: ShuffleRef;
 	readonly source: ShuffleSource;
+	/**
+	 * Taken up by a queue going on through a list, the Library's: off goes back on through it from
+	 * the song playing, rather than to the scope's order.
+	 */
+	readonly fromList: boolean;
 	/** Picks the server gave that aren't queued yet, in order. */
 	picks = $state.raw<ShufflePick[]>([]);
 	/** How many songs it picks from, once the server has said. */
@@ -139,17 +145,22 @@ export class Shuffle {
 	/**
 	 * A shuffle whose first unit is `first`. Resuming one the server already keeps, `resumed` gives
 	 * its session, as the queue names it, and the position after `first`: it goes on from there.
+	 * `fromList` is a shuffle taken up by a queue going on through a list.
 	 */
 	constructor(
 		host: Library,
 		playing: Player,
 		source: ShuffleSource,
 		first: Unit,
-		resumed?: { ref: ShuffleRef; after: number }
+		{
+			resumed,
+			fromList = false
+		}: { resumed?: { ref: ShuffleRef; after: number }; fromList?: boolean } = {}
 	) {
 		this.#host = host;
 		this.#player = playing;
 		this.source = source;
+		this.fromList = fromList;
 		this.ref = resumed?.ref ?? {
 			id: `pending-${newClientId()}`,
 			endless: source.mode === 'endless'
@@ -213,17 +224,21 @@ export class Shuffle {
 		await this.topUp();
 	}
 
-	/** Takes in a page: the first page's lead is the song already playing. */
+	/**
+	 * Takes in a page. The first page leads with the unit of the song already playing: what of it is
+	 * queued already is left out, and only the songs of a run after the one playing are still to come,
+	 * for a shuffle taken up partway through a run.
+	 */
 	#take(page: ShufflePage, first: boolean): void {
-		const lead = page.picks.at(0)?.songs.at(0)?.id;
-		const picks = first && lead === this.#first ? page.picks.slice(1) : page.picks;
-		if (first && lead === this.#first) {
-			const why = page.picks.at(0)?.why;
+		const lead = page.picks.at(0);
+		const at = lead?.songs.findIndex(({ id }) => id === this.#first) ?? -1;
+		let picks = page.picks;
+		if (first && lead !== undefined && at >= 0) {
 			for (const id of this.#unit.keys()) {
-				if (why !== undefined) {
-					this.#why.set(id, why);
-				}
+				this.#why.set(id, lead.why);
 			}
+			const rest = lead.songs.slice(at + 1).filter(({ id }) => !this.#unit.has(id));
+			picks = [...(rest.length > 0 ? [{ ...lead, songs: rest }] : []), ...page.picks.slice(1)];
 		}
 		this.picks = [...this.picks, ...picks];
 		this.songs = page.songs;
@@ -451,6 +466,11 @@ export class Shuffle {
 /** Starts shuffles, and keeps the one playing going. */
 export class Shuffles {
 	current = $state.raw<Shuffle | null>(null);
+	/**
+	 * What Shuffle takes up on a queue going on through the Library: what the Library's own Shuffle
+	 * shuffles, under its filter. Set by the Library's view; without it, the player's own shuffle.
+	 */
+	throughList: (() => ShuffleSource) | null = null;
 	readonly #host: Library;
 	readonly #player: Player;
 	#primed: { key: string; unit: Unit | undefined } | null = null;
@@ -542,7 +562,15 @@ export class Shuffles {
 			albumId: albumOf(queue, track).id
 		}));
 		this.#primed = null;
-		this.current = new Shuffle(this.#host, this.#player, source, { songs }, { ref, after });
+		this.current = new Shuffle(
+			this.#host,
+			this.#player,
+			source,
+			{ songs },
+			{
+				resumed: { ref, after }
+			}
+		);
 	}
 
 	/** Forgets the shuffle, and any pick made ahead: the next person's are their own. */
@@ -553,8 +581,10 @@ export class Shuffles {
 	}
 
 	/**
-	 * The player's Shuffle button, and `S`: the player's own shuffle on or off, or, in a shuffle
-	 * session's queue, off by leaving the session for its scope's own order from the song playing.
+	 * The player's Shuffle button, and `S`. On a queue going on through the Library it takes up a
+	 * session of what the Library's Shuffle shuffles, from the song playing; off, that goes back on
+	 * through the Library from the song playing then. Any other queue has the player's own shuffle,
+	 * and a session's queue otherwise goes off into its scope's own order from the song playing.
 	 * The song playing never stops, and nothing waits on the server.
 	 */
 	toggle(): void {
@@ -564,10 +594,22 @@ export class Shuffles {
 		}
 		this.#leaving += 1;
 		if (queue.shuffle === undefined) {
-			this.#player.toggleShuffle();
+			const source =
+				queue.continues !== undefined && queue.shuffled === undefined
+					? this.throughList?.()
+					: undefined;
+			if (source === undefined) {
+				this.#player.toggleShuffle();
+			} else {
+				this.#takeUp(queue, source);
+			}
 			return;
 		}
 		const shuffle = this.current;
+		if (shuffle?.ref === queue.shuffle && shuffle.fromList) {
+			this.#player.leaveShuffleForList();
+			return;
+		}
 		const scope = shuffle?.ref === queue.shuffle ? shuffle.source.scope : undefined;
 		const order = scope === undefined ? null : scopeOrder(scope, this.#holds());
 		this.#player.leaveShuffle(
@@ -576,6 +618,22 @@ export class Shuffles {
 		if (scope !== undefined && order === null) {
 			void this.#leaveLater(scope, this.#leaving);
 		}
+	}
+
+	/**
+	 * Takes up a session of `source` on the queue playing, with its song as the first: the song plays
+	 * on, and the server is asked for the rest behind it.
+	 */
+	#takeUp(queue: Queue, source: ShuffleSource): void {
+		const current = currentOf(queue);
+		if (current === undefined) {
+			return;
+		}
+		const first: Unit = { songs: [{ id: current.id, albumId: albumOf(queue, current).id }] };
+		const shuffle = new Shuffle(this.#host, this.#player, source, first, { fromList: true });
+		this.current = shuffle;
+		this.#player.takeUpShuffle(shuffle.ref);
+		void shuffle.begin();
 	}
 
 	/** What the scope's orders are read from, as far as it's here now. */
