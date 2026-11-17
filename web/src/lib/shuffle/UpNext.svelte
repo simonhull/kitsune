@@ -22,6 +22,7 @@
 	} from '#lib/pages/songActions.ts';
 	import SongRow from '#lib/pages/SongRow.svelte';
 	import { focusRow, rowEvents, SongList } from '#lib/pages/songRow.ts';
+	import { library } from '#lib/library/library.svelte.ts';
 	import { player } from '#lib/player/player.svelte.ts';
 	import { clock } from '#lib/library/format.ts';
 	import { onMount } from 'svelte';
@@ -34,7 +35,15 @@
 		/** How many songs the shuffle picks from, once the server has said. */
 		songs: number | null;
 		/** The song playing, which heads the list. */
-		playing: { id: string; title: string; artist: string; durationMs: number; album: AlbumEntry };
+		playing: {
+			id: string;
+			title: string;
+			artist: string;
+			durationMs: number;
+			album: AlbumEntry;
+			/** Who the album is by, as a page, for its menu's Go to artist. */
+			artistId?: string | undefined;
+		};
 		/** What a row says of why it came up, if anything does. */
 		why?: Snippet<[UpNextItem]>;
 	}
@@ -109,9 +118,28 @@
 		y: number;
 		target: MenuTarget;
 		actions: SongActions;
-		remove: () => void;
+		/** Absent for the song playing, which isn't in the queue to remove. */
+		remove?: (() => void) | undefined;
 	} | null>(null);
 	let opener: HTMLElement | null = null;
+
+	/** The song playing's own ⋯: what any song's offers, but nothing to take out of the queue. */
+	function openPlayingMenu(x: number, y: number): void {
+		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		rowMenu = {
+			x,
+			y,
+			target: {
+				kind: 'song',
+				trackId: playing.id,
+				albumId: playing.album.id,
+				title: playing.title,
+				line: `${playing.album.title.toUpperCase()} · ${clock(playing.durationMs / 1000)}`,
+				artistId: playing.artistId
+			},
+			actions: actionsFor([playing.id], new Map([[playing.id, playing.album.id]]))
+		};
+	}
 
 	const events = rowEvents({
 		play: (key) => {
@@ -129,6 +157,9 @@
 		menu: (key, x, y) => {
 			const item = byKey.get(key);
 			if (item === undefined) {
+				if (key === playing.id) {
+					openPlayingMenu(x, y);
+				}
 				return;
 			}
 			opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -141,7 +172,7 @@
 					albumId: item.album.id,
 					title: item.titles.join(' + '),
 					line: `${item.album.title.toUpperCase()} · ${clock(item.durationMs / 1000)}`,
-					artistId: undefined
+					artistId: library.album(item.album.id)?.artists.at(0)?.id
 				})
 			);
 			if (target === undefined) {
