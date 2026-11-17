@@ -816,6 +816,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   toast (`GainToast.svelte`) with its Undo. The nav says REPLAYGAIN · n% in Organize's slot. Words live
   in `words.ts`; the fixtures (`fixture.ts`, `?gain=` and `?gainAlbum=`) run on a timer. Nothing is
   optimistic, and nothing on the play path waits on it.
+- Journeys (`lib/morph/`) keep the In-Front Rule: the page you go to is always drawn in front of the
+  page you leave, and nothing leaving moves away to uncover it. The ghost layer is the first thing in
+  the shell, under the stages and the page, and a stage left is held there as a picture. A ghost is a
+  picture with no `main` of its own, so code that wants the page on screen asks `pageMain()`.
+  Everything a page shows belongs to a `data-morph-part` unit or comes and goes as loose content; a
+  shared element registers with `use:morph`, an element known by two names with `also`. An e2e test
+  that reads a page's geometry after a navigation waits for `landed` (`e2e/fixture.ts`) first: the
+  units arriving are still moving. An album that starts playing goes first in Home's Recently played
+  at once (`Library.showQueue`), so Album → Home lands where Home holds it; the next read agrees.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
