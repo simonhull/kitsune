@@ -32,6 +32,7 @@ import (
 	"github.com/simonhull/kitsune/internal/server"
 	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/store"
+	"github.com/simonhull/kitsune/internal/stream"
 	"github.com/simonhull/kitsune/internal/webui"
 )
 
@@ -171,6 +172,7 @@ type app struct {
 	covers    *artwork.Cache
 	genres    *library.Genres
 	matcher   *matching.Matcher // The process's one way to MusicBrainz.
+	streams   *stream.Files     // The files streams hold open, which a ReplayGain run asks of.
 
 	// live holds the settings, and the owners of the ones that apply at once
 	// follow it (follow.go).
@@ -266,9 +268,10 @@ func buildApp(ctx context.Context, cfg *config.Config, l *launch, st *store.Stor
 	// base_url and trusted_proxies apply as the server started: changing them
 	// live could cut off the page that changed them.
 	public := config.Server{BaseURL: snap.BaseURL}
+	streams := &stream.Files{}
 	a := &app{
 		log: log, store: st, auth: svc, lastfm: sender, drain: shutdownTimeout,
-		scanner: newScanner(snap, st, covers, genres, hub, log), events: hub,
+		scanner: newScanner(snap, st, covers, genres, hub, streams, log), events: hub, streams: streams,
 		basePath: public.BasePath(), dataDir: cfg.Storage.DataDir, baseURL: snap.BaseURL,
 		setupCode: setupCode, covers: covers, genres: genres,
 		live: live, level: l.level, lastfmURL: l.lastfmURL, changes: subscribe(live), matcher: matcher,
@@ -311,6 +314,7 @@ func (a *app) handler(ctx context.Context, cfg *config.Config, l *launch, public
 		Events:         a.events,
 		Matcher:        a.matcher,
 		Work:           a.startWork,
+		Streams:        a.streams,
 	})
 }
 
@@ -329,7 +333,7 @@ func readGenres(ctx context.Context, st *store.Store) (*library.Genres, error) {
 }
 
 // newScanner returns the library scanner over st that snap sets up.
-func newScanner(snap *settings.Snapshot, st *store.Store, covers *artwork.Cache, genres *library.Genres, hub *events.Hub, log *slog.Logger) *library.Scanner {
+func newScanner(snap *settings.Snapshot, st *store.Store, covers *artwork.Cache, genres *library.Genres, hub *events.Hub, streams *stream.Files, log *slog.Logger) *library.Scanner {
 	return library.NewScanner(st, library.Options{
 		Roots:        snap.Roots,
 		MissingGrace: snap.MissingGrace,
@@ -338,6 +342,7 @@ func newScanner(snap *settings.Snapshot, st *store.Store, covers *artwork.Cache,
 		TagWrites:    snap.TagWrites,
 		Genres:       genres,
 		Notify:       server.NewLibraryEvents(hub),
+		Streams:      streams,
 		QuickScan:    library.Daily{Hour: snap.QuickScan.Hour, Minute: snap.QuickScan.Minute},
 	})
 }
@@ -479,6 +484,9 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	// A run a stop interrupted is settled before anything scans or watches.
 	if err := a.scanner.RecoverOrganize(context.WithoutCancel(ctx)); err != nil {
 		return fmt.Errorf("recover an interrupted organize run: %w", err)
+	}
+	if err := a.scanner.RecoverGain(context.WithoutCancel(ctx)); err != nil {
+		return fmt.Errorf("recover an interrupted ReplayGain run: %w", err)
 	}
 	bgCtx, cancelBackground := context.WithCancel(ctx)
 	a.workMu.Lock()

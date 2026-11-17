@@ -50,10 +50,13 @@ RETURNING id;
 -- name: UpdateTrack :execrows
 UPDATE tracks SET
     root = sqlc.arg(root), rel_path = sqlc.arg(rel_path), size = sqlc.arg(size), mtime = sqlc.arg(mtime),
-    -- A write without a fingerprint keeps the stored one only while the file is unchanged.
+    -- A write without a fingerprint keeps the stored one only while the file is
+    -- unchanged, or when only its tags were rewritten (retagged): audiometa
+    -- verified the audio is the same, and the fingerprint covers audio alone.
     audio_digest = CASE
         WHEN sqlc.narg(audio_digest) IS NOT NULL THEN sqlc.narg(audio_digest)
         WHEN tracks.size = sqlc.arg(size) AND tracks.mtime = sqlc.arg(mtime) THEN tracks.audio_digest
+        WHEN CAST(sqlc.arg(retagged) AS INTEGER) = 1 THEN tracks.audio_digest
     END,
     album_id = sqlc.arg(album_id),
     format = sqlc.arg(format), codec = sqlc.arg(codec), duration_ms = sqlc.arg(duration_ms),

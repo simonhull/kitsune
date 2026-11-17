@@ -170,6 +170,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   shuffler's history of everyone whose plays moved; the scanner publishes `library`. `POST` and
   `DELETE /{group}/dismiss` are Not duplicates and Bring back. A group's key is a hash of its songs'
   ULIDs (`duplicates.Key`), so a third copy raises a dismissed group again; a pair's, of its albums'.
+- ReplayGain in the files is five admin routes under `/admin/replaygain`. `GET` says what a run would
+  write now (songs, albums, formats, the four biggest albums), what still waits for the loudness pass
+  (`waiting`) or can't be measured, the run going and the last 10 runs. `POST /runs` (`albums`, or none
+  for all) answers 202 at once and the run goes on as `Config.Work`; nothing named that can be written
+  is a 422, and tag writes off, busy (Retry-After) or a root that looks down a 409, as Organize's. `GET
+  /runs/{id}` lists its albums in its order (written, writing, waiting or left) and up to 500 songs it
+  left with why, by root-relative path; `POST /runs/{id}/stop` and `/undo`. Progress is the `replaygain`
+  event, to administrators: run, state, counts, `albumsDone` and the album in hand by ID, never a path.
+  It shares the scanner's claim with scans and Organize, so one waits for the other.
 - `GET /me/home` is Home's history, 25 albums each as `GET /albums` lists them: `recent`, by latest
   play, and `onRepeat`, by plays in the last 90 days (`onRepeatWindow`, the server's clock). Both
   count `plays` (imports included, but undated ones never on repeat, `store.SourceUndated`), never
@@ -328,6 +337,17 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `playback.queue`; the copy's own ratings, hearts and exclusions deleted; then `markTrashed`, as
   `MarkTrashed` does. The Last.fm outbox, edit history, lookups and the copy's loudness, fingerprint and
   artwork are left alone.
+- ReplayGain writes (`gainwrite.go`, migration `0025`): `gain_runs` (kind `run` or `undo`, state
+  `running`, `done`, `stopped` or `undone`, counts, `undo_of`) and `gain_writes` (one row per song: its
+  album's ULID and `ord`, the root and path at the time, `planned`, then `written` with the file's size
+  and mtime after, or `skipped` with a reason, or `undone`; the four values written, the album's NULL
+  when none; `prior`, the ReplayGain tags the file held before as JSON of keys as spelled; an undo's
+  row names the write it `undoes`). `track_id` is ON DELETE SET NULL. `GainLibrary` is one statement
+  over `tracks_ungained`, the measure of each file and its album's pool (current only when it pools
+  exactly the album's live songs, each measured for its file now), and leaves out a file a run wrote
+  already (a gain that rounds to 0.00 dB reads as none). The last 10 runs, or 90 days, whichever keeps
+  more, stay. `TrackWrite.Retagged` says audiometa rewrote only a file's tags, so its update keeps the
+  stored fingerprint and moves its loudness measure (`CarryTrackLoudness`) to the new size and mtime.
 
 ## Matching
 - `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
@@ -492,6 +512,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   order, at start and after every scan and edit, as the app's background work. A file that moves
   before the pass reaches it gets a new ID: the known limit. `GET /library` carries the pass's
   progress (`Scanner.Fingerprints`), a snapshot swapped like `Progress`; readiness never waits for it.
+  A file whose tags alone audiometa rewrote (a tag edit, a ReplayGain write) keeps its fingerprint:
+  audiometa verified its audio is bit-identical, and the digest covers audio alone.
 - `Scanner.Claim` reserves the one scan without waiting, so a refusal is known before anything starts;
   `Scan` is a claim that runs at once. A scan a handler starts runs as the app's background work
   (`app.startScan`), so shutdown cancels it and waits. A scheduled scan that meets a running one retries
@@ -528,6 +550,24 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   in path order, a batch under the library lock, and stops midway through a file for a waiting scan
   or edit. A track's `replayGain` is its tags' when it has a gain tagged, else the measure, and says
   which (`source`).
+- A ReplayGain run (`gainwrite.go`, `gainundo.go`, `gainfile.go`) writes the measure into the files of
+  songs with none, exactly what Kitsune plays (`loudness.Gain` of the track and of the album's pool, the
+  true peaks), rounded as a tag holds it, through audiometa's `SetTrackReplayGain` and
+  `SetAlbumReplayGain`, never by raw key. It never runs on its own. `StartGain` takes the claim through
+  `claimRun` (Organize's too) and the library lock one batch at a time (one album, at most 64 songs);
+  per batch it checks each song (live, at its path, size and mtime as the store and the disk have them,
+  no gain tagged, measure and pool current, writable), reads the file's ReplayGain tags (`prior`; a
+  peak alone or a 0.00 dB gain reads as none, and is written over), journals the batch, writes each
+  file, reads it back (`reindexFile` with `retagged`, so the fingerprint and the measure stay) and
+  settles the journal. The edit refuses a file whose fresh read holds anything but its `prior`. A file
+  is written in place (`WithInPlace`) unless a stream has it open (`OpenFiles`, `stream.Files`), when
+  the atomic rewrite leaves the stream its old file; a stream that opens it during a patch of a few
+  milliseconds is the known limit. Undo finds each song by track, wherever the organizer put it, skips
+  one whose tags no longer read what the run wrote (`retagged`), and writes `RemoveReplayGain` then the
+  `prior` as spelled; the songs then play measured again at once. `RecoverGain` runs at start after
+  `RecoverOrganize`, before anything scans: a planned row whose file reads what it planned (or, for an
+  undo, holds exactly the tags before) is read back and written, any other skipped `interrupted`. A
+  test seam, `gainFault`, panics a run at each step as a crash would.
 - Playlist files (`playlists.go`, `IsPlaylistFile`: `.m3u`, `.m3u8`) are found by the walk, the
   watcher and the poller beside the audio, and read after the scan's songs under the same claim and
   lock, so a file and its songs arrive together. One is read only when it is new, its size or mtime
@@ -768,6 +808,14 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   merge fails (`duplicates.svelte.ts`); the toast after it links to the Trash. Play on a copy plays that
   song alone (`queuedCopy`), fetching nothing. The fixtures (`lib/duplicates/fixture.ts`) are the
   boards' groups and the Blackstar pair; a merge sends their copies to the fixture Trash.
+- ReplayGain in the files (`lib/replaygain/`): `ReplayGainCard.svelte` on Health, beside MusicBrainz,
+  for admins, and the album ⋯'s "Write ReplayGain…" with its in-place confirm (`GainConfirm`, a sheet on
+  a phone), for `canTrash` and an album with measured songs. `library.replayGain` (`gain.svelte.ts`)
+  outlives the page: it reads `GET /admin/replaygain` at sign-in (so a reload finds a run going),
+  follows `replaygain` events (`Library.hearReplayGain`) and the run's albums, and keeps the album
+  toast (`GainToast.svelte`) with its Undo. The nav says REPLAYGAIN · n% in Organize's slot. Words live
+  in `words.ts`; the fixtures (`fixture.ts`, `?gain=` and `?gainAlbum=`) run on a timer. Nothing is
+  optimistic, and nothing on the play path waits on it.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
@@ -786,8 +834,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   stream's first byte, `GET /library/index`, `GET /me/home`, a 10,000-entry `GET /me/playlists/{id}`,
   a smart playlist's preview, a `GET /me/playlists` of ten smart ones, a 10,000-song `.m3u8` read
   against 50,000 songs, a quick scan with 50 unchanged playlist files, held to the same scan
-  without them, an organize preview of 50,000 songs, an organize run of 1,000, per song, and a find of duplicates over
-  50,000 songs after a fingerprint landed. The
+  without them, an organize preview of 50,000 songs, an organize run of 1,000, per song, a find of duplicates over
+  50,000 songs after a fingerprint landed, a ReplayGain run of 1,000 real FLACs, per song, and
+  `GET /admin/replaygain` over 50,000 songs with 2,000 to write. The
   browser suite also holds that a song plays on while its file moves. Each fails past its budget,
   and CI's `perf` job runs both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
   they were set; on CI they are multiplied by `ciMultiplier`, which comes from CI's own numbers.

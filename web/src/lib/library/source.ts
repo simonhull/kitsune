@@ -2,6 +2,7 @@
 
 import type { DuplicatesSource } from '#lib/duplicates/types.ts';
 import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
+import type { ReplayGainEvent, ReplayGainSource } from '#lib/replaygain/types.ts';
 import type { ThemeChoice } from '#lib/theme/theme.svelte.ts';
 import type { AlbumOrder, ArtistOrder, ArtistSongs, LibrarySort, Sort } from './sorts.ts';
 
@@ -720,6 +721,7 @@ export interface ServerEvents {
 	settings: { keys: string[] };
 	playlists: { ids: string[] };
 	organize: OrganizeEvent;
+	replaygain: ReplayGainEvent;
 }
 
 export type ServerEventKind = keyof ServerEvents;
@@ -1386,6 +1388,8 @@ export interface LibrarySource {
 	readonly organize: OrganizeSource;
 	/** Duplicates' routes, for administrators. */
 	readonly duplicates: DuplicatesSource;
+	/** The ReplayGain routes, for administrators: writing Kitsune's measure into the files. */
+	readonly replayGain: ReplayGainSource;
 }
 
 /** A save found a file where it was going: nothing was written. */

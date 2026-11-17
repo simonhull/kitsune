@@ -62,6 +62,7 @@ type Options struct {
 	Genres       *Genres          // Refreshed after scans and edits. Nil means a private one.
 	QuickScan    Daily            // When Run scans every day.
 	Notify       Notifier         // Hears what the scanner changes. Nil hears nothing.
+	Streams      OpenFiles        // Which files streams hold open, asked before a write in place. Nil is none.
 	// OrganizeStep, nil but in tests, is told each step of an organize run, as
 	// the library's own tests' fault hook is: one that blocks holds the run
 	// there, so a test can act on a run that is still going.
@@ -72,7 +73,7 @@ type Options struct {
 }
 
 // WriteFunc saves edit to the audio file at path, as [audiometa.WriteContext] does.
-type WriteFunc func(ctx context.Context, path string, edit func(*audiometa.File) error) error
+type WriteFunc func(ctx context.Context, path string, edit func(*audiometa.File) error, opts ...audiometa.WriteOption) error
 
 // Stats counts what a scan did.
 type Stats struct {
@@ -133,6 +134,13 @@ type Scanner struct {
 	// organizeFault, nil but in tests, is told each step of a run: it may stop
 	// the run there, as a crash would, or fail a move.
 	organizeFault func(step, rel string) error
+
+	gaining  atomic.Pointer[gainTask] // The ReplayGain run going now, if any.
+	gainNote throttle                 // When the notifier last heard of its progress.
+	streams  OpenFiles                // Which files streams hold open; nil is none.
+	// gainFault, nil but in tests, is told each step of a ReplayGain run: it
+	// may stop the run there by panicking, as a crash would.
+	gainFault func(step, rel string)
 }
 
 // NewScanner returns a scanner that writes to st.
@@ -154,6 +162,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 	if s.now == nil {
 		s.now = time.Now
 	}
+	s.streams = opts.Streams
 	s.notify = opts.Notify
 	if s.notify == nil {
 		s.notify = noNotify{}
@@ -162,9 +171,7 @@ func NewScanner(st *store.Store, opts Options) *Scanner { //nolint:gocritic // h
 		s.genres = NewGenres(st)
 	}
 	if s.write == nil {
-		s.write = func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
-			return audiometa.WriteContext(ctx, path, edit)
-		}
+		s.write = audiometa.WriteContext
 	}
 	s.progress.Store(&Progress{})
 	s.cfg.Store(&Live{Roots: opts.Roots, MissingGrace: opts.MissingGrace, TagWrites: opts.TagWrites})

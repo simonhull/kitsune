@@ -3,9 +3,12 @@
 	menu, from the album page's hero and from any album card.
 -->
 <script lang="ts">
+	import { MediaQuery } from 'svelte/reactivity';
 	import { library } from '#lib/library/library.svelte.ts';
+	import GainConfirm from '#lib/replaygain/GainConfirm.svelte';
+	import { menuNote } from '#lib/replaygain/words.ts';
 	import Icon from '#lib/shell/Icon.svelte';
-	import { albumActions, albumMenu } from './albumMenu.svelte.ts';
+	import { albumActions, albumMenu, measuredSongs } from './albumMenu.svelte.ts';
 	import Floating from './Floating.svelte';
 	import { pickerBeside, type PickerPlace } from './pickerPlace.ts';
 	import PlaylistPicker from './PlaylistPicker.svelte';
@@ -32,10 +35,18 @@
 	let addItem: HTMLButtonElement | undefined = $state();
 	const songIds = $derived(album?.tracks.map((track) => track.id) ?? []);
 
-	// A menu opened on another album starts with its list shut.
+	/** Write ReplayGain's confirm, which the menu grows into, and the songs it writes. */
+	const phone = new MediaQuery('(max-width: 720px)', false);
+	let confirming = $state(false);
+	let writing = $state(false);
+	const measured = $derived(album === undefined ? [] : measuredSongs(album));
+	const pooled = $derived(measured.find((track) => track.replayGain?.albumGain !== undefined));
+
+	// A menu opened on another album starts with its list shut, and asks nothing yet.
 	$effect(() => {
 		void open?.entry.id;
 		picking = null;
+		confirming = false;
 	});
 
 	function pick(item: HTMLElement): void {
@@ -50,7 +61,29 @@
 	}
 </script>
 
-{#if open !== null && actions !== null}
+{#if open !== null && actions !== null && confirming && actions.writeGain !== undefined}
+	{@const write = actions.writeGain}
+	<GainConfirm
+		x={open.x}
+		y={open.y}
+		count={measured.length}
+		formats={[...new Set(measured.map((track) => track.format))]}
+		albumGain={pooled?.replayGain?.albumGain}
+		albumPeak={pooled?.replayGain?.albumPeak}
+		phone={phone.current}
+		busy={writing}
+		onwrite={() => {
+			writing = true;
+			void write().finally(() => {
+				writing = false;
+				albumMenu.close(true);
+			});
+		}}
+		oncancel={(refocus) => {
+			albumMenu.close(refocus);
+		}}
+	/>
+{:else if open !== null && actions !== null}
 	<Floating
 		x={open.x}
 		y={open.y}
@@ -136,6 +169,23 @@
 				onclick={then(actions.organize)}
 				><span class="organize-name">Organize files…</span><span class="organize-note"
 					>PREVIEWS THESE {String(album?.tracks.length ?? open.entry.trackCount)} · MOVES NOTHING YET</span
+				></button
+			>
+		{/if}
+		{#if actions.writeGain !== undefined}
+			{#if actions.editTags === undefined && actions.organize === undefined}<div
+					class="rule"
+				></div>{/if}
+			<button
+				type="button"
+				role="menuitem"
+				class="item organize"
+				data-menu-item
+				onclick={() => {
+					confirming = true;
+				}}
+				><span class="organize-name">Write ReplayGain…</span><span class="organize-note"
+					>{menuNote(measured.length)}</span
 				></button
 			>
 		{/if}

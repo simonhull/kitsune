@@ -161,6 +161,13 @@ func (e *LibraryEvents) OrganizeChanged(p *library.OrganizeProgress) {
 	publishJSON(e.hub, events.Organize, events.Admins(), &ev, nil)
 }
 
+// GainChanged implements [library.Notifier]: administrators hear a ReplayGain
+// run's progress, never a path.
+func (e *LibraryEvents) GainChanged(p *library.GainProgress) {
+	ev := api.EventReplayGain{Run: p.Run, State: p.State, Done: p.Done, Total: p.Total, AlbumsDone: p.AlbumsDone, Album: p.Album}
+	publishJSON(e.hub, events.ReplayGain, events.Admins(), &ev, nil)
+}
+
 // LastfmChanged returns what the scrobbler calls when a person's connection or
 // outbox changed: that person's devices hear it.
 func LastfmChanged(hub *events.Hub) func(userID int64) {

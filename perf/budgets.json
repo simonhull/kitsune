@@ -206,6 +206,14 @@
     "organize-run": {
       "interaction": "An organize run of 1,000 songs in 100 albums, all moved and journaled, per song",
       "p95Ms": 3.7
+    },
+    "gain-run": {
+      "interaction": "A ReplayGain run of 1,000 FLACs in 100 albums, written in place, read back and journaled, per song",
+      "p95Ms": 20
+    },
+    "gain-status": {
+      "interaction": "GET /admin/replaygain, 50k songs, 2,000 of them to write",
+      "p95Ms": 35
     }
   }
 }

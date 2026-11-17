@@ -28,6 +28,11 @@ type TrackWrite struct {
 	// Digest on an update keeps the stored one while Size and MTime are unchanged,
 	// and clears it otherwise: a fingerprint holds only for the file it was read from.
 	Digest *[32]byte
+	// Retagged says only the file's tags were rewritten, by audiometa, which
+	// verified its audio is bit-identical: an update keeps the stored
+	// fingerprint, and a loudness measure of the file before follows it to the
+	// new size and mtime. Both cover the audio alone.
+	Retagged bool
 
 	Format, Codec                           string
 	Duration                                time.Duration // Stored to the millisecond.
@@ -574,7 +579,15 @@ func insertTrack(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, albumID
 
 // updateTrack rewrites an existing tracks row, keeping its ULID and added_at.
 func updateTrack(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, albumID int64, warnings string) error {
+	if tw.Retagged {
+		// Before the update, which moves the size and mtime the measure is matched by.
+		err := q.CarryTrackLoudness(ctx, sqlcdb.CarryTrackLoudnessParams{Size: tw.Size, Mtime: ms(tw.MTime), ID: tw.ID})
+		if err != nil {
+			return fmt.Errorf("carry the loudness of track %d: %w", tw.ID, err)
+		}
+	}
 	n, err := q.UpdateTrack(ctx, sqlcdb.UpdateTrackParams{
+		Retagged:     flag(tw.Retagged),
 		Root:         tw.Root,
 		RelPath:      tw.RelPath,
 		Size:         tw.Size,

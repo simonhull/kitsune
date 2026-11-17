@@ -29,6 +29,7 @@ import (
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/store"
+	"github.com/simonhull/kitsune/internal/stream"
 )
 
 // authorizationHeader is the credentials request header.
@@ -151,9 +152,10 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	}
 	roots := testRoots(tb, &o)
 	hub := events.New(events.Options{})
+	streams := &stream.Files{}
 	scanner := library.NewScanner(st, library.Options{
 		Roots: roots, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
-		Notify: NewLibraryEvents(hub), OrganizeStep: o.OrganizeStep,
+		Notify: NewLibraryEvents(hub), Streams: streams, OrganizeStep: o.OrganizeStep,
 	})
 	if o.StartScan == nil {
 		var scans sync.WaitGroup
@@ -219,6 +221,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		FolderRoot:    o.FolderRoot,
 		DataDir:       o.DataDir,
 		Work:          work,
+		Streams:       streams,
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)

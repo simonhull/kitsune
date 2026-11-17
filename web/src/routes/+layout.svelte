@@ -40,6 +40,8 @@
 	import TrashToast from '#lib/shell/TrashToast.svelte';
 	import OrganizeToast from '#lib/shell/OrganizeToast.svelte';
 	import { organizer } from '#lib/organize/organizer.svelte.ts';
+	import { replayGain } from '#lib/replaygain/gain.svelte.ts';
+	import GainToast from '#lib/shell/GainToast.svelte';
 	import PlaylistToast from '#lib/shell/PlaylistToast.svelte';
 	import { albumOn, navOf, routeIds } from '#lib/shell/routes.ts';
 	import type { LayoutProps } from './$types';
@@ -202,10 +204,13 @@
 
 	$effect(() => {
 		// An organize run's progress, for the nav's note on every page, while an administrator is in.
+		// A ReplayGain run's too, for the same slot, the album toast, and a run found after a reload.
 		if (library.admin) {
 			organizer.hear();
+			replayGain.hear();
 		} else {
 			organizer.deafen();
+			replayGain.deafen();
 		}
 	});
 </script>
@@ -245,6 +250,7 @@
 		organizing={organizer.run?.state === 'running' && routeId !== '/server/organize'
 			? organizer.run
 			: null}
+		writingGain={replayGain.going}
 	/>
 	<main>
 		{#if library.down && library.facts === null && !atDoor}
@@ -271,7 +277,7 @@
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
 	<AlbumMenu />
-	{#if !atDoor}<TrashToast /><PlaylistToast /><OrganizeToast />{/if}
+	{#if !atDoor}<TrashToast /><PlaylistToast /><OrganizeToast /><GainToast />{/if}
 	{#if library.admin && !atDoor}<MatchSheet />{/if}
 	{#if import.meta.env.DEV}<Hud />{/if}
 </div>

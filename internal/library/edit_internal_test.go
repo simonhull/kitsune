@@ -177,11 +177,11 @@ func TestEditRefreshesTheNames(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			l := newEditLib(t)
-			l.scanner.write = func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+			l.scanner.write = func(ctx context.Context, path string, edit func(*audiometa.File) error, opts ...audiometa.WriteOption) error {
 				if tt.fail != nil {
 					return tt.fail
 				}
-				return audiometa.WriteContext(ctx, path, edit)
+				return audiometa.WriteContext(ctx, path, edit, opts...)
 			}
 			tw := l.trackAt(l.root, "unindexed.flac", 1, l.opts.Now())
 			tw.Album.Name, tw.Album.GroupKey = "Zebrafish", "zebrafish"
@@ -356,12 +356,12 @@ func TestWriteStopsAndReindexesWhatChanged(t *testing.T) {
 	l := newEditLib(t)
 	boom := errors.New("disk full")
 	writes := 0
-	l.scanner.write = func(ctx context.Context, path string, edit func(*audiometa.File) error) error {
+	l.scanner.write = func(ctx context.Context, path string, edit func(*audiometa.File) error, opts ...audiometa.WriteOption) error {
 		writes++
 		if writes == 2 {
 			return boom
 		}
-		return audiometa.WriteContext(ctx, path, edit)
+		return audiometa.WriteContext(ctx, path, edit, opts...)
 	}
 	err := l.editAlbum()
 	stopped, ok := errors.AsType[*EditError](err)
@@ -386,9 +386,9 @@ func TestCanceledEditIndexesTheFileItWrote(t *testing.T) {
 	l := newEditLib(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	l.scanner.write = func(_ context.Context, path string, edit func(*audiometa.File) error) error {
+	l.scanner.write = func(_ context.Context, path string, edit func(*audiometa.File) error, opts ...audiometa.WriteOption) error {
 		defer cancel() // The file is written, and the signal arrives.
-		return audiometa.Write(path, edit)
+		return audiometa.Write(path, edit, opts...)
 	}
 	if _, err := l.scanner.EditAlbum(ctx, l.album.ID, l.album.ETag, &AlbumEdit{All: *yearEdit()}); err != nil {
 		t.Logf("EditAlbum = %v", err) // Either way, the store must match the disk.

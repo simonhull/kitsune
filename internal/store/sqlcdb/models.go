@@ -63,6 +63,42 @@ type DuplicateDismissal struct {
 	DismissedAt int64
 }
 
+type GainRun struct {
+	ID         int64
+	Ulid       string
+	Kind       string
+	ByUser     *int64
+	StartedAt  int64
+	FinishedAt *int64
+	State      string
+	Total      int64
+	Albums     int64
+	Written    int64
+	LeftCount  int64
+	Failed     int64
+	UndoOf     *int64
+}
+
+type GainWrite struct {
+	ID         int64
+	RunID      int64
+	TrackID    *int64
+	Album      string
+	Ord        int64
+	Root       string
+	RelPath    string
+	State      string
+	Reason     *string
+	TrackGain  float64
+	TrackPeak  float64
+	AlbumGain  *float64
+	AlbumPeak  *float64
+	Prior      string
+	SizeAfter  *int64
+	MtimeAfter *int64
+	Undoes     *int64
+}
+
 type LastfmAccount struct {
 	UserID      int64
 	Name        string

@@ -58,6 +58,50 @@ test('Organize: a song keeps playing while its file moves', async ({ page, perf 
 	expect((await ended(page, back.id)).moved).toBe(1);
 });
 
+/** Waits for the ReplayGain run `id` to end, and returns how. */
+async function gainEnded(page: Page, id: string): Promise<{ state: string; written: number }> {
+	for (;;) {
+		const response = await page.request.get(`/api/v1/admin/replaygain/runs/${id}`);
+		expect(response.status()).toBe(200);
+		const { run } = (await response.json()) as { run: { state: string; written: number } };
+		if (run.state !== 'running') {
+			return run;
+		}
+		await page.waitForTimeout(50);
+	}
+}
+
+// Nor on a ReplayGain run: the loud albums are measured and carry no ReplayGain, so a run writes
+// the one playing, atomically since its stream holds the file open, and the song plays on. Undo
+// takes the tags out again.
+test('ReplayGain: a song keeps playing while its file is written', async ({ page, perf }) => {
+	await openLibrary(page);
+	const album = await nextLoudAlbum(page, perf.manifest, new Set());
+	const row = page.locator(`main .row[data-track="${album.firstTrack}"]`);
+	await row.scrollIntoViewIfNeeded();
+	await row.locator('.play').click();
+	await expect.poll(async () => (await sound(page, album.firstTrack)).at).toBeGreaterThan(0.5);
+	const headers = { 'X-Kitsune-Request': '1' };
+	const started = await page.request.post('/api/v1/admin/replaygain/runs', {
+		data: { albums: [album.id] },
+		headers
+	});
+	expect(started.status()).toBe(202);
+	const run = (await started.json()) as { id: string; total: number };
+	expect((await gainEnded(page, run.id)).written).toBe(run.total);
+	const before = await sound(page, album.firstTrack);
+	await page.waitForTimeout(1500);
+	const after = await sound(page, album.firstTrack);
+	expect(after.error).toBe(false);
+	expect(after.paused).toBe(false);
+	expect(after.at).toBeGreaterThan(before.at);
+	await page.locator('aside[aria-label="Player"] button.pause').click();
+	const undo = await page.request.post(`/api/v1/admin/replaygain/runs/${run.id}/undo`, { headers });
+	expect(undo.status()).toBe(202);
+	const back = (await undo.json()) as { id: string };
+	expect((await gainEnded(page, back.id)).written).toBe(run.total);
+});
+
 test('Organize: open the page from Server, to the template painted', async ({ page, perf }) => {
 	const open = perf.samples('open-organize');
 	for (let i = 0; i < runs; i++) {

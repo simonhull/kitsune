@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -37,6 +38,33 @@ const (
 // if the file is gone, if something other than a regular file took its place,
 // or if a file took the place of a folder above it.
 func Serve(w http.ResponseWriter, r *http.Request, file store.TrackFile) error {
+	return (*Files)(nil).Serve(w, r, file)
+}
+
+// Files counts the track files that streams hold open, by path, so that a
+// writer can leave a file being read alone: a ReplayGain run patches a file
+// in place only when no stream has it open, and otherwise rewrites it to a new
+// file, which an open stream never sees. The zero value is ready, and a nil
+// Files counts nothing. It is safe for concurrent use.
+type Files struct {
+	mu   sync.Mutex
+	open map[string]int
+}
+
+// Open reports whether a stream has the file at path open now.
+func (o *Files) Open(path string) bool {
+	if o == nil {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.open[path] > 0
+}
+
+// Serve is [Serve], counting the file open while it is read, from before it
+// is opened until after it is closed.
+func (o *Files) Serve(w http.ResponseWriter, r *http.Request, file store.TrackFile) error {
+	defer o.hold(filepath.Join(file.Root, file.RelPath))()
 	// Not os.Root: the scanner accepts a symlink that leads out of the library.
 	f, err := os.Open(filepath.Join(file.Root, file.RelPath))
 	if errors.Is(err, syscall.ENOTDIR) {
@@ -89,5 +117,26 @@ func mediaType(format string) string {
 		return "audio/aiff"
 	default:
 		return fallbackMediaType
+	}
+}
+
+// hold counts path as open until the func it returns is called.
+func (o *Files) hold(path string) func() {
+	if o == nil {
+		return func() {}
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.open == nil {
+		o.open = map[string]int{}
+	}
+	o.open[path]++
+	return func() {
+		o.mu.Lock()
+		defer o.mu.Unlock()
+		o.open[path]--
+		if o.open[path] <= 0 {
+			delete(o.open, path)
+		}
 	}
 }

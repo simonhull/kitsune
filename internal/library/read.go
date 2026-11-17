@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,23 +176,33 @@ func (rd *reader) readFile(ctx context.Context, j *job) (*store.TrackWrite, erro
 // the scan's read path. It never touches artwork. Nothing changes identity, so
 // nothing needs pruning. The caller holds the library lock.
 func (s *Scanner) reindex(ctx context.Context, id int64, root, relPath string) error {
+	_, err := s.reindexFile(ctx, id, root, relPath, false)
+	return err
+}
+
+// reindexFile is reindex, returning the file's size and modification time as
+// it read them. retagged says audiometa rewrote only the file's tags, having
+// verified its audio is bit-identical, so the track keeps its fingerprint and
+// its loudness measure ([store.TrackWrite].Retagged).
+func (s *Scanner) reindexFile(ctx context.Context, id int64, root, relPath string, retagged bool) (fs.FileInfo, error) {
 	info, err := os.Stat(filepath.Join(root, relPath))
 	if err != nil {
-		return fmt.Errorf("reindex: %w", err)
+		return nil, fmt.Errorf("reindex: %w", err)
 	}
 	j := job{Root: root, RelPath: relPath, Size: info.Size(), MTime: info.ModTime(), TrackID: id}
 	tw, err := (&reader{}).readFile(ctx, &j)
 	if err != nil {
-		return fmt.Errorf("reindex: %w", err)
+		return nil, fmt.Errorf("reindex: %w", err)
 	}
+	tw.Retagged = retagged
 	w := writer{s: s, stats: &Stats{}}
 	if err = w.identify(ctx, tw, &j); err != nil {
-		return fmt.Errorf("reindex: %w", err)
+		return nil, fmt.Errorf("reindex: %w", err)
 	}
 	if err = s.st.WriteBatch(ctx, &store.Batch{Tracks: []store.TrackWrite{*tw}}); err != nil {
-		return fmt.Errorf("reindex: %w", err)
+		return nil, fmt.Errorf("reindex: %w", err)
 	}
-	return nil
+	return info, nil
 }
 
 // issueFor turns a failed read into a scan issue. Corrupt and unsupported
