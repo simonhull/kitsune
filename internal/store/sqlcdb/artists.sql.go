@@ -17,7 +17,7 @@ WHERE t.id IN (SELECT s.track_id FROM track_artists s WHERE s.artist_id = ?)
 
 // The live songs an artist is on, as an artist or an album artist.
 func (q *Queries) CountArtistTracks(ctx context.Context, artistID int64) (int64, error) {
-	row := q.queryRow(ctx, q.countArtistTracksStmt, countArtistTracks, artistID)
+	row := q.db.QueryRowContext(ctx, countArtistTracks, artistID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -44,7 +44,7 @@ type GetArtistRow struct {
 }
 
 func (q *Queries) GetArtist(ctx context.Context, ulid string) (GetArtistRow, error) {
-	row := q.queryRow(ctx, q.getArtistStmt, getArtist, ulid)
+	row := q.db.QueryRowContext(ctx, getArtist, ulid)
 	var i GetArtistRow
 	err := row.Scan(
 		&i.ID,
@@ -81,7 +81,7 @@ type ListAlbumOwnersRow struct {
 }
 
 func (q *Queries) ListAlbumOwners(ctx context.Context, albumID int64) ([]ListAlbumOwnersRow, error) {
-	rows, err := q.query(ctx, q.listAlbumOwnersStmt, listAlbumOwners, albumID)
+	rows, err := q.db.QueryContext(ctx, listAlbumOwners, albumID)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ type ListAlbumSortArtistsRow struct {
 // ids is a JSON array of album ULIDs. An album's sort artist is its first owner's
 // sort name; an album nobody owns sorts by the artist it displays.
 func (q *Queries) ListAlbumSortArtists(ctx context.Context, ids string) ([]ListAlbumSortArtistsRow, error) {
-	rows, err := q.query(ctx, q.listAlbumSortArtistsStmt, listAlbumSortArtists, ids)
+	rows, err := q.db.QueryContext(ctx, listAlbumSortArtists, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ type ListArtistAlbumsRow struct {
 }
 
 func (q *Queries) ListArtistAlbums(ctx context.Context, artistID int64) ([]ListArtistAlbumsRow, error) {
-	rows, err := q.query(ctx, q.listArtistAlbumsStmt, listArtistAlbums, artistID)
+	rows, err := q.db.QueryContext(ctx, listArtistAlbums, artistID)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ type ListOwningArtistPlaysRow struct {
 // How often the person played the live tracks of the albums each artist owns,
 // owners as ListOwningArtists has them. An artist with none isn't listed.
 func (q *Queries) ListOwningArtistPlays(ctx context.Context, userID int64) ([]ListOwningArtistPlaysRow, error) {
-	rows, err := q.query(ctx, q.listOwningArtistPlaysStmt, listOwningArtistPlays, userID)
+	rows, err := q.db.QueryContext(ctx, listOwningArtistPlays, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +309,7 @@ type ListOwningArtistsRow struct {
 // unless it is a compilation, which belongs to nobody. Only live tracks count.
 // This test is repeated wherever owners matter: a query can't share it.
 func (q *Queries) ListOwningArtists(ctx context.Context) ([]ListOwningArtistsRow, error) {
-	rows, err := q.query(ctx, q.listOwningArtistsStmt, listOwningArtists)
+	rows, err := q.db.QueryContext(ctx, listOwningArtists)
 	if err != nil {
 		return nil, err
 	}

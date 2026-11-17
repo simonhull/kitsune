@@ -15,7 +15,7 @@ SELECT count(*) FROM users
 `
 
 func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
-	row := q.queryRow(ctx, q.countUsersStmt, countUsers)
+	row := q.db.QueryRowContext(ctx, countUsers)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -35,7 +35,7 @@ type CreateFirstUserParams struct {
 }
 
 func (q *Queries) CreateFirstUser(ctx context.Context, arg CreateFirstUserParams) (sql.Result, error) {
-	return q.exec(ctx, q.createFirstUserStmt, createFirstUser,
+	return q.db.ExecContext(ctx, createFirstUser,
 		arg.Name,
 		arg.PasswordHash,
 		arg.Role,
@@ -57,7 +57,7 @@ type CreateUserParams struct {
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (int64, error) {
-	row := q.queryRow(ctx, q.createUserStmt, createUser,
+	row := q.db.QueryRowContext(ctx, createUser,
 		arg.Name,
 		arg.PasswordHash,
 		arg.Role,
@@ -88,7 +88,7 @@ type ListUsersRow struct {
 }
 
 func (q *Queries) ListUsers(ctx context.Context, now int64) ([]ListUsersRow, error) {
-	rows, err := q.query(ctx, q.listUsersStmt, listUsers, now)
+	rows, err := q.db.QueryContext(ctx, listUsers, now)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ type SetPasswordHashParams struct {
 }
 
 func (q *Queries) SetPasswordHash(ctx context.Context, arg SetPasswordHashParams) (int64, error) {
-	result, err := q.exec(ctx, q.setPasswordHashStmt, setPasswordHash, arg.PasswordHash, arg.ID)
+	result, err := q.db.ExecContext(ctx, setPasswordHash, arg.PasswordHash, arg.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -141,7 +141,7 @@ WHERE name = ?
 `
 
 func (q *Queries) UserByName(ctx context.Context, name string) (User, error) {
-	row := q.queryRow(ctx, q.userByNameStmt, userByName, name)
+	row := q.db.QueryRowContext(ctx, userByName, name)
 	var i User
 	err := row.Scan(
 		&i.ID,

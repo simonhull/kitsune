@@ -14,7 +14,7 @@ SELECT EXISTS (SELECT 1 FROM albums WHERE ulid = ?)
 `
 
 func (q *Queries) AlbumExists(ctx context.Context, ulid string) (bool, error) {
-	row := q.queryRow(ctx, q.albumExistsStmt, albumExists, ulid)
+	row := q.db.QueryRowContext(ctx, albumExists, ulid)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -25,7 +25,7 @@ DELETE FROM match_states WHERE album_id = (SELECT id FROM albums WHERE ulid = ?)
 `
 
 func (q *Queries) ClearMatchState(ctx context.Context, ulid string) error {
-	_, err := q.exec(ctx, q.clearMatchStateStmt, clearMatchState, ulid)
+	_, err := q.db.ExecContext(ctx, clearMatchState, ulid)
 	return err
 }
 
@@ -42,7 +42,7 @@ type GetLookupParams struct {
 
 // Metadata matching: answers kept for a day, and the queue's state.
 func (q *Queries) GetLookup(ctx context.Context, arg GetLookupParams) ([]byte, error) {
-	row := q.queryRow(ctx, q.getLookupStmt, getLookup, arg.Source, arg.Key, arg.FetchedAt)
+	row := q.db.QueryRowContext(ctx, getLookup, arg.Source, arg.Key, arg.FetchedAt)
 	var body []byte
 	err := row.Scan(&body)
 	return body, err
@@ -69,7 +69,7 @@ type MatchQueueRow struct {
 // MatchQueue lists the albums the queue holds: every one with live tracks and
 // no MBID, and every one matched here, with its state and its live songs.
 func (q *Queries) MatchQueue(ctx context.Context) ([]MatchQueueRow, error) {
-	rows, err := q.query(ctx, q.matchQueueStmt, matchQueue)
+	rows, err := q.db.QueryContext(ctx, matchQueue)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ DELETE FROM lookups WHERE fetched_at < ?
 `
 
 func (q *Queries) PruneLookups(ctx context.Context, fetchedAt int64) error {
-	_, err := q.exec(ctx, q.pruneLookupsStmt, pruneLookups, fetchedAt)
+	_, err := q.db.ExecContext(ctx, pruneLookups, fetchedAt)
 	return err
 }
 
@@ -119,7 +119,7 @@ type PutLookupParams struct {
 }
 
 func (q *Queries) PutLookup(ctx context.Context, arg PutLookupParams) error {
-	_, err := q.exec(ctx, q.putLookupStmt, putLookup,
+	_, err := q.db.ExecContext(ctx, putLookup,
 		arg.Source,
 		arg.Key,
 		arg.Body,
@@ -141,7 +141,7 @@ type SetMatchStateParams struct {
 }
 
 func (q *Queries) SetMatchState(ctx context.Context, arg SetMatchStateParams) (int64, error) {
-	result, err := q.exec(ctx, q.setMatchStateStmt, setMatchState, arg.State, arg.At, arg.Ulid)
+	result, err := q.db.ExecContext(ctx, setMatchState, arg.State, arg.At, arg.Ulid)
 	if err != nil {
 		return 0, err
 	}

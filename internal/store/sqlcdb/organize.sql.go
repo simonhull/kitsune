@@ -26,7 +26,7 @@ type AddOrganizeMoveParams struct {
 // A move already made: a folder the run emptied and removed, or a playlist file
 // it rewrote.
 func (q *Queries) AddOrganizeMove(ctx context.Context, arg AddOrganizeMoveParams) error {
-	_, err := q.exec(ctx, q.addOrganizeMoveStmt, addOrganizeMove,
+	_, err := q.db.ExecContext(ctx, addOrganizeMove,
 		arg.RunID,
 		arg.Root,
 		arg.FromRel,
@@ -54,7 +54,7 @@ type CountOrganizeRunParams struct {
 }
 
 func (q *Queries) CountOrganizeRun(ctx context.Context, arg CountOrganizeRunParams) error {
-	_, err := q.exec(ctx, q.countOrganizeRunStmt, countOrganizeRun,
+	_, err := q.db.ExecContext(ctx, countOrganizeRun,
 		arg.Moved,
 		arg.LeftCount,
 		arg.Failed,
@@ -83,7 +83,7 @@ type CreateOrganizeRunParams struct {
 }
 
 func (q *Queries) CreateOrganizeRun(ctx context.Context, arg CreateOrganizeRunParams) (int64, error) {
-	row := q.queryRow(ctx, q.createOrganizeRunStmt, createOrganizeRun,
+	row := q.db.QueryRowContext(ctx, createOrganizeRun,
 		arg.Ulid,
 		arg.Kind,
 		arg.ByUser,
@@ -110,7 +110,7 @@ type FinishOrganizeRunParams struct {
 }
 
 func (q *Queries) FinishOrganizeRun(ctx context.Context, arg FinishOrganizeRunParams) error {
-	_, err := q.exec(ctx, q.finishOrganizeRunStmt, finishOrganizeRun,
+	_, err := q.db.ExecContext(ctx, finishOrganizeRun,
 		arg.State,
 		arg.FinishedAt,
 		arg.Folders,
@@ -144,7 +144,7 @@ type LeftOrganizeMovesRow struct {
 
 // The songs a run left where they were, and why.
 func (q *Queries) LeftOrganizeMoves(ctx context.Context, arg LeftOrganizeMovesParams) ([]LeftOrganizeMovesRow, error) {
-	rows, err := q.query(ctx, q.leftOrganizeMovesStmt, leftOrganizeMoves, arg.RunID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, leftOrganizeMoves, arg.RunID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ type ListOrganizeMissingRow struct {
 // Tracks out of the library but not in the Trash: their rows hold their paths,
 // so a song filed there would collide with one.
 func (q *Queries) ListOrganizeMissing(ctx context.Context) ([]ListOrganizeMissingRow, error) {
-	rows, err := q.query(ctx, q.listOrganizeMissingStmt, listOrganizeMissing)
+	rows, err := q.db.QueryContext(ctx, listOrganizeMissing)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +251,7 @@ type ListOrganizeRunsRow struct {
 // The latest runs, a running one first. undoable says a song the run moved is
 // still where it put it.
 func (q *Queries) ListOrganizeRuns(ctx context.Context, limit int64) ([]ListOrganizeRunsRow, error) {
-	rows, err := q.query(ctx, q.listOrganizeRunsStmt, listOrganizeRuns, limit)
+	rows, err := q.db.QueryContext(ctx, listOrganizeRuns, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +312,7 @@ type ListOrganizeTrackFilesRow struct {
 // What the organizer reads of every live track beside the index's rows: where
 // its file is, and its original year. Kept between library writes.
 func (q *Queries) ListOrganizeTrackFiles(ctx context.Context) ([]ListOrganizeTrackFilesRow, error) {
-	rows, err := q.query(ctx, q.listOrganizeTrackFilesStmt, listOrganizeTrackFiles)
+	rows, err := q.db.QueryContext(ctx, listOrganizeTrackFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +355,7 @@ type MoveTrackPathParams struct {
 
 // A song's file moved: its row follows, only from where the run found it.
 func (q *Queries) MoveTrackPath(ctx context.Context, arg MoveTrackPathParams) (int64, error) {
-	result, err := q.exec(ctx, q.moveTrackPathStmt, moveTrackPath,
+	result, err := q.db.ExecContext(ctx, moveTrackPath,
 		arg.ToRel,
 		arg.ID,
 		arg.Root,
@@ -396,7 +396,7 @@ type MovedOrganizeMovesRow struct {
 
 // What a run moved, for its undo, with where each song is now.
 func (q *Queries) MovedOrganizeMoves(ctx context.Context, runID int64) ([]MovedOrganizeMovesRow, error) {
-	rows, err := q.query(ctx, q.movedOrganizeMovesStmt, movedOrganizeMoves, runID)
+	rows, err := q.db.QueryContext(ctx, movedOrganizeMoves, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -477,7 +477,7 @@ func (q *Queries) OrganizeClaimants(ctx context.Context, arg OrganizeClaimantsPa
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +550,7 @@ type OrganizeRunRow struct {
 }
 
 func (q *Queries) OrganizeRun(ctx context.Context, ulid string) (OrganizeRunRow, error) {
-	row := q.queryRow(ctx, q.organizeRunStmt, organizeRun, ulid)
+	row := q.db.QueryRowContext(ctx, organizeRun, ulid)
 	var i OrganizeRunRow
 	err := row.Scan(
 		&i.ID,
@@ -608,7 +608,7 @@ func (q *Queries) OrganizeTrackStates(ctx context.Context, ids []int64) ([]Organ
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -657,7 +657,7 @@ type PlanOrganizeMoveParams struct {
 }
 
 func (q *Queries) PlanOrganizeMove(ctx context.Context, arg PlanOrganizeMoveParams) (int64, error) {
-	row := q.queryRow(ctx, q.planOrganizeMoveStmt, planOrganizeMove,
+	row := q.db.QueryRowContext(ctx, planOrganizeMove,
 		arg.RunID,
 		arg.TrackID,
 		arg.Root,
@@ -689,7 +689,7 @@ type PlannedOrganizeMovesRow struct {
 
 // Moves a run journaled and never settled: what a server stopped midway left.
 func (q *Queries) PlannedOrganizeMoves(ctx context.Context) ([]PlannedOrganizeMovesRow, error) {
-	rows, err := q.query(ctx, q.plannedOrganizeMovesStmt, plannedOrganizeMoves)
+	rows, err := q.db.QueryContext(ctx, plannedOrganizeMoves)
 	if err != nil {
 		return nil, err
 	}
@@ -732,7 +732,7 @@ type PruneOrganizeRunsParams struct {
 
 // Runs past the last kept, and older than the cutoff, go with their journals.
 func (q *Queries) PruneOrganizeRuns(ctx context.Context, arg PruneOrganizeRunsParams) (int64, error) {
-	result, err := q.exec(ctx, q.pruneOrganizeRunsStmt, pruneOrganizeRuns, arg.Cutoff, arg.Keep)
+	result, err := q.db.ExecContext(ctx, pruneOrganizeRuns, arg.Cutoff, arg.Keep)
 	if err != nil {
 		return 0, err
 	}
@@ -744,7 +744,7 @@ SELECT id FROM organize_runs WHERE state = 'running' ORDER BY id
 `
 
 func (q *Queries) RunningOrganizeRuns(ctx context.Context) ([]int64, error) {
-	rows, err := q.query(ctx, q.runningOrganizeRunsStmt, runningOrganizeRuns)
+	rows, err := q.db.QueryContext(ctx, runningOrganizeRuns)
 	if err != nil {
 		return nil, err
 	}
@@ -777,7 +777,7 @@ type SetOrganizeMoveParams struct {
 }
 
 func (q *Queries) SetOrganizeMove(ctx context.Context, arg SetOrganizeMoveParams) error {
-	_, err := q.exec(ctx, q.setOrganizeMoveStmt, setOrganizeMove, arg.State, arg.Reason, arg.ID)
+	_, err := q.db.ExecContext(ctx, setOrganizeMove, arg.State, arg.Reason, arg.ID)
 	return err
 }
 
@@ -791,7 +791,7 @@ type SetOrganizeRunStateParams struct {
 }
 
 func (q *Queries) SetOrganizeRunState(ctx context.Context, arg SetOrganizeRunStateParams) error {
-	_, err := q.exec(ctx, q.setOrganizeRunStateStmt, setOrganizeRunState, arg.State, arg.ID)
+	_, err := q.db.ExecContext(ctx, setOrganizeRunState, arg.State, arg.ID)
 	return err
 }
 
@@ -801,7 +801,7 @@ UPDATE organize_runs SET state = 'stopped', finished_at = ? WHERE state = 'runni
 
 // Runs a stopped server left running: stopped, as Stop leaves them.
 func (q *Queries) StopRunningOrganizeRuns(ctx context.Context, finishedAt *int64) (int64, error) {
-	result, err := q.exec(ctx, q.stopRunningOrganizeRunsStmt, stopRunningOrganizeRuns, finishedAt)
+	result, err := q.db.ExecContext(ctx, stopRunningOrganizeRuns, finishedAt)
 	if err != nil {
 		return 0, err
 	}

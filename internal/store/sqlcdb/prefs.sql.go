@@ -21,7 +21,7 @@ type GetPrefParams struct {
 
 // A person's preferences, by key. The value is JSON the caller has checked.
 func (q *Queries) GetPref(ctx context.Context, arg GetPrefParams) (string, error) {
-	row := q.queryRow(ctx, q.getPrefStmt, getPref, arg.UserID, arg.Key)
+	row := q.db.QueryRowContext(ctx, getPref, arg.UserID, arg.Key)
 	var value string
 	err := row.Scan(&value)
 	return value, err
@@ -40,7 +40,7 @@ type UpsertPrefParams struct {
 }
 
 func (q *Queries) UpsertPref(ctx context.Context, arg UpsertPrefParams) error {
-	_, err := q.exec(ctx, q.upsertPrefStmt, upsertPref,
+	_, err := q.db.ExecContext(ctx, upsertPref,
 		arg.UserID,
 		arg.Key,
 		arg.Value,

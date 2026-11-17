@@ -44,7 +44,7 @@ type AlbumsOnRepeatRow struct {
 // count, since their time isn't when they happened. Plays are counted by track
 // first, so each track is looked up once.
 func (q *Queries) AlbumsOnRepeat(ctx context.Context, arg AlbumsOnRepeatParams) ([]AlbumsOnRepeatRow, error) {
-	rows, err := q.query(ctx, q.albumsOnRepeatStmt, albumsOnRepeat,
+	rows, err := q.db.QueryContext(ctx, albumsOnRepeat,
 		arg.Lim,
 		arg.UserID,
 		arg.Since,
@@ -83,7 +83,7 @@ type CountUserListeningRow struct {
 }
 
 func (q *Queries) CountUserListening(ctx context.Context, userID int64) (CountUserListeningRow, error) {
-	row := q.queryRow(ctx, q.countUserListeningStmt, countUserListening, userID)
+	row := q.db.QueryRowContext(ctx, countUserListening, userID)
 	var i CountUserListeningRow
 	err := row.Scan(&i.Plays, &i.Rated)
 	return i, err
@@ -104,7 +104,7 @@ type InsertPlayParams struct {
 }
 
 func (q *Queries) InsertPlay(ctx context.Context, arg InsertPlayParams) (int64, error) {
-	result, err := q.exec(ctx, q.insertPlayStmt, insertPlay,
+	result, err := q.db.ExecContext(ctx, insertPlay,
 		arg.UserID,
 		arg.TrackID,
 		arg.PlayedAt,
@@ -138,7 +138,7 @@ type RecentPlaysRow struct {
 }
 
 func (q *Queries) RecentPlays(ctx context.Context, arg RecentPlaysParams) ([]RecentPlaysRow, error) {
-	rows, err := q.query(ctx, q.recentPlaysStmt, recentPlays, arg.UserID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, recentPlays, arg.UserID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ SELECT id FROM tracks WHERE ulid = ?
 `
 
 func (q *Queries) TrackRowID(ctx context.Context, ulid string) (int64, error) {
-	row := q.queryRow(ctx, q.trackRowIDStmt, trackRowID, ulid)
+	row := q.db.QueryRowContext(ctx, trackRowID, ulid)
 	var id int64
 	err := row.Scan(&id)
 	return id, err

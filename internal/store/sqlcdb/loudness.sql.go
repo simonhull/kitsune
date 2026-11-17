@@ -27,7 +27,7 @@ type AlbumLoudnessInputsRow struct {
 
 // Every live track of an album with its loudness row for its file, if any.
 func (q *Queries) AlbumLoudnessInputs(ctx context.Context, albumID int64) ([]AlbumLoudnessInputsRow, error) {
-	rows, err := q.query(ctx, q.albumLoudnessInputsStmt, albumLoudnessInputs, albumID)
+	rows, err := q.db.QueryContext(ctx, albumLoudnessInputs, albumID)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ ORDER BY u.album_id
 // Albums with a song that has no ReplayGain, every live track measured or
 // found unmeasurable for its file, and no pooled measure of just those tracks.
 func (q *Queries) AlbumsToPool(ctx context.Context) ([]int64, error) {
-	rows, err := q.query(ctx, q.albumsToPoolStmt, albumsToPool)
+	rows, err := q.db.QueryContext(ctx, albumsToPool)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ WHERE t.missing_since IS NULL
 // A track is waiting when its album has a song with no ReplayGain and the
 // track has no row for its file at the measurement version.
 func (q *Queries) CountLoudnessWaiting(ctx context.Context, version int64) (int64, error) {
-	row := q.queryRow(ctx, q.countLoudnessWaitingStmt, countLoudnessWaiting, version)
+	row := q.db.QueryRowContext(ctx, countLoudnessWaiting, version)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -123,7 +123,7 @@ DELETE FROM album_loudness WHERE album_id = ?
 `
 
 func (q *Queries) DeleteAlbumLoudness(ctx context.Context, albumID int64) error {
-	_, err := q.exec(ctx, q.deleteAlbumLoudnessStmt, deleteAlbumLoudness, albumID)
+	_, err := q.db.ExecContext(ctx, deleteAlbumLoudness, albumID)
 	return err
 }
 
@@ -140,7 +140,7 @@ type InsertAlbumLoudnessParams struct {
 }
 
 func (q *Queries) InsertAlbumLoudness(ctx context.Context, arg InsertAlbumLoudnessParams) (int64, error) {
-	row := q.queryRow(ctx, q.insertAlbumLoudnessStmt, insertAlbumLoudness,
+	row := q.db.QueryRowContext(ctx, insertAlbumLoudness,
 		arg.AlbumID,
 		arg.Tracks,
 		arg.Integrated,
@@ -170,7 +170,7 @@ type LoudnessCountsRow struct {
 // Live songs with no ReplayGain, how many have a measure for their file, and
 // how many can't be measured.
 func (q *Queries) LoudnessCounts(ctx context.Context) (LoudnessCountsRow, error) {
-	row := q.queryRow(ctx, q.loudnessCountsStmt, loudnessCounts)
+	row := q.db.QueryRowContext(ctx, loudnessCounts)
 	var i LoudnessCountsRow
 	err := row.Scan(&i.Ungained, &i.Measured, &i.Unmeasurable)
 	return i, err
@@ -209,7 +209,7 @@ type LoudnessWaitingRow struct {
 }
 
 func (q *Queries) LoudnessWaiting(ctx context.Context, arg LoudnessWaitingParams) ([]LoudnessWaitingRow, error) {
-	rows, err := q.query(ctx, q.loudnessWaitingStmt, loudnessWaiting,
+	rows, err := q.db.QueryContext(ctx, loudnessWaiting,
 		arg.Root,
 		arg.RelPath,
 		arg.Version,
@@ -256,7 +256,7 @@ type PoolTrackLoudnessParams struct {
 }
 
 func (q *Queries) PoolTrackLoudness(ctx context.Context, arg PoolTrackLoudnessParams) error {
-	_, err := q.exec(ctx, q.poolTrackLoudnessStmt, poolTrackLoudness, arg.Pool, arg.TrackID)
+	_, err := q.db.ExecContext(ctx, poolTrackLoudness, arg.Pool, arg.TrackID)
 	return err
 }
 
@@ -286,7 +286,7 @@ type SetTrackLoudnessParams struct {
 
 // Writes only while the track is live and still the file that was read.
 func (q *Queries) SetTrackLoudness(ctx context.Context, arg SetTrackLoudnessParams) (int64, error) {
-	result, err := q.exec(ctx, q.setTrackLoudnessStmt, setTrackLoudness,
+	result, err := q.db.ExecContext(ctx, setTrackLoudness,
 		arg.Version,
 		arg.Outcome,
 		arg.Integrated,

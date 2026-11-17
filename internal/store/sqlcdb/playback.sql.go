@@ -31,7 +31,7 @@ type GetPlaybackRow struct {
 // Where each person left off. The queue is JSON internal/playback has checked;
 // the store never reads its shape.
 func (q *Queries) GetPlayback(ctx context.Context, userID int64) (GetPlaybackRow, error) {
-	row := q.queryRow(ctx, q.getPlaybackStmt, getPlayback, userID)
+	row := q.db.QueryRowContext(ctx, getPlayback, userID)
 	var i GetPlaybackRow
 	err := row.Scan(
 		&i.Kind,
@@ -63,7 +63,7 @@ type ListLiveTracksByULIDRow struct {
 // Each of the named tracks that is live, with its album as it is now. ulids is a
 // JSON array, so one prepared statement serves any number of them.
 func (q *Queries) ListLiveTracksByULID(ctx context.Context, ulids string) ([]ListLiveTracksByULIDRow, error) {
-	rows, err := q.query(ctx, q.listLiveTracksByULIDStmt, listLiveTracksByULID, ulids)
+	rows, err := q.db.QueryContext(ctx, listLiveTracksByULID, ulids)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ type UpsertPlaybackParams struct {
 }
 
 func (q *Queries) UpsertPlayback(ctx context.Context, arg UpsertPlaybackParams) error {
-	_, err := q.exec(ctx, q.upsertPlaybackStmt, upsertPlayback,
+	_, err := q.db.ExecContext(ctx, upsertPlayback,
 		arg.UserID,
 		arg.Kind,
 		arg.Queue,

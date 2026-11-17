@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,7 +28,13 @@ const (
 // which want one path, and an MP3 out of line.
 func organizeFixture(t *testing.T, tagWrites bool) *editFixture {
 	t.Helper()
-	return newEditServer(t, &testServerOptions{TagWrites: tagWrites}, map[string]string{
+	return organizeFixtureWith(t, &testServerOptions{TagWrites: tagWrites})
+}
+
+// organizeFixtureWith is organizeFixture's library on a server with opts.
+func organizeFixtureWith(t *testing.T, opts *testServerOptions) *editFixture {
+	t.Helper()
+	return newEditServer(t, opts, map[string]string{
 		twinOne: sampleFLAC, twinTwo: sampleFLAC, looseMP3: sampleMP3,
 	})
 }
@@ -175,14 +182,24 @@ func TestOrganizePreviewOfABadTemplate(t *testing.T) {
 	}
 }
 
-// Stop on a run that isn't running is a 409; on one that is, it stops after
-// its album in hand.
+// Stop on a run that is running is a 202, and it stops after its album in
+// hand; on one that isn't, a 409. The run is held at its first step until Stop
+// has answered, so it is running when Stop arrives.
 func TestOrganizeStop(t *testing.T) {
 	t.Parallel()
-	fx := organizeFixture(t, true)
+	held, stopped := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	fx := organizeFixtureWith(t, &testServerOptions{TagWrites: true, OrganizeStep: func(string, string) error {
+		once.Do(func() { close(held); <-stopped })
+		return nil
+	}})
 	p := fx.preview(t, `{}`)
 	run := fx.startRun(t, organizeRunsPath, `{"previewId":"`+p.ID+`"}`)
-	fx.send(t, fx.organizeCall(organizeRunsPath+"/"+run.ID+"/stop", "")) // Running or done: either answer the contract.
+	<-held
+	if resp := fx.send(t, fx.organizeCall(organizeRunsPath+"/"+run.ID+"/stop", "")); resp.Status != http.StatusAccepted {
+		t.Errorf("stop of a running run = %d: %s, want 202", resp.Status, resp.Body)
+	}
+	close(stopped)
 	fx.waitRun(t, run.ID)
 	fx.send(t, fx.organizeCall(organizeRunsPath+"/"+run.ID+"/stop", "")).problem(t, http.StatusConflict)
 }

@@ -20,7 +20,7 @@ type DeleteExcludedParams struct {
 }
 
 func (q *Queries) DeleteExcluded(ctx context.Context, arg DeleteExcludedParams) error {
-	_, err := q.exec(ctx, q.deleteExcludedStmt, deleteExcluded, arg.UserID, arg.TrackID)
+	_, err := q.db.ExecContext(ctx, deleteExcluded, arg.UserID, arg.TrackID)
 	return err
 }
 
@@ -34,7 +34,7 @@ type DeleteRunParams struct {
 }
 
 func (q *Queries) DeleteRun(ctx context.Context, arg DeleteRunParams) (int64, error) {
-	result, err := q.exec(ctx, q.deleteRunStmt, deleteRun, arg.UserID, arg.Ulid)
+	result, err := q.db.ExecContext(ctx, deleteRun, arg.UserID, arg.Ulid)
 	if err != nil {
 		return 0, err
 	}
@@ -55,7 +55,7 @@ type InsertExcludedParams struct {
 
 // Each person's shuffle rules: songs left out, and runs of songs played together.
 func (q *Queries) InsertExcluded(ctx context.Context, arg InsertExcludedParams) error {
-	_, err := q.exec(ctx, q.insertExcludedStmt, insertExcluded, arg.UserID, arg.TrackID, arg.ExcludedAt)
+	_, err := q.db.ExecContext(ctx, insertExcluded, arg.UserID, arg.TrackID, arg.ExcludedAt)
 	return err
 }
 
@@ -71,7 +71,7 @@ type InsertRunParams struct {
 }
 
 func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) (int64, error) {
-	row := q.queryRow(ctx, q.insertRunStmt, insertRun, arg.Ulid, arg.UserID, arg.CreatedAt)
+	row := q.db.QueryRowContext(ctx, insertRun, arg.Ulid, arg.UserID, arg.CreatedAt)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -89,7 +89,7 @@ type InsertRunTrackParams struct {
 }
 
 func (q *Queries) InsertRunTrack(ctx context.Context, arg InsertRunTrackParams) error {
-	_, err := q.exec(ctx, q.insertRunTrackStmt, insertRunTrack,
+	_, err := q.db.ExecContext(ctx, insertRunTrack,
 		arg.RunID,
 		arg.UserID,
 		arg.Position,
@@ -108,7 +108,7 @@ type LeaveRunParams struct {
 }
 
 func (q *Queries) LeaveRun(ctx context.Context, arg LeaveRunParams) error {
-	_, err := q.exec(ctx, q.leaveRunStmt, leaveRun, arg.UserID, arg.TrackID)
+	_, err := q.db.ExecContext(ctx, leaveRun, arg.UserID, arg.TrackID)
 	return err
 }
 
@@ -136,7 +136,7 @@ func (q *Queries) ListExcludedOf(ctx context.Context, arg ListExcludedOfParams) 
 	} else {
 		query = strings.Replace(query, "/*SLICE:tracks*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ type ListIndexShuffleRow struct {
 
 // Every song in a person's runs, with its run and place, and every song they left out.
 func (q *Queries) ListIndexShuffle(ctx context.Context, userID int64) ([]ListIndexShuffleRow, error) {
-	rows, err := q.query(ctx, q.listIndexShuffleStmt, listIndexShuffle, userID)
+	rows, err := q.db.QueryContext(ctx, listIndexShuffle, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ func (q *Queries) ListRunsOf(ctx context.Context, arg ListRunsOfParams) ([]ListR
 	} else {
 		query = strings.Replace(query, "/*SLICE:tracks*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +268,7 @@ SELECT EXISTS (SELECT 1 FROM shuffle_runs WHERE id = ?)
 `
 
 func (q *Queries) RunExists(ctx context.Context, id int64) (bool, error) {
-	row := q.queryRow(ctx, q.runExistsStmt, runExists, id)
+	row := q.db.QueryRowContext(ctx, runExists, id)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -291,7 +291,7 @@ type RunOfTrackRow struct {
 }
 
 func (q *Queries) RunOfTrack(ctx context.Context, arg RunOfTrackParams) (RunOfTrackRow, error) {
-	row := q.queryRow(ctx, q.runOfTrackStmt, runOfTrack, arg.UserID, arg.TrackID)
+	row := q.db.QueryRowContext(ctx, runOfTrack, arg.UserID, arg.TrackID)
 	var i RunOfTrackRow
 	err := row.Scan(&i.ID, &i.Ulid)
 	return i, err

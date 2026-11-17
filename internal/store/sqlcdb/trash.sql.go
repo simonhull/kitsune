@@ -47,7 +47,7 @@ type ListTrashRow struct {
 // The Trash page: every trashed track with its album, in album order. Go puts
 // the albums newest first.
 func (q *Queries) ListTrash(ctx context.Context) ([]ListTrashRow, error) {
-	rows, err := q.query(ctx, q.listTrashStmt, listTrash)
+	rows, err := q.db.QueryContext(ctx, listTrash)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ type MarkTrashedParams struct {
 }
 
 func (q *Queries) MarkTrashed(ctx context.Context, arg MarkTrashedParams) (int64, error) {
-	result, err := q.exec(ctx, q.markTrashedStmt, markTrashed,
+	result, err := q.db.ExecContext(ctx, markTrashed,
 		arg.At,
 		arg.By,
 		arg.TrashPath,
@@ -124,7 +124,7 @@ type TrackAtPathParams struct {
 }
 
 func (q *Queries) TrackAtPath(ctx context.Context, arg TrackAtPathParams) (bool, error) {
-	row := q.queryRow(ctx, q.trackAtPathStmt, trackAtPath, arg.Root, arg.RelPath)
+	row := q.db.QueryRowContext(ctx, trackAtPath, arg.Root, arg.RelPath)
 	var taken bool
 	err := row.Scan(&taken)
 	return taken, err
@@ -159,7 +159,7 @@ func (q *Queries) TrashableAlbumTracks(ctx context.Context, ids []string) ([]Tra
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +222,7 @@ func (q *Queries) TrashableTracks(ctx context.Context, ids []string) ([]Trashabl
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +278,7 @@ type TrashedBeforeRow struct {
 }
 
 func (q *Queries) TrashedBefore(ctx context.Context, arg TrashedBeforeParams) ([]TrashedBeforeRow, error) {
-	rows, err := q.query(ctx, q.trashedBeforeStmt, trashedBefore, arg.Cutoff, arg.N)
+	rows, err := q.db.QueryContext(ctx, trashedBefore, arg.Cutoff, arg.N)
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +339,7 @@ func (q *Queries) TrashedTracks(ctx context.Context, ids []string) ([]TrashedTra
 	} else {
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
-	rows, err := q.query(ctx, nil, query, queryParams...)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +377,7 @@ WHERE id = ? AND trashed_at IS NOT NULL
 `
 
 func (q *Queries) UnmarkTrashed(ctx context.Context, id int64) (int64, error) {
-	result, err := q.exec(ctx, q.unmarkTrashedStmt, unmarkTrashed, id)
+	result, err := q.db.ExecContext(ctx, unmarkTrashed, id)
 	if err != nil {
 		return 0, err
 	}
