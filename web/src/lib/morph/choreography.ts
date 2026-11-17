@@ -576,6 +576,25 @@ const albumToPlaylist: Choreography = {
 };
 
 /**
+ * Album to Album: re-pressed in place. Nearly always an edit that merged one album into another, or
+ * history, and the eye should stay where it was: nothing travels. The record you hold changes. The
+ * new face and stage come up in front, in place; its words rise in over the old ones giving way.
+ */
+const albumToAlbum: Choreography = {
+	name: 'album-to-album',
+	grain: 'crossing',
+	motion: base,
+	travel: { subject: 'pages', leads: [], sourceSlots: [], targetSlots: [] },
+	leaving: giveWay(),
+	leavingByRole: { art: giveWay(base, 60), panel: giveWay(base, 90) },
+	arriving: { art: fadeIn(0, quick), words: rise(20, 90), panel: rise(12, 90) },
+	stages: { album: fadeIn(0, base) },
+	held: { album: giveWay(base) },
+	bloom: null,
+	island: null
+};
+
+/**
  * The name's door, from the Artists list, a Library heading, a search result or an album card's
  * menu: the name grows out of the list into the headline, the list falls back around it, and Top
  * songs rise last. No stage: an artist has no art.
@@ -854,6 +873,7 @@ const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
 	'album>albums': albumToAlbums,
 	'album>artist': albumToArtist,
 	'album>playlist': albumToPlaylist,
+	'album>album': albumToAlbum,
 	'artists>artist': nameDoor,
 	'library>artist': nameDoor,
 	'albums>artist': nameDoor,

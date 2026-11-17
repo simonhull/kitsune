@@ -271,6 +271,7 @@ const journeyPairs: readonly (readonly [RouteName, RouteName])[] = [
 	['album', 'albums'],
 	['album', 'artist'],
 	['album', 'playlist'],
+	['album', 'album'],
 	['artists', 'artist'],
 	['library', 'artist'],
 	['albums', 'artist'],
@@ -361,6 +362,13 @@ describe('choreographyFor', () => {
 		}
 	});
 
+	it('holds the stage of an album it leaves, to give way under the page in front', () => {
+		for (const to of ['home', 'library', 'albums', 'artist', 'playlist', 'album'] as const) {
+			expect(choreographyFor('album', to).held.album?.to.opacity, to).toBe(0);
+		}
+		expect(choreographyFor('album', 'home', { continues: true }).held.album).toBeDefined();
+	});
+
 	it('reshapes the album into the Continue card when it is Continue’s, and sets it among the others when not', () => {
 		const into = choreographyFor('album', 'home', { continues: true });
 		expect(into.name).toBe('album-into-continue');
@@ -383,6 +391,14 @@ describe('choreographyFor', () => {
 		const { travel } = choreographyFor('album', 'artist');
 		expect(travel?.leads).toEqual(['name:to', 'cover:from']);
 		expect(travel?.waits?.name).toBe(40);
+	});
+
+	it('re-presses an album in place: nothing travels, and the new stage comes up over the old', () => {
+		const { travel, stages, held, arriving } = choreographyFor('album', 'album');
+		expect(travel?.leads).toEqual([]);
+		expect(stages.album?.from.opacity).toBe(0);
+		expect(held.album?.to.opacity).toBe(0);
+		expect(arriving.words?.from.y).toBeGreaterThan(0);
 	});
 
 	it('opens every record through its own door, the same from every room', () => {
