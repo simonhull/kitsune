@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { AlbumPalette } from '#lib/cover/palette.ts';
+	import { morph } from '#lib/morph/registry.ts';
 	import Wash from './Wash.svelte';
 
 	interface Props {
@@ -26,7 +27,14 @@
 
 {#if albumId !== null && palette !== null}
 	<div class="backdrop" data-mode={known ? mode : 'clear'} aria-hidden="true">
-		<div class="album" class:cold data-morph-stage="album" style:background={palette.stage}>
+		<!-- The album's surface, which reshapes into Home's Continue card when the album is its. -->
+		<div
+			class="album"
+			class:cold
+			data-morph-stage="album"
+			style:background={palette.stage}
+			use:morph={{ id: `surface:${albumId}`, slot: 'hero', kind: 'surface' }}
+		>
 			<Wash {palette} variant="hero" />
 			<div class="fade"></div>
 		</div>
