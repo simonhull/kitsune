@@ -25,7 +25,8 @@ export function flowingPill(nav: HTMLElement, item: string | null) {
 	}
 
 	function current(): { from: number; to: number } | null {
-		const item = nav.querySelector<HTMLElement>('[aria-current="page"]');
+		// Only an item holds it: the fox is current on You too, and wears a ring of its own there.
+		const item = nav.querySelector<HTMLElement>('.item[aria-current="page"]');
 		return item === null ? null : { from: item.offsetLeft, to: item.offsetLeft + item.offsetWidth };
 	}
 

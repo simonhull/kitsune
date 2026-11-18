@@ -39,7 +39,7 @@
 	const morphs = getContext<Morphs | undefined>(morphsKey);
 
 	/**
-	 * A room's own place pressed again, the same address: it goes nowhere. Its pill presses, and a
+	 * A room's own place pressed again: it goes nowhere. Its pill presses, and a
 	 * room scrolled down is laid again at its top, the way it came in. In flight, the flight carries on.
 	 */
 	function pressed(event: MouseEvent): void {
@@ -50,7 +50,9 @@
 			elsewhere ||
 			event.button !== 0 ||
 			link.pathname !== location.pathname ||
-			link.search !== location.search
+			// A query is a room's own view of itself, but Search's is what it holds: the field
+			// pressed there goes to an empty Search, as it always has.
+			(link.dataset['room'] === 'search' && link.search !== location.search)
 		) {
 			return;
 		}

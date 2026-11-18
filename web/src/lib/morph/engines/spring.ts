@@ -547,7 +547,7 @@ export function createSpringEngine(): Morphs {
 
 	function cloneRoute(
 		path: string,
-		{ leaving, leavingByRole, headline }: Choreography,
+		{ name, leaving, leavingByRole, headline }: Choreography,
 		sources: Journey['sources']
 	): Ghost | null {
 		const main = pageMain();
@@ -598,6 +598,8 @@ export function createSpringEngine(): Morphs {
 		clone.setAttribute('aria-hidden', 'true');
 		clone.removeAttribute(waitingAttribute);
 		clone.dataset['morphGhost'] = 'page';
+		// Which journey left it: what a test of the journeys reads, and what the HUD would.
+		clone.dataset['morphJourney'] = name;
 		clone.style.cssText = `position:absolute;left:${String(left)}px;top:${String(top)}px;width:${String(width)}px;height:${String(height)}px;z-index:auto`;
 		keepColors(main, clone);
 		under.append(clone);
