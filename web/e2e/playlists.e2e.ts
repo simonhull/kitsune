@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, fixtures, test } from './fixture';
+import { expect, fixtures, landed, test } from './fixture';
 
 /** The songs of the playlist on screen, in order, by title. */
 async function titles(page: Page): Promise<string[]> {
@@ -16,6 +16,8 @@ async function openFallingUp(page: Page): Promise<void> {
 	await page.getByRole('link', { name: /^Falling Up \d/ }).click();
 	await expect(page).toHaveURL(/\/playlists\/falling-up/);
 	await expect(rowAt(page, 0)).toBeVisible();
+	// The songs rise in through the mosaic's door: a drag measures them once they're in place.
+	await landed(page);
 }
 
 test('the Playlists page lists them and makes one in place, named New playlist when left blank', async ({

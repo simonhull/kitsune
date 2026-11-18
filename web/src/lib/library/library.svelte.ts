@@ -89,6 +89,9 @@ export const albumPageSize = 60;
 const wholeListPageSize = 200;
 /** The feature tile and the covers beside it: as many as a 4K screen's row holds, and some. */
 const recentCount = 25;
+/** How many albums Recently played holds, as the server sends them. */
+const recentKept = 25;
+
 /** How long Home's copy of the history is good for: a visit after this asks again. */
 export const historyFreshMs = 60_000;
 /** How long to leave a server that isn't answering, or a library still empty. */
@@ -859,6 +862,9 @@ export class Library {
 			if (epoch === this.#epoch) {
 				this.#remember([...history.recent, ...history.onRepeat.map(({ album }) => album)]);
 				this.history = history;
+				for (const id of this.#playedHere) {
+					this.#playedFirst(id);
+				}
 			}
 		} catch {
 			if (epoch === this.#epoch) {
@@ -1215,7 +1221,33 @@ export class Library {
 	 * plays or a remembered record comes back.
 	 */
 	showQueue(): void {
+		const before = this.playing?.album.id;
 		this.playing = this.#player?.cue ?? null;
+		const album = this.playing?.album;
+		if (album !== undefined && album.id !== before) {
+			this.#playedHere = [...this.#playedHere.filter((id) => id !== album.id), album.id].slice(
+				-recentKept
+			);
+			this.#playedFirst(album.id);
+		}
+	}
+
+	/** The albums started in this browser, the latest last: a history read that lands after keeps them. */
+	#playedHere: string[] = [];
+
+	/**
+	 * Puts an album that has started playing first in Recently played, before the server's next
+	 * read says so: Home holds it there from now on, so going back to Home from its page lands it
+	 * there. Home's card shows it while it's held; the row has it once something else is.
+	 */
+	#playedFirst(id: string): void {
+		const { history } = this;
+		const entry = this.entry(id);
+		if (history === null || entry === undefined || history.recent.at(0)?.id === id) {
+			return;
+		}
+		const recent = [entry, ...history.recent.filter((album) => album.id !== id)];
+		this.history = { ...history, recent: recent.slice(0, recentKept) };
 	}
 
 	/** Loads the next page of {@link Library.albums}. Only one page is ever in flight. */
@@ -1913,6 +1945,7 @@ export class Library {
 		this.recent = [];
 		this.history = null;
 		this.#historyAt = 0;
+		this.#playedHere = [];
 		this.albums = [];
 		this.hasMoreAlbums = false;
 		this.down = false;

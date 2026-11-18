@@ -51,3 +51,13 @@ export interface Point {
 export function carryOffset(glass: Point, anchor: Point): Point {
 	return { x: glass.x - anchor.x, y: glass.y - anchor.y };
 }
+
+/**
+ * How much a reshaping surface shows of the surface it becomes, from how far its width has come:
+ * the new face lays itself over the old one as the box changes, so the old one never thins to show
+ * what's behind it. One function of size, so a turn mid-flight plays it backward.
+ */
+export function surfaceShown(width: number, from: number, to: number): number {
+	const come = unit(width, from, to);
+	return come * come * (3 - 2 * come);
+}

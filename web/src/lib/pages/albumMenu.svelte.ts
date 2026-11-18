@@ -4,6 +4,7 @@ import { page } from '$app/state';
 import { library } from '#lib/library/library.svelte.ts';
 import type { Album, AlbumEntry } from '#lib/library/source.ts';
 import { matchAlbum } from '#lib/matching/hooks.ts';
+import { lend } from '#lib/morph/journey.ts';
 import { player } from '#lib/player/player.svelte.ts';
 import { shuffles } from '#lib/shuffle/session.svelte.ts';
 import { albumSource } from '#lib/shuffle/sources.ts';
@@ -95,6 +96,8 @@ export function albumActions(entry: AlbumEntry, album: Album | undefined): Album
 			artistId === undefined
 				? undefined
 				: () => {
+						// The artist's name leaves from the card's artist line, which only knows the album.
+						lend(`name:${artistId}`, `artist:${id}`);
 						void goto(resolve('/artists/[id]', { id: artistId }));
 					},
 		trash: trashBin.can

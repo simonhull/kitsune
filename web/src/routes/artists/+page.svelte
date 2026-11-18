@@ -7,6 +7,7 @@
 	import { artistOrders, wayOf } from '#lib/library/sorts.ts';
 	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
 	import { sorts } from '#lib/pages/sortsView.svelte.ts';
+	import { morph } from '#lib/morph/registry.ts';
 
 	const load = $derived(library.artists);
 	const sort = $derived(sorts.artists.value);
@@ -34,7 +35,7 @@
 </svelte:head>
 
 <div class="page-frame artists">
-	<div class="intro">
+	<div class="intro" data-morph-part="intro" data-morph-key="intro">
 		<h1>Artists</h1>
 		{#if load.kind === 'ready' && load.value.length > 0}
 			<span class="summary">{artistCount(load.value.length)}</span>
@@ -51,18 +52,25 @@
 	</div>
 
 	{#if load.kind === 'unavailable'}
-		<p class="note" role="status">
+		<p class="note" role="status" data-morph-part="intro" data-morph-key="note">
 			The artists couldn't be loaded.
 			<button type="button" onclick={() => void library.loadArtists()}>Try again</button>
 		</p>
 	{:else if load.kind === 'ready' && load.value.length === 0}
-		<p class="note" role="status">No artists yet. They arrive with the albums.</p>
+		<p class="note" role="status" data-morph-part="intro" data-morph-key="note">
+			No artists yet. They arrive with the albums.
+		</p>
 	{:else if load.kind === 'ready'}
 		<ul>
 			{#each shown as artist (artist.id)}
-				<li>
+				<li data-morph-part="card" data-morph-key={`artist:${artist.id}`}>
 					<a href={resolve('/artists/[id]', { id: artist.id })}>
-						<span class="name" title={artist.name}>{artist.name}</span>
+						<span
+							class="name"
+							title={artist.name}
+							use:morph={{ id: `name:${artist.id}`, slot: 'row', kind: 'title' }}
+							>{artist.name}</span
+						>
 						<span class="count">{artistFigure(artist, sort)}</span>
 					</a>
 				</li>

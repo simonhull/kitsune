@@ -100,7 +100,7 @@
 </svelte:head>
 
 <div class="page-frame albums">
-	<div class="intro">
+	<div class="intro" data-morph-part="intro" data-morph-key="intro">
 		<h1>Albums</h1>
 		{#if total > 0}
 			<p class="facts">{line}</p>
@@ -108,11 +108,11 @@
 	</div>
 
 	{#if facts !== null && facts.albums === 0}
-		<p class="note" role="status">
+		<p class="note" role="status" data-morph-part="intro" data-morph-key="note">
 			{emptyLine(facts, library.deck)}
 		</p>
 	{:else if library.albums.length > 0}
-		<div class="controls">
+		<div class="controls" data-morph-part="intro" data-morph-key="controls">
 			<div class="sorts">
 				<SortControl
 					groups={sortGroups}
@@ -150,7 +150,14 @@
 		</div>
 
 		{#if everyGenre}
-			<div class="every" id="every-genre" role="group" aria-label="Every genre">
+			<div
+				class="every"
+				id="every-genre"
+				role="group"
+				aria-label="Every genre"
+				data-morph-part="intro"
+				data-morph-key="every"
+			>
 				{#each view.genres.toSorted( (a, b) => a.name.localeCompare(b.name) ) as { name, albums } (name)}
 					<button
 						type="button"
@@ -168,7 +175,7 @@
 		{#if view.albums.length > 0}
 			<AlbumGrid grid={view.grid} bind:this={grid} />
 		{:else if whole}
-			<p class="note" role="status">
+			<p class="note" role="status" data-morph-part="intro" data-morph-key="untagged">
 				No album here is tagged {view.genre}.
 				<button
 					type="button"

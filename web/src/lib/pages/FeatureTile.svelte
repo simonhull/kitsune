@@ -57,12 +57,17 @@
 	class="tile"
 	data-morph-part="card"
 	data-morph-key="feature"
-	style:background={palette.stage}
 	style:--tile-wash={palette.wash}
 	style:--tile-accent={palette.accent}
 	style:--tile-on-accent={palette.onAccent}
 >
-	<Wash {palette} variant="tile" />
+	<!-- The stage it's set on: an album's own stage reshapes into it, coming from the album. -->
+	<span
+		class="surface"
+		style:background={palette.stage}
+		use:morph={{ id: `surface:${album.id}`, slot: 'card', kind: 'surface' }}
+		><Wash {palette} variant="tile" /></span
+	>
 	<a
 		class="open"
 		href={resolve('/album/[id]', { id: album.id })}
@@ -99,7 +104,9 @@
 		onpointerenter={onwarm}
 		onpointerdown={onwarm}
 		onfocus={onwarm}
-		onclick={onplay}><Icon name={sounding ? 'pause' : 'play'} size={30} /></button
+		onclick={onplay}
+		use:morph={{ id: `play:${album.id}`, slot: 'card', kind: 'control' }}
+		><Icon name={sounding ? 'pause' : 'play'} size={30} /></button
 	>
 </div>
 
@@ -110,6 +117,13 @@
 		grid-row: span 2;
 		position: relative;
 		border-radius: var(--radius-28);
+		overflow: hidden;
+	}
+
+	.surface {
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
 		overflow: hidden;
 	}
 

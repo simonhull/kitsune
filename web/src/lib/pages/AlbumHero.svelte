@@ -83,11 +83,21 @@
 				aria-label={`${sounding ? 'Pause' : 'Play'} ${entry?.title ?? 'album'}`}
 				disabled={!playable}
 				onclick={play}
+				use:morph={{ id: `play:${albumId}`, slot: 'hero', kind: 'control' }}
 			>
 				<Icon name={sounding ? 'pause' : 'play'} size={28} />
 			</button>
 			<span class="artist">
-				<span class="name" use:morph={{ id: `artist:${albumId}`, slot: 'hero', kind: 'title' }}>
+				<!-- The album's artist line is its artist's name too, which their page's headline answers. -->
+				<span
+					class="name"
+					use:morph={{
+						id: `artist:${albumId}`,
+						slot: 'hero',
+						kind: 'title',
+						also: owners.length === 1 ? [`name:${owners[0].id}`] : []
+					}}
+				>
 					{#if owners.length === 1}
 						<!-- The album's own spelling of the name, which a shared artist row can differ from. -->
 						<a href={resolve('/artists/[id]', { id: owners[0].id })}>{entry?.artist}</a>

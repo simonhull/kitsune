@@ -6,6 +6,8 @@ import {
 	deckToHome,
 	drop,
 	choreographyFor,
+	gatherWeight,
+	weighGather,
 	linearEasing,
 	parseTime,
 	resolveMotion,
@@ -15,7 +17,9 @@ import {
 	springParams,
 	stepSpring,
 	weighPart,
-	type Motion
+	type Grain,
+	type Motion,
+	type RouteName
 } from './choreography';
 
 const motion: Motion = { duration: 600, bounce: 0 };
@@ -189,8 +193,11 @@ describe('ripple', () => {
 		expect(settleTime(exit) + (leaving.ripple?.spread ?? 0)).toBeLessThanOrEqual(320);
 	});
 
-	it('adds no spread on the way back: an entrance must not queue', () => {
-		expect(choreographyFor('album', 'home').arriving.card?.ripple?.spread).toBe(0);
+	it('adds no spread to a gathering: an entrance must not queue', () => {
+		for (const part of Object.values(choreographyFor('album', 'home').arriving)) {
+			expect(part.ripple).toBeUndefined();
+			expect(part.delay).toBe(90);
+		}
 	});
 });
 
@@ -221,45 +228,199 @@ describe('landing', () => {
 	});
 });
 
+/**
+ * The grain of the library, which decides every journey: the door, then the rooms, then the
+ * records, then the moment. A record that holds another (an artist or a playlist holds albums) is a
+ * step outside it. A move into what a page holds opens, into what holds it gathers, and between two
+ * of a kind crosses. Depth is how far you've come, so none of these is a way back.
+ */
+const level: Record<RouteName, number> = {
+	login: 0,
+	home: 1,
+	library: 1,
+	albums: 1,
+	artists: 1,
+	playlists: 1,
+	search: 1,
+	you: 1,
+	health: 1,
+	server: 1,
+	artist: 2,
+	playlist: 2,
+	album: 3,
+	'now-playing': 4
+};
+
+function grainOf(from: RouteName, to: RouteName): Grain {
+	if (level[to] === level[from]) {
+		return 'crossing';
+	}
+	return level[to] > level[from] ? 'opening' : 'gathering';
+}
+
+/** Every pair of milestone 1, and the shipped journeys it restacks. */
+const journeyPairs: readonly (readonly [RouteName, RouteName])[] = [
+	['home', 'album'],
+	['library', 'album'],
+	['albums', 'album'],
+	['artist', 'album'],
+	['playlist', 'album'],
+	['search', 'album'],
+	['album', 'home'],
+	['album', 'library'],
+	['album', 'albums'],
+	['album', 'artist'],
+	['album', 'playlist'],
+	['album', 'album'],
+	['artists', 'artist'],
+	['library', 'artist'],
+	['albums', 'artist'],
+	['search', 'artist'],
+	['artist', 'artists'],
+	['artist', 'library'],
+	['artist', 'albums'],
+	['playlists', 'playlist'],
+	['playlist', 'playlists'],
+	['home', 'now-playing'],
+	['album', 'now-playing'],
+	['now-playing', 'home'],
+	['now-playing', 'album'],
+	['login', 'home'],
+	['login', 'album']
+];
+
 describe('choreographyFor', () => {
-	const routes = ['home', 'album', 'now-playing'] as const;
-	const depth = { home: 0, album: 1, 'now-playing': 2 };
-	const pairs = routes.flatMap((from) =>
-		routes.filter((to) => to !== from).map((to) => [from, to] as const)
-	);
-
-	it('has a journey for every pair of pages', () => {
-		for (const [from, to] of pairs) {
-			expect(choreographyFor(from, to)).not.toBe(blend);
+	it('has a journey for every pair of the milestone', () => {
+		for (const [from, to] of journeyPairs) {
+			expect(choreographyFor(from, to), `${from} → ${to}`).not.toBe(blend);
 		}
-		expect(new Set(pairs.map(([from, to]) => choreographyFor(from, to).name)).size).toBe(6);
 	});
 
-	it('goes deeper one way and comes back the other, on every journey', () => {
-		for (const [from, to] of pairs) {
-			const { leaving } = choreographyFor(from, to);
-			if (depth[to] > depth[from]) {
-				expect(leaving.to.scale).toBeLessThan(1);
-				expect(leaving.ripple).toBeDefined();
-			} else {
-				expect(leaving.to.y).toBeGreaterThan(0);
-				expect(leaving.ripple).toBeUndefined();
+	it('follows the grain on every journey: opening, gathering or crossing', () => {
+		for (const [from, to] of journeyPairs) {
+			expect(choreographyFor(from, to).grain, `${from} → ${to}`).toBe(grainOf(from, to));
+		}
+	});
+
+	it('never moves the page you leave away to uncover the one you go to', () => {
+		for (const [from, to] of journeyPairs) {
+			const { leaving, leavingByRole = {}, held } = choreographyFor(from, to);
+			for (const part of [leaving, ...Object.values(leavingByRole), ...Object.values(held)]) {
+				// No sink: whatever leaves has no travel, only a fall back that something now covers.
+				expect(part.to.y, `${from} → ${to}`).toBeUndefined();
+				expect(part.to.opacity).toBe(0);
 			}
 		}
 	});
 
-	it('takes less time coming back than going in', () => {
-		for (const [from, to] of pairs) {
-			if (depth[to] > depth[from]) {
-				expect(choreographyFor(from, to).motion.token).toBe('--morph-slow');
-				expect(choreographyFor(to, from).motion.token).toBe('--morph');
+	it('gives way where it stands on every gathering and crossing: no scale, no travel', () => {
+		for (const [from, to] of journeyPairs) {
+			const { grain, leaving, leavingByRole = {} } = choreographyFor(from, to);
+			if (grain !== 'opening') {
+				for (const part of [leaving, ...Object.values(leavingByRole)]) {
+					expect(part.to, `${from} → ${to}`).toEqual({ opacity: 0 });
+				}
 			}
 		}
+	});
+
+	it('plays both directions of a pair as their own journeys, never one backward', () => {
+		for (const [from, to] of journeyPairs) {
+			const back = choreographyFor(to, from);
+			if (back !== blend && from !== to) {
+				expect(back.name, `${from} ⇄ ${to}`).not.toBe(choreographyFor(from, to).name);
+				expect(back.grain).not.toBe(choreographyFor(from, to).grain);
+			}
+		}
+	});
+
+	it('gathers quicker than it opens', () => {
+		for (const [from, to] of journeyPairs) {
+			const { grain, motion } = choreographyFor(from, to);
+			if (grain === 'opening') {
+				expect(motion.token, `${from} → ${to}`).toBe('--morph-slow');
+			} else if (grain === 'gathering') {
+				expect(motion.token, `${from} → ${to}`).toBe('--morph');
+			}
+		}
+	});
+
+	it('only ever lets light out of a cover: no gathering drains it back in', () => {
+		for (const [from, to] of journeyPairs) {
+			const { grain, bloom } = choreographyFor(from, to);
+			if (grain !== 'opening') {
+				expect(bloom, `${from} → ${to}`).toBeNull();
+			}
+		}
+	});
+
+	it('brings every entrance in at once, wherever it is on the page', () => {
+		for (const [from, to] of journeyPairs) {
+			for (const part of Object.values(choreographyFor(from, to).arriving)) {
+				expect(part.ripple?.spread ?? 0, `${from} → ${to}`).toBe(0);
+			}
+		}
+	});
+
+	it('holds the stage of an album it leaves, to give way under the page in front', () => {
+		for (const to of ['home', 'library', 'albums', 'artist', 'playlist', 'album'] as const) {
+			expect(choreographyFor('album', to).held.album?.to.opacity, to).toBe(0);
+		}
+		expect(choreographyFor('album', 'home', { continues: true }).held.album).toBeDefined();
+	});
+
+	it('reshapes the album into the Continue card when it is Continue’s, and sets it among the others when not', () => {
+		const into = choreographyFor('album', 'home', { continues: true });
+		expect(into.name).toBe('album-into-continue');
+		expect(into.travel?.leads).toContain('surface:from');
+		expect(into.travel?.landIn).toBe('feature');
+
+		const among = choreographyFor('album', 'home');
+		expect(among.name).toBe('album-to-home');
+		expect(among.travel?.landIn).toBe('played');
+		expect(among.travel?.leads).not.toContain('surface:from');
+	});
+
+	it('grows the grid from the album: the Albums page gathers around the cell it lands in', () => {
+		const { arriving } = choreographyFor('album', 'albums');
+		expect(arriving.card?.gather).toBeDefined();
+		expect(arriving.card?.from.scale).toBeLessThan(1);
+	});
+
+	it('lets the artist’s name take the stage a beat after the album’s headline has gone', () => {
+		const { travel } = choreographyFor('album', 'artist');
+		expect(travel?.leads).toEqual(['name:to', 'cover:from']);
+		expect(travel?.waits?.name).toBe(40);
+	});
+
+	it('re-presses an album in place: nothing travels, and the new stage comes up over the old', () => {
+		const { travel, stages, held, arriving } = choreographyFor('album', 'album');
+		expect(travel?.leads).toEqual([]);
+		expect(stages.album?.from.opacity).toBe(0);
+		expect(held.album?.to.opacity).toBe(0);
+		expect(arriving.words?.from.y).toBeGreaterThan(0);
+	});
+
+	it('opens every record through its own door, the same from every room', () => {
+		for (const from of ['home', 'library', 'albums', 'artist', 'playlist', 'search'] as const) {
+			expect(choreographyFor(from, 'album').travel?.leads, from).toEqual([
+				'cover:to',
+				'title:to',
+				'artist:to'
+			]);
+		}
+		for (const from of ['artists', 'library', 'albums', 'search'] as const) {
+			expect(choreographyFor(from, 'artist').name, from).toBe('name-door');
+		}
+		expect(choreographyFor('playlists', 'playlist').travel?.leads).toEqual([
+			'mosaic:to',
+			'listname:to'
+		]);
 	});
 
 	it('reshapes the island exactly when Now playing is involved', () => {
-		for (const [from, to] of pairs) {
-			expect(choreographyFor(from, to).island !== null).toBe(
+		for (const [from, to] of journeyPairs) {
+			expect(choreographyFor(from, to).island !== null, `${from} → ${to}`).toBe(
 				from === 'now-playing' || to === 'now-playing'
 			);
 		}
@@ -279,13 +440,43 @@ describe('choreographyFor', () => {
 		expect(choreographyFor('home', 'home')).toBe(blend);
 	});
 
-	it('blends to and from a page with no journey yet', () => {
-		for (const page of ['search', 'artists', 'artist', 'health'] as const) {
-			for (const other of [...routes, 'login', 'search', 'artists', 'artist', 'health'] as const) {
-				expect(choreographyFor(other, page)).toBe(blend);
-				expect(choreographyFor(page, other)).toBe(blend);
+	it('blends every pair a later milestone takes: the rooms among themselves, and Search', () => {
+		const rooms = ['home', 'library', 'albums', 'artists', 'playlists', 'search'] as const;
+		for (const from of rooms) {
+			for (const to of rooms) {
+				expect(choreographyFor(from, to), `${from} → ${to}`).toBe(blend);
 			}
 		}
+		for (const page of ['health', 'you', 'server'] as const) {
+			expect(choreographyFor('album', page)).toBe(blend);
+			expect(choreographyFor(page, 'album')).toBe(blend);
+		}
+		expect(choreographyFor('album', 'search')).toBe(blend);
+		expect(choreographyFor('artist', 'artist')).toBe(blend);
+	});
+});
+
+describe('gather', () => {
+	const { arriving } = choreographyFor('album', 'albums');
+	const part = arriving.card;
+
+	it('is all but there beside the landing, and deepest at the far edge', () => {
+		const near = { near: 0.15 };
+		expect(gatherWeight(near, 0)).toBeCloseTo(0.15);
+		expect(gatherWeight(near, 1)).toBe(1);
+		expect(gatherWeight(near, 0.2)).toBeLessThan(gatherWeight(near, 0.8));
+	});
+
+	it('weighs only the depth: every unit fades and starts the same', () => {
+		if (part === undefined) {
+			throw new Error('Album → Albums has no card part');
+		}
+		const near = weighGather(part, 0.15);
+		const far = weighGather(part, 1);
+		expect(near.from.scale).toBeGreaterThan(far.from.scale ?? 1);
+		expect(near.from.opacity).toBe(far.from.opacity);
+		expect(near.delay).toBe(far.delay);
+		expect(far.from.scale).toBe(part.from.scale);
 	});
 });
 

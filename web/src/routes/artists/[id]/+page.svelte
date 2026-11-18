@@ -12,6 +12,7 @@
 	import ArtistSongs from '#lib/pages/ArtistSongs.svelte';
 	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
 	import { sorts } from '#lib/pages/sortsView.svelte.ts';
+	import { morph } from '#lib/morph/registry.ts';
 	import type { PageProps } from './$types';
 
 	let { params }: PageProps = $props();
@@ -91,14 +92,20 @@
 	</div>
 {:else}
 	<div class="page-frame artist">
-		<div class="words">
+		<div class="words" data-morph-part="words" data-morph-key="words">
 			<span class="meta">{artist === undefined ? '' : artistFacts(artist)}&nbsp;</span>
 			<!-- The fit divides by the words' width, known before layout: the first frame is final. -->
-			<h1 title={name} style:--width={emWidth(name, 900, -0.07)}>{name}</h1>
+			<h1
+				title={name}
+				style:--width={emWidth(name, 900, -0.07)}
+				use:morph={{ id: `name:${id}`, slot: 'hero', kind: 'title' }}
+			>
+				{name}
+			</h1>
 		</div>
 
 		{#if load.kind === 'unavailable'}
-			<p class="note" role="status">
+			<p class="note" role="status" data-morph-part="panel" data-morph-key="note">
 				This artist couldn't be loaded.
 				<button type="button" onclick={() => void library.loadArtist(id)}>Try again</button>
 			</p>
@@ -110,7 +117,8 @@
 						{#if artist !== undefined}
 							{#if artist.albums.length > 0}
 								<section aria-labelledby="own-albums">
-									<div class="heading">
+									<!-- Its covers are units of their own: units can't nest. -->
+									<div class="heading" data-morph-part="panel" data-morph-key="own-albums">
 										<h2 id="own-albums">Albums</h2>
 										<SortControl
 											groups={sortGroups}
@@ -125,12 +133,16 @@
 							{/if}
 							{#if artist.appearsOn.length > 0}
 								<section aria-labelledby="appears-on">
-									<h2 id="appears-on">Appears on</h2>
+									<h2 id="appears-on" data-morph-part="panel" data-morph-key="appears-on">
+										Appears on
+									</h2>
 									<AlbumShelf albums={artistAlbums(artist.appearsOn, order)} />
 								</section>
 							{/if}
 							{#if artist.albums.length === 0 && artist.appearsOn.length === 0}
-								<p class="note" role="status">Nothing of theirs is in the library right now.</p>
+								<p class="note" role="status" data-morph-part="panel" data-morph-key="nothing">
+									Nothing of theirs is in the library right now.
+								</p>
 							{/if}
 						{/if}
 					{/snippet}

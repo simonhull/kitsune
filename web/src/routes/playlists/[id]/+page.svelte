@@ -19,6 +19,7 @@
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
 	import Floating from '#lib/pages/Floating.svelte';
+	import { morph } from '#lib/morph/registry.ts';
 	import Mosaic from '#lib/pages/Mosaic.svelte';
 	import PlaylistSongs from '#lib/pages/PlaylistSongs.svelte';
 	import { headLine, phoneHeadLine } from '#lib/pages/playlistWords.ts';
@@ -214,13 +215,18 @@
 			onsave={() => void saveRules()}
 		/>
 	{:else if load.kind === 'missing'}
-		<p class="note" role="status">
+		<p class="note" role="status" data-morph-part="words" data-morph-key="missing">
 			There's no such playlist.
 			<a href={resolve('/playlists')}>All playlists</a>
 		</p>
 	{:else}
 		<div class="hero" class:exporting>
-			<span class="mosaic">
+			<span
+				class="mosaic"
+				data-morph-part="art"
+				data-morph-key="mosaic"
+				use:morph={{ id: `mosaic:${id}`, slot: 'hero', kind: 'cover' }}
+			>
 				<Mosaic
 					albums={known?.mosaic ?? []}
 					size={phone ? 112 : 200}
@@ -233,7 +239,7 @@
 						size={phone ? 'phone' : 'page'}
 					/>{/if}
 			</span>
-			<div class="words">
+			<div class="words" data-morph-part="words" data-morph-key="words">
 				<span class="facts"
 					>{known === undefined
 						? 'PLAYLIST'
@@ -246,7 +252,9 @@
 								: headLine(known)}</span
 				>
 				{#if file !== undefined}
-					<h1 class="name plain">{known?.name}</h1>
+					<h1 class="name plain" use:morph={{ id: `listname:${id}`, slot: 'hero', kind: 'title' }}>
+						{known?.name}
+					</h1>
 					<div class="from">
 						<span class="from-words"
 							>FROM <span class="path">{file.path}</span
@@ -268,6 +276,7 @@
 				{:else}
 					<input
 						class="name"
+						use:morph={{ id: `listname:${id}`, slot: 'hero', kind: 'title' }}
 						bind:this={nameField}
 						value={name}
 						aria-label="Playlist name"
@@ -411,20 +420,22 @@
 		</div>
 
 		{#if missingOpen && file !== undefined}
-			<MissingLines
-				lines={playlist?.missing ?? []}
-				pastLimit={file.pastLimit}
-				found={known?.songCount ?? 0}
-				{phone}
-				onhide={() => {
-					missingOpen = false;
-				}}
-			/>
+			<div data-morph-part="panel" data-morph-key="missing-lines">
+				<MissingLines
+					lines={playlist?.missing ?? []}
+					pastLimit={file.pastLimit}
+					found={known?.songCount ?? 0}
+					{phone}
+					onhide={() => {
+						missingOpen = false;
+					}}
+				/>
+			</div>
 		{/if}
 		{#if playlist !== undefined}
 			<PlaylistSongs {playlist} onplay={playFrom} smartRules={rules} file={file !== undefined} />
 		{:else if load.kind === 'unavailable'}
-			<p class="note" role="status">
+			<p class="note" role="status" data-morph-part="panel" data-morph-key="unavailable">
 				Its songs couldn't be loaded.
 				<button type="button" onclick={() => void library.playlists.loadDetail(id, true)}
 					>Try again</button

@@ -7,6 +7,7 @@
  * their cells are left alone (plan 052's Outcome, and its follow-up).
  */
 import type { Action } from 'svelte/action';
+import { whenSettled } from '#lib/morph/settled.ts';
 
 let sheet: CSSStyleSheet | null = null;
 let lists = 0;
@@ -40,11 +41,15 @@ export const songGrid: Action<HTMLElement, string> = (list, template) => {
 			}
 		},
 		destroy() {
-			const at = [...own.cssRules].indexOf(rule as CSSRule);
-			if (at >= 0) {
-				own.deleteRule(at);
-			}
 			delete list.dataset['songGrid'];
+			// A picture of the list may still be giving way under the next page: the rule goes once
+			// nothing moves. Its key is never used again, so it can't style anything else meanwhile.
+			whenSettled(() => {
+				const at = [...own.cssRules].indexOf(rule as CSSRule);
+				if (at >= 0) {
+					own.deleteRule(at);
+				}
+			});
 		}
 	};
 };

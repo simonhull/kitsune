@@ -6,6 +6,7 @@ import {
 	dissolveOpacities,
 	dissolveTarget,
 	sharedWidth,
+	surfaceShown,
 	unit,
 	type Point
 } from './path.ts';
@@ -63,8 +64,68 @@ function radiusOf(element: HTMLElement, width: number): number {
 	return borderTopLeftRadius.endsWith('%') ? (radius / 100) * width : radius;
 }
 
+/** The words a title shows: a playlist's name is the field it's renamed in. */
+function wordsOf(element: HTMLElement): string {
+	return element instanceof HTMLInputElement ? element.value : (element.textContent ?? '');
+}
+
+/** Where a field's words sit inside it: a field can't hold a probe, and it's wider than its words. */
+interface FieldWords {
+	baseline: number;
+	inset: number;
+	width: number;
+}
+
+/** What each field measured last, so placing it every frame costs nothing. */
+const fields = new WeakMap<HTMLElement, FieldWords>();
+
+/** Lays the words out once at the field's font, which is what its picture will be drawn at. */
+function wordsWidth(words: string, style: CSSStyleDeclaration): number {
+	const probe = document.createElement('span');
+	probe.textContent = words;
+	probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font-family:${style.fontFamily};font-size:${style.fontSize};font-weight:${style.fontWeight};letter-spacing:${style.letterSpacing}`;
+	document.body.append(probe);
+	const width = probe.offsetWidth;
+	probe.remove();
+	return width;
+}
+
+/** Measures where a field's words sit: in the middle of its content box, after its padding. */
+function measureField(element: HTMLInputElement): FieldWords {
+	const style = getComputedStyle(element);
+	const words = wordsOf(element);
+	const padTop = Number.parseFloat(style.paddingTop);
+	const inset = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.borderLeftWidth);
+	const content = element.clientHeight - padTop - Number.parseFloat(style.paddingBottom);
+	const context = document.createElement('canvas').getContext('2d');
+	if (context === null) {
+		const guessed = {
+			baseline: element.clientHeight * 0.75,
+			inset,
+			width: wordsWidth(words, style)
+		};
+		fields.set(element, guessed);
+		return guessed;
+	}
+	context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+	const metrics = context.measureText(words === '' ? 'M' : words);
+	const ascent = metrics.fontBoundingBoxAscent;
+	const descent = metrics.fontBoundingBoxDescent;
+	const measured = {
+		baseline:
+			Number.parseFloat(style.borderTopWidth) + padTop + (content - ascent - descent) / 2 + ascent,
+		inset,
+		width: wordsWidth(words, style)
+	};
+	fields.set(element, measured);
+	return measured;
+}
+
 /** Finds how far below the top of an element its first baseline sits, unscaled. */
 function baselineOffset(element: HTMLElement): number {
+	if (element instanceof HTMLInputElement) {
+		return measureField(element).baseline;
+	}
 	const probe = document.createElement('span');
 	probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
 	element.prepend(probe);
@@ -90,13 +151,15 @@ export function measureTitle(element: HTMLElement): TitleMeasure {
 	const style = getComputedStyle(element);
 	const drawnSize = Number.parseFloat(style.fontSize);
 	const drawnBaseline = baselineOffset(element);
+	const field = fields.get(element);
+	const width = field?.width ?? element.scrollWidth;
 	return {
 		shape: placeTitle(element, drawnSize, drawnBaseline),
 		drawnSize,
 		drawnBaseline,
-		drawnWidth: element.scrollWidth,
-		shownWidth: element.clientWidth,
-		wrapped: wraps(element, style)
+		drawnWidth: width,
+		shownWidth: field === undefined ? element.clientWidth : width,
+		wrapped: field === undefined && wraps(element, style)
 	};
 }
 
@@ -109,23 +172,25 @@ function wraps({ clientHeight }: HTMLElement, style: CSSStyleDeclaration): boole
 function placeTitle(element: HTMLElement, drawnSize: number, drawnBaseline: number): TitleShape {
 	const { left, top, height } = element.getBoundingClientRect();
 	const scale = height / (element.offsetHeight || 1);
-	return { left, baseline: top + drawnBaseline * scale, fontSize: drawnSize * scale };
+	const inset = (fields.get(element)?.inset ?? 0) * scale;
+	return { left: left + inset, baseline: top + drawnBaseline * scale, fontSize: drawnSize * scale };
 }
 
 /** A picture of a title at its true font, drawn once and only ever transformed. */
 export function drawTitle(element: HTMLElement): HTMLElement {
 	const style = getComputedStyle(element);
 	const picture = document.createElement('span');
-	picture.textContent = element.textContent;
+	picture.textContent = wordsOf(element);
 	// A title truncated where it sits stays truncated in its picture, so the first frame matches.
 	const clipped =
-		element.scrollWidth > element.clientWidth
+		!(element instanceof HTMLInputElement) && element.scrollWidth > element.clientWidth
 			? `max-width:${String(element.clientWidth)}px;overflow:hidden;text-overflow:ellipsis;`
 			: '';
 	// Same for one on two lines. The width rounds up, or a line that just fits would break again.
-	const layout = wraps(element, style)
-		? `display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:${style.webkitLineClamp};overflow:hidden;width:${String(element.clientWidth + 1)}px;padding-bottom:${style.paddingBottom};text-wrap:${style.textWrap};text-align:${style.textAlign};`
-		: `${clipped}white-space:nowrap;`;
+	const layout =
+		!(element instanceof HTMLInputElement) && wraps(element, style)
+			? `display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:${style.webkitLineClamp};overflow:hidden;width:${String(element.clientWidth + 1)}px;padding-bottom:${style.paddingBottom};text-wrap:${style.textWrap};text-align:${style.textAlign};`
+			: `${clipped}white-space:nowrap;`;
 	picture.style.cssText = `${layout}position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform,opacity;
 		font-family:${style.fontFamily};font-size:${style.fontSize};font-weight:${style.fontWeight};
 		letter-spacing:${style.letterSpacing};line-height:${style.lineHeight};color:${style.color}`;
@@ -551,5 +616,156 @@ export class TitleFlier implements Flier {
 			this.#fontSize.settled(landsWithin / 2) &&
 			this.#dissolve.settled(0.02)
 		);
+	}
+}
+
+/** Where a surface is, at its true size: its box and its corners. */
+export interface SurfaceShape {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+	radius: number;
+}
+
+/** Measures a surface in full: once per target, never per frame. */
+export function measureSurface(element: HTMLElement): SurfaceShape {
+	const { left, top, width, height } = element.getBoundingClientRect();
+	return { left, top, width, height, radius: radiusOf(element, width) };
+}
+
+/**
+ * Draws a surface as it stands, its album's colors kept, at the size it has there: a flier only
+ * ever scales it, so its soft light is drawn once, never laid out again every frame.
+ */
+export function drawSurface(element: HTMLElement): HTMLElement {
+	const picture = element.cloneNode(true);
+	if (!(picture instanceof HTMLElement)) {
+		return document.createElement('div');
+	}
+	const style = getComputedStyle(element);
+	picture.removeAttribute('data-morph-hidden');
+	picture.removeAttribute('data-morph-stage');
+	for (const name of ['--accent', '--on-accent', '--wash', '--stage']) {
+		picture.style.setProperty(name, style.getPropertyValue(name));
+	}
+	const { width, height } = element.getBoundingClientRect();
+	picture.style.position = 'absolute';
+	picture.style.left = '0';
+	picture.style.top = '0';
+	picture.style.right = 'auto';
+	picture.style.bottom = 'auto';
+	picture.style.width = `${String(width)}px`;
+	picture.style.height = `${String(height)}px`;
+	picture.style.margin = '0';
+	picture.style.opacity = '1';
+	picture.style.transformOrigin = '0 0';
+	picture.style.borderRadius = '0';
+	picture.style.willChange = 'transform';
+	return picture;
+}
+
+interface SurfaceFace {
+	element: HTMLElement;
+	width: number;
+	height: number;
+}
+
+function faceOf(element: HTMLElement): SurfaceFace {
+	const { width, height } = element.getBoundingClientRect();
+	return { element: drawSurface(element), width: Math.max(1, width), height: Math.max(1, height) };
+}
+
+/**
+ * A surface reshaping into another: the album's stage becoming the Continue card. Unlike a cover it
+ * changes proportion and corners, so its box is laid out at its true size every frame, never scaled
+ * (The True Corner Rule), while the two faces inside it are only scaled to fill it, and the face it
+ * becomes lays itself over the face it was.
+ */
+export class SurfaceFlier implements Flier {
+	readonly element = document.createElement('div');
+	#target: MorphEntry | null = null;
+	readonly #leaving: SurfaceFace;
+	#landing: SurfaceFace | null = null;
+	readonly #fromWidth: number;
+	readonly #left: Channel;
+	readonly #top: Channel;
+	readonly #width: Channel;
+	readonly #height: Channel;
+	readonly #radius: Channel;
+
+	constructor(from: SurfaceShape, source: HTMLElement, target: MorphEntry) {
+		const to = measureSurface(target.element);
+		this.#fromWidth = from.width;
+		this.#left = new Channel(from.left, to.left);
+		this.#top = new Channel(from.top, to.top);
+		this.#width = new Channel(from.width, to.width);
+		this.#height = new Channel(from.height, to.height);
+		this.#radius = new Channel(from.radius, to.radius);
+		this.element.style.cssText = 'position:absolute;left:0;top:0;overflow:hidden;contain:strict';
+		this.#leaving = faceOf(source);
+		this.element.append(this.#leaving.element);
+		this.target = target;
+		this.write();
+	}
+
+	get target(): MorphEntry | null {
+		return this.#target;
+	}
+
+	set target(entry: MorphEntry | null) {
+		this.#target = entry;
+		if (entry === null) {
+			return;
+		}
+		this.#landing?.element.remove();
+		this.#landing = faceOf(entry.element);
+		this.element.append(this.#landing.element);
+	}
+
+	measure(): void {
+		if (this.#target === null) {
+			return;
+		}
+		const to = measureSurface(this.#target.element);
+		this.#left.target = to.left;
+		this.#top.target = to.top;
+		this.#width.target = to.width;
+		this.#height.target = to.height;
+		this.#radius.target = to.radius;
+	}
+
+	step(params: SpringParams, seconds: number): void {
+		for (const channel of this.#channels) {
+			channel.step(params, seconds);
+		}
+	}
+
+	get #channels(): Channel[] {
+		return [this.#left, this.#top, this.#width, this.#height, this.#radius];
+	}
+
+	#fill({ element, width, height }: SurfaceFace, boxWidth: number, boxHeight: number): void {
+		element.style.transform = `scale(${(boxWidth / width).toFixed(4)}, ${(boxHeight / height).toFixed(4)})`;
+	}
+
+	write(): void {
+		const width = Math.max(0, this.#width.value);
+		const height = Math.max(0, this.#height.value);
+		const { style } = this.element;
+		style.transform = `translate(${this.#left.value.toFixed(2)}px, ${this.#top.value.toFixed(2)}px)`;
+		style.width = `${width.toFixed(2)}px`;
+		style.height = `${height.toFixed(2)}px`;
+		style.borderRadius = `${Math.max(0, this.#radius.value).toFixed(2)}px`;
+		this.#fill(this.#leaving, width, height);
+		if (this.#landing !== null) {
+			this.#fill(this.#landing, width, height);
+			const shown = surfaceShown(width, this.#fromWidth, this.#width.target);
+			this.#landing.element.style.opacity = shown.toFixed(3);
+		}
+	}
+
+	get settled(): boolean {
+		return this.#channels.every((channel) => channel.settled(landsWithin));
 	}
 }
