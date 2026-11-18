@@ -2,6 +2,23 @@
 	Where the shell draws the one tag editor, over whatever page opened it. The editor has a history
 	entry of its own (`editorHistory`): Back is Leave it, and leaving the page drops its edits.
 -->
+<script module lang="ts">
+	let code: Promise<typeof import('./TagEditor.svelte')> | undefined;
+
+	/**
+	 * The editor's code, kept out of the page load and fetched with the routes' once the shell is up
+	 * (the layout asks), so a tab left open across a deploy, whose build the server no longer has, still
+	 * opens it.
+	 */
+	export function editorCode(): Promise<typeof import('./TagEditor.svelte')> {
+		code ??= import('./TagEditor.svelte').catch((error: unknown) => {
+			code = undefined;
+			throw error;
+		});
+		return code;
+	}
+</script>
+
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -15,12 +32,12 @@
 	import { tagEditor, type Written } from './tagEditor.svelte.ts';
 
 	let announcement = $state('');
-	/** The editor's code, fetched the first time it opens: no page load pays for it. */
+	/** The editor's code, once `editorCode` has it. */
 	let TagEditor = $state.raw<typeof TagEditorView | null>(null);
 
 	$effect(() => {
 		if (tagEditor.current !== null && TagEditor === null) {
-			void import('./TagEditor.svelte').then((loaded) => {
+			void editorCode().then((loaded) => {
 				TagEditor = loaded.default;
 			});
 		}

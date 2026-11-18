@@ -22,7 +22,7 @@
 	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 	import MatchSheet from '#lib/matching/MatchSheet.svelte';
 	import { matchSheet } from '#lib/matching/sheet.svelte.ts';
-	import EditorHost from '#lib/pages/EditorHost.svelte';
+	import EditorHost, { editorCode } from '#lib/pages/EditorHost.svelte';
 	import { tagEditor } from '#lib/pages/tagEditor.svelte.ts';
 	import { createCarrier } from '#lib/player/carry.ts';
 	import { playerKey } from '#lib/player/keys.ts';
@@ -191,7 +191,11 @@
 		};
 		// Signing out saves where the player is first, so the next sign-in, anywhere, comes back to it.
 		library.beforeSignOut = () => resume.flush();
-		void Promise.all(routeIds.map((route) => preloadCode(route)));
+		// Every page's code, and the tag editor's, arrive now: a tab left open across a deploy can't
+		// fetch the old build's later.
+		void Promise.all([...routeIds.map((route) => preloadCode(route)), editorCode()]).catch(
+			() => undefined
+		);
 		const leaveSession = followMediaSession(player);
 		const stopWatching = watchInput();
 		const stopFollowing = theme.follow();
