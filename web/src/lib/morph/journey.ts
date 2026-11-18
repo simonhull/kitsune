@@ -64,8 +64,6 @@ function rememberOrigins(path: string): Origins {
 	return known;
 }
 
-const playerParts = ['control:previous', 'control:pause', 'control:next', 'progress'];
-
 let lastClick: EventTarget | null = null;
 let homeScroll = 0;
 let visualTransition = false;
@@ -296,23 +294,32 @@ function leadsFor(
 			...(playing === undefined ? [] : [[`cover:${playing}`, 'cover'] as const])
 		]);
 	}
+	const pages = (travel.leads ?? []).flatMap((leadOf: LeadOf) => {
+		const [lead, side] = leadOf.split(':') as [Lead, 'from' | 'to'];
+		const owner = ownerOf(lead, side === 'from' ? from : to);
+		return owner === undefined ? [] : [[`${lead}:${owner}`, lead] as const];
+	});
 	if (travel.subject === 'playing') {
+		// What's playing, after any lead of a page's own: the artist's name leads out of the moment.
 		const id = library.playing?.album.id;
-		const ids = id === undefined ? [] : [`cover:${id}`, 'song', ...playerParts];
-		return new Map(ids.map((each) => [each, 'cover']));
+		const parts = id === undefined ? [] : [`cover:${id}`, 'song', ...(travel.controls ?? [])];
+		return new Map([...pages, ...parts.map((each) => [each, 'cover'] as const)]);
 	}
-	return new Map(
-		(travel.leads ?? []).flatMap((leadOf: LeadOf) => {
-			const [lead, side] = leadOf.split(':') as [Lead, 'from' | 'to'];
-			const owner = ownerOf(lead, side === 'from' ? from : to);
-			return owner === undefined ? [] : [[`${lead}:${owner}`, lead] as const];
-		})
-	);
+	return new Map(pages);
 }
 
 /** A hero scrolled off screen stays with its page: the island's cover travels instead. */
 function canTravel(entry: MorphEntry): boolean {
 	return entry.slot !== 'hero' || onScreen(entry);
+}
+
+/**
+ * Out of the moment, the poster lands where the page holds its album in view: a card clear of the nav
+ * and the island, or the album's own hero on screen. Anywhere else it goes into the island's thumb,
+ * which is always there.
+ */
+function heldInView(entry: MorphEntry): boolean {
+	return entry.slot === 'card' ? inTheClear(entry.element) : canTravel(entry);
 }
 
 /**
@@ -367,7 +374,8 @@ export function landJourney(
 		origins: originsOf(path),
 		// With no origin, a card already in the clear wins, so the page stays where it was left.
 		visible: ({ element }) => inTheClear(element),
-		eligible: travel.subject === 'rooms' ? inView : canTravel
+		eligible:
+			travel.subject === 'rooms' ? inView : travel.subject === 'playing' ? heldInView : canTravel
 	});
 	const borrowed = lentFrom.get(path);
 	if (borrowed !== undefined && journey.ids.includes(borrowed.id) && !targets.has(borrowed.id)) {
@@ -381,7 +389,13 @@ export function landJourney(
 		}
 	}
 	const lead = targets.get(journey.ids.at(0) ?? '');
-	if (grain === 'gathering' && lead !== undefined && lead.slot !== 'hero') {
+	// What's playing lands only where the page already shows it: nothing is scrolled for it.
+	if (
+		grain === 'gathering' &&
+		travel.subject !== 'playing' &&
+		lead !== undefined &&
+		lead.slot !== 'hero'
+	) {
 		bringIntoView(lead.element);
 	}
 	return targets;

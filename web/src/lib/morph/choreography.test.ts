@@ -260,7 +260,30 @@ function grainOf(from: RouteName, to: RouteName): Grain {
 	return level[to] > level[from] ? 'opening' : 'gathering';
 }
 
-/** Every pair of milestone 1, and the shipped journeys it restacks. */
+/** Every page the island shows on: each opens into the moment, and the moment goes back to each. */
+const islandPages = [
+	'home',
+	'library',
+	'albums',
+	'artists',
+	'playlists',
+	'search',
+	'you',
+	'health',
+	'server',
+	'artist',
+	'playlist',
+	'album'
+] as const satisfies readonly RouteName[];
+
+/** Every pair of milestone 3: the player and Now playing, and the door opening on it. */
+const momentPairs: readonly (readonly [RouteName, RouteName])[] = [
+	...islandPages.map((page) => [page, 'now-playing'] as const),
+	...islandPages.map((page) => ['now-playing', page] as const),
+	['login', 'now-playing']
+];
+
+/** Every pair of milestones 1 and 3, and the shipped journeys they restack. */
 const journeyPairs: readonly (readonly [RouteName, RouteName])[] = [
 	['home', 'album'],
 	['library', 'album'],
@@ -283,12 +306,9 @@ const journeyPairs: readonly (readonly [RouteName, RouteName])[] = [
 	['artist', 'albums'],
 	['playlists', 'playlist'],
 	['playlist', 'playlists'],
-	['home', 'now-playing'],
-	['album', 'now-playing'],
-	['now-playing', 'home'],
-	['now-playing', 'album'],
 	['login', 'home'],
-	['login', 'album']
+	['login', 'album'],
+	...momentPairs
 ];
 
 describe('choreographyFor', () => {
@@ -420,10 +440,10 @@ describe('choreographyFor', () => {
 		]);
 	});
 
-	it('reshapes the island exactly when Now playing is involved', () => {
+	it('reshapes the island exactly when Now playing is involved, and it was there to reshape', () => {
 		for (const [from, to] of journeyPairs) {
 			expect(choreographyFor(from, to).island !== null, `${from} → ${to}`).toBe(
-				from === 'now-playing' || to === 'now-playing'
+				from !== 'login' && (from === 'now-playing' || to === 'now-playing')
 			);
 		}
 	});
@@ -453,7 +473,108 @@ describe('choreographyFor', () => {
 		}
 		expect(choreographyFor('album', 'search')).toBe(blend);
 		expect(choreographyFor('artist', 'artist')).toBe(blend);
-		expect(choreographyFor('now-playing', 'library')).toBe(blend);
+	});
+});
+
+describe('the moment', () => {
+	it('opens from every page the island shows on, from the island’s cover', () => {
+		for (const page of islandPages.filter((each) => each !== 'album')) {
+			const { name, travel, leaving, stages } = choreographyFor(page, 'now-playing');
+			expect(name, page).toBe('into-now-playing');
+			expect(travel).toMatchObject({ subject: 'playing', sourceSlots: ['island'] });
+			// The one move allowed to fall back: the poster's stage comes up over it.
+			expect(leaving.to.scale).toBeLessThan(1);
+			expect(stages.poster?.from.opacity).toBe(0);
+		}
+		// From its album, the hero leaves when it is on screen.
+		expect(choreographyFor('album', 'now-playing').travel?.sourceSlots).toEqual(['hero', 'island']);
+	});
+
+	it('goes back into the hand from every room and record: the poster lands where the page holds it, else in the thumb', () => {
+		for (const page of islandPages.filter((each) => each !== 'album')) {
+			const { travel, island, headline, otherwise, held } = choreographyFor('now-playing', page);
+			expect(travel?.subject, page).toBe('playing');
+			expect(travel?.sourceSlots).toEqual(['poster']);
+			// Its own hero, a card in view, else the island's thumb, which is always there.
+			expect(travel?.targetSlots).toEqual(['hero', 'card', 'island']);
+			// On Home, the Continue card wins: the way out never retraces the way in.
+			expect(travel?.landIn).toBe('feature');
+			expect(island?.from.opacity).toBe(0);
+			expect(held.poster?.to).toEqual({ opacity: 0 });
+			// Built in front around the landing, the headline once the poster title has cleared.
+			expect(otherwise?.gather).toBeDefined();
+			if (page !== 'artist') {
+				expect(headline?.arriving.delay).toBeGreaterThan(otherwise?.delay ?? 0);
+			}
+		}
+	});
+
+	it('flies only Play and the bar back with the controls’ pill: the rest go with the island', () => {
+		expect(choreographyFor('now-playing', 'home').travel?.controls).toEqual([
+			'control:pause',
+			'progress'
+		]);
+		expect(choreographyFor('now-playing', 'album').travel?.controls).toEqual([
+			'control:pause',
+			'progress'
+		]);
+		// Into the moment every control rises with the glass, as it always has.
+		expect(choreographyFor('home', 'now-playing').travel?.controls).toHaveLength(4);
+	});
+
+	it('is never the way in played backward', () => {
+		for (const page of islandPages) {
+			const into = choreographyFor(page, 'now-playing');
+			const out = choreographyFor('now-playing', page);
+			expect(out.name, page).not.toBe(into.name);
+			expect(out.motion.token).toBe('--morph');
+			expect(into.motion.token).toBe('--morph-slow');
+			expect(out.leaving.to).toEqual({ opacity: 0 });
+		}
+	});
+
+	it('lets the artist’s name take the stage, a beat after the poster title has gone', () => {
+		const { travel, headline } = choreographyFor('now-playing', 'artist');
+		expect(travel?.leads).toEqual(['name:to']);
+		expect(travel?.waits?.name).toBe(40);
+		expect(headline).toBeUndefined();
+	});
+
+	it('opens the door on the moment: no island to rise from, the controls close the frame', () => {
+		const { name, travel, islandForms, arrivingByKey, arriving } = choreographyFor(
+			'login',
+			'now-playing'
+		);
+		expect(name).toBe('login-to-now-playing');
+		expect(travel?.leads).toEqual([]);
+		expect(islandForms?.from.y).toBeGreaterThan(0);
+		expect(arrivingByKey?.['poster']?.from.y).toBe(48);
+		// The title waits until the cover is solid: never seen through it.
+		expect(arriving['line-1']?.delay).toBeGreaterThan(arrivingByKey?.['poster']?.delay ?? 0);
+		expect(arriving['line-1']?.delay).toBe(360);
+		expect(arriving['line-2']?.delay).toBe(450);
+	});
+
+	it('settles about 737 ms out, 1039 in, and 1259 through the door', () => {
+		const lengths = {
+			'--morph-fast': 280,
+			'--morph': 420,
+			'--morph-slow': 600,
+			'--morph-drop': 180
+		};
+		const settles = (part: { delay: number; motion: Parameters<typeof resolveMotion>[0] }) =>
+			part.delay + settleTime(resolveMotion(part.motion, (token) => lengths[token]));
+		const out = choreographyFor('now-playing', 'home');
+		expect(settles(out.headline?.arriving ?? out.leaving)).toBeGreaterThan(680);
+		expect(settles(out.headline?.arriving ?? out.leaving)).toBeLessThan(760);
+		const into = choreographyFor('home', 'now-playing').arriving['line-2'];
+		expect(into === undefined ? 0 : settles(into)).toBeCloseTo(1039, -1);
+		const door = choreographyFor('login', 'now-playing').arriving['line-2'];
+		expect(door === undefined ? 0 : settles(door)).toBeCloseTo(1259, -1);
+	});
+
+	it('goes to the door by the blend still: that journey is the fifth milestone’s', () => {
+		expect(choreographyFor('now-playing', 'login')).toBe(blend);
 	});
 });
 
@@ -567,8 +688,7 @@ describe('the door', () => {
 		expect(arriving.intro?.delay).toBe(arriving.card?.delay);
 	});
 
-	it('blends into Now playing, and back to the door from anywhere', () => {
-		expect(choreographyFor('login', 'now-playing')).toBe(blend);
+	it('blends back to the door from anywhere', () => {
 		for (const from of away) {
 			expect(choreographyFor(from, 'login')).toBe(blend);
 		}
