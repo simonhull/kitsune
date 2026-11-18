@@ -825,6 +825,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   that reads a page's geometry after a navigation waits for `landed` (`e2e/fixture.ts`) first: the
   units arriving are still moving. An album that starts playing goes first in Home's Recently played
   at once (`Library.showQueue`), so Album → Home lands where Home holds it; the next read agrees.
+- The nav's eight rooms (`rooms` in `choreography.ts`) unfold into each other from what was pressed
+  (`Journey.origin`: the link clicked, else the room's `data-room` place in the nav). A room's
+  `data-morph-headline` unit, the first on screen, is born there; everything else gathers around it.
+  Into Search the nav's field reshapes into the page's in the born layer, under the nav's glass. A
+  room waits one frame unseen for what it already holds to be drawn, never for the server. The same
+  item pressed again only presses the pill, and lays a scrolled room again at its top (`relay`).
+  Only an item holds the pill, never the fox.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.

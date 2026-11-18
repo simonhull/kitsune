@@ -51,6 +51,13 @@ export function flowingPill(nav: HTMLElement, item: string | null) {
 		// queued it: a negative step would run the springs backwards for a frame.
 		const seconds = Math.min(Math.max(0, now - last) / 1000, 0.05);
 		last = now;
+		// Where the item is now, read before anything is written: the nav can still be laying itself
+		// out (a press in the same moment as another, a font arriving), and the pill lands on it.
+		const place = current();
+		if (place !== null) {
+			left.target = place.from;
+			right.target = place.to;
+		}
 		const movingRight = right.target >= right.value;
 		left.step(movingRight ? trailing : leading, seconds);
 		right.step(movingRight ? leading : trailing, seconds);
