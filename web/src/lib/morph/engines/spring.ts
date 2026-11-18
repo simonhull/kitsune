@@ -62,15 +62,16 @@ const islandLeaves: Part = {
 	delay: 0,
 	motion: { token: '--morph-fast', bounce: 0 }
 };
-/** How a page's own grounds give way: at once, before the units sitting in them are gone. */
+/**
+ * Giving way on the exit spring: a page's own grounds, before the units sitting in them are gone,
+ * and a flier with nowhere to land, as the page it left does.
+ */
 const giveWayFast: Part = {
 	from: {},
 	to: { opacity: 0 },
 	delay: 0,
 	motion: { token: '--morph-fast', bounce: 0, pace: 0.7 }
 };
-/** How a flier with nowhere to land goes: as the page it left does. */
-const exitSpec: Part['motion'] = { token: '--morph-fast', bounce: 0, pace: 0.7 };
 /** The largest gap one frame may jump: a stalled main thread shouldn't teleport anything. */
 const longestFrame = 1 / 20;
 
@@ -124,10 +125,7 @@ type Capture = CoverCapture | TitleCapture | BarCapture | SurfaceCapture | Field
 
 function capture(source: MorphEntry): Capture {
 	const { element, kind } = source;
-	if (kind === 'field') {
-		return { kind, shape: measureSurface(element), element };
-	}
-	if (kind === 'surface') {
+	if (kind === 'field' || kind === 'surface') {
 		return { kind, shape: measureSurface(element), element };
 	}
 	if (kind === 'title') {
@@ -1078,7 +1076,7 @@ export function createSpringEngine(): Morphs {
 		ghosts.push({
 			path: '',
 			element: holder,
-			layers: [new Layer(holder, { from: {}, to: { opacity: 0 }, delay: 0, motion: exitSpec })],
+			layers: [new Layer(holder, giveWayFast)],
 			units: new Map()
 		});
 	}
