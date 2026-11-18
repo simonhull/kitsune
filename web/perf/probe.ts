@@ -109,6 +109,10 @@ export function installProbe(): void {
 		if (element === null || (what.path !== undefined && location.pathname !== what.path)) {
 			return false;
 		}
+		// A room arriving waits one frame unseen for its rows to be drawn: it isn't painted yet.
+		if (element.closest('[data-morph-waiting]') !== null) {
+			return false;
+		}
 		switch (what.kind) {
 			case 'selector':
 				return true;
