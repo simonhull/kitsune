@@ -166,3 +166,13 @@ test.describe('on a phone', () => {
 		await expect(editor(page).getByRole('button', { name: 'Find matches' })).toBeVisible();
 	});
 });
+
+test('the editor opens in a tab left open across a deploy, whose old build is gone', async ({
+	page
+}) => {
+	await openAlbum(page);
+	await page.waitForLoadState('networkidle');
+	// A deploy: the server now has none of the build this tab was loaded from.
+	await page.route('**/_app/immutable/**', (route) => route.fulfill({ status: 404 }));
+	await editAlbum(page);
+});

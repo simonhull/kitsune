@@ -841,7 +841,7 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - An open tab learns of a new build by SvelteKit's version poll (`version.pollInterval` in
   `web/vite.config.ts`). The next navigation loads it whole, but only when nothing plays and the
   server holds where the player is (`lib/shell/freshness.ts`): `reloadsInto` reloads a paused, saved
-  player, which comes back after the load. The server serves `_app/version.json` uncached for this.
+  player, which comes back after the load. The server serves `_app/version.json` uncached for this. A tab left open across a deploy can't fetch the old build's files: the shell fetches every route's code and the tag editor's when it starts (`preloadCode`, `editorCode`), so anything new that is loaded lazily joins them there.
 
 ## Speed
 - Every interaction has a p95 budget in `perf/budgets.json`, the one file that holds them. The browser
