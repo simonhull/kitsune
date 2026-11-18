@@ -452,6 +452,11 @@
 		.compact {
 			animation: cue-in 120ms linear;
 		}
+
+		/* It takes its new shape at once, under the page's blend. */
+		.glass {
+			transition-duration: 0s;
+		}
 	}
 
 	.now {
