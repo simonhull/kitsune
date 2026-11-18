@@ -18,6 +18,11 @@ export class Layer {
 	#params: SpringParams;
 	#fade: SpringParams;
 	#wait: number;
+	/**
+	 * The point it moves around, as set when it started. Kept and written with every frame: a page
+	 * that sets its own `style` attribute as it renders would otherwise wipe it in mid-flight.
+	 */
+	readonly #origin: string;
 
 	constructor(element: HTMLElement, part: Part, delay = part.delay) {
 		const from = complete(part.from);
@@ -30,6 +35,7 @@ export class Layer {
 		this.#params = springParams(motionOf(part.motion));
 		this.#fade = springParams(motionOf(part.fade ?? part.motion));
 		this.#wait = delay / 1000;
+		this.#origin = element.style.transformOrigin;
 		element.style.willChange = 'transform, opacity';
 		// A backdrop blur recomputes every frame anything under it moves; in flight it's unseen.
 		element.style.backdropFilter = 'none';
@@ -73,6 +79,9 @@ export class Layer {
 	write(): void {
 		const { style } = this.element;
 		style.opacity = String(Math.min(1, Math.max(0, this.opacity.value)));
+		if (this.#origin !== '') {
+			style.transformOrigin = this.#origin;
+		}
 		style.transform = `translateY(${this.y.value.toFixed(2)}px) rotate(${this.rotate.value.toFixed(3)}deg) scale(${this.scale.value.toFixed(4)})`;
 	}
 

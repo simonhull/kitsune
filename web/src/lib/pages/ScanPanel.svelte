@@ -54,7 +54,7 @@
 <section class="panel" aria-labelledby="health-title">
 	<div class="standing">
 		<h1 id="health-title" class="label">Library health</h1>
-		<div class="fit">
+		<div class="fit" data-morph-part="intro" data-morph-key="headline" data-morph-headline>
 			<p class="figure" style:--em={emWidth(figure, 900, -0.07)}>{figure}</p>
 		</div>
 		<p class="headline">{words.headline}</p>

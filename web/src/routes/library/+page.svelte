@@ -566,6 +566,7 @@
 							class:with-header={view.stacked && view.columns}
 							data-morph-part="intro"
 							data-morph-key={`head:${name}`}
+							data-morph-headline
 							data-morph-pinned
 						>
 							<!-- The fit divides by the words' width, known before layout: the first frame is final. -->

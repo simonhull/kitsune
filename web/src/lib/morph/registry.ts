@@ -7,9 +7,10 @@ export type MorphSlot =
 
 /**
  * What a shared element is, which decides how it travels. A `surface` changes its true size and
- * radius: the album's stage becoming the Continue card.
+ * radius: the album's stage becoming the Continue card. A `field` does too, but only its look goes
+ * with it, never what's in it: the nav's search field becoming the Search page's.
  */
-export type MorphKind = 'cover' | 'title' | 'control' | 'bar' | 'surface';
+export type MorphKind = 'cover' | 'title' | 'control' | 'bar' | 'surface' | 'field';
 
 export interface MorphParams {
 	/** Shared across pages: `cover:<albumId>`, `title:<albumId>`, `song`, `control:pause`… */

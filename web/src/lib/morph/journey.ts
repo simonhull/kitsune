@@ -9,7 +9,8 @@ import {
 	type LeadOf,
 	type Motion,
 	type MotionSpec,
-	type MotionToken
+	type MotionToken,
+	type RouteName
 } from './choreography.ts';
 import { preload } from '#lib/cover/rungs.ts';
 import { library } from '#lib/library/library.svelte.ts';
@@ -27,6 +28,16 @@ export interface Journey {
 	sources: Map<string, MorphEntry>;
 	/** How long each id waits before it leaves, in milliseconds, when it waits at all. */
 	waits: Map<string, number>;
+	/** Where a room unfolds from: the nav item, field, fox or link pressed. Null on other journeys. */
+	origin: Origin | null;
+}
+
+/** A place on screen a room comes out of, in viewport coordinates, measured as the press lands. */
+export interface Origin {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
 }
 
 /**
@@ -165,8 +176,12 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 	const choreography = reducedMotion() ? blend : choreographyFor(fromRoute, toRoute, { continues });
 	const { travel } = choreography;
 	if (travel === null) {
-		return { choreography, ids: [], sources: new Map(), waits: new Map() };
+		return { choreography, ids: [], sources: new Map(), waits: new Map(), origin: null };
 	}
+	const origin =
+		travel.subject === 'rooms'
+			? originOf(type === 'link' ? lastClick : null, to?.url.pathname, toRoute)
+			: null;
 
 	const leads = leadsFor(travel, navigation);
 	const ids = [...leads.keys()];
@@ -177,7 +192,7 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 		})
 	);
 	if (ids.length === 0) {
-		return { choreography, ids, sources: new Map(), waits };
+		return { choreography, ids, sources: new Map(), waits, origin };
 	}
 	const scopes = type === 'link' ? clickedScopes() : [];
 	const candidates = registry.of(borrowed === null ? ids : [...ids, borrowed.from]);
@@ -190,7 +205,7 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 		slots: travel.sourceSlots,
 		clicked,
 		visible: onScreen,
-		eligible: canTravel,
+		eligible: travel.subject === 'rooms' ? inView : canTravel,
 		// Forward through history has no click: go back to the card the album was opened from.
 		origins: type === 'popstate' ? originsOf(from?.url.pathname) : undefined
 	});
@@ -219,7 +234,35 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 		const usual = travel.sourceSlots[0] ?? 'card';
 		recordOrigins(candidates, ids, usual, sources, rememberOrigins(from.url.pathname));
 	}
-	return { choreography, ids, sources, waits };
+	return { choreography, ids, sources, waits, origin };
+}
+
+/** Says where each room is pressed in the nav: its item, the fox for You, the field for Search. */
+function navPlace(room: RouteName): HTMLElement | null {
+	return document.querySelector<HTMLElement>(`[data-room="${CSS.escape(room)}"]`);
+}
+
+function boxOf(element: Element | null): Origin | null {
+	if (element === null) {
+		return null;
+	}
+	const { left, top, width, height } = element.getBoundingClientRect();
+	return width > 0 && height > 0 ? { left, top, width, height } : null;
+}
+
+/**
+ * Finds what a room unfolds from: the link pressed, when one was (an item of the nav, or a link in
+ * the page such as You's to Playlists on a phone), else the room's own place in the nav, as for Back.
+ * A place that isn't drawn, Health's item on a narrow screen, is no place to come out of.
+ */
+function originOf(
+	click: EventTarget | null,
+	path: string | undefined,
+	room: RouteName
+): Origin | null {
+	const link = click instanceof Element ? click.closest('a') : null;
+	const pressed = link !== null && link.pathname === path;
+	return (pressed ? boxOf(link) : null) ?? boxOf(navPlace(room));
 }
 
 /** The page a lead belongs to: an album's parts are an album page's, a name an artist's… */
@@ -243,6 +286,16 @@ function leadsFor(
 	if (travel.subject === 'fox') {
 		return new Map([['fox', 'cover']]);
 	}
+	if (travel.subject === 'rooms') {
+		const into = journeyOf(to?.route.id);
+		const playing = library.playing?.album.id;
+		return new Map<string, Lead>([
+			...(into === 'search'
+				? [['field:search', 'field'] as const, ['words:search', 'title'] as const]
+				: []),
+			...(playing === undefined ? [] : [[`cover:${playing}`, 'cover'] as const])
+		]);
+	}
 	if (travel.subject === 'playing') {
 		const id = library.playing?.album.id;
 		const ids = id === undefined ? [] : [`cover:${id}`, 'song', ...playerParts];
@@ -260,6 +313,14 @@ function leadsFor(
 /** A hero scrolled off screen stays with its page: the island's cover travels instead. */
 function canTravel(entry: MorphEntry): boolean {
 	return entry.slot !== 'hero' || onScreen(entry);
+}
+
+/**
+ * Between rooms, only what is in view on both travels: a cover clear of the nav and the island, or
+ * the nav's own field. Anything else stays with its room and comes and goes with it.
+ */
+function inView(entry: MorphEntry): boolean {
+	return entry.slot === 'nav' ? onScreen(entry) : inTheClear(entry.element);
 }
 
 /**
@@ -306,7 +367,7 @@ export function landJourney(
 		origins: originsOf(path),
 		// With no origin, a card already in the clear wins, so the page stays where it was left.
 		visible: ({ element }) => inTheClear(element),
-		eligible: canTravel
+		eligible: travel.subject === 'rooms' ? inView : canTravel
 	});
 	const borrowed = lentFrom.get(path);
 	if (borrowed !== undefined && journey.ids.includes(borrowed.id) && !targets.has(borrowed.id)) {

@@ -35,11 +35,13 @@
 </svelte:head>
 
 <div class="page-frame artists">
-	<div class="intro" data-morph-part="intro" data-morph-key="intro">
-		<h1>Artists</h1>
+	<div class="intro">
+		<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>Artists</h1>
 		{#if load.kind === 'ready' && load.value.length > 0}
-			<span class="summary">{artistCount(load.value.length)}</span>
-			<div class="sort">
+			<span class="summary" data-morph-part="intro" data-morph-key="summary"
+				>{artistCount(load.value.length)}</span
+			>
+			<div class="sort" data-morph-part="intro" data-morph-key="sort">
 				<SortControl
 					groups={sortGroups}
 					words={artistOrders.find(({ by }) => by === sort.by)?.label ?? ''}

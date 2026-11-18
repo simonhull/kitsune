@@ -175,6 +175,12 @@ export interface Part {
 	fade?: MotionSpec;
 	ripple?: Ripple;
 	gather?: Gather;
+	/**
+	 * Born at the place pressed: the unit starts that small at the nav item, the field or the fox the
+	 * room came out of, and grows into place. How small, and around which point, is worked out from
+	 * where the two are when the journey lands, so the pose is a scale around a pivot and nothing else.
+	 */
+	born?: true;
 }
 
 /** What a page's unit is, from `data-morph-part`. It decides how the unit arrives. */
@@ -223,6 +229,7 @@ export type ChoreographyName =
 	| 'login-to-home'
 	| 'login-to-album'
 	| 'deck-to-home'
+	| 'unfold'
 	| 'blend';
 
 /**
@@ -235,14 +242,17 @@ export type Grain = 'opening' | 'gathering' | 'crossing';
 
 /** What can travel between two pages: an album's parts, an artist's name, a playlist's mosaic… */
 export type Lead =
-	'cover' | 'title' | 'artist' | 'surface' | 'play' | 'name' | 'mosaic' | 'listname';
+	'cover' | 'title' | 'artist' | 'surface' | 'play' | 'name' | 'mosaic' | 'listname' | 'field';
 
 /** A lead and whose it is: the page's at the start of the journey, or at its end. */
 export type LeadOf = `${Lead}:${'from' | 'to'}`;
 
 interface SharedTravel {
-	/** Whose things travel: the pages' own, what's playing, or the mark. */
-	subject: 'pages' | 'playing' | 'fox';
+	/**
+	 * Whose things travel: the pages' own, what's playing, the mark, or between two rooms what they
+	 * both show (the playing album's cover in view) and, into Search, the nav's field.
+	 */
+	subject: 'pages' | 'playing' | 'fox' | 'rooms';
 	/** For `pages`, what travels. */
 	leads?: readonly LeadOf[];
 	sourceSlots: readonly MorphSlot[];
@@ -276,6 +286,16 @@ export interface Choreography {
 	arriving: Partial<Record<Role, Part>>;
 	/** The few units that arrive their own way whatever their role, by `data-morph-key`. */
 	arrivingByKey?: Readonly<Record<string, Part>>;
+	/**
+	 * The room's headline, `data-morph-headline`: the first one on screen arrives this way, and every
+	 * one leaves the second way, before the rest, so two headlines never share the stage.
+	 */
+	headline?: { arriving: Part; leaving: Part };
+	/**
+	 * Whatever the journey names no part for, units and loose content alike, in place of a plain
+	 * arrival: a room is built whole, not just the parts that have a role.
+	 */
+	otherwise?: Part;
 	/** The stages behind the page you go to: they come up over everything you leave. */
 	stages: Partial<Record<StageName, Part>>;
 	/** Pictures of the stages behind the page you leave, which give way under it. */
@@ -819,6 +839,49 @@ const loginToAlbum: Choreography = {
 	islandForms
 };
 
+/** The rooms the nav goes between: every pair of them is a crossing that unfolds from the press. */
+export const rooms: ReadonlySet<RouteName> = new Set([
+	'home',
+	'library',
+	'albums',
+	'artists',
+	'playlists',
+	'search',
+	'you',
+	'health'
+]);
+
+/**
+ * Unfold from the pill, between two of the nav's rooms. The room comes out of the item you pressed:
+ * its headline is born small at the item, under the nav's glass, and grows into place, while the
+ * rest of the room gathers around that point a beat later, the far parts from deeper, so it seems to
+ * open down out of the bar. The room left gives way where it stands, quickly, its headline first.
+ * What both rooms show travels: the playing album's cover, where each has it in view, and into
+ * Search the nav's field, which reshapes into the page's. Direction along the nav is the pill's
+ * alone: Albums to Home unfolds from Home, never Home to Albums played backward.
+ */
+export const unfold: Choreography = {
+	name: 'unfold',
+	grain: 'crossing',
+	motion: base,
+	travel: {
+		subject: 'rooms',
+		sourceSlots: ['nav', 'card', 'thumb'],
+		targetSlots: ['hero', 'card', 'thumb']
+	},
+	leaving: giveWay(quick),
+	arriving: {},
+	headline: {
+		arriving: { from: { opacity: 0 }, to: {}, delay: 0, motion: base, born: true },
+		leaving: giveWay()
+	},
+	otherwise: gather(0.12, 40),
+	stages: {},
+	held: {},
+	bloom: null,
+	island: null
+};
+
 /** What fliers land on: already in place, and already there by the time the first one arrives. */
 const landingPad = fadeIn(40, base);
 
@@ -905,6 +968,9 @@ export function choreographyFor(
 ): Choreography {
 	if (from === 'album' && to === 'home' && continues) {
 		return albumIntoContinue;
+	}
+	if (from !== to && rooms.has(from) && rooms.has(to)) {
+		return unfold;
 	}
 	return journeys[`${from}>${to}`] ?? blend;
 }

@@ -49,11 +49,17 @@
 {#if facts !== null}
 	<div class="page-frame home">
 		<div class="lead">
-			<div class="intro" data-morph-part="intro" data-morph-key="intro">
-				<h1>{greeting(new Date().getHours(), name)}</h1>
+			<div class="intro">
+				<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>
+					{greeting(new Date().getHours(), name)}
+				</h1>
 				{#if facts.albums > 0 && (!library.deck || library.dealing === 'dealt')}
 					{@const [albums, songs, hours] = summary(facts)}
-					<span class="summary" class:arriving={library.deck}
+					<span
+						class="summary"
+						class:arriving={library.deck}
+						data-morph-part="intro"
+						data-morph-key="summary"
 						>{`${albums} · ${songs}`}<span class="hours">{` · ${hours}`}</span></span
 					>
 				{/if}

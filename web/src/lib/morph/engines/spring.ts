@@ -1,4 +1,5 @@
 import type { OnNavigate } from '$app/navigation';
+import { tick as rendered } from 'svelte';
 import { Channel } from '../channel.ts';
 import {
 	blendDuration,
@@ -9,6 +10,7 @@ import {
 	rippleDelay,
 	rippleWeight,
 	springParams,
+	unfold,
 	weighGather,
 	weighPart,
 	type Choreography,
@@ -24,12 +26,15 @@ import {
 	landJourney,
 	motionOf,
 	pageMain,
-	type Journey
+	reducedMotion,
+	type Journey,
+	type Origin
 } from '../journey.ts';
 import { registry, type MorphEntry } from '../registry.ts';
 import {
 	BarFlier,
 	CoverFlier,
+	FieldFlier,
 	drawTitle,
 	measureBar,
 	measureCover,
@@ -57,6 +62,15 @@ const islandLeaves: Part = {
 	delay: 0,
 	motion: { token: '--morph-fast', bounce: 0 }
 };
+/** How a page's own grounds give way: at once, before the units sitting in them are gone. */
+const giveWayFast: Part = {
+	from: {},
+	to: { opacity: 0 },
+	delay: 0,
+	motion: { token: '--morph-fast', bounce: 0, pace: 0.7 }
+};
+/** How a flier with nowhere to land goes: as the page it left does. */
+const exitSpec: Part['motion'] = { token: '--morph-fast', bounce: 0, pace: 0.7 };
 /** The largest gap one frame may jump: a stalled main thread shouldn't teleport anything. */
 const longestFrame = 1 / 20;
 
@@ -99,10 +113,20 @@ interface SurfaceCapture {
 	element: HTMLElement;
 }
 
-type Capture = CoverCapture | TitleCapture | BarCapture | SurfaceCapture;
+/** A field, which keeps its look and changes its true size and corners into another's. */
+interface FieldCapture {
+	kind: 'field';
+	shape: SurfaceShape;
+	element: HTMLElement;
+}
+
+type Capture = CoverCapture | TitleCapture | BarCapture | SurfaceCapture | FieldCapture;
 
 function capture(source: MorphEntry): Capture {
 	const { element, kind } = source;
+	if (kind === 'field') {
+		return { kind, shape: measureSurface(element), element };
+	}
 	if (kind === 'surface') {
 		return { kind, shape: measureSurface(element), element };
 	}
@@ -161,9 +185,29 @@ interface Ghost {
 	layers: Layer[];
 	/** Each unit's layer by name, so the real page can take over from its ghost unit by unit. */
 	units: Map<string, Layer>;
+	/** Its loose content's layers in order, each with what it is, for the same. */
+	loose?: { signature: string; layer: Layer }[];
 }
 
 const partAttribute = 'data-morph-part';
+/** On the page while a room waits its one frame to be drawn, unseen. */
+const waitingAttribute = 'data-morph-waiting';
+const headlineAttribute = 'data-morph-headline';
+/** Marks, for the length of a clone, what is still arriving: its picture goes on from there. */
+const arrivingAttribute = 'data-morph-arriving';
+
+/** A room's headline: the words it is known by, which a room unfolding is born from. */
+function isHeadline(unit: HTMLElement): boolean {
+	return unit.hasAttribute(headlineAttribute);
+}
+
+/**
+ * What a piece of loose content is, so a page gone back to can find its own again: it has no key,
+ * only its place among the others and what it is.
+ */
+function signatureOf(element: HTMLElement): string {
+	return `${element.tagName}.${element.className}`;
+}
 
 /** Finds the parts of a page that move on their own. */
 function unitsOf(root: Element): HTMLElement[] {
@@ -290,6 +334,30 @@ function noLandmark(picture: Node, page: HTMLElement): Node {
 	return root;
 }
 
+/** Reports whether an element paints a ground of its own, which would show through nothing. */
+function paints(element: HTMLElement): boolean {
+	const { backgroundColor, backgroundImage } = getComputedStyle(element);
+	return backgroundImage !== 'none' || !/^(transparent|rgba\(.*,\s*0\))$/u.test(backgroundColor);
+}
+
+/**
+ * Finds what holds a page's units and paints a ground of its own, a sticky header's say. It is
+ * neither a unit nor loose, so it would come and go at once, over or under everything moving:
+ * it fades with the page instead, which its units' own fades sit inside.
+ */
+function groundsOf(root: HTMLElement, units: readonly HTMLElement[]): HTMLElement[] {
+	const holders = new Set<HTMLElement>();
+	for (const unit of units) {
+		for (let at = unit.parentElement; at !== null && at !== root; at = at.parentElement) {
+			if (holders.has(at)) {
+				break;
+			}
+			holders.add(at);
+		}
+	}
+	return [...holders].filter(paints);
+}
+
 function roleOf(unit: HTMLElement): Role {
 	return unit.dataset['morphPart'] as Role;
 }
@@ -350,6 +418,40 @@ function pivot(element: HTMLElement, around: Point): void {
 	element.style.transformOrigin = `${String(around.x - left)}px ${String(around.y - top)}px`;
 }
 
+function middleOf({ left, top, width, height }: Origin): Point {
+	return { x: left + width / 2, y: top + height / 2 };
+}
+
+function shown(element: HTMLElement): boolean {
+	const { top, bottom } = element.getBoundingClientRect();
+	return bottom > 0 && top < innerHeight;
+}
+
+/**
+ * Sets a headline up to be born at `origin`: its words start as small as the item's own and grow
+ * into place. One scale around one fixed point does it, so the pose has no horizontal term: that
+ * point is where the words' middle, scaled, sits on the origin's middle. Returns the starting scale,
+ * or null when there are no words to be born.
+ */
+function bornAt(unit: HTMLElement, origin: Origin): number | null {
+	unit.style.transform = 'none';
+	const words = document.createRange();
+	words.selectNodeContents(unit);
+	const box = words.getBoundingClientRect();
+	if (box.width <= 0 || box.height <= 0) {
+		return null;
+	}
+	// An item's words sit inside its padding; the fox's are about the width of its face.
+	const fit = Math.max(origin.width - 22, Math.min(origin.width, origin.height) * 0.77);
+	const scale = Math.min(fit / box.width, 0.5);
+	const at = middleOf(origin);
+	const to = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+	const still = { x: (at.x - scale * to.x) / (1 - scale), y: (at.y - scale * to.y) / (1 - scale) };
+	const { left, top } = unit.getBoundingClientRect();
+	unit.style.transformOrigin = `${String(still.x - left)}px ${String(still.y - top)}px`;
+	return scale;
+}
+
 /** Pins the stage to the viewport, so a scroll under the ghost doesn't drag it along. */
 function freeze(stage: HTMLElement, top: number): void {
 	stage.style.position = 'fixed';
@@ -392,10 +494,20 @@ export interface Morphs {
 	) => Promise<void>;
 	/** Blends a picture of everything into whatever `change` leaves behind. */
 	blend: (change: () => Promise<void>) => Promise<void>;
+	/**
+	 * The room's own pill pressed again, scrolled down: the room is laid again at its top by the
+	 * verb it came in by, out of `from`, with the scroll set under it. A press while something is
+	 * still in flight only presses the pill: the flight carries on.
+	 */
+	relay: (from: HTMLElement) => void;
 }
 
 /** A deal has no route to name it by, and no ghost must ever answer to this. */
 const dealPath = 'deal';
+/** Nor must the picture of a room laid again over itself. */
+const relayPath = 'relay';
+/** A room laid again is unfolded again, from its own pill. */
+const relaid = unfold;
 
 /** The spring engine: real elements, a persistent overlay, and physics that can turn around. */
 export function createSpringEngine(): Morphs {
@@ -407,6 +519,8 @@ export function createSpringEngine(): Morphs {
 	/** Pictures of the stages of pages left, giving way at the bottom of the ghost layer. */
 	const heldStages = new Map<StageName, { ghost: Ghost; look: string }>();
 	const inFlight = new Set<string>();
+	/** Counts the rooms that have waited a frame to be drawn, so only the latest goes on. */
+	let drawing = 0;
 	let flight: SpringParams = springParams({ duration: 420, bounce: 0 });
 	const stages = new Map<StageName, Layer>();
 	let island: IslandShape | null = null;
@@ -433,7 +547,7 @@ export function createSpringEngine(): Morphs {
 
 	function cloneRoute(
 		path: string,
-		{ leaving, leavingByRole }: Choreography,
+		{ leaving, leavingByRole, headline }: Choreography,
 		sources: Journey['sources']
 	): Ghost | null {
 		const main = pageMain();
@@ -441,11 +555,23 @@ export function createSpringEngine(): Morphs {
 		if (main === null || under === null) {
 			return null;
 		}
-		// A surface is the stage behind the page, not in it, and it only goes once its flier does.
-		const setOff = [...sources].filter(([, { kind }]) => kind !== 'surface');
+		// A surface is the stage behind the page, not in it, and it only goes once its flier does. What
+		// leaves from the nav stays there: a room's field is born from it, and it is still the nav's.
+		const setOff = [...sources].filter(
+			([, { kind, slot }]) => kind !== 'surface' && slot !== 'nav'
+		);
 		for (const [id, { element }] of setOff) {
 			element.setAttribute(sourceAttribute, id);
 			hide(element);
+		}
+		// Whatever is still arriving is marked, so its picture can go on from the pose it has reached.
+		const arriving = new Map<string, Layer>();
+		for (const [element, layer] of landing) {
+			if (main.contains(element)) {
+				const mark = String(arriving.size);
+				element.setAttribute(arrivingAttribute, mark);
+				arriving.set(mark, layer);
+			}
 		}
 		const { left, top, width, height } = main.getBoundingClientRect();
 		const real = unitsNearFold(main);
@@ -458,12 +584,19 @@ export function createSpringEngine(): Morphs {
 				show(element);
 			}
 		}
+		for (const element of main.querySelectorAll(`[${arrivingAttribute}]`)) {
+			element.removeAttribute(arrivingAttribute);
+			if (element instanceof HTMLElement) {
+				landing.delete(element);
+			}
+		}
 		if (!(clone instanceof HTMLElement)) {
 			return null;
 		}
 
 		clone.inert = true;
 		clone.setAttribute('aria-hidden', 'true');
+		clone.removeAttribute(waitingAttribute);
 		clone.dataset['morphGhost'] = 'page';
 		clone.style.cssText = `position:absolute;left:${String(left)}px;top:${String(top)}px;width:${String(width)}px;height:${String(height)}px;z-index:auto`;
 		keepColors(main, clone);
@@ -472,15 +605,20 @@ export function createSpringEngine(): Morphs {
 		const cover = [...sources.values()].find((entry) => entry.kind === 'cover');
 		const center = cover === undefined ? null : centerOf(cover.element);
 		const units = unitsOf(clone);
+		const loose = looseOf(clone).filter(nearFold);
 		// A page with no units yet, still loading say, leaves as one.
-		const movers = units.length > 0 ? [...units, ...looseOf(clone).filter(nearFold)] : [clone];
-		const partOf = (unit: HTMLElement): Part => leavingByRole?.[roleOf(unit)] ?? leaving;
+		const movers = units.length > 0 || loose.length > 0 ? [...units, ...loose] : [clone];
+		const partOf = (unit: HTMLElement): Part =>
+			(headline !== undefined && isHeadline(unit) ? headline.leaving : undefined) ??
+			leavingByRole?.[roleOf(unit)] ??
+			leaving;
 		const wave = shapeWave(movers, partOf, center);
+		const grounds = groundsOf(clone, units).map((ground) => new Layer(ground, giveWayFast));
 		const layers = movers.map((unit, index) => {
-			const realUnit = real.at(index);
-			// A unit still arriving is at some pose: its ghost starts there, not at rest.
-			const inherited = realUnit === undefined ? undefined : landing.get(realUnit);
-			if (center !== null) {
+			const inherited = arriving.get(unit.getAttribute(arrivingAttribute) ?? '');
+			unit.removeAttribute(arrivingAttribute);
+			// One still arriving keeps the pivot it was moving around: a new one would make it jump.
+			if (center !== null && inherited === undefined) {
 				pivot(unit, center);
 			}
 			const shaped = wave.at(index);
@@ -490,15 +628,21 @@ export function createSpringEngine(): Morphs {
 			}
 			return layer;
 		});
-		for (const unit of unitsOf(main)) {
-			landing.delete(unit);
-		}
 		const keys = keysOf(units);
 		const named = layers.flatMap((layer, index) => {
 			const key = keys.at(index);
 			return key === undefined ? [] : [[key, layer] as const];
 		});
-		const ghost = { path, element: clone, layers, units: new Map(named) };
+		const ghost: Ghost = {
+			path,
+			element: clone,
+			layers: [...layers, ...grounds],
+			units: new Map(named),
+			loose: loose.flatMap((element, index) => {
+				const layer = layers.at(units.length + index);
+				return layer === undefined ? [] : [{ signature: signatureOf(element), layer }];
+			})
+		};
 		ghosts.push(ghost);
 		return ghost;
 	}
@@ -511,7 +655,8 @@ export function createSpringEngine(): Morphs {
 	) {
 		const air = surfaceFor('.morph-layer');
 		const under = surfaceFor('.ghost-layer');
-		if (air === null || under === null) {
+		const born = surfaceFor('.born-layer');
+		if (air === null || under === null || born === null) {
 			return;
 		}
 		for (const [id, target] of targets) {
@@ -540,7 +685,10 @@ export function createSpringEngine(): Morphs {
 			if (wait !== undefined) {
 				waiting.set(id, wait / 1000);
 			}
-			if (flier instanceof SurfaceFlier) {
+			if (journey.sources.get(id)?.slot === 'nav') {
+				// Born from the nav, under its glass: it comes out from under the bar, never over it.
+				born.append(flier.element);
+			} else if (flier instanceof SurfaceFlier) {
 				// A surface is still the page you leave until it lands: under that page's own parts,
 				// which sat on it and give way over it, and under the page arriving in front.
 				under.insertBefore(flier.element, ghost?.element ?? null);
@@ -563,6 +711,9 @@ export function createSpringEngine(): Morphs {
 	}
 
 	function createFlier(source: Capture, target: MorphEntry): Flier {
+		if (source.kind === 'field') {
+			return new FieldFlier(source.shape, source.element, target);
+		}
 		if (source.kind === 'surface') {
 			return new SurfaceFlier(source.shape, source.element, target);
 		}
@@ -590,7 +741,8 @@ export function createSpringEngine(): Morphs {
 
 	/**
 	 * Brings the new page's units in. `everyUnit` gives a unit the journey says nothing about a plain
-	 * arrival: it is drawn over the page leaving, so appearing at once would be a cut.
+	 * arrival, or the journey's own `otherwise`: it is drawn over the page leaving, so appearing at once
+	 * would be a cut.
 	 */
 	function arrive(
 		journey: Journey,
@@ -602,18 +754,29 @@ export function createSpringEngine(): Morphs {
 		if (main === null) {
 			return;
 		}
-		const { arriving, arrivingByKey, motion } = journey.choreography;
+		const { arriving, arrivingByKey, headline, otherwise, motion } = journey.choreography;
+		const units = unitsNearFold(main);
+		// A room has one headline to be born: the first of its headlines on screen.
+		const born =
+			headline === undefined ? undefined : units.find((unit) => isHeadline(unit) && shown(unit));
 		const partOf = (unit: HTMLElement): Part | undefined =>
+			(unit === born ? headline?.arriving : undefined) ??
 			arrivingByKey?.[unit.dataset['morphKey'] ?? ''] ??
 			arriving[roleOf(unit)] ??
-			(everyUnit ? plainArrival : undefined);
-		const units = unitsNearFold(main);
-		// The page gathers around where the lead lands, and opens around the cover.
+			(everyUnit ? (otherwise ?? plainArrival) : undefined);
+		// A room unfolds from where it was pressed; a page gathers around where the lead lands, and
+		// opens around the cover.
 		const lead =
 			targets.get(journey.ids.at(0) ?? '') ??
 			[...targets.values()].find((entry) => entry.kind === 'cover');
-		const center = lead === undefined ? null : centerOf(lead.element);
+		const center =
+			journey.origin !== null
+				? middleOf(journey.origin)
+				: lead === undefined
+					? null
+					: centerOf(lead.element);
 		const flying = new Set([...targets.values()].map((entry) => entry.element));
+		const loose = everyUnit ? looseOf(main).filter(nearFold) : [];
 
 		// Going back mid-morph: the real page takes over from its own ghost, unit by unit.
 		const returning = ghosts.findIndex((ghost) => ghost.path === path);
@@ -621,13 +784,31 @@ export function createSpringEngine(): Morphs {
 		if (returning >= 0 && ghost !== undefined) {
 			ghosts.splice(returning, 1);
 			const keys = keysOf(units);
-			for (const [index, unit] of units.entries()) {
-				const from = ghost.units.get(keys.at(index) ?? '');
-				if (from === undefined || flying.has(unit)) {
+			const taking = [
+				...units.map((unit, index) => ({ unit, from: ghost.units.get(keys.at(index) ?? '') })),
+				...loose.map((unit, index) => {
+					const was = ghost.loose?.at(index);
+					return { unit, from: was?.signature === signatureOf(unit) ? was.layer : undefined };
+				})
+			];
+			for (const { unit, from } of taking) {
+				if (flying.has(unit)) {
 					continue;
 				}
 				const part: Part = partOf(unit) ?? { from: {}, to: {}, delay: 0, motion };
-				if (center !== null) {
+				if (from === undefined) {
+					// Nothing of it was left to take over from: it arrives as it would have.
+					if (center !== null) {
+						pivot(unit, center);
+					}
+					landing.set(unit, new Layer(unit, part));
+					continue;
+				}
+				// It goes on around the point its picture was moving around, or it would jump.
+				const around = from.element.style.transformOrigin;
+				if (around !== '') {
+					unit.style.transformOrigin = around;
+				} else if (center !== null) {
 					pivot(unit, center);
 				}
 				const layer = new Layer(unit, part);
@@ -639,7 +820,11 @@ export function createSpringEngine(): Morphs {
 			return;
 		}
 
-		const loose = everyUnit ? looseOf(main).filter(nearFold) : [];
+		if (everyUnit) {
+			for (const ground of groundsOf(main, units)) {
+				landing.set(ground, new Layer(ground, plainArrival));
+			}
+		}
 		const moving = [...units, ...loose].filter(
 			(unit) => partOf(unit) !== undefined && !flying.has(unit)
 		);
@@ -649,10 +834,19 @@ export function createSpringEngine(): Morphs {
 			if (shaped === undefined) {
 				continue;
 			}
+			const scale =
+				shaped.part.born === true && journey.origin !== null ? bornAt(unit, journey.origin) : null;
+			if (scale !== null) {
+				const part = { ...shaped.part, from: { ...shaped.part.from, scale } };
+				landing.set(unit, new Layer(unit, part, shaped.delay));
+				continue;
+			}
 			if (center !== null) {
 				pivot(unit, center);
 			}
-			landing.set(unit, new Layer(unit, shaped.part, shaped.delay));
+			// Born somewhere it can't be: it comes with the rest of the room instead.
+			const part = shaped.part.born === true ? (otherwise ?? plainArrival) : shaped.part;
+			landing.set(unit, new Layer(unit, part, shaped.delay));
 		}
 	}
 
@@ -862,6 +1056,31 @@ export function createSpringEngine(): Morphs {
 		inFlight.delete(id);
 	}
 
+	/**
+	 * A flier whose page has gone has nowhere to land: it gives way where it is, under the page in
+	 * front, like the rest of the page it left. Gone at once would be a snap.
+	 */
+	function letGo(id: string, flier: Flier): void {
+		fliers.delete(id);
+		waiting.delete(id);
+		inFlight.delete(id);
+		const under = surfaceFor('.ghost-layer');
+		if (under === null) {
+			flier.element.remove();
+			return;
+		}
+		const holder = document.createElement('div');
+		holder.style.cssText = 'position:absolute;inset:0';
+		holder.append(flier.element);
+		under.append(holder);
+		ghosts.push({
+			path: '',
+			element: holder,
+			layers: [new Layer(holder, { from: {}, to: { opacity: 0 }, delay: 0, motion: exitSpec })],
+			units: new Map()
+		});
+	}
+
 	function tick(now: number): void {
 		const seconds = Math.min((now - lastFrame) / 1000, longestFrame);
 		lastFrame = now;
@@ -906,8 +1125,7 @@ export function createSpringEngine(): Morphs {
 
 		for (const [id, flier] of fliers) {
 			if (flier.target === null) {
-				flier.element.style.opacity = '0';
-				land(id, flier);
+				letGo(id, flier);
 			} else if (flier.settled && !held(flier.target)) {
 				land(id, flier);
 			}
@@ -978,7 +1196,13 @@ export function createSpringEngine(): Morphs {
 			hide(element);
 		}
 		arrive(
-			{ choreography, ids: [...targets.keys()], sources: new Map(), waits: new Map() },
+			{
+				choreography,
+				ids: [...targets.keys()],
+				sources: new Map(),
+				waits: new Map(),
+				origin: null
+			},
 			dealPath,
 			targets,
 			false
@@ -1061,8 +1285,41 @@ export function createSpringEngine(): Morphs {
 		}
 	}
 
+	/**
+	 * A room draws what it already holds, a list's rows say, a frame after it mounts. It waits that
+	 * frame unseen, over the picture of the room left, which is still all there, so it is built
+	 * whole, its headline among it. Nothing is waited for from the server. Returns false when
+	 * another navigation took over meanwhile.
+	 */
+	async function roomDrawn(navigation: OnNavigate): Promise<boolean> {
+		const main = pageMain();
+		if (main === null) {
+			return true;
+		}
+		const mine = (drawing += 1);
+		main.setAttribute(waitingAttribute, '');
+		await rendered();
+		await new Promise<void>((done) => {
+			requestAnimationFrame(() => {
+				done();
+			});
+		});
+		if (mine !== drawing) {
+			return false;
+		}
+		main.removeAttribute(waitingAttribute);
+		return navigation.to?.url.pathname === location.pathname;
+	}
+
+	/** Whatever comes next owns the page: a room still waiting unseen is let go, seen. */
+	function stopWaiting(): void {
+		drawing += 1;
+		pageMain()?.removeAttribute(waitingAttribute);
+	}
+
 	async function fly(journey: Journey, navigation: OnNavigate): Promise<void> {
 		const { choreography, ids, sources } = journey;
+		stopWaiting();
 		endDeal();
 		markMoving(true);
 		const fromPath = navigation.from?.url.pathname ?? '';
@@ -1099,6 +1356,9 @@ export function createSpringEngine(): Morphs {
 			if (!active()) {
 				markMoving(false);
 			}
+			return;
+		}
+		if (journey.origin !== null && !(await roomDrawn(navigation))) {
 			return;
 		}
 
@@ -1148,6 +1408,7 @@ export function createSpringEngine(): Morphs {
 	 * as it was, which goes as it comes, so even a blend never uncovers what was under it.
 	 */
 	async function blendTo(changed: Promise<unknown>): Promise<void> {
+		stopWaiting();
 		abandon();
 		const shell = surfaceFor('.shell');
 		const main = pageMain();
@@ -1193,5 +1454,45 @@ export function createSpringEngine(): Morphs {
 			: fly(journey, navigation));
 	}
 
-	return { navigate, deal, blend: (change) => blendTo(change()) };
+	function relay(from: HTMLElement): void {
+		const top = (): void => {
+			scrollTo({ top: 0, behavior: 'instant' });
+		};
+		if (active()) {
+			return;
+		}
+		if (reducedMotion()) {
+			void blendTo(Promise.resolve().then(top));
+			return;
+		}
+		const main = pageMain();
+		const { left, top: y, width, height } = from.getBoundingClientRect();
+		if (main === null || width === 0) {
+			top();
+			return;
+		}
+		const journey: Journey = {
+			choreography: relaid,
+			ids: [],
+			sources: new Map(),
+			waits: new Map(),
+			origin: { left, top: y, width, height }
+		};
+		markMoving(true);
+		startReported = false;
+		// Never the page's own path: the room laid again must not take over from its picture.
+		cloneRoute(relayPath, relaid, new Map());
+		// A long list draws the rows at its top a frame after the scroll: the room waits unseen for
+		// them, over its picture, and is laid from there.
+		main.style.opacity = '0';
+		top();
+		requestAnimationFrame(() => {
+			main.style.removeProperty('opacity');
+			arrive(journey, location.pathname, new Map(), true);
+			run();
+		});
+		run();
+	}
+
+	return { navigate, deal, blend: (change) => blendTo(change()), relay };
 }

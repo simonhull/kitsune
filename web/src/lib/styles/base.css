@@ -99,6 +99,11 @@ button {
 	backdrop-filter: none !important;
 }
 
+/* A room waiting the one frame its rows take to be drawn, over the picture of the room left. */
+[data-morph-waiting] {
+	opacity: 0 !important;
+}
+
 /* A shared element under its flier: unseen, but already the real thing, so it takes the click. */
 [data-morph-hidden] {
 	opacity: 0 !important;

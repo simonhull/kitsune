@@ -539,7 +539,9 @@ export class TitleFlier implements Flier {
 		const landing = pictureFrom(toPicture, to);
 		const growing = to.drawnSize >= from.drawnSize;
 		this.#dissolve = new Channel(growing ? 0 : 1);
-		this.#reflows = from.wrapped !== to.wrapped;
+		// Two different words never line up letter by letter: each keeps its own proportions.
+		this.#reflows =
+			from.wrapped !== to.wrapped || fromPicture.textContent !== toPicture.textContent;
 		this.#small = growing ? source : landing;
 		this.#large = growing ? landing : source;
 		this.element.style.cssText = 'position:absolute;left:0;top:0';
@@ -762,6 +764,124 @@ export class SurfaceFlier implements Flier {
 			this.#fill(this.#landing, width, height);
 			const shown = surfaceShown(width, this.#fromWidth, this.#width.target);
 			this.#landing.element.style.opacity = shown.toFixed(3);
+		}
+	}
+
+	get settled(): boolean {
+		return this.#channels.every((channel) => channel.settled(landsWithin));
+	}
+}
+
+/** The parts of a field's look that a picture of it keeps: its fill, its edges and its shadow. */
+const lookProperties = [
+	'background-color',
+	'background-image',
+	'box-shadow',
+	...['top', 'right', 'bottom', 'left'].flatMap((side) =>
+		['width', 'style', 'color'].map((part) => `border-${side}-${part}`)
+	)
+];
+
+/** Draws a field's look alone, with nothing in it, to fill a box at its true size. */
+function drawLook(element: HTMLElement): HTMLElement {
+	const style = getComputedStyle(element);
+	const look = document.createElement('div');
+	look.style.cssText = 'position:absolute;inset:0;box-sizing:border-box;border-radius:inherit';
+	for (const property of lookProperties) {
+		look.style.setProperty(property, style.getPropertyValue(property));
+	}
+	return look;
+}
+
+/** A pill can't be rounder than half its height. */
+function cornerOf(radius: number, width: number, height: number): number {
+	return Math.max(0, Math.min(radius, width / 2, height / 2));
+}
+
+/**
+ * A field reshaping into another: the nav's search field becoming the Search page's own. It is a
+ * box laid out at its true size every frame, with its corners (The True Corner Rule), drawn as the
+ * field it was and laying the look of the one it becomes over that as it grows. Its words ride as a
+ * title of their own, so nothing inside it is ever stretched.
+ */
+export class FieldFlier implements Flier {
+	readonly element = document.createElement('div');
+	#target: MorphEntry | null = null;
+	readonly #leaving: HTMLElement;
+	#landing: HTMLElement | null = null;
+	readonly #fromWidth: number;
+	readonly #left: Channel;
+	readonly #top: Channel;
+	readonly #width: Channel;
+	readonly #height: Channel;
+	readonly #radius: Channel;
+
+	constructor(from: SurfaceShape, source: HTMLElement, target: MorphEntry) {
+		const to = measureSurface(target.element);
+		this.#fromWidth = from.width;
+		this.#left = new Channel(from.left, to.left);
+		this.#top = new Channel(from.top, to.top);
+		this.#width = new Channel(from.width, to.width);
+		this.#height = new Channel(from.height, to.height);
+		this.#radius = new Channel(
+			cornerOf(from.radius, from.width, from.height),
+			cornerOf(to.radius, to.width, to.height)
+		);
+		this.element.style.cssText = 'position:absolute;left:0;top:0;will-change:transform';
+		this.#leaving = drawLook(source);
+		this.element.append(this.#leaving);
+		this.target = target;
+		this.write();
+	}
+
+	get target(): MorphEntry | null {
+		return this.#target;
+	}
+
+	set target(entry: MorphEntry | null) {
+		this.#target = entry;
+		if (entry === null) {
+			return;
+		}
+		this.#landing?.remove();
+		this.#landing = drawLook(entry.element);
+		this.element.append(this.#landing);
+	}
+
+	measure(): void {
+		if (this.#target === null) {
+			return;
+		}
+		const to = measureSurface(this.#target.element);
+		this.#left.target = to.left;
+		this.#top.target = to.top;
+		this.#width.target = to.width;
+		this.#height.target = to.height;
+		this.#radius.target = cornerOf(to.radius, to.width, to.height);
+	}
+
+	get #channels(): Channel[] {
+		return [this.#left, this.#top, this.#width, this.#height, this.#radius];
+	}
+
+	step(params: SpringParams, seconds: number): void {
+		for (const channel of this.#channels) {
+			channel.step(params, seconds);
+		}
+	}
+
+	write(): void {
+		const width = Math.max(0, this.#width.value);
+		const height = Math.max(0, this.#height.value);
+		const { style } = this.element;
+		style.transform = `translate(${this.#left.value.toFixed(2)}px, ${this.#top.value.toFixed(2)}px)`;
+		style.width = `${width.toFixed(2)}px`;
+		style.height = `${height.toFixed(2)}px`;
+		style.borderRadius = `${cornerOf(this.#radius.value, width, height).toFixed(2)}px`;
+		if (this.#landing !== null) {
+			const shown = surfaceShown(width, this.#fromWidth, this.#width.target);
+			this.#landing.style.opacity = shown.toFixed(3);
+			this.#leaving.style.opacity = (1 - shown).toFixed(3);
 		}
 	}
 
