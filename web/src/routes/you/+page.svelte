@@ -205,9 +205,9 @@
 {#if user !== null}
 	<div class="page-frame you">
 		<div class="left">
-			<div class="who" data-morph-part="intro" data-morph-key="who">
+			<div class="who">
 				<p class="mono role">{roleLine(user.role)}</p>
-				<h1>{user.name}</h1>
+				<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>{user.name}</h1>
 				<p class="mono counts" aria-live="polite">
 					{listening === null ? ' ' : countsLine(listening)}
 				</p>

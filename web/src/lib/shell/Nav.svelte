@@ -1,5 +1,10 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { settleTime } from '#lib/morph/choreography.ts';
+	import { morphsKey } from '#lib/morph/engine.ts';
+	import type { Morphs } from '#lib/morph/engines/spring.ts';
+	import { motionOf } from '#lib/morph/journey.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import { flowingPill } from './flowingPill.ts';
 	import Icon from './Icon.svelte';
@@ -30,14 +35,75 @@
 		organizing = null,
 		writingGain = null
 	}: Props = $props();
+
+	const morphs = getContext<Morphs | undefined>(morphsKey);
+
+	/**
+	 * A room's own place pressed again: it goes nowhere. Its pill presses, and a
+	 * room scrolled down is laid again at its top, the way it came in. In flight, the flight carries on.
+	 */
+	function pressed(event: MouseEvent): void {
+		const link = event.target instanceof Element ? event.target.closest('a') : null;
+		const elsewhere = event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
+		if (
+			link === null ||
+			elsewhere ||
+			event.button !== 0 ||
+			link.pathname !== location.pathname ||
+			// A query is a room's own view of itself, but Search's is what it holds: the field
+			// pressed there goes to an empty Search, as it always has.
+			(link.dataset['room'] === 'search' && link.search !== location.search)
+		) {
+			return;
+		}
+		event.preventDefault();
+		if (link.getAttribute('aria-current') === 'page') {
+			pressPill(link.closest('nav'));
+		}
+		if (scrollY > 0) {
+			morphs?.relay(link);
+		}
+	}
+
+	/** Hears every press of the nav's links, Enter included, which clicks a link too. */
+	function presses(nav: HTMLElement) {
+		nav.addEventListener('click', pressed);
+		return {
+			destroy() {
+				nav.removeEventListener('click', pressed);
+			}
+		};
+	}
+
+	/** The pill gives under the press and comes back, on the fast spring, wherever it is going. */
+	function pressPill(nav: HTMLElement | null): void {
+		const pill = nav?.querySelector<HTMLElement>('.pill');
+		if (
+			pill === null ||
+			pill === undefined ||
+			matchMedia('(prefers-reduced-motion: reduce)').matches
+		) {
+			return;
+		}
+		pill.animate(
+			{ transform: ['scale(1)', 'scale(0.93)', 'scale(1)'], offset: [0, 0.35, 1] },
+			{
+				duration: settleTime(motionOf({ token: '--morph-fast', bounce: 0 })),
+				easing: 'ease-out',
+				// On top of where the pill is: a press never stops it flowing.
+				composite: 'add'
+			}
+		);
+	}
 </script>
 
 <header class="bar" data-route={look} inert={look === 'gone' || look === 'door'}>
-	<nav aria-label="Main" class="nav" data-route={look} use:flowingPill={current}>
+	<nav aria-label="Main" class="nav" data-route={look} use:flowingPill={current} use:presses>
 		<span class="pill" aria-hidden="true"></span>
 		<a
 			class="fox"
 			href={resolve('/you')}
+			data-room="you"
 			aria-label={attention ? 'You: Last.fm needs reconnecting' : 'You'}
 			aria-current={you ? 'page' : undefined}
 			use:morph={{ id: 'fox', slot: 'nav', kind: 'control' }}
@@ -47,27 +113,32 @@
 		<a
 			class="item"
 			href={resolve('/')}
+			data-room="home"
 			aria-current={current === 'home' ? 'page' : undefined}
 			data-sveltekit-reset="false">Home</a
 		>
 		<a
 			class="item"
 			href={resolve('/library')}
+			data-room="library"
 			aria-current={current === 'library' ? 'page' : undefined}>Library</a
 		>
 		<a
 			class="item"
 			href={resolve('/albums')}
+			data-room="albums"
 			aria-current={current === 'albums' ? 'page' : undefined}>Albums</a
 		>
 		<a
 			class="item"
 			href={resolve('/artists')}
+			data-room="artists"
 			aria-current={current === 'artists' ? 'page' : undefined}>Artists</a
 		>
 		<a
 			class="item playlists"
 			href={resolve('/playlists')}
+			data-room="playlists"
 			aria-current={current === 'playlists' ? 'page' : undefined}>Playlists</a
 		>
 		{#if organizing !== null}
@@ -87,7 +158,7 @@
 		{/if}
 		<span class="fold wide home-only" inert={look === 'album'}>
 			<span class="fold-in">
-				<a class="item health" href={resolve('/health')}>
+				<a class="item health" href={resolve('/health')} data-room="health">
 					Health
 					{#if healthIssues !== undefined && healthIssues > 0}<span class="badge"
 							>{healthIssues.toLocaleString('en-US')}</span
@@ -95,11 +166,19 @@
 				</a>
 			</span>
 		</span>
-		<a class="search" href={resolve('/search')} aria-label="Search">
+		<a
+			class="search"
+			href={resolve('/search')}
+			aria-label="Search"
+			data-room="search"
+			use:morph={{ id: 'field:search', slot: 'nav', kind: 'field' }}
+		>
 			<Icon name="search" size={16} />
 			<span class="fold home-only wide">
 				<span class="fold-in">
-					<span class="search-label">Search or jump to…</span>
+					<span class="search-label" use:morph={{ id: 'words:search', slot: 'nav', kind: 'title' }}
+						>Search or jump to…</span
+					>
 				</span>
 			</span>
 		</a>
@@ -189,6 +268,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		/* The ring comes as the pill goes, and goes as it comes back. */
+		transition: box-shadow var(--morph) var(--curve-morph);
 	}
 
 	/* Board A: on You the fox wears a ring of its own, since no item holds the pill. */

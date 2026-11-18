@@ -11,6 +11,8 @@ import {
 	linearEasing,
 	parseTime,
 	resolveMotion,
+	rooms,
+	unfold,
 	rippleDelay,
 	rippleWeight,
 	settleTime,
@@ -440,19 +442,81 @@ describe('choreographyFor', () => {
 		expect(choreographyFor('home', 'home')).toBe(blend);
 	});
 
-	it('blends every pair a later milestone takes: the rooms among themselves, and Search', () => {
-		const rooms = ['home', 'library', 'albums', 'artists', 'playlists', 'search'] as const;
-		for (const from of rooms) {
-			for (const to of rooms) {
-				expect(choreographyFor(from, to), `${from} → ${to}`).toBe(blend);
-			}
-		}
+	it('blends every pair a later milestone takes', () => {
 		for (const page of ['health', 'you', 'server'] as const) {
 			expect(choreographyFor('album', page)).toBe(blend);
 			expect(choreographyFor(page, 'album')).toBe(blend);
 		}
+		for (const room of rooms) {
+			expect(choreographyFor(room, 'server'), `${room} → server`).toBe(blend);
+			expect(choreographyFor('server', room), `server → ${room}`).toBe(blend);
+		}
 		expect(choreographyFor('album', 'search')).toBe(blend);
 		expect(choreographyFor('artist', 'artist')).toBe(blend);
+		expect(choreographyFor('now-playing', 'library')).toBe(blend);
+	});
+});
+
+describe('the rooms, from the nav', () => {
+	const roomPairs = [...rooms].flatMap((from) =>
+		[...rooms].filter((to) => to !== from).map((to) => [from, to] as const)
+	);
+	const { headline, leaving, otherwise, arriving } = unfold;
+
+	it('are the nav’s eight, every one of their 56 pairs a crossing that unfolds', () => {
+		expect(rooms.size).toBe(8);
+		expect(roomPairs).toHaveLength(56);
+		for (const [from, to] of roomPairs) {
+			const journey = choreographyFor(from, to);
+			expect(journey, `${from} → ${to}`).toBe(unfold);
+			expect(journey.grain).toBe('crossing');
+		}
+		for (const room of rooms) {
+			expect(choreographyFor(room, room), `${room} → ${room}`).toBe(blend);
+		}
+	});
+
+	it('lets the room left give way where it stands, quickly, and its headline first', () => {
+		expect(leaving.to).toEqual({ opacity: 0 });
+		expect(leaving.motion.token).toBe('--morph-fast');
+		expect(headline?.leaving.to).toEqual({ opacity: 0 });
+		expect(headline?.leaving.motion.pace ?? 1).toBeLessThan(leaving.motion.pace ?? 1);
+	});
+
+	it('bears its headline at the press at once, and builds the rest around it a beat later', () => {
+		expect(headline?.arriving.born).toBe(true);
+		expect(headline?.arriving.delay).toBe(0);
+		expect(headline?.arriving.motion.token).toBe('--morph');
+		expect(otherwise?.delay).toBe(40);
+		expect(otherwise?.from.scale).toBeCloseTo(0.88);
+		expect(otherwise?.gather).toBeDefined();
+		// Every entrance at once: amplitude varies across the room, the start never does.
+		expect(otherwise?.ripple).toBeUndefined();
+		expect(arriving).toEqual({});
+	});
+
+	it('has no pose with a horizontal term, nor any travel of the page', () => {
+		for (const part of [leaving, otherwise, headline?.arriving, headline?.leaving]) {
+			expect(part?.from.y ?? 0).toBe(0);
+			expect(part?.to.y ?? 0).toBe(0);
+			expect(part?.from.rotate ?? 0).toBe(0);
+		}
+	});
+
+	it('carries the playing album’s cover, and the field into Search, from what both rooms show', () => {
+		expect(unfold.travel?.subject).toBe('rooms');
+		expect(unfold.travel?.sourceSlots).toContain('nav');
+		expect(unfold.travel?.targetSlots).not.toContain('nav');
+		expect(unfold.bloom).toBeNull();
+		expect(unfold.island).toBeNull();
+	});
+
+	it('settles about 607 ms after the press', () => {
+		const settles =
+			(otherwise?.delay ?? 0) +
+			settleTime(resolveMotion(otherwise?.motion ?? leaving.motion, () => 420));
+		expect(settles).toBeGreaterThan(560);
+		expect(settles).toBeLessThan(660);
 	});
 });
 

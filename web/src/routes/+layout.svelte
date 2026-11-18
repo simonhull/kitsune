@@ -261,6 +261,8 @@
 			{@render children()}
 		{/if}
 	</main>
+	<!-- Over the page, under the nav's glass: what a room is born from in the nav comes out here. -->
+	<div class="born-layer" aria-hidden="true"></div>
 	<p class="visually-hidden" role="status">{markTrouble}</p>
 	{#if !atDoor}<EditorHost />{/if}
 	{#if palette !== null}<Bloom {palette} />{/if}
@@ -319,6 +321,18 @@
 		position: fixed;
 		inset: 0;
 		z-index: 0;
+		overflow: clip;
+		pointer-events: none;
+	}
+
+	/*
+	 * Between the page and the nav: the nav's search field reshaping into Search's, which comes out
+	 * from under the bar's glass rather than over it.
+	 */
+	.born-layer {
+		position: fixed;
+		inset: 0;
+		z-index: 2;
 		overflow: clip;
 		pointer-events: none;
 	}

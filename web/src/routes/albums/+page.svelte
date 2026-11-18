@@ -100,10 +100,10 @@
 </svelte:head>
 
 <div class="page-frame albums">
-	<div class="intro" data-morph-part="intro" data-morph-key="intro">
-		<h1>Albums</h1>
+	<div class="intro">
+		<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>Albums</h1>
 		{#if total > 0}
-			<p class="facts">{line}</p>
+			<p class="facts" data-morph-part="intro" data-morph-key="facts">{line}</p>
 		{/if}
 	</div>
 

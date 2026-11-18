@@ -60,10 +60,14 @@
 </svelte:head>
 
 <div class="page-frame playlists">
-	<div class="intro" data-morph-part="intro" data-morph-key="intro">
-		<h1>Playlists<span class="dot" aria-hidden="true">.</span></h1>
+	<div class="intro">
+		<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>
+			Playlists<span class="dot" aria-hidden="true">.</span>
+		</h1>
 		{#if lists.kind === 'ready'}
-			<p class="facts">{countWithFiles(all.length, smartCount, files.length)}</p>
+			<p class="facts" data-morph-part="intro" data-morph-key="facts">
+				{countWithFiles(all.length, smartCount, files.length)}
+			</p>
 		{/if}
 	</div>
 

@@ -115,9 +115,22 @@
 	<h1>Search</h1>
 	<form role="search" onsubmit={submitted}>
 		<!-- A box that wraps, so a query past what shrinking can fit still shows every word. -->
-		<div class="box" style:--width={emWidth(text, 900, -0.06)}>
+		<div
+			class="box"
+			style:--width={emWidth(text, 900, -0.06)}
+			data-morph-part="intro"
+			data-morph-key="field"
+			use:morph={{ id: 'field:search', slot: 'hero', kind: 'field' }}
+		>
 			<div class="fit">
-				<span class="ruler" aria-hidden="true">{text === '' ? 'Search' : text}</span>
+				<!-- What the box says, empty or not: the words the nav's field turns into on the way in. -->
+				<span
+					class="ruler"
+					class:empty={text === ''}
+					aria-hidden="true"
+					use:morph={{ id: 'words:search', slot: 'hero', kind: 'title' }}
+					>{text === '' ? 'Search' : text}</span
+				>
 				<textarea
 					bind:this={field}
 					bind:value={text}
@@ -235,6 +248,11 @@
 
 	.ruler {
 		visibility: hidden;
+	}
+
+	/* Unseen, but drawn from by the words flying in: empty, they are the placeholder's. */
+	.ruler.empty {
+		color: var(--text-label);
 	}
 
 	textarea {
