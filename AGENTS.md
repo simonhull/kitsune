@@ -854,14 +854,16 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   50,000 songs after a fingerprint landed, a ReplayGain run of 1,000 real FLACs, per song, and
   `GET /admin/replaygain` over 50,000 songs with 2,000 to write. The
   browser suite also holds that a song plays on while its file moves. Each fails past its budget,
-  and CI's `perf` job runs both on every PR, with the table in the job summary. Budgets are about 1.5x what was measured when
+  and CI runs both on every PR: the speed tests in their own job, the browser suite as four shards (each
+  library in two, the files split by time in `web/perf/shards.ts`, one worker each), and the `perf` job
+  gathers every shard's samples into one table in its summary and fails when any of them did. Budgets are about 1.5x what was measured when
   they were set; on CI they are multiplied by `ciMultiplier`, which comes from CI's own numbers.
 - `mise run perf` runs everything (`scripts/perf.sh`; Playwright arguments pass through). It writes
   only under `$KITSUNE_PERF_DIR` (default `kitsune-perf` in the temp directory) and reuses the
   libraries there. Each server starts on a fresh database, and nothing is timed until its first scan
   and the fingerprint and loudness passes after it are done: the suite measures a server at rest.
   Only the loud albums lack ReplayGain, so the loudness pass has little to do. `KITSUNE_PERF_CHROMIUM` picks a local Chromium, `KITSUNE_PERF_LIBRARIES=1k` measures
-  one size, `KITSUNE_PERF_VERBOSE=1` prints every sample, and `KITSUNE_PERF_PORT` moves the servers off 14610, for a second worktree measuring at once. The speed tests skip under `-race`.
+  one size, `KITSUNE_PERF_SHARD=1/2` runs one shard of the files, `KITSUNE_PERF_VERBOSE=1` prints every sample, and `KITSUNE_PERF_PORT` moves the servers off 14610, for a second worktree measuring at once. The speed tests skip under `-race`.
 - Nothing new may wait on the play path, from a click to the `playing` event. A change on that path,
   or to a budget, carries the suite's numbers before and after, and no change is called faster without them.
 
