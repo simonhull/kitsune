@@ -406,7 +406,15 @@ export class BarFlier implements Flier {
 	readonly #glass: HTMLElement;
 	readonly #along: Channel;
 	readonly #left: Channel;
-	readonly #width: Channel;
+	/**
+	 * How much wider than its target the bar is. The fill grows on its own as the song plays, in real
+	 * time, so the flight carries only the difference: a target that moves never reads as distance
+	 * still to fly, however slowly frames come.
+	 */
+	readonly #widthGap: Channel;
+	#targetWidth: number;
+	/** The element `#targetWidth` was read from: a new one rebases the gap, so nothing jumps. */
+	#measured: HTMLElement;
 	readonly #floorHeight: number;
 	readonly #trackHeight: number;
 	readonly #floorRadius: number;
@@ -423,7 +431,9 @@ export class BarFlier implements Flier {
 		this.#glass = glass;
 		this.#along = new Channel(opening ? 0 : 1, opening ? 1 : 0);
 		this.#left = new Channel(from.left, to.left);
-		this.#width = new Channel(from.width, to.width);
+		this.#widthGap = new Channel(from.width - to.width, 0);
+		this.#targetWidth = to.width;
+		this.#measured = target.element;
 		this.#floorHeight = hairline.height;
 		this.#trackHeight = track.height;
 		this.#floorRadius = hairline.radius;
@@ -451,13 +461,19 @@ export class BarFlier implements Flier {
 		if (this.#target === null) {
 			return;
 		}
-		const { left, width } = this.#target.element.getBoundingClientRect();
+		const { element } = this.#target;
+		const { left, width } = element.getBoundingClientRect();
 		this.#left.target = left - riding(this.#target, carry).x;
-		this.#width.target = width;
+		if (element !== this.#measured) {
+			// Turned toward another bar: it goes on from the width it has.
+			this.#widthGap.value += this.#targetWidth - width;
+			this.#measured = element;
+		}
+		this.#targetWidth = width;
 	}
 
 	step(params: SpringParams, seconds: number): void {
-		for (const channel of [this.#along, this.#left, this.#width]) {
+		for (const channel of [this.#along, this.#left, this.#widthGap]) {
 			channel.step(params, seconds);
 		}
 	}
@@ -468,7 +484,7 @@ export class BarFlier implements Flier {
 		const rise = barRise(along, this.#floorHeight + 1, this.#trackRise);
 		const { style } = this.element;
 		style.transform = `translate(${this.#left.value.toFixed(2)}px, ${(this.#floor - rise).toFixed(2)}px)`;
-		style.width = `${this.#width.value.toFixed(2)}px`;
+		style.width = `${Math.max(0, this.#targetWidth + this.#widthGap.value).toFixed(2)}px`;
 		style.height = `${height.toFixed(2)}px`;
 		style.borderRadius = `${barRise(along, this.#floorRadius, this.#trackRadius).toFixed(2)}px`;
 	}
@@ -477,7 +493,7 @@ export class BarFlier implements Flier {
 		return (
 			this.#along.settled(0.01) &&
 			this.#left.settled(landsWithin) &&
-			this.#width.settled(landsWithin)
+			this.#widthGap.settled(landsWithin)
 		);
 	}
 }
