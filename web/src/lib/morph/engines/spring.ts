@@ -1313,6 +1313,20 @@ export function createSpringEngine(): Morphs {
 		return navigation.to?.url.pathname === location.pathname;
 	}
 
+	/**
+	 * A journey cut short before it landed claimed ids for fliers it never launched: nothing carries
+	 * them now, so whatever it hid as they mounted shows again, and they hide nothing more.
+	 */
+	function forgetUnclaimed(): void {
+		const unclaimed = [...inFlight].filter((id) => !fliers.has(id));
+		for (const id of unclaimed) {
+			inFlight.delete(id);
+		}
+		for (const entry of registry.of(unclaimed)) {
+			show(entry.element);
+		}
+	}
+
 	/** Whatever comes next owns the page: a room still waiting unseen is let go, seen. */
 	function stopWaiting(): void {
 		drawing += 1;
@@ -1322,6 +1336,7 @@ export function createSpringEngine(): Morphs {
 	async function fly(journey: Journey, navigation: OnNavigate): Promise<void> {
 		const { choreography, ids, sources } = journey;
 		stopWaiting();
+		forgetUnclaimed();
 		endDeal();
 		markMoving(true);
 		const fromPath = navigation.from?.url.pathname ?? '';
