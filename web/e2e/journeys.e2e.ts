@@ -152,6 +152,43 @@ async function turnsBack(
 			(document.querySelector('.shell > .morph-layer')?.children.length ?? 0) > 0,
 		before
 	);
+	// And moving: a flier can wait before it sets off, and one turned while still on its mark is
+	// already where it would land, so it lands at once. Only one that has travelled can turn: moved
+	// or grown, measured by what it draws, since a flier moves the pieces inside it.
+	await page.evaluate(() => {
+		const drawn = (flier: Element): number[] => {
+			const boxes = [flier, ...flier.querySelectorAll('*')]
+				.map((each) => each.getBoundingClientRect())
+				.filter((box) => box.width > 0 || box.height > 0);
+			return [
+				Math.min(...boxes.map((box) => box.left)),
+				Math.min(...boxes.map((box) => box.top)),
+				Math.max(...boxes.map((box) => box.right)),
+				Math.max(...boxes.map((box) => box.bottom))
+			];
+		};
+		const fliers = () => [...(document.querySelector('.shell > .morph-layer')?.children ?? [])];
+		Object.assign(window, {
+			flightDrawn: drawn,
+			flightFliers: fliers,
+			flightStart: fliers().map(drawn)
+		});
+	});
+	await page.waitForFunction(() => {
+		const { flightDrawn, flightFliers, flightStart } = window as unknown as {
+			flightDrawn: (flier: Element) => number[];
+			flightFliers: () => Element[];
+			flightStart: number[][];
+		};
+		const now = flightFliers();
+		if (now.length < flightStart.length) {
+			return true; // One has landed already: the check below says whether any is left.
+		}
+		return now.some((flier, at) => {
+			const was = flightStart[at] ?? [];
+			return flightDrawn(flier).some((edge, side) => Math.abs(edge - (was[side] ?? edge)) > 4);
+		});
+	});
 	await page.evaluate(() => {
 		for (const flier of document.querySelector('.shell > .morph-layer')?.children ?? []) {
 			flier.setAttribute('data-turned', '');
