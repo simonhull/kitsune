@@ -75,6 +75,44 @@
 		};
 	}
 
+	/**
+	 * Out of Now playing the nav comes back where it stands: it takes its new shape at once, unseen,
+	 * then fades in. Coming down from where it went would be its leaving played backward. The bar is
+	 * marked in the same flush that changes its look, so the shape's own transitions never start.
+	 */
+	function comesBack(bar: HTMLElement, initial: NavLook) {
+		let was = initial;
+		let fallback = 0;
+		function done(): void {
+			clearTimeout(fallback);
+			bar.removeAttribute('data-returning');
+		}
+		function faded(event: TransitionEvent): void {
+			if (event.target === bar && event.propertyName === 'opacity') {
+				done();
+			}
+		}
+		bar.addEventListener('transitionend', faded);
+		bar.addEventListener('transitioncancel', faded);
+		return {
+			update(next: NavLook) {
+				const back = was === 'gone' && next !== 'gone' && next !== 'door';
+				was = next;
+				done();
+				if (back) {
+					bar.setAttribute('data-returning', '');
+					// In case no transition runs at all: nothing may stay marked.
+					fallback = window.setTimeout(done, 2000);
+				}
+			},
+			destroy() {
+				done();
+				bar.removeEventListener('transitionend', faded);
+				bar.removeEventListener('transitioncancel', faded);
+			}
+		};
+	}
+
 	/** The pill gives under the press and comes back, on the fast spring, wherever it is going. */
 	function pressPill(nav: HTMLElement | null): void {
 		const pill = nav?.querySelector<HTMLElement>('.pill');
@@ -97,7 +135,12 @@
 	}
 </script>
 
-<header class="bar" data-route={look} inert={look === 'gone' || look === 'door'}>
+<header
+	class="bar"
+	data-route={look}
+	inert={look === 'gone' || look === 'door'}
+	use:comesBack={look}
+>
 	<nav aria-label="Main" class="nav" data-route={look} use:flowingPill={current} use:presses>
 		<span class="pill" aria-hidden="true"></span>
 		<a
@@ -212,6 +255,22 @@
 			opacity var(--morph-fast) var(--curve-morph),
 			transform var(--morph) var(--curve-morph),
 			visibility 0s var(--morph-fast);
+	}
+
+	/*
+	 * Back from Now playing it fades in where it stands, once the moment's top line has gone. Its
+	 * place and its shape are set at once, while it is still unseen.
+	 */
+	.bar:global([data-returning]) {
+		transition:
+			opacity var(--morph) var(--curve-morph) 120ms,
+			transform 0s,
+			visibility 0s;
+	}
+
+	.bar:global([data-returning]) .nav,
+	.bar:global([data-returning]) .nav * {
+		transition-duration: 0s;
 	}
 
 	.nav {
@@ -407,6 +466,17 @@
 		.nav,
 		.nav * {
 			transition-duration: 120ms;
+		}
+
+		/* With the page's blend, which waits for nothing. */
+		.bar:global([data-returning]) {
+			transition-duration: 120ms, 0s, 0s;
+			transition-delay: 0s;
+		}
+
+		.bar:global([data-returning]) .nav,
+		.bar:global([data-returning]) .nav * {
+			transition-duration: 0s;
 		}
 	}
 
