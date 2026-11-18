@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, runs, test } from './fixture.ts';
-import { atRest } from './pages.ts';
+import { albumTracks, atRest } from './pages.ts';
 
 const writes = { 'X-Kitsune-Request': '1' };
 
@@ -65,9 +65,31 @@ test('Playlists: open a smart playlist of 500 songs from its card', async ({ pag
 	await remove(page, id);
 });
 
+/**
+ * Rates the first song of the Library's first album 4★, so "Rating is at least" counts more at
+ * ★★★ than at ★★★★★ whatever else this run has rated: the generated library comes unrated.
+ */
+async function rateOne(page: Page): Promise<void> {
+	const listed = await page.request.get('/api/v1/albums?sort=name&limit=1');
+	const { albums } = (await listed.json()) as { albums: { id: string }[] };
+	const album = albums[0];
+	if (album === undefined) {
+		throw new Error('no album to rate');
+	}
+	const [song] = await albumTracks(page, album.id);
+	if (song === undefined) {
+		throw new Error(`no song on ${album.id}`);
+	}
+	const rated = await page.request.put(`/api/v1/me/ratings/tracks/${song}`, {
+		headers: writes,
+		data: { stars: 4 }
+	});
+	expect(rated.status()).toBe(204);
+}
+
 test('Rules editor: press a star, to the count changed', async ({ page, perf }) => {
-	// The generated library comes rated: "Rating is at least" counts more at ★★★ than at
-	// ★★★★★, and the server says how many each.
+	// The server says how many songs each rating chooses.
+	await rateOne(page);
 	const [atThree, atFive] = [
 		await counted(page, ratedAtLeast(6)),
 		await counted(page, ratedAtLeast(10))

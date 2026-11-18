@@ -1,11 +1,14 @@
 /**
  * Turns the samples the tests wrote into one table: median and p95 per interaction and library,
  * against its budget. It goes to the console, to `results/table.md`, and on CI to the job summary.
+ * A shard's table holds only what it measured and stays out of the summary: CI gathers every
+ * shard's samples and writes the whole table once (`summary.ts`).
  */
 import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { budgets, multiplier, percentile } from './budgets.ts';
 import { libraries, resultsDir } from './servers.ts';
+import { shard } from './shards.ts';
 
 /** One interaction measured on one library. */
 export interface Result {
@@ -43,6 +46,9 @@ export function writeReport(): void {
 		`|---|${libraries.map(() => '--:|--:').join('|')}|--:|`
 	];
 	for (const [id, budget] of Object.entries(budgets.browser)) {
+		if (shard !== undefined && !libraries.some((l) => results.has(`${l.name}--${id}`))) {
+			continue; // Another shard's.
+		}
 		const cells = libraries.map((library) => {
 			const samples = results.get(`${library.name}--${id}`)?.samples ?? [];
 			const p95 = percentile(samples, 95);
@@ -52,11 +58,13 @@ export function writeReport(): void {
 		lines.push(`| ${budget.interaction} | ${cells.join(' | ')} | ${String(budget.p95Ms)} ms |`);
 	}
 	const scale = multiplier === 1 ? '' : ` Budgets are multiplied by ${String(multiplier)} here.`;
-	const table = `### Browser, ms (20 runs each)\n\n${lines.join('\n')}\n\n${scale}\n`;
+	const part =
+		shard === undefined ? '' : `, shard ${String(shard.index)} of ${String(shard.total)}`;
+	const table = `### Browser, ms (20 runs each${part})\n\n${lines.join('\n')}\n\n${scale}\n`;
 	writeFileSync(join(resultsDir, 'table.md'), table);
 	console.log(`\n${table}`);
 	const summary = process.env['GITHUB_STEP_SUMMARY'];
-	if (summary) {
+	if (summary && shard === undefined) {
 		appendFileSync(summary, `${table}\n`);
 	}
 }

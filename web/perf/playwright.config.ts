@@ -1,14 +1,16 @@
 import { defineConfig } from '@playwright/test';
 import { join } from 'node:path';
 import { libraries, perfDir } from './servers.ts';
+import { shard, shardFiles } from './shards.ts';
 
 /**
  * The perf suite: one project per library size, one worker, so nothing else competes with what's
- * timed. `KITSUNE_PERF_CHROMIUM` runs a Chromium of your own instead of Playwright's download.
+ * timed. `KITSUNE_PERF_CHROMIUM` runs a Chromium of your own instead of Playwright's download, and
+ * `KITSUNE_PERF_SHARD` runs one shard of the files (`shards.ts`).
  */
 export default defineConfig({
 	testDir: '.',
-	testMatch: '*.perf.ts',
+	testMatch: shard === undefined ? '*.perf.ts' : shardFiles(shard),
 	outputDir: join(perfDir, 'test-results'),
 	globalSetup: './setup.ts',
 	workers: 1,
