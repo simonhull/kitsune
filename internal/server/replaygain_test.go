@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,7 +31,13 @@ const (
 // as asked.
 func gainFixture(t *testing.T, tagWrites bool) *editFixture {
 	t.Helper()
-	fx := newEditFixture(t, &testServerOptions{TagWrites: tagWrites}, map[string]string{fileOne: sineFLAC, fileTwo: sineFLAC})
+	return gainFixtureWith(t, &testServerOptions{TagWrites: tagWrites})
+}
+
+// gainFixtureWith is gainFixture's library on a server with opts.
+func gainFixtureWith(t *testing.T, opts *testServerOptions) *editFixture {
+	t.Helper()
+	fx := newEditFixture(t, opts, map[string]string{fileOne: sineFLAC, fileTwo: sineFLAC})
 	if _, err := fx.Scanner.MeasureLoudness(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -157,15 +164,25 @@ func (fx *editFixture) wantGainUndone(t *testing.T, d *api.GainRunDetail, id str
 	}
 }
 
-// A run of the album named, and Stop: a 202 while it runs, a 409 after.
+// A run of the album named, and Stop: a 202 while it runs, a 409 after. The
+// run is held at its first step until Stop has answered, so it is running when
+// Stop arrives.
 func TestReplayGainRunOfAnAlbumAndStop(t *testing.T) {
 	t.Parallel()
-	fx := gainFixture(t, true)
+	held, stopped := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	fx := gainFixtureWith(t, &testServerOptions{TagWrites: true, GainStep: func(string, string) {
+		once.Do(func() { close(held); <-stopped })
+	}})
 	run := fx.startGain(t, gainRunsPath, `{"albums":["`+fx.album.ID+`"]}`)
 	if run.Albums != 1 || run.Total != 2 {
 		t.Errorf("run = %+v, want the album's two songs", run)
 	}
-	fx.send(t, call{method: http.MethodPost, path: gainRunsPath + "/" + run.ID + "/stop", header: jsonHeader(fx.token)}) // Running or done: either answers the contract.
+	<-held
+	if resp := fx.send(t, call{method: http.MethodPost, path: gainRunsPath + "/" + run.ID + "/stop", header: jsonHeader(fx.token)}); resp.Status != http.StatusAccepted {
+		t.Errorf("stop of a running run = %d: %s, want 202", resp.Status, resp.Body)
+	}
+	close(stopped)
 	fx.waitGain(t, run.ID)
 	fx.send(t, call{method: http.MethodPost, path: gainRunsPath + "/" + run.ID + "/stop", header: jsonHeader(fx.token)}).
 		problem(t, http.StatusConflict)
