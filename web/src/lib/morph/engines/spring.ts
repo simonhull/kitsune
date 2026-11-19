@@ -10,6 +10,7 @@ import {
 	rippleDelay,
 	rippleWeight,
 	springParams,
+	laidAgain,
 	unfold,
 	weighGather,
 	weighPart,
@@ -498,6 +499,11 @@ export interface Morphs {
 	 * still in flight only presses the pill: the flight carries on.
 	 */
 	relay: (from: HTMLElement) => void;
+	/**
+	 * The page laid again in front of a window-sized surface closing over it, gathering around
+	 * `around` (the press that closed it). With reduced motion it blends in over it instead.
+	 */
+	layAgain: (around: { x: number; y: number } | null) => void;
 }
 
 /** A deal has no route to name it by, and no ghost must ever answer to this. */
@@ -1509,5 +1515,28 @@ export function createSpringEngine(): Morphs {
 		run();
 	}
 
-	return { navigate, deal, blend: (change) => blendTo(change()), relay };
+	function layAgain(around: { x: number; y: number } | null): void {
+		const main = pageMain();
+		if (main === null || active()) {
+			return;
+		}
+		if (reducedMotion()) {
+			main.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'linear' });
+			return;
+		}
+		const center = around ?? { x: innerWidth / 2, y: innerHeight / 2 };
+		const journey: Journey = {
+			choreography: laidAgain,
+			ids: [],
+			sources: new Map(),
+			waits: new Map(),
+			origin: { left: center.x, top: center.y, width: 0, height: 0 }
+		};
+		markMoving(true);
+		startReported = false;
+		arrive(journey, location.pathname, new Map(), true);
+		run();
+	}
+
+	return { navigate, deal, blend: (change) => blendTo(change()), relay, layAgain };
 }

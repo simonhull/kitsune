@@ -1,15 +1,12 @@
 <!--
-	Write ReplayGain's confirm (board D): the album ⋯ grown in place into what it writes, never a
-	modal; on a phone, a sheet from the bottom with a fox top edge, as Duplicates' confirm is.
+	Write ReplayGain's confirm: the album ⋯'s own box reshaped in place into what it writes (M4), never
+	a second surface or a modal. On a phone it is the menu at the phone's whole width, never a sheet.
 -->
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount } from 'svelte';
 	import { confirmWords } from './words.ts';
 
 	interface Props {
-		/** Where the menu it grows from opened. */
-		x: number;
-		y: number;
 		/** The songs it writes, their formats, and the album's pooled measure. */
 		count: number;
 		formats: readonly string[];
@@ -21,79 +18,25 @@
 		oncancel: (refocus: boolean) => void;
 	}
 
-	let { x, y, count, formats, albumGain, albumPeak, phone, busy, onwrite, oncancel }: Props =
-		$props();
-
-	/** As wide as the board's, and clear of the screen's edges by this much. */
-	const width = 420;
-	const margin = 12;
+	let { count, formats, albumGain, albumPeak, phone, busy, onwrite, oncancel }: Props = $props();
 
 	const words = $derived(confirmWords(count, formats, albumGain, albumPeak));
 
 	let panel: HTMLElement | undefined = $state();
-	let left = $state(0);
-	let top = $state(0);
-	let placed = $state(false);
 
 	onMount(() => {
-		if (!phone && panel !== undefined) {
-			const { height } = panel.getBoundingClientRect();
-			left = Math.max(margin, Math.min(x, innerWidth - width - margin));
-			top = Math.max(margin, Math.min(y, innerHeight - height - margin));
-		}
-		placed = true;
-		void tick().then(() => panel?.querySelector<HTMLButtonElement>('button.fox')?.focus());
-		function outside(event: PointerEvent): void {
-			if (
-				!phone &&
-				panel !== undefined &&
-				event.target instanceof Node &&
-				!panel.contains(event.target)
-			) {
-				oncancel(false);
-			}
-		}
-		addEventListener('pointerdown', outside, true);
-		return () => {
-			removeEventListener('pointerdown', outside, true);
-		};
+		panel?.querySelector<HTMLButtonElement>('button.fox')?.focus();
 	});
-
-	function keydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape' && !busy) {
-			event.preventDefault();
-			event.stopPropagation();
-			oncancel(true);
-		}
-	}
 </script>
 
-{#if phone}
-	<button
-		type="button"
-		class="scrim"
-		aria-label="Leave them"
-		tabindex="-1"
-		onclick={() => {
-			oncancel(false);
-		}}
-	></button>
-{/if}
 <div
 	bind:this={panel}
 	class="confirm"
-	class:sheet={phone}
-	class:placed
-	role="dialog"
-	aria-modal={phone ? 'true' : undefined}
+	class:phone
+	role="group"
 	aria-label="Write ReplayGain"
-	tabindex="-1"
-	style:left={phone ? undefined : `${String(left)}px`}
-	style:top={phone ? undefined : `${String(top)}px`}
-	onkeydown={keydown}
 	data-testid="gain-confirm"
 >
-	{#if phone}<span class="grip" aria-hidden="true"></span>{/if}
 	<span class="kicker">{words.kicker}</span>
 	<p class="question">{words.title}</p>
 	<dl class="facts">
@@ -117,49 +60,24 @@
 		<button
 			type="button"
 			class="outline"
+			data-menu-item
 			disabled={busy}
 			onclick={() => {
 				oncancel(true);
 			}}>Leave them</button
 		>
-		<button type="button" class="fox" disabled={busy} onclick={onwrite}>{words.button}</button>
+		<button type="button" class="fox" data-menu-item disabled={busy} onclick={onwrite}
+			>{words.button}</button
+		>
 	</div>
 	<span class="note">UNDO FROM THE TOAST, OR FROM HEALTH’S RUNS</span>
 </div>
 
 <style>
 	.confirm {
-		position: fixed;
-		/* Over the player island, as the menu it grows from is. */
-		z-index: 6;
-		width: 420px;
-		max-height: calc(100dvh - 24px);
-		overflow-y: auto;
-		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
-		padding: 20px 22px;
-		border-radius: var(--radius-20);
-		background: var(--card);
-		border: 1.5px solid var(--fox-line);
-		box-shadow:
-			3px 3px 0 color-mix(in srgb, var(--accent, var(--fox)) 50%, transparent),
-			var(--shadow-float);
-		outline: none;
-		visibility: hidden;
-		opacity: 0;
-		transform: scale(0.96);
-		transform-origin: top left;
-	}
-
-	.confirm.placed {
-		visibility: visible;
-		opacity: 1;
-		transform: none;
-		transition:
-			opacity 140ms var(--curve-morph),
-			transform 200ms var(--curve-settle);
 	}
 
 	.kicker,
@@ -263,68 +181,25 @@
 		color: var(--text-meta);
 	}
 
-	.scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 40;
-		border: 0;
-		background: color-mix(in srgb, var(--ground) 60%, transparent);
-	}
-
-	.sheet {
-		left: 0;
-		right: 0;
-		bottom: 0;
-		z-index: 41;
-		width: auto;
-		max-height: 85dvh;
-		padding: 10px 18px calc(26px + env(safe-area-inset-bottom));
-		border-radius: 28px 28px 0 0;
-		border: 0;
-		border-top: 1.5px solid var(--fox-line);
-		background: var(--card-raised);
-		box-shadow: none;
-		transform: translateY(24px);
-		transform-origin: bottom center;
-	}
-
-	.sheet .facts {
-		background: var(--card);
-	}
-
-	.grip {
-		align-self: center;
-		width: 40px;
-		height: 4px;
-		border-radius: 2px;
-		background: var(--edge-strong);
-	}
-
-	.sheet .question {
+	.phone .question {
 		font-size: 19px;
 	}
 
-	.sheet .buttons {
+	.phone .buttons {
 		flex-direction: column-reverse;
 		gap: 8px;
 	}
 
-	.sheet .fox {
+	.phone .fox {
 		height: 50px;
 		font-size: 16px;
 	}
 
-	.sheet .outline {
+	.phone .outline {
 		height: 48px;
 	}
 
-	.sheet .note {
+	.phone .note {
 		text-align: center;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.confirm.placed {
-			transition: opacity 120ms linear;
-		}
 	}
 </style>

@@ -280,6 +280,16 @@ export function addedWords(added: number, skipped: number, name: string): ToastP
 	return parts;
 }
 
+/**
+ * What Undo did, the toast's words once it has: an add taken back ("3 songs taken out of *Name*"),
+ * or a take-out put back ("2 songs put back in *Name*").
+ */
+export function undoneWords(kind: 'add' | 'takeOut', songs: number, name: string): ToastPart[] {
+	return kind === 'add'
+		? [{ text: `${count(songs, 'song', 'songs')} taken out of ` }, { text: name, bold: true }]
+		: [{ text: `${count(songs, 'song', 'songs')} put back in ` }, { text: name, bold: true }];
+}
+
 /** The toast's button that adds the skipped songs after all, when there are some. */
 export function againWords(skipped: number): string | null {
 	if (skipped === 0) {

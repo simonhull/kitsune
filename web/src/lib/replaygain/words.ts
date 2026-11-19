@@ -295,7 +295,12 @@ export function wroteToast(written: number, left: number): string {
 	return `Wrote ReplayGain to ${files(written)} of`;
 }
 
-/** The toast after an album's undo. */
+/** The toast an album's Undo becomes while its run goes. */
+export function takingOutToast(): string {
+	return 'Taking ReplayGain out of';
+}
+
+/** What an album's undo did, its toast's words. */
 export function tookOutToast(written: number): string {
 	return `Took ReplayGain out of ${files(written)} of`;
 }

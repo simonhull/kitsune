@@ -4,7 +4,6 @@
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { fade } from 'svelte/transition';
 	import { editsOf } from '#lib/library/edit.ts';
 	import { tagGroups } from '#lib/library/tags.ts';
 	import type { EditSession } from './tagEditor.svelte.ts';
@@ -61,7 +60,7 @@
 	});
 </script>
 
-<div class="dock" out:fade={{ duration: 120 }}>
+<div class="dock">
 	{#if report !== null}
 		<div class="report" role="alert" tabindex="-1" bind:this={reportBox}>
 			<p class="message">{report.message}</p>
@@ -125,14 +124,6 @@
 		gap: 8px;
 		width: min(600px, calc(100vw - 32px));
 		translate: -50% 0;
-		animation: arrive var(--morph) var(--curve-morph) both;
-	}
-
-	@keyframes arrive {
-		from {
-			opacity: 0;
-			translate: -50% 16px;
-		}
 	}
 
 	.bar {
@@ -259,14 +250,6 @@
 			right: 16px;
 			width: auto;
 			translate: none;
-			animation-name: rise;
-		}
-
-		@keyframes rise {
-			from {
-				opacity: 0;
-				translate: 0 16px;
-			}
 		}
 
 		.bar {
@@ -296,12 +279,6 @@
 
 		.short {
 			display: inline;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.dock {
-			animation-name: none;
 		}
 	}
 </style>

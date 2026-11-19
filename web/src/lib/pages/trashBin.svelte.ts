@@ -4,7 +4,7 @@ import { library, type Load } from '#lib/library/library.svelte.ts';
 import { TrashError, type Trash, type TrashChange, type TrashEmpty } from '#lib/library/source.ts';
 import { player } from '#lib/player/player.svelte.ts';
 import { dropEverywhere } from './selection.svelte.ts';
-import { toastWords, type ToastWords, type TrashedWhat } from './trashWords.ts';
+import { restoredWords, toastWords, type ToastWords, type TrashedWhat } from './trashWords.ts';
 
 /** How long a toast stays, its fox line draining all the while. */
 export const toastMs = 8000;
@@ -16,14 +16,19 @@ export interface TrashToast {
 	/** Moves on with every toast, so one replaced starts its line again. */
 	id: number;
 	words: ToastWords;
-	/** `failed`: the server refused, and the songs are back; `words` says why. */
-	state: 'moved' | 'failed';
+	/**
+	 * `failed`: the server refused, and the songs are back; `words` says why. `restored`: Undo put
+	 * them back, and the same toast says so in place.
+	 */
+	state: 'moved' | 'failed' | 'restored';
 }
 
 /** What one move took, for its Undo: the songs, and the album when it went whole. */
 interface Moved {
 	ids: readonly string[];
 	album: string | undefined;
+	/** What moved, for the words Undo leaves. */
+	what: TrashedWhat;
 	/** The server's answer, once it's come. */
 	change: Promise<TrashChange | null>;
 }
@@ -193,7 +198,7 @@ class TrashBin {
 			return;
 		}
 		this.#moved = null;
-		this.dismiss();
+		this.#restored(restoredWords(moved.what));
 		library.trashed.show(moved.ids, moved.album === undefined ? [] : [moved.album]);
 		void moved.change.then(async (change) => {
 			if (change === null) {
@@ -228,7 +233,7 @@ class TrashBin {
 		what: TrashedWhat,
 		sent: Promise<TrashChange>
 	): void {
-		const moved: Moved = { ids, album, change: Promise.resolve(null) };
+		const moved: Moved = { ids, album, what, change: Promise.resolve(null) };
 		moved.change = sent.then(
 			(answer) => {
 				library.trashed.confirm(answer, album !== undefined);
@@ -246,6 +251,19 @@ class TrashBin {
 		);
 		this.#moved = moved;
 		this.#show(toastWords(what), 'moved');
+	}
+
+	/** The toast showing becomes what Undo did, in place: the same toast, its line started again. */
+	#restored(words: ToastWords): void {
+		const id = this.toast?.id;
+		if (id === undefined) {
+			return;
+		}
+		clearTimeout(this.#timer);
+		this.toast = { id, words, state: 'restored' };
+		this.#timer = setTimeout(() => {
+			this.toast = null;
+		}, toastMs);
 	}
 
 	#show(words: ToastWords, state: TrashToast['state']): void {

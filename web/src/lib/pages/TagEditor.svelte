@@ -4,7 +4,10 @@
 	Matches), or one song's every tag; the dock at the foot. A phone has Songs, Tags and More as tabs.
 -->
 <script lang="ts">
-	import { onDestroy, onMount, tick, untrack } from 'svelte';
+	import { getContext, onDestroy, onMount, tick, untrack } from 'svelte';
+	import { morphsKey } from '#lib/morph/engine.ts';
+	import type { Morphs } from '#lib/morph/engines/spring.ts';
+	import { pressedPoint, Surface } from '#lib/morph/surface.ts';
 	import { MediaQuery } from 'svelte/reactivity';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { sharedFields, shownOf } from '#lib/library/edit.ts';
@@ -102,9 +105,23 @@
 		}
 	});
 
+	// Buds from the item or button pressed, window-sized, on --morph, its contents in one beat @90. It
+	// closes as a Back would: the page is laid again in front of it, gathering around the press, while
+	// the editor gives way under it.
+	const morphs = getContext<Morphs | undefined>(morphsKey);
+	const surface = new Surface({ big: true, under: 'page' });
+	let layer: HTMLElement | undefined = $state();
+
 	onMount(() => {
 		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		head?.focus({ preventScroll: true });
+		if (layer !== undefined) {
+			surface.open(layer, null);
+		}
+		return () => {
+			surface.leave();
+			morphs?.layAgain(pressedPoint());
+		};
 	});
 
 	onDestroy(() => {
@@ -267,7 +284,13 @@
 	{/if}
 {/snippet}
 
-<div class="layer" class:island={library.playing !== null} role="region" aria-label="Editing songs">
+<div
+	class="layer"
+	class:island={library.playing !== null}
+	role="region"
+	aria-label="Editing songs"
+	bind:this={layer}
+>
 	<div class="editor">
 		<header class="head">
 			{#if session.shape === 'album' && albumId !== undefined}
@@ -373,19 +396,10 @@
 		z-index: 2;
 		overflow: hidden;
 		background: var(--ground);
-		/* Backwards only: a translate left on the layer would hold the fixed dock in it. */
-		animation: rise var(--morph) var(--curve-morph) backwards;
 	}
 
 	.layer.island {
 		--dock-bottom: 108px;
-	}
-
-	@keyframes rise {
-		from {
-			opacity: 0;
-			translate: 0 16px;
-		}
 	}
 
 	/*
@@ -729,12 +743,6 @@
 			margin-top: 8px;
 			padding-top: 16px;
 			border-top: 1px solid var(--edge-card);
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.layer {
-			animation: none;
 		}
 	}
 </style>

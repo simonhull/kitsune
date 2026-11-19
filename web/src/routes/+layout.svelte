@@ -14,6 +14,7 @@
 	import { morphsKey, startMorphs } from '#lib/morph/engine.ts';
 	import Hud from '#lib/morph/Hud.svelte';
 	import { hasInAppHistory, watchInput } from '#lib/morph/journey.ts';
+	import { watchPresses } from '#lib/morph/surface.ts';
 	import AlbumMenu from '#lib/pages/AlbumMenu.svelte';
 	import { albumsView } from '#lib/pages/albumsView.svelte.ts';
 	import { columnsView } from '#lib/pages/columnsView.svelte.ts';
@@ -198,10 +199,12 @@
 		);
 		const leaveSession = followMediaSession(player);
 		const stopWatching = watchInput();
+		const stopPresses = watchPresses();
 		const stopFollowing = theme.follow();
 		return () => {
 			leaveSession();
 			stopWatching();
+			stopPresses();
 			stopFollowing();
 		};
 	});

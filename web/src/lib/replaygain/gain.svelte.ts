@@ -14,7 +14,7 @@ import {
 	type ReplayGainEvent,
 	type ReplayGainStatus
 } from './types.ts';
-import { problemWords, tookOutToast, wroteToast } from './words.ts';
+import { problemWords, takingOutToast, tookOutToast, wroteToast } from './words.ts';
 
 /** How often a run with no events is asked after. */
 const pollMs = 2000;
@@ -59,6 +59,8 @@ class ReplayGain {
 	#poll: ReturnType<typeof setInterval> | undefined;
 	#toastTimer: ReturnType<typeof setTimeout> | undefined;
 	#toasts = 0;
+	/** The toast Undo was pressed on, which the undo's own end takes over in place. */
+	#undoing: number | null = null;
 	#reading = 0;
 	readonly #albumRuns = new Map<string, AlbumRun>();
 
@@ -169,17 +171,22 @@ class ReplayGain {
 
 	/** Undo from the toast. */
 	undoToast(): void {
-		const id = this.toast?.undo;
-		const album = this.toast?.album;
-		this.dismiss();
-		if (id !== undefined) {
-			void this.undo(id, album).then(() => {
-				if (this.problem !== '') {
-					this.#say({ words: this.problem, album: '', failed: true });
-					this.problem = '';
-				}
-			});
+		const toast = this.toast;
+		const id = toast?.undo;
+		const album = toast?.album;
+		if (toast === null || id === undefined) {
+			this.dismiss();
+			return;
 		}
+		// The toast becomes what Undo does, in place, and then what it did, when the run ends.
+		this.#undoing = toast.id;
+		this.#say({ words: takingOutToast(), album: toast.album, failed: false });
+		void this.undo(id, album).then(() => {
+			if (this.problem !== '') {
+				this.#say({ words: this.problem, album: '', failed: true });
+				this.problem = '';
+			}
+		});
 	}
 
 	/** Shows a finished run, from the runs list, so it can be undone. */
@@ -320,8 +327,12 @@ class ReplayGain {
 
 	#say(toast: Omit<GainToast, 'id'>): void {
 		clearTimeout(this.#toastTimer);
-		this.#toasts += 1;
-		this.toast = { ...toast, id: this.#toasts };
+		const going = this.#undoing;
+		const id = going !== null && this.toast?.id === going ? going : (this.#toasts += 1);
+		if (!(going !== null && toast.words === takingOutToast())) {
+			this.#undoing = null;
+		}
+		this.toast = { ...toast, id };
 		this.#toastTimer = setTimeout(() => {
 			this.toast = null;
 		}, toastMs);

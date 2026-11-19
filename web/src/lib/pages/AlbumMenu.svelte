@@ -1,6 +1,7 @@
 <!--
 	An album's own ⋯: Play, Play next, Add to queue and Shuffle, then Edit tags…, Find matches… and Go to artist. One
-	menu, from the album page's hero and from any album card.
+	menu, from the album page's hero and from any album card. Its confirm (Write ReplayGain…) and, on a
+	phone, Add to playlist's list are the same box reshaped in place: one surface whose face changes.
 -->
 <script lang="ts">
 	import { MediaQuery } from 'svelte/reactivity';
@@ -11,6 +12,7 @@
 	import { albumActions, albumMenu, measuredSongs } from './albumMenu.svelte.ts';
 	import Floating from './Floating.svelte';
 	import { pickerBeside, type PickerPlace } from './pickerPlace.ts';
+	import PlaylistList from './PlaylistList.svelte';
 	import PlaylistPicker from './PlaylistPicker.svelte';
 	import { addHeading } from './playlistWords.ts';
 
@@ -30,7 +32,7 @@
 		return parts.join(' · ');
 	});
 
-	/** Add to playlist, beside its item; the album's songs in album order. */
+	/** Add to playlist, beside its item or on a phone in the menu itself; the songs in album order. */
 	let picking = $state<PickerPlace | null>(null);
 	let addItem: HTMLButtonElement | undefined = $state();
 	const songIds = $derived(album?.tracks.map((track) => track.id) ?? []);
@@ -41,6 +43,8 @@
 	let writing = $state(false);
 	const measured = $derived(album === undefined ? [] : measuredSongs(album));
 	const pooled = $derived(measured.find((track) => track.replayGain?.albumGain !== undefined));
+	const listing = $derived(picking?.mode === 'phone');
+	const face = $derived(confirming ? 'confirm' : listing ? 'list' : 'menu');
 
 	// A menu opened on another album starts with its list shut, and asks nothing yet.
 	$effect(() => {
@@ -61,156 +65,182 @@
 	}
 </script>
 
-{#if open !== null && actions !== null && confirming && actions.writeGain !== undefined}
-	{@const write = actions.writeGain}
-	<GainConfirm
-		x={open.x}
-		y={open.y}
-		count={measured.length}
-		formats={[...new Set(measured.map((track) => track.format))]}
-		albumGain={pooled?.replayGain?.albumGain}
-		albumPeak={pooled?.replayGain?.albumPeak}
-		phone={phone.current}
-		busy={writing}
-		onwrite={() => {
-			writing = true;
-			void write().finally(() => {
-				writing = false;
-				albumMenu.close(true);
-			});
-		}}
-		oncancel={(refocus) => {
-			albumMenu.close(refocus);
-		}}
-	/>
-{:else if open !== null && actions !== null}
+{#if open !== null && actions !== null}
 	<Floating
 		x={open.x}
 		y={open.y}
-		label={open.entry.title}
-		width={300}
+		label={face === 'confirm' ? 'Write ReplayGain' : open.entry.title}
+		width={face === 'confirm' ? 420 : 300}
+		{face}
+		full={face !== 'menu' && phone.current}
+		look={face === 'confirm' ? 'confirm' : 'menu'}
+		name="album-menu"
 		onclose={(refocus) => {
-			albumMenu.close(refocus);
+			if (!writing) {
+				albumMenu.close(refocus);
+			}
 		}}
 	>
-		<div class="head">
-			<p class="name">{open.entry.title}</p>
-			<p class="line">{line}</p>
-		</div>
-		<button type="button" role="menuitem" class="item" data-menu-item onclick={then(actions.play)}
-			>Play</button
-		>
-		<button
-			type="button"
-			role="menuitem"
-			class="item"
-			data-menu-item
-			onclick={then(actions.playNext)}>Play next</button
-		>
-		<button
-			type="button"
-			role="menuitem"
-			class="item"
-			data-menu-item
-			onclick={then(actions.addToQueue)}>Add to queue</button
-		>
-		<button
-			type="button"
-			role="menuitem"
-			class="item"
-			data-menu-item
-			onclick={then(actions.shuffle)}>Shuffle</button
-		>
-		<button
-			type="button"
-			role="menuitem"
-			class="item"
-			class:open={picking !== null}
-			data-menu-item
-			aria-haspopup="menu"
-			aria-expanded={picking !== null}
-			bind:this={addItem}
-			onclick={(event) => {
-				pick(event.currentTarget);
-			}}
-			onkeydown={(event) => {
-				if (event.key === 'ArrowRight') {
-					event.preventDefault();
-					pick(event.currentTarget);
-				}
-			}}><span class="grow">Add to playlist</span><Icon name="chevron-right" size={14} /></button
-		>
-		{#if actions.editTags !== undefined}
-			<div class="rule"></div>
+		{#if confirming && actions.writeGain !== undefined}
+			{@const write = actions.writeGain}
+			<GainConfirm
+				count={measured.length}
+				formats={[...new Set(measured.map((track) => track.format))]}
+				albumGain={pooled?.replayGain?.albumGain}
+				albumPeak={pooled?.replayGain?.albumPeak}
+				phone={phone.current}
+				busy={writing}
+				onwrite={() => {
+					writing = true;
+					void write().finally(() => {
+						writing = false;
+						albumMenu.close(true);
+					});
+				}}
+				oncancel={(refocus) => {
+					albumMenu.close(refocus);
+				}}
+			/>
+		{:else if listing}
+			{@const id = open.entry.id}
+			<PlaylistList
+				big
+				trackIds={songIds}
+				resolveTracks={async () => {
+					await library.loadAlbum(id);
+					return library.album(id)?.tracks.map((track) => track.id) ?? [];
+				}}
+				count={album?.tracks.length ?? open.entry.trackCount}
+				heading={addHeading(album?.tracks.length ?? open.entry.trackCount)}
+				onclose={(done, refocus) => {
+					picking = null;
+					if (done) {
+						albumMenu.close(true);
+					} else if (refocus) {
+						addItem?.focus();
+					}
+				}}
+			/>
+		{:else}
+			<div class="head">
+				<p class="name">{open.entry.title}</p>
+				<p class="line">{line}</p>
+			</div>
+			<button type="button" role="menuitem" class="item" data-menu-item onclick={then(actions.play)}
+				>Play</button
+			>
 			<button
 				type="button"
 				role="menuitem"
 				class="item"
 				data-menu-item
-				onclick={then(actions.editTags)}>Edit tags…</button
+				onclick={then(actions.playNext)}>Play next</button
 			>
-			{#if actions.findMatches !== undefined}
+			<button
+				type="button"
+				role="menuitem"
+				class="item"
+				data-menu-item
+				onclick={then(actions.addToQueue)}>Add to queue</button
+			>
+			<button
+				type="button"
+				role="menuitem"
+				class="item"
+				data-menu-item
+				onclick={then(actions.shuffle)}>Shuffle</button
+			>
+			<button
+				type="button"
+				role="menuitem"
+				class="item"
+				class:open={picking !== null}
+				data-menu-item
+				aria-haspopup="menu"
+				aria-expanded={picking !== null}
+				bind:this={addItem}
+				onclick={(event) => {
+					pick(event.currentTarget);
+				}}
+				onkeydown={(event) => {
+					if (event.key === 'ArrowRight' && !phone.current) {
+						event.preventDefault();
+						pick(event.currentTarget);
+					}
+				}}><span class="grow">Add to playlist</span><Icon name="chevron-right" size={14} /></button
+			>
+			{#if actions.editTags !== undefined}
+				<div class="rule"></div>
 				<button
 					type="button"
 					role="menuitem"
 					class="item"
 					data-menu-item
-					onclick={then(actions.findMatches)}>Find matches…</button
+					onclick={then(actions.editTags)}>Edit tags…</button
+				>
+				{#if actions.findMatches !== undefined}
+					<button
+						type="button"
+						role="menuitem"
+						class="item"
+						data-menu-item
+						onclick={then(actions.findMatches)}>Find matches…</button
+					>
+				{/if}
+			{/if}
+			{#if actions.organize !== undefined}
+				{#if actions.editTags === undefined}<div class="rule"></div>{/if}
+				<button
+					type="button"
+					role="menuitem"
+					class="item organize"
+					data-menu-item
+					onclick={then(actions.organize)}
+					><span class="organize-name">Organize files…</span><span class="organize-note"
+						>PREVIEWS THESE {String(album?.tracks.length ?? open.entry.trackCount)} · MOVES NOTHING YET</span
+					></button
+				>
+			{/if}
+			{#if actions.writeGain !== undefined}
+				{#if actions.editTags === undefined && actions.organize === undefined}<div
+						class="rule"
+					></div>{/if}
+				<button
+					type="button"
+					role="menuitem"
+					class="item organize"
+					data-menu-item
+					onclick={() => {
+						confirming = true;
+					}}
+					><span class="organize-name">Write ReplayGain…</span><span class="organize-note"
+						>{menuNote(measured.length)}</span
+					></button
+				>
+			{/if}
+			{#if actions.goToArtist !== undefined}
+				<div class="rule"></div>
+				<button
+					type="button"
+					role="menuitem"
+					class="item quiet"
+					data-menu-item
+					onclick={then(actions.goToArtist)}>Go to artist</button
+				>
+			{/if}
+			{#if actions.trash !== undefined}
+				<div class="rule"></div>
+				<button
+					type="button"
+					role="menuitem"
+					class="item danger"
+					data-menu-item
+					onclick={then(actions.trash)}><Icon name="trash" size={16} />Move album to Trash</button
 				>
 			{/if}
 		{/if}
-		{#if actions.organize !== undefined}
-			{#if actions.editTags === undefined}<div class="rule"></div>{/if}
-			<button
-				type="button"
-				role="menuitem"
-				class="item organize"
-				data-menu-item
-				onclick={then(actions.organize)}
-				><span class="organize-name">Organize files…</span><span class="organize-note"
-					>PREVIEWS THESE {String(album?.tracks.length ?? open.entry.trackCount)} · MOVES NOTHING YET</span
-				></button
-			>
-		{/if}
-		{#if actions.writeGain !== undefined}
-			{#if actions.editTags === undefined && actions.organize === undefined}<div
-					class="rule"
-				></div>{/if}
-			<button
-				type="button"
-				role="menuitem"
-				class="item organize"
-				data-menu-item
-				onclick={() => {
-					confirming = true;
-				}}
-				><span class="organize-name">Write ReplayGain…</span><span class="organize-note"
-					>{menuNote(measured.length)}</span
-				></button
-			>
-		{/if}
-		{#if actions.goToArtist !== undefined}
-			<div class="rule"></div>
-			<button
-				type="button"
-				role="menuitem"
-				class="item quiet"
-				data-menu-item
-				onclick={then(actions.goToArtist)}>Go to artist</button
-			>
-		{/if}
-		{#if actions.trash !== undefined}
-			<div class="rule"></div>
-			<button
-				type="button"
-				role="menuitem"
-				class="item danger"
-				data-menu-item
-				onclick={then(actions.trash)}><Icon name="trash" size={16} />Move album to Trash</button
-			>
-		{/if}
 	</Floating>
-	{#if picking !== null}
+	{#if picking !== null && picking.mode === 'submenu'}
 		{@const id = open.entry.id}
 		<PlaylistPicker
 			trackIds={songIds}
@@ -219,12 +249,10 @@
 				return library.album(id)?.tracks.map((track) => track.id) ?? [];
 			}}
 			count={album?.tracks.length ?? open.entry.trackCount}
-			mode={picking.mode}
+			mode="submenu"
 			x={picking.x}
 			y={picking.y}
-			heading={picking.mode === 'sheet'
-				? addHeading(album?.tracks.length ?? open.entry.trackCount)
-				: undefined}
+			from={picking.from}
 			onclose={(done, refocus) => {
 				picking = null;
 				if (done) {

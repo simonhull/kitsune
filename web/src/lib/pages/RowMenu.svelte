@@ -7,6 +7,7 @@
 	import { pickerBeside, type PickerPlace } from './pickerPlace.ts';
 	import FileInfo from './FileInfo.svelte';
 	import Floating from './Floating.svelte';
+	import PlaylistList from './PlaylistList.svelte';
 	import PlaylistPicker from './PlaylistPicker.svelte';
 	import { addHeading } from './playlistWords.ts';
 	import { rowMenuItems, type MenuTarget, type SongActions } from './songActions.ts';
@@ -49,6 +50,9 @@
 	}
 
 	const ids = $derived(target.kind === 'song' ? [target.trackId] : target.trackIds);
+	/** On a phone the menu itself becomes Add to playlist's list, in place. */
+	const listing = $derived(picking?.mode === 'phone');
+	const face = $derived(listing ? 'list' : info ? 'info' : 'menu');
 	/** A song's stars; for several, the stars they all share, if they do. */
 	const stars = $derived.by(() => {
 		const all = new Set(ids.map((id) => library.marks.stars(id)));
@@ -68,157 +72,182 @@
 	{y}
 	label={target.kind === 'song' ? target.title : `${String(target.count)} songs`}
 	width={info ? 360 : 300}
+	{face}
+	full={listing}
+	name="row-menu"
 	{onclose}
 >
-	<div class="head">
-		<p class="name">
-			{target.kind === 'song' ? target.title : `${target.count.toLocaleString('en-US')} songs`}
-		</p>
-		<p class="line">{target.line}</p>
-	</div>
-	{#if info && target.kind === 'song'}
-		<FileInfo albumId={target.albumId} trackId={target.trackId} />
+	{#if listing}
+		<PlaylistList
+			big
+			trackIds={ids}
+			count={ids.length}
+			heading={addHeading(ids.length)}
+			onclose={(done, refocus) => {
+				picking = null;
+				if (done) {
+					onclose(true);
+				} else if (refocus) {
+					addItem?.focus();
+				}
+			}}
+		/>
 	{:else}
-		{#if items.has('play')}
-			<button type="button" role="menuitem" class="item" data-menu-item onclick={then(actions.play)}
-				>Play</button
-			>
-		{/if}
-		<button
-			type="button"
-			role="menuitem"
-			class="item"
-			data-menu-item
-			onclick={then(actions.playNext)}>Play next</button
-		>
-		<button
-			type="button"
-			role="menuitem"
-			class="item"
-			data-menu-item
-			onclick={then(actions.addToQueue)}>Add to queue</button
-		>
-		{#if items.has('addToPlaylist')}
-			<button
-				type="button"
-				role="menuitem"
-				class="item"
-				class:open={picking !== null}
-				data-menu-item
-				aria-haspopup="menu"
-				aria-expanded={picking !== null}
-				bind:this={addItem}
-				onclick={(event) => {
-					pick(event.currentTarget);
-				}}
-				onkeydown={(event) => {
-					if (event.key === 'ArrowRight') {
-						event.preventDefault();
-						pick(event.currentTarget);
-					}
-				}}><span class="grow">Add to playlist</span><Icon name="chevron-right" size={14} /></button
-			>
-		{/if}
-		<div class="rule"></div>
-		<div class="rating">
-			<span class="rating-name" aria-hidden="true">Rating</span>
-			<!-- ↑ and ↓ stay the menu's, to go between its items; ← and → move the rating. -->
-			<StarsInput
-				size="menu"
-				value={stars}
-				label={target.kind === 'song' ? `Rating of ${target.title}` : 'Rating of all of them'}
-				vertical={false}
-				data-menu-item
-				onchange={(next) => {
-					actions.rate(next);
-				}}
-			/>
+		<div class="head">
+			<p class="name">
+				{target.kind === 'song' ? target.title : `${target.count.toLocaleString('en-US')} songs`}
+			</p>
+			<p class="line">{target.line}</p>
 		</div>
-		{#if items.has('editTags') && actions.editTags !== undefined}
-			<button
-				type="button"
-				role="menuitem"
-				class="item"
-				data-menu-item
-				onclick={then(actions.editTags)}>Edit tags…</button
-			>
-		{/if}
-		{#if items.has('remove') && remove !== undefined}
-			<button type="button" role="menuitem" class="item" data-menu-item onclick={then(remove)}
-				>Remove from queue</button
-			>
-		{/if}
-		{#if target.kind === 'song'}
-			{@const { albumId, artistId } = target}
-			<div class="rule"></div>
-			{#if items.has('goToAlbum')}
+		{#if info && target.kind === 'song'}
+			<FileInfo albumId={target.albumId} trackId={target.trackId} />
+		{:else}
+			{#if items.has('play')}
 				<button
 					type="button"
 					role="menuitem"
-					class="item quiet"
+					class="item"
 					data-menu-item
-					onclick={then(() => void goto(resolve('/album/[id]', { id: albumId })))}
-					>Go to album</button
-				>
-			{/if}
-			{#if items.has('goToArtist') && artistId !== undefined}
-				<button
-					type="button"
-					role="menuitem"
-					class="item quiet"
-					data-menu-item
-					onclick={then(() => void goto(resolve('/artists/[id]', { id: artistId })))}
-					>Go to artist</button
+					onclick={then(actions.play)}>Play</button
 				>
 			{/if}
 			<button
 				type="button"
 				role="menuitem"
-				class="item quiet"
+				class="item"
 				data-menu-item
-				onclick={() => {
-					info = true;
-				}}>File info</button
+				onclick={then(actions.playNext)}>Play next</button
 			>
-		{/if}
-		{#if items.has('takeOut') || items.has('trash')}
-			<div class="rule"></div>
-		{/if}
-		{#if items.has('takeOut') && takeOut !== undefined}
 			<button
 				type="button"
 				role="menuitem"
 				class="item"
 				data-menu-item
-				aria-keyshortcuts="Delete"
-				onclick={then(takeOut)}
-				><span class="grow">Take out of playlist</span><span class="key" aria-hidden="true"
-					>DEL</span
-				></button
+				onclick={then(actions.addToQueue)}>Add to queue</button
 			>
-		{/if}
-		{#if items.has('trash') && actions.trash !== undefined}
-			<button
-				type="button"
-				role="menuitem"
-				class="item danger"
-				data-menu-item
-				aria-keyshortcuts={takeOut === undefined ? 'Delete' : undefined}
-				onclick={then(actions.trash)}
-				><Icon name="trash" size={16} /><span class="grow">Move to Trash</span
-				>{#if takeOut === undefined}<span class="key" aria-hidden="true">DEL</span>{/if}</button
-			>
+			{#if items.has('addToPlaylist')}
+				<button
+					type="button"
+					role="menuitem"
+					class="item"
+					class:open={picking !== null}
+					data-menu-item
+					aria-haspopup="menu"
+					aria-expanded={picking !== null}
+					bind:this={addItem}
+					onclick={(event) => {
+						pick(event.currentTarget);
+					}}
+					onkeydown={(event) => {
+						if (event.key === 'ArrowRight' && innerWidth >= 700) {
+							event.preventDefault();
+							pick(event.currentTarget);
+						}
+					}}
+					><span class="grow">Add to playlist</span><Icon name="chevron-right" size={14} /></button
+				>
+			{/if}
+			<div class="rule"></div>
+			<div class="rating">
+				<span class="rating-name" aria-hidden="true">Rating</span>
+				<!-- ↑ and ↓ stay the menu's, to go between its items; ← and → move the rating. -->
+				<StarsInput
+					size="menu"
+					value={stars}
+					label={target.kind === 'song' ? `Rating of ${target.title}` : 'Rating of all of them'}
+					vertical={false}
+					data-menu-item
+					onchange={(next) => {
+						actions.rate(next);
+					}}
+				/>
+			</div>
+			{#if items.has('editTags') && actions.editTags !== undefined}
+				<button
+					type="button"
+					role="menuitem"
+					class="item"
+					data-menu-item
+					onclick={then(actions.editTags)}>Edit tags…</button
+				>
+			{/if}
+			{#if items.has('remove') && remove !== undefined}
+				<button type="button" role="menuitem" class="item" data-menu-item onclick={then(remove)}
+					>Remove from queue</button
+				>
+			{/if}
+			{#if target.kind === 'song'}
+				{@const { albumId, artistId } = target}
+				<div class="rule"></div>
+				{#if items.has('goToAlbum')}
+					<button
+						type="button"
+						role="menuitem"
+						class="item quiet"
+						data-menu-item
+						onclick={then(() => void goto(resolve('/album/[id]', { id: albumId })))}
+						>Go to album</button
+					>
+				{/if}
+				{#if items.has('goToArtist') && artistId !== undefined}
+					<button
+						type="button"
+						role="menuitem"
+						class="item quiet"
+						data-menu-item
+						onclick={then(() => void goto(resolve('/artists/[id]', { id: artistId })))}
+						>Go to artist</button
+					>
+				{/if}
+				<button
+					type="button"
+					role="menuitem"
+					class="item quiet"
+					data-menu-item
+					onclick={() => {
+						info = true;
+					}}>File info</button
+				>
+			{/if}
+			{#if items.has('takeOut') || items.has('trash')}
+				<div class="rule"></div>
+			{/if}
+			{#if items.has('takeOut') && takeOut !== undefined}
+				<button
+					type="button"
+					role="menuitem"
+					class="item"
+					data-menu-item
+					aria-keyshortcuts="Delete"
+					onclick={then(takeOut)}
+					><span class="grow">Take out of playlist</span><span class="key" aria-hidden="true"
+						>DEL</span
+					></button
+				>
+			{/if}
+			{#if items.has('trash') && actions.trash !== undefined}
+				<button
+					type="button"
+					role="menuitem"
+					class="item danger"
+					data-menu-item
+					aria-keyshortcuts={takeOut === undefined ? 'Delete' : undefined}
+					onclick={then(actions.trash)}
+					><Icon name="trash" size={16} /><span class="grow">Move to Trash</span
+					>{#if takeOut === undefined}<span class="key" aria-hidden="true">DEL</span>{/if}</button
+				>
+			{/if}
 		{/if}
 	{/if}
 </Floating>
-{#if picking !== null}
+{#if picking !== null && picking.mode === 'submenu'}
 	<PlaylistPicker
 		trackIds={ids}
 		count={ids.length}
-		mode={picking.mode}
+		mode="submenu"
 		x={picking.x}
 		y={picking.y}
-		heading={picking.mode === 'sheet' ? addHeading(ids.length) : undefined}
+		from={picking.from}
 		onclose={(done, refocus) => {
 			picking = null;
 			if (done) {

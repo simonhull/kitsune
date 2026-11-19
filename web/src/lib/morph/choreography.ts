@@ -232,6 +232,7 @@ export type ChoreographyName =
 	| 'login-to-now-playing'
 	| 'deck-to-home'
 	| 'unfold'
+	| 'laid-again'
 	| 'blend';
 
 /**
@@ -941,6 +942,26 @@ export const unfold: Choreography = {
 		leaving: giveWay()
 	},
 	otherwise: gather(0.12, 40),
+	stages: {},
+	held: {},
+	bloom: null,
+	island: null
+};
+
+/**
+ * The page laid again in front of a window-sized surface that covered it (the tag editor, the rules
+ * editor) as that surface closes: the In-Front Rule for something Back closes. Nothing is reborn and
+ * nothing travels, since the page never left; it gathers a little (0.04 at the far edge) around the
+ * press that closed the surface, while the surface gives way under it.
+ */
+export const laidAgain: Choreography = {
+	name: 'laid-again',
+	grain: 'gathering',
+	motion: base,
+	travel: null,
+	leaving: giveWay(quick),
+	arriving: {},
+	otherwise: gather(0.04, 0),
 	stages: {},
 	held: {},
 	bloom: null,
