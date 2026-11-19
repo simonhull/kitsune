@@ -855,6 +855,27 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   picker's backdrop; no sheets on a phone (`Floating`'s `full`). Reduced motion is a 120 ms blend with
   shapes set at once. `Floating` sizes take the page's `--step` (`zoom` on its faces). Nothing on the
   play path reads layout for this: a press on any other control costs a `closest`.
+- The Server, Trash, Organize and Duplicates are rooms too, and a duplicate group and Matching are
+  their records (`serverRecords`): every pair among them and the nav's rooms unfolds from the press in
+  the page (a row, a crumb, a tab, a button; a control whose code navigates counts for 1.5 s, and a
+  page with nothing left to press says where with `unfoldFrom`). Any page into Organize unfolds too.
+  `RouteName` keeps each apart, so a new Server page needs its own name in `routes.ts`. Each one's
+  `h1` is its `data-morph-headline` unit. What both pages say travels instead of a headline being
+  born, and the page gathers around where it lands (`Journey.pivotOn`): a group's title (`title:<key>`,
+  its row ↔ its headline) and Matching's number (`count:matching`, Health's card ↔ the headline),
+  each an inline-block of the words alone; the page they land on scrolls it clear under the picture
+  left. To land on something it must hold it as it mounts: a group is read on pointerdown and kept
+  (`duplicates.known`), the queue as last read (`knownQueue`). `ToolTabs` is one strip (`kind:
+  'strip'`, `StripFlier`): the page's own from the first frame, never in the air nor giving way, its
+  fill flowing to the tab pressed. A group to its pair is re-pressed in place. Matching → Album is the
+  album's door with the hero born at the link (`fromPress`).
+- The door closes on every way to `/login` (`door-closes`): the fox flies from the nav to the door as
+  its own mark scaled (`Journey.dress`), the frame (the nav's glass, the island, a stage) dissolves
+  where it stands as a picture (`holdFrame`, `data-morph-held` on the bar) on `--morph`, the page's
+  words go on `--morph-fast`, and the door gathers around the fox. On Now playing the Play button stands
+  in for the fox (`standIn`). Sign out says "Signing out…" (`Repress`) until the server has answered.
+  Login → any page `next` names is Login → Home's door (`login-to-page`). In the fixtures a session
+  ends on `dispatchEvent(new Event('kitsune:session-ends'))`, and `?matching=board` draws a queue.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
