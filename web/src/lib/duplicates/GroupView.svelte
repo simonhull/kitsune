@@ -123,7 +123,13 @@
 <div class="group" class:phone>
 	<a class="back mono" href={resolve('/server/duplicates')} bind:this={back}>‹ ALL DUPLICATES</a>
 	<div class="head">
-		<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>
+		<!-- Named whole: the words are a box of their own, which a reader would part from the dot. -->
+		<h1
+			data-morph-part="intro"
+			data-morph-key="headline"
+			data-morph-headline
+			aria-label={`${group.title}.`}
+		>
 			<span class="said" use:morph={{ id: `title:${group.key}`, slot: 'hero', kind: 'title' }}
 				>{group.title}</span
 			><span class="dot">.</span>
