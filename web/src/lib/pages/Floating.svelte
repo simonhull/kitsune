@@ -61,6 +61,8 @@
 	const margin = 12;
 	const gutter = 16;
 	const floorGap = 12;
+	/** Where a screen is a phone's. */
+	const phoneWidth = 720;
 
 	const surface = untrack(() => new Surface(name === undefined ? {} : { key: name }));
 
@@ -113,8 +115,10 @@
 		shown = width * step();
 		panel.style.width = `${String(shown)}px`;
 		const { height } = panel.getBoundingClientRect();
+		// On a phone it stays clear of the island, in the thumb's reach with the player live.
+		const bottom = innerWidth <= phoneWidth ? floorTop() - floorGap : innerHeight - margin;
 		left = Math.max(margin, Math.min(x, innerWidth - shown - margin));
-		top = Math.max(margin, Math.min(above ? y - height : y, innerHeight - height - margin));
+		top = Math.max(margin, Math.min(above ? y - height : y, bottom - height));
 		placed = true;
 	}
 

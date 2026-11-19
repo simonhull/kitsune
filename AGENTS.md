@@ -762,8 +762,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   another; a `playlists` event reads again what it names once nothing of this browser's is in flight,
   and a read begun before a change made here is let go. `playlistActions` is the one way songs go in
   and out from a menu or a page, with its toast (Add it again, Undo exactly what it did). The picker
-  (`PlaylistPicker.svelte`) is a submenu beside a ⋯ menu, a popover over the selection bar, and on a
-  phone a sheet. A playlist's rows (`PlaylistSongs.svelte`) are keyed by entry, placed in a window
+  (`PlaylistPicker.svelte`, its list `PlaylistList.svelte`) is a submenu beside a ⋯ menu, a popover
+  over the selection bar, and on a phone the menu itself reshaped into the list, never a sheet. A playlist's rows (`PlaylistSongs.svelte`) are keyed by entry, placed in a window
   over the list, and a grip moves one (held first by a finger). Play is a `list` queue
   (`player.playList`). The nav has no room for Playlists under 431 px: the You page links to them.
 - A smart playlist's page reads `GET /me/playlists/{id}` as a regular page does and reads its rules
@@ -802,15 +802,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   optimistic, and nothing on the play path waits on it.
 - Server › Duplicates (`/server/duplicates`, `/server/duplicates/[group]`, `lib/duplicates/`): the list
   under its filter chips (pairs first, then groups), a group's copies side by side (`CopyCard`, up to
-  four across, stacked keeper first on a phone), and the confirm (`MergeConfirm`: in place, a sheet on a
-  phone) worded from the server's plan (`words.ts`). The merge sends back the plan it showed; on a 409
+  four across, stacked keeper first on a phone), and the confirm (`MergeConfirm`: in place, on a phone
+  too) worded from the server's plan (`words.ts`). The merge sends back the plan it showed; on a 409
   the confirm shows the new one. The list hides a merged group at the press and brings it back if the
   merge fails (`duplicates.svelte.ts`); the toast after it links to the Trash. Play on a copy plays that
   song alone (`queuedCopy`), fetching nothing. The fixtures (`lib/duplicates/fixture.ts`) are the
   boards' groups and the Blackstar pair; a merge sends their copies to the fixture Trash.
 - ReplayGain in the files (`lib/replaygain/`): `ReplayGainCard.svelte` on Health, beside MusicBrainz,
-  for admins, and the album ⋯'s "Write ReplayGain…" with its in-place confirm (`GainConfirm`, a sheet on
-  a phone), for `canTrash` and an album with measured songs. `library.replayGain` (`gain.svelte.ts`)
+  for admins, and the album ⋯'s "Write ReplayGain…" with its confirm (`GainConfirm`, the menu's own box
+  reshaped, at a phone's whole width on a phone), for `canTrash` and an album with measured songs. `library.replayGain` (`gain.svelte.ts`)
   outlives the page: it reads `GET /admin/replaygain` at sign-in (so a reload finds a run going),
   follows `replaygain` events (`Library.hearReplayGain`) and the run's albums, and keeps the album
   toast (`GainToast.svelte`) with its Undo. The nav says REPLAYGAIN · n% in Organize's slot. Words live
@@ -839,6 +839,22 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   first, or its own hero), else in the island's thumb, and nothing is scrolled for it. Play and the
   bar fly back with the controls' pill; the rest of the island comes up in place. Into its artist the
   name under the song leads. The nav comes back where it stands, a fade (`data-returning`).
+- Surfaces in the page (menus, confirms, pickers, toasts, the selection bar, the editors, the match
+  sheet, the folder picker, Export, MissingLines) move through `lib/morph/surface.ts`, never their own
+  keyframes or `--curve-settle`. A surface is one box at its true size and radius: it is born at the
+  control just pressed (`watchPresses` reads a control's place on the press only when it opens
+  something or sits in a `[data-surface]`; mark one that is replaced by what it opens `data-buds`), or
+  at the floor (`floor`) when none is left on screen, and grows into itself on `--morph-fast`
+  (`--morph` for the window-sized editors, `big`); its words never move: the engine's own box draws
+  its look while the element is clipped to it, and at rest nothing of the engine is left. A new face
+  is the same box reshaped (`hold` before the change, `reshape` once placed: `Floating`'s `face`,
+  `reshapeOn`), the old words a picture giving way. It leaves by giving way where it stands, as one
+  layer prepended to its parent so whatever opens next is in front; nothing goes back into its control.
+  Closing an editor lays the page again in front of it (`Morphs.layAgain`, `laidAgain`). One opened
+  again while it gives way (`key`) takes over from where that had got to. No scrims but the folder
+  picker's backdrop; no sheets on a phone (`Floating`'s `full`). Reduced motion is a 120 ms blend with
+  shapes set at once. `Floating` sizes take the page's `--step` (`zoom` on its faces). Nothing on the
+  play path reads layout for this: a press on any other control costs a `closest`.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
