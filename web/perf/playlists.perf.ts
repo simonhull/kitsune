@@ -70,12 +70,20 @@ test('Library: add a song to a playlist from its menu, press to the toast', asyn
 				r.url().endsWith(`/api/v1/me/playlists/${id}/tracks`) && r.request().method() === 'POST'
 		);
 		// The press to the toast: nothing waits on the server for it.
-		await perf.time(add, 'click', { kind: 'selector', selector: '.toast[role="status"]' }, () =>
-			item.click()
+		await perf.time(
+			add,
+			'click',
+			{ kind: 'selector', selector: '.toast[role="status"]:not([aria-hidden])' },
+			() => item.click()
 		);
 		expect((await saved).status()).toBe(200);
-		await page.locator('.toast button', { hasText: 'Undo' }).click();
-		await page.locator('.toast').waitFor({ state: 'detached' });
+		// The live toast, never the picture of one giving way. Undo leaves it saying what it did:
+		// dismissed, the next run starts with none.
+		const toast = page.locator('.toast:not([aria-hidden])');
+		await toast.locator('button', { hasText: 'Undo' }).click();
+		await toast.getByRole('button', { name: 'Dismiss' }).click();
+		// Every toast gone, the pictures of those giving way too.
+		await page.waitForFunction(() => document.querySelector('.toast') === null);
 		await page.locator('.floating').first().waitFor({ state: 'detached' });
 	}
 });

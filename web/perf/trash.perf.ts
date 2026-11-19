@@ -30,9 +30,15 @@ test('Library: move a song to Trash, and Undo', async ({ page, perf }) => {
 		expect((await moved).status()).toBe(200);
 		// Undo, so every run leaves the library as it found it.
 		const restored = page.waitForResponse((r) => r.url().endsWith('/api/v1/admin/trash/restore'));
-		await page.locator('.toast button.undo').click();
+		// The live toast, never the picture of one giving way.
+		const toast = page.locator('.toast:not([aria-hidden])');
+		await toast.locator('button.undo').click();
 		expect((await restored).status()).toBe(200);
 		await row.waitFor();
+		// Undo leaves the toast saying what it did: dismissed, the next run starts with none.
+		await toast.getByRole('button', { name: 'Dismiss' }).click();
+		// Every toast gone, the pictures of those giving way too.
+		await page.waitForFunction(() => document.querySelector('.toast') === null);
 		await page.locator('.floating').waitFor({ state: 'detached' });
 	}
 });
