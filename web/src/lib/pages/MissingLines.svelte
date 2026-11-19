@@ -5,6 +5,7 @@
 	reads are counted in one row.
 -->
 <script lang="ts">
+	import { SurfaceSlot } from '#lib/morph/surface.ts';
 	import type { MissingLine } from '#lib/library/source.ts';
 	import {
 		extinfWords,
@@ -29,9 +30,16 @@
 
 	const lost = $derived(lines.length + pastLimit);
 	const past = $derived(pastLimitWords(pastLimit));
+
+	/** Buds from the not-found pill that opened it, and gives way where it stands. */
+	const surface = new SurfaceSlot();
 </script>
 
-<section class={['missing', phone && 'phone']} aria-label="Lines that found no song">
+<section
+	class={['missing', phone && 'phone']}
+	aria-label="Lines that found no song"
+	{@attach surface.attach}
+>
 	<div class="head">
 		<h2>{missingHeading(lost)}</h2>
 		<span class="lead">{missingLead(found, phone)}</span>
@@ -68,7 +76,6 @@
 		border-radius: var(--radius-24);
 		background: var(--card);
 		border: 1.5px dashed color-mix(in srgb, var(--fox-line) 55%, transparent);
-		animation: open var(--morph, 260ms) var(--curve-settle) both;
 	}
 
 	.head {
@@ -218,18 +225,5 @@
 		font-size: 12px;
 		line-height: 1.35;
 		color: var(--text-meta);
-	}
-
-	@keyframes open {
-		from {
-			opacity: 0;
-			transform: translateY(-6px);
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.missing {
-			animation: none;
-		}
 	}
 </style>

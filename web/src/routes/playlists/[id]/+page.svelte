@@ -14,6 +14,7 @@
 	playlist's ⋯, opens in place of the buttons.
 -->
 <script lang="ts">
+	import { layInFront, SurfaceSlot } from '#lib/morph/surface.ts';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -62,6 +63,8 @@
 	let missingOpen = $state(false);
 	/** Whether Export is open, in place of the buttons. */
 	let exporting = $state(false);
+	/** Delete's confirm, a surface in place of the buttons. */
+	const deleteSurface = new SurfaceSlot();
 	const now = Date.now();
 	const rules = $derived(known?.rules);
 	/** A Playlist rule's playlist, by name: undefined when it's gone. */
@@ -213,6 +216,7 @@
 				editing = null;
 			}}
 			onsave={() => void saveRules()}
+			buds
 		/>
 	{:else if load.kind === 'missing'}
 		<p class="note" role="status" data-morph-part="words" data-morph-key="missing">
@@ -305,7 +309,7 @@
 				{/if}
 				{#if smart && rules !== undefined}
 					{#if phone}
-						<button type="button" class="sentence-phone" onclick={editRules}
+						<button type="button" class="sentence-phone" data-buds onclick={editRules}
 							><span class="lead">{rules.match === 'all' ? 'ALL OF ' : 'ANY OF '}</span
 							>{phoneSentence(rules, nameOf)} · <span class="edit-words">Edit rules ›</span></button
 						>
@@ -330,7 +334,12 @@
 						/>
 					</div>
 				{:else if confirming}
-					<span class="confirm" role="group" aria-label="Delete the playlist">
+					<span
+						class="confirm"
+						role="group"
+						aria-label="Delete the playlist"
+						{@attach deleteSurface.attach}
+					>
 						<span class="confirm-words">Delete {known?.name}? Its songs stay in your library.</span>
 						<span class="buttons">
 							<button
@@ -346,7 +355,7 @@
 						</span>
 					</span>
 				{:else}
-					<span class="buttons">
+					<span class="buttons" {@attach layInFront}>
 						<button
 							type="button"
 							class="play"
@@ -374,7 +383,7 @@
 							}}>Shuffle</button
 						>
 						{#if smart && !phone}
-							<button type="button" class="edit" onclick={editRules}
+							<button type="button" class="edit" data-buds onclick={editRules}
 								><Icon name="rules" size={15} />Edit rules</button
 							>
 						{/if}

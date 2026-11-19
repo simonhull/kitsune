@@ -7,6 +7,8 @@
 	fox-washed and says so.
 -->
 <script lang="ts">
+	import { reshapeOn } from '#lib/morph/reshapeOn.svelte.ts';
+	import { SurfaceSlot } from '#lib/morph/surface.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
@@ -100,9 +102,18 @@
 	}
 
 	const savedText = $derived(saved === null ? null : savedWords(saved, root));
+
+	// Buds from the ⋯'s Export… in place of the page's buttons; Save in the library's steps are the
+	// same box reshaped; it gives way where it stands, and the buttons are laid again in front.
+	const surface = new SurfaceSlot();
+	reshapeOn(
+		surface,
+		() => 1,
+		() => (canSave ? step : '')
+	);
 </script>
 
-<div class="export" role="group" aria-label="Export the playlist">
+<div class="export" role="group" aria-label="Export the playlist" {@attach surface.attach}>
 	<div class="head">
 		<span class="what">{exportHead(playlist.songCount)}</span>
 		<span class="snapshot">A SNAPSHOT: THE FILE DOESN’T FOLLOW LATER CHANGES</span>
@@ -262,7 +273,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
-		animation: open var(--morph, 260ms) var(--curve-settle) both;
 	}
 
 	.head {
@@ -486,18 +496,5 @@
 
 	button:disabled {
 		opacity: 0.5;
-	}
-
-	@keyframes open {
-		from {
-			opacity: 0;
-			transform: translateY(-6px);
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.export {
-			animation: none;
-		}
 	}
 </style>

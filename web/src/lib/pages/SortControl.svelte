@@ -11,7 +11,6 @@
 </script>
 
 <script lang="ts">
-	import { tick } from 'svelte';
 	import { pick, wayOf } from '#lib/library/sorts.ts';
 	import Floating from './Floating.svelte';
 
@@ -29,12 +28,11 @@
 	let { groups, words, way = '', look, label }: Props = $props();
 
 	const menuWidth = 320;
-	/** Where the menu becomes a sheet from below. */
-	const sheetQuery = '(max-width: 600px)';
+	/** Where the menu takes a phone's whole width, with bigger rows: still the menu, never a sheet. */
+	const phoneQuery = '(max-width: 600px)';
 
 	let button: HTMLButtonElement | undefined = $state();
-	let open = $state<{ x: number; y: number; sheet: boolean } | null>(null);
-	let sheet: HTMLElement | undefined = $state();
+	let open = $state<{ x: number; y: number; phone: boolean } | null>(null);
 	/**
 	 * When the menu last closed: a press on the button that closed it mustn't open it again. Never,
 	 * to begin with: `performance.now()` counts from the page's load, so a 0 here would swallow a
@@ -59,11 +57,8 @@
 					? (box?.right ?? 0) - menuWidth
 					: left,
 			y: (box?.bottom ?? 0) + 8,
-			sheet: matchMedia(sheetQuery).matches
+			phone: matchMedia(phoneQuery).matches
 		};
-		if (open.sheet) {
-			void tick().then(() => sheet?.querySelector<HTMLElement>('[data-menu-item]')?.focus());
-		}
 	}
 
 	function close(refocus: boolean): void {
@@ -75,23 +70,6 @@
 		}
 		if (refocus) {
 			button?.focus();
-		}
-	}
-
-	/** Lifts the sheet out of the page, to stand over the player island and everything else. */
-	function onTop(node: HTMLElement): { destroy: () => void } {
-		document.body.append(node);
-		return {
-			destroy: () => {
-				node.remove();
-			}
-		};
-	}
-
-	function sheetKey(event: KeyboardEvent): void {
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			close(true);
 		}
 	}
 </script>
@@ -149,41 +127,19 @@
 	{/if}
 </button>
 
-{#if open?.sheet === true}
-	<div class="sheet-layer" use:onTop>
-		<button
-			type="button"
-			class="scrim"
-			aria-label="Close"
-			tabindex="-1"
-			onclick={() => {
-				close(true);
-			}}
-		></button>
-		<div
-			class="sheet"
-			role="menu"
-			aria-label={label}
-			tabindex="-1"
-			bind:this={sheet}
-			onkeydown={sheetKey}
-		>
-			<div class="sheet-head">
-				<span class="sheet-title">Sort</span>
-				<button
-					type="button"
-					class="done"
-					onclick={() => {
-						close(true);
-					}}>Done</button
-				>
-			</div>
+{#if open !== null}
+	<Floating
+		x={open.x}
+		y={open.y}
+		{label}
+		width={menuWidth}
+		full={open.phone}
+		face={open.phone ? 'phone' : 'menu'}
+		onclose={close}
+	>
+		<div class="items" class:phone={open.phone}>
 			{@render items()}
 		</div>
-	</div>
-{:else if open !== null}
-	<Floating x={open.x} y={open.y} {label} width={menuWidth} onclose={close}>
-		{@render items()}
 		<p class="hint">Pick the one you're on again to turn it round.</p>
 	</Floating>
 {/if}
@@ -340,81 +296,18 @@
 		color: var(--text-label);
 	}
 
-	.sheet-layer {
-		position: fixed;
-		z-index: 20;
-		inset: 0;
-	}
-
-	.scrim {
-		position: absolute;
-		inset: 0;
-		padding: 0;
-		border: 0;
-		background: color-mix(in srgb, var(--ground) 60%, transparent);
-	}
-
-	.sheet {
-		position: absolute;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		max-height: 85dvh;
-		overflow-y: auto;
-		box-sizing: border-box;
-		padding: 10px 8px max(24px, env(safe-area-inset-bottom));
-		border-radius: var(--radius-28) var(--radius-28) 0 0;
-		background: var(--card);
-		border-top: 1px solid var(--edge-raised);
-		box-shadow: var(--shadow-float);
-		animation: rise 240ms var(--curve-settle);
-	}
-
-	.sheet:focus {
-		outline: none;
-	}
-
-	.sheet-head {
+	.items {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0 12px 4px;
+		flex-direction: column;
 	}
 
-	.sheet-title {
-		font-size: 20px;
-		font-weight: 800;
-		letter-spacing: -0.03em;
-	}
-
-	.done {
-		min-height: var(--target);
-		padding: 0 8px;
-		border: 0;
-		background: none;
-		color: var(--fox-text);
-		font: 600 15px var(--font-sans);
-	}
-
-	.sheet .item {
+	.phone .item {
 		height: 52px;
 		border-radius: var(--radius-16);
 		font-size: 16px;
 	}
 
-	.sheet .item.on {
+	.phone .item.on {
 		background: var(--hover);
-	}
-
-	@keyframes rise {
-		from {
-			translate: 0 100%;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.sheet {
-			animation-duration: 1ms;
-		}
 	}
 </style>

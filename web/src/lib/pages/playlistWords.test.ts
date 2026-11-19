@@ -1,27 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import type { PlaylistAlbum, PlaylistSummary } from '#lib/library/source.ts';
 import {
+	addedWords,
 	addHeading,
+	againWords,
 	agoWords,
+	byLastAdded,
+	cardLine,
+	countLine,
 	dockLine,
+	headLine,
+	holdsWords,
 	limitPill,
 	liveFoot,
 	liveLine,
 	liveRowLine,
-	matchWord,
-	addedWords,
-	againWords,
-	byLastAdded,
-	cardLine,
-	countLine,
-	headLine,
-	holdsWords,
 	matching,
+	matchWord,
 	mosaicOf,
 	nameFor,
 	phoneHeadLine,
 	removedWords,
-	sheetLine
+	sheetLine,
+	undoneWords
 } from './playlistWords.ts';
 
 const album = (id: string): PlaylistAlbum => ({ id, title: id, artist: 'A', compilation: false });
@@ -203,5 +204,18 @@ describe('smart playlists', () => {
 		expect(dockLine(4, false)).toBe('Nothing changed');
 		expect(limitPill({ on: true, count: 50, unit: 'songs' })).toBe('Limit · 50 songs');
 		expect(limitPill({ on: false, count: 50, unit: 'songs' })).toBe('Limit · off');
+	});
+});
+
+describe('undoneWords', () => {
+	it('says what Undo took back, an add or a take-out', () => {
+		expect(undoneWords('add', 3, 'Late drives')).toEqual([
+			{ text: '3 songs taken out of ' },
+			{ text: 'Late drives', bold: true }
+		]);
+		expect(undoneWords('takeOut', 1, 'Late drives')).toEqual([
+			{ text: '1 song put back in ' },
+			{ text: 'Late drives', bold: true }
+		]);
 	});
 });

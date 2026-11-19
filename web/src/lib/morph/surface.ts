@@ -32,6 +32,8 @@ export interface SurfaceOptions {
 	quick?: boolean;
 	/** It has no control left on screen (a toast, the selection bar): it is born at the floor. */
 	floor?: boolean;
+	/** It comes and goes where it stands and never grows (the folder picker's backdrop, dimming). */
+	still?: boolean;
 	/** Where it gives way: under the page, which is laid again in front of it (an editor). */
 	under?: 'page';
 	/**
@@ -340,7 +342,13 @@ export class Surface {
 		}
 		const { big = false, floor = false } = this.#options;
 		if (was?.shape === undefined || was.shape === null) {
-			shape.set(floor ? floorRect(rest) : (from ?? pressedRect() ?? edgeRect(rest)));
+			shape.set(
+				this.#options.still === true
+					? rest
+					: floor
+						? floorRect(rest)
+						: (from ?? pressedRect() ?? edgeRect(rest))
+			);
 			this.#boxOpacity.set(0);
 			live.opacity.set(0);
 			live.opacity.to(1, spring(big ? base : fast), big ? 90 : 30);
@@ -859,7 +867,12 @@ export function pressFrom(control: Element): void {
 /** The control just pressed, at its true size and radius, or null when nothing was. */
 export function pressedRect(): Rect | null {
 	const press = lastPress;
-	if (press === null || performance.now() - press.at > pressLasts) {
+	// A link pressed went somewhere: nothing on the page it opens came out of it.
+	if (
+		press === null ||
+		performance.now() - press.at > pressLasts ||
+		press.element?.matches('a[href]') === true
+	) {
 		return null;
 	}
 	if (press.rect !== null) {
@@ -943,4 +956,30 @@ export class Repress {
 			};
 		});
 	}
+}
+
+/**
+ * What a surface in place stood for (a page's buttons, after its confirm) comes back in front of the
+ * surface giving way where it stood, fading up on the fast spring: never uncovered by it. On a first
+ * mount, with nothing giving way beside it, it does nothing. An attachment.
+ */
+export function layInFront(element: HTMLElement): void {
+	queueMicrotask(() => {
+		const parent = element.parentElement;
+		if (parent?.querySelector(':scope > [data-surface-leaving]') == null) {
+			return;
+		}
+		const statics = getComputedStyle(element).position === 'static';
+		if (statics) {
+			element.style.position = 'relative';
+		}
+		const reduced = reducedMotion();
+		const arrive = animateOn(element, [{ opacity: 0 }, { opacity: 1 }], reduced ? 'blend' : fast);
+		arrive.onfinish = () => {
+			arrive.cancel();
+			if (statics) {
+				element.style.removeProperty('position');
+			}
+		};
+	});
 }

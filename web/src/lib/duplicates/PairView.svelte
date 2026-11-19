@@ -4,6 +4,7 @@
 	trashed. Keeping one album merges each matched song of the other into it, in one go.
 -->
 <script lang="ts">
+	import { layInFront } from '#lib/morph/surface.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { clock } from '#lib/library/format.ts';
@@ -195,10 +196,11 @@
 		/>
 	{/if}
 	{#if !confirming || phone}
-		<div class="actions">
+		<div class="actions" {@attach layInFront}>
 			{#if writes}
 				<button
 					type="button"
+					data-buds
 					class="fox-button"
 					disabled={busy}
 					onclick={() => {
