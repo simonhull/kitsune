@@ -72,12 +72,13 @@ async function openAlbum(page: Page, query = 'gainAlbum=200'): Promise<void> {
 	await page.goto(fixtures(`/album/tin-lantern-78?${query}`));
 	await expect(albumMore(page)).toBeVisible();
 	await landed(page);
+	// The hero's words are set in Geist once it has loaded, which moves the ⋯ beside them.
+	await page.evaluate(() => document.fonts.ready.then(() => undefined));
 }
 
 test('a menu is born at its ⋯, at the ⋯’s size, and grows into itself', async ({ page }) => {
 	await openAlbum(page);
 	await slowMotion(page, 2000);
-	// Read as it's pressed: the hero's buttons settle once the album's facts have come.
 	const dots = await rectOf(albumMore(page));
 	await albumMore(page).click();
 	const born = await flightBox(page);
