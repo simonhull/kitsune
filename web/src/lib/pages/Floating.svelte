@@ -36,6 +36,8 @@
 		name?: string | undefined;
 		/** How its box is drawn: a menu's, or a confirm's fox edge and misprint. */
 		look?: 'menu' | 'confirm';
+		/** What it is to assistive technology: a menu, or a confirm's dialog in its place. */
+		role?: 'menu' | 'dialog';
 	}
 
 	let {
@@ -51,7 +53,8 @@
 		full = false,
 		from,
 		name,
-		look = 'menu'
+		look = 'menu',
+		role = 'menu'
 	}: Props = $props();
 
 	/** Clear of the screen's edges by this much, and on a phone of the island by `floorGap`. */
@@ -218,7 +221,7 @@
 	class:confirm={look === 'confirm'}
 	data-surface
 	data-submenu={submenu ? '' : undefined}
-	role="menu"
+	{role}
 	aria-label={label}
 	tabindex="-1"
 	bind:this={panel}

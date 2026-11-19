@@ -74,6 +74,7 @@
 		{face}
 		full={face !== 'menu' && phone.current}
 		look={face === 'confirm' ? 'confirm' : 'menu'}
+		role={face === 'confirm' ? 'dialog' : 'menu'}
 		name="album-menu"
 		onclose={(refocus) => {
 			if (!writing) {

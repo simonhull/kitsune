@@ -125,18 +125,23 @@ test('with tag writes off a group compares, and nothing merges', async ({ page }
 	await expect(page.getByRole('button', { name: /trash the other/ })).toHaveCount(0);
 });
 
-test('on a phone the copies stack, keeper first, and the confirm is a sheet', async ({ page }) => {
+test('on a phone the copies stack, keeper first, and the confirm stands in place', async ({
+	page
+}) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto(fixtures('/server/duplicates/dup-creed'));
 	const copies = page.getByRole('main').getByTestId('copy');
 	await expect(copies.first()).toContainText('KEEP THIS ONE');
 	await expect(copies.first()).toContainText('ORIGINAL ALBUM');
 	await page.getByRole('button', { name: 'Keep A Liturgy, trash the other' }).click();
-	const sheet = page.getByRole('dialog', { name: 'Merge' });
+	// In place of the actions, as on a desktop: never a sheet over a scrim.
+	const sheet = page.getByRole('region', { name: 'Merge' });
 	await expect(sheet).toContainText('WHAT MOVES');
+	await expect(page.locator('.scrim')).toHaveCount(0);
 	const merge = sheet.getByRole('button', { name: 'Merge and trash' });
-	// The width of the sheet, less its gutter.
-	expect((await merge.boundingBox())?.width ?? 0).toBeGreaterThan(320);
+	// Stacked, as wide as the confirm less its padding.
+	const confirmWidth = (await sheet.boundingBox())?.width ?? 0;
+	expect((await merge.boundingBox())?.width ?? 0).toBeGreaterThan(confirmWidth - 60);
 	const width = await page.evaluate(() => document.documentElement.scrollWidth);
 	expect(width).toBeLessThanOrEqual(390);
 });

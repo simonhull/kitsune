@@ -215,84 +215,85 @@
 	{#if rating && !compact}
 		<div class="pop" {@attach rateSurface.attach}>{@render stars()}</div>
 	{/if}
-	{#if more && compact && listing}
-		<div class="pop sheet" {@attach moreSurface.attach}>
-			<PlaylistList
-				big
-				trackIds={actions.trackIds}
-				{count}
-				heading={addHeading(count)}
-				onclose={() => {
-					more = false;
-					listing = false;
-				}}
-			/>
-		</div>
-	{:else if more && compact}
+	{#if more && compact}
+		<!-- One surface: More's menu becomes Add to playlist's list in place. -->
 		<div
 			class="pop sheet"
-			role="menu"
-			aria-label="More for the selection"
+			role={listing ? 'dialog' : 'menu'}
+			aria-label={listing ? 'Add to playlist' : 'More for the selection'}
 			{@attach moreSurface.attach}
 		>
-			<p class="sheet-facts">{facts}</p>
-			<button
-				type="button"
-				role="menuitem"
-				class="sheet-item"
-				onclick={() => {
-					actions.playNext();
-					more = false;
-				}}>Play next</button
-			>
-			<button
-				type="button"
-				role="menuitem"
-				class="sheet-item"
-				onclick={() => {
-					actions.addToQueue();
-					more = false;
-				}}>Add to queue</button
-			>
-			<button type="button" role="menuitem" class="sheet-item" onclick={() => void listInMore()}
-				>Add to playlist…</button
-			>
-			{#if edit !== undefined}
+			{#if listing}
+				<PlaylistList
+					big
+					trackIds={actions.trackIds}
+					{count}
+					heading={addHeading(count)}
+					onclose={() => {
+						more = false;
+						listing = false;
+					}}
+				/>
+			{:else}
+				<p class="sheet-facts">{facts}</p>
 				<button
 					type="button"
 					role="menuitem"
 					class="sheet-item"
 					onclick={() => {
+						actions.playNext();
 						more = false;
-						edit();
-					}}>{editLabel}</button
+					}}>Play next</button
 				>
-			{/if}
-			{#if actions.organize !== undefined}
-				{@const organize = actions.organize}
 				<button
 					type="button"
 					role="menuitem"
 					class="sheet-item"
 					onclick={() => {
+						actions.addToQueue();
 						more = false;
-						organize();
-					}}>Organize files…</button
+					}}>Add to queue</button
 				>
-			{/if}
-			{#if actions.trash !== undefined}
-				{@const trash = actions.trash}
-				<button
-					type="button"
-					role="menuitem"
-					class="sheet-item danger"
-					onclick={() => {
-						more = false;
-						trash();
-					}}><Icon name="trash" size={16} />{trashLabel}</button
+				<button type="button" role="menuitem" class="sheet-item" onclick={() => void listInMore()}
+					>Add to playlist…</button
 				>
+				{#if edit !== undefined}
+					<button
+						type="button"
+						role="menuitem"
+						class="sheet-item"
+						onclick={() => {
+							more = false;
+							edit();
+						}}>{editLabel}</button
+					>
+				{/if}
+				{#if actions.organize !== undefined}
+					{@const organize = actions.organize}
+					<button
+						type="button"
+						role="menuitem"
+						class="sheet-item"
+						onclick={() => {
+							more = false;
+							organize();
+						}}>Organize files…</button
+					>
+				{/if}
+				{#if actions.trash !== undefined}
+					{@const trash = actions.trash}
+					<button
+						type="button"
+						role="menuitem"
+						class="sheet-item danger"
+						onclick={() => {
+							more = false;
+							trash();
+						}}><Icon name="trash" size={16} />{trashLabel}</button
+					>
+				{/if}
+				{@render stars()}
 			{/if}
-			{@render stars()}
 		</div>
 	{/if}
 </div>

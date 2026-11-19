@@ -170,23 +170,23 @@ test.describe('on a phone', () => {
 		await expect(page.getByTestId('gain-done')).toContainText('STOPPED');
 	});
 
-	test('the album’s confirm is a sheet from the bottom', async ({ page }) => {
+	test('the album’s confirm is its menu reshaped in place, the phone’s width', async ({ page }) => {
 		await page.goto(fixtures('/album/tin-lantern-78?gainAlbum=100'));
 		await page.getByRole('button', { name: 'More for Tin Lantern', exact: true }).click();
 		await page.getByRole('menuitem', { name: /Write ReplayGain…/ }).click();
 		const sheet = page.getByRole('dialog', { name: 'Write ReplayGain' });
 		await expect(sheet).toBeVisible();
-		// Once it has risen into place: flush with the foot of the screen, and its whole width.
+		// Once it has settled: the phone's width less its gutters, and clear of the foot of the screen.
 		await expect
 			.poll(async () => {
 				const box = await sheet.boundingBox();
 				return [
 					Math.round(box?.x ?? -1),
-					Math.round((box?.y ?? 0) + (box?.height ?? 0)),
-					(box?.width ?? 0) >= 360
+					Math.round(box?.width ?? 0),
+					(box?.y ?? 0) + (box?.height ?? 0) < 844
 				];
 			})
-			.toEqual([0, 844, true]);
+			.toEqual([16, 358, true]);
 		await sheet.getByRole('button', { name: 'Write 8 files' }).click();
 		await expect(page.getByTestId('gain-toast')).toContainText(
 			'Wrote ReplayGain to 8 files of Tin Lantern'
