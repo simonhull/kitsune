@@ -188,6 +188,7 @@
 			<a
 				class="organizing"
 				href={resolve('/server/organize')}
+				data-room="organize"
 				aria-label={`Organizing: ${String(organizing.done)} of ${String(organizing.total)} songs`}
 				>{navNote(organizing.done, organizing.total)}</a
 			>
@@ -255,6 +256,15 @@
 			opacity var(--morph-fast) var(--curve-morph),
 			transform var(--morph) var(--curve-morph),
 			visibility 0s var(--morph-fast);
+	}
+
+	/*
+	 * To the door the frame dissolves where it stands, not back and up: a picture of it does that
+	 * under the door (lib/morph), and the bar itself is gone at once.
+	 */
+	.bar:global([data-morph-held]) {
+		opacity: 0 !important;
+		transition: none !important;
 	}
 
 	/*

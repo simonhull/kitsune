@@ -7,6 +7,7 @@
 <script lang="ts">
 	import Cover from '#lib/cover/Cover.svelte';
 	import { tagEditor } from '#lib/pages/tagEditor.svelte.ts';
+	import { duplicates } from '#lib/duplicates/duplicates.svelte.ts';
 	import { openDuplicates } from './duplicates.ts';
 	import type { OrganizeAlbum, OrganizeFile } from './types.ts';
 	import {
@@ -222,6 +223,11 @@
 							<button
 								type="button"
 								class="fox-button"
+								onpointerdown={() => {
+									if (conflict.group !== undefined) {
+										duplicates.prefetch(conflict.group);
+									}
+								}}
 								onclick={() => {
 									openDuplicates(conflict.group);
 								}}>Compare in Duplicates ›</button

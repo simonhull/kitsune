@@ -9,20 +9,22 @@
 	import GroupView from '#lib/duplicates/GroupView.svelte';
 	import PairView from '#lib/duplicates/PairView.svelte';
 	import { DuplicatesError, type DuplicateDetail } from '#lib/duplicates/types.ts';
+	import { duplicates } from '#lib/duplicates/duplicates.svelte.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import ToolTabs from '#lib/organize/ToolTabs.svelte';
 
 	const phone = new MediaQuery('(max-width: 720px)', false);
 	const key = $derived(page.params.group ?? '');
 
-	let detail = $state<DuplicateDetail | null>(null);
+	// What the group said when last read, if it was: its title is there for the press to land on.
+	let detail = $state<DuplicateDetail | null>(duplicates.known(page.params.group ?? ''));
 	let problem = $state('');
 
 	$effect(() => {
 		const asked = key;
-		detail = null;
+		detail = duplicates.known(asked);
 		problem = '';
-		library.duplicates.detail(asked).then(
+		duplicates.detail(asked).then(
 			(read) => {
 				if (asked === key) {
 					detail = read;

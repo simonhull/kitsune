@@ -18,7 +18,14 @@ import { markClick } from './hud.svelte.ts';
 import { pick, recordOrigins, type Origins } from './pairs.ts';
 import { albumExit } from './path.ts';
 import { registry, type MorphEntry } from './registry.ts';
-import { albumOn, artistOn, journeyOf, playlistOn, type RouteTarget } from '#lib/shell/routes.ts';
+import {
+	albumOn,
+	artistOn,
+	groupOn,
+	journeyOf,
+	playlistOn,
+	type RouteTarget
+} from '#lib/shell/routes.ts';
 
 /** One navigation's plan. */
 export interface Journey {
@@ -30,6 +37,13 @@ export interface Journey {
 	waits: Map<string, number>;
 	/** Where a room unfolds from: the nav item, field, fox or link pressed. Null on other journeys. */
 	origin: Origin | null;
+	/**
+	 * What both pages say and the new page gathers around where it lands, in place of a headline born
+	 * at the press: a duplicate group's title, Matching's number. Null when nothing of the kind.
+	 */
+	pivotOn: string | null;
+	/** Whose picture a stand-in carries: the fox's, laid over the Play button. */
+	dress: MorphEntry | null;
 }
 
 /** A place on screen a room comes out of, in viewport coordinates, measured as the press lands. */
@@ -65,6 +79,11 @@ function rememberOrigins(path: string): Origins {
 }
 
 let lastClick: EventTarget | null = null;
+let lastClickAt = 0;
+/** How long a click still says where a navigation came from, when code navigates after it. */
+const clickLasts = 1500;
+/** What the next navigation unfolds from, said by the page: ‹ All duplicates after a merge. */
+let unfoldsFrom: Element | null = null;
 let homeScroll = 0;
 let visualTransition = false;
 let navigations = 0;
@@ -84,6 +103,14 @@ export function lend(id: string, from: string): void {
 	lent = { id, from };
 }
 
+/**
+ * Says what the next navigation unfolds from when no press does: after a merge the group is gone,
+ * and Duplicates is born at ‹ All duplicates' place.
+ */
+export function unfoldFrom(element: Element | null | undefined): void {
+	unfoldsFrom = element ?? null;
+}
+
 /** Reports whether there's a page of ours to go back to. */
 export function hasInAppHistory(): boolean {
 	return navigations > 0;
@@ -93,7 +120,8 @@ export function hasInAppHistory(): boolean {
 export function watchInput(): () => void {
 	function onClick(event: MouseEvent): void {
 		lastClick = event.target;
-		markClick(performance.now());
+		lastClickAt = performance.now();
+		markClick(lastClickAt);
 	}
 	function onPointerDown({ target }: PointerEvent): void {
 		preloadFor(target instanceof Element ? target.closest('a') : null);
@@ -170,18 +198,22 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 	}
 	const borrowed = lent;
 	lent = null;
+	const told = unfoldsFrom;
+	unfoldsFrom = null;
 	const continues = albumOn(from) !== undefined && albumOn(from) === library.playing?.album.id;
 	const choreography = reducedMotion() ? blend : choreographyFor(fromRoute, toRoute, { continues });
 	const { travel } = choreography;
+	const none = { pivotOn: null, dress: null };
 	if (travel === null) {
-		return { choreography, ids: [], sources: new Map(), waits: new Map(), origin: null };
+		return { choreography, ids: [], sources: new Map(), waits: new Map(), origin: null, ...none };
 	}
 	const origin =
-		travel.subject === 'rooms'
-			? originOf(type === 'link' ? lastClick : null, to?.url.pathname, toRoute)
+		travel.subject === 'rooms' || choreography.fromPress === true
+			? originOf(told ?? pressedFor(type), to?.url.pathname, toRoute)
 			: null;
 
 	const leads = leadsFor(travel, navigation);
+	const pivotOn = travel.subject === 'rooms' ? pageLeadOf(leads) : null;
 	const ids = [...leads.keys()];
 	const waits = new Map(
 		[...leads].flatMap(([id, lead]) => {
@@ -190,7 +222,7 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 		})
 	);
 	if (ids.length === 0) {
-		return { choreography, ids, sources: new Map(), waits, origin };
+		return { choreography, ids, sources: new Map(), waits, origin, ...none };
 	}
 	const scopes = type === 'link' ? clickedScopes() : [];
 	const candidates = registry.of(borrowed === null ? ids : [...ids, borrowed.from]);
@@ -232,7 +264,46 @@ export function beginJourney(navigation: OnNavigate): Journey | null {
 		const usual = travel.sourceSlots[0] ?? 'card';
 		recordOrigins(candidates, ids, usual, sources, rememberOrigins(from.url.pathname));
 	}
-	return { choreography, ids, sources, waits, origin };
+	// To the door the fox grows, so it flies as its own mark scaled up, never a stretched picture.
+	const toDoor = travel.subject === 'fox' && travel.targetSlots.includes('door');
+	const dress = toDoor ? standInFor(travel.standIn, sources) : null;
+	return { choreography, ids, sources, waits, origin, pivotOn, dress };
+}
+
+/**
+ * The fox's picture, for its way to the door: the nav's own mark, even where something else leaves in
+ * its place (the Play button on Now playing). Sets the stand-in as the fox's source when there is one.
+ */
+function standInFor(
+	standIn: string | undefined,
+	sources: Map<string, MorphEntry>
+): MorphEntry | null {
+	const fox = registry.of(['fox']).find(({ slot }) => slot === 'nav') ?? null;
+	if (standIn !== undefined && !sources.has('fox')) {
+		const stand = registry.of([standIn]).find((entry) => onScreen(entry));
+		if (stand !== undefined) {
+			sources.set('fox', stand);
+		}
+	}
+	return fox;
+}
+
+/** What was pressed for this navigation: a link followed, or a control whose code navigated. */
+function pressedFor(type: OnNavigate['type']): EventTarget | null {
+	if (type === 'link') {
+		return lastClick;
+	}
+	return type === 'goto' && performance.now() - lastClickAt < clickLasts ? lastClick : null;
+}
+
+/** The first of a room's leads that its pages say themselves, which the room gathers around. */
+function pageLeadOf(leads: ReadonlyMap<string, Lead>): string | null {
+	for (const [id] of leads) {
+		if (id.startsWith('title:') || id.startsWith('count:')) {
+			return id;
+		}
+	}
+	return null;
 }
 
 /** Says where each room is pressed in the nav: its item, the fox for You, the field for Search. */
@@ -259,8 +330,11 @@ function originOf(
 	room: RouteName
 ): Origin | null {
 	const link = click instanceof Element ? click.closest('a') : null;
+	// A control whose code navigated (a menu's item, a conflict's Compare): wherever it still stands.
+	const control = click instanceof Element ? click.closest('button, [role="menuitem"]') : null;
 	const pressed = link !== null && link.pathname === path;
-	return (pressed ? boxOf(link) : null) ?? boxOf(navPlace(room));
+	const at = pressed ? boxOf(link) : control?.isConnected === true ? boxOf(control) : null;
+	return at ?? boxOf(navPlace(room));
 }
 
 /** The page a lead belongs to: an album's parts are an album page's, a name an artist's… */
@@ -288,6 +362,9 @@ function leadsFor(
 		const into = journeyOf(to?.route.id);
 		const playing = library.playing?.album.id;
 		return new Map<string, Lead>([
+			...sharedSays(journeyOf(from?.route.id), into, groupOn(to) ?? groupOn(from)),
+			// Organize, Duplicates and a group share their tabs: one strip that never leaves.
+			['tabs:tools', 'strip'] as const,
 			...(into === 'search'
 				? [['field:search', 'field'] as const, ['words:search', 'title'] as const]
 				: []),
@@ -306,6 +383,22 @@ function leadsFor(
 		return new Map([...pages, ...parts.map((each) => [each, 'cover'] as const)]);
 	}
 	return new Map(pages);
+}
+
+/**
+ * What two of the Server's pages both say, which travels between them: a group's title, between its
+ * row in Duplicates and its headline, and Matching's number, between Health's card and its headline.
+ */
+function sharedSays(
+	from: RouteName | undefined,
+	into: RouteName | undefined,
+	group: string | undefined
+): (readonly [string, Lead])[] {
+	const pair = new Set([from, into]);
+	if (group !== undefined && pair.has('duplicates') && pair.has('duplicate')) {
+		return [[`title:${group}`, 'title']];
+	}
+	return pair.has('health') && pair.has('matching') ? [['count:matching', 'title']] : [];
 }
 
 /** A hero scrolled off screen stays with its page: the island's cover travels instead. */
@@ -375,7 +468,11 @@ export function landJourney(
 		// With no origin, a card already in the clear wins, so the page stays where it was left.
 		visible: ({ element }) => inTheClear(element),
 		eligible:
-			travel.subject === 'rooms' ? inView : travel.subject === 'playing' ? heldInView : canTravel
+			travel.subject === 'rooms'
+				? (entry: MorphEntry) => (journey.pivotOn === entry.id ? canTravel(entry) : inView(entry))
+				: travel.subject === 'playing'
+					? heldInView
+					: canTravel
 	});
 	const borrowed = lentFrom.get(path);
 	if (borrowed !== undefined && journey.ids.includes(borrowed.id) && !targets.has(borrowed.id)) {
@@ -393,10 +490,20 @@ export function landJourney(
 	if (
 		grain === 'gathering' &&
 		travel.subject !== 'playing' &&
+		travel.subject !== 'fox' &&
 		lead !== undefined &&
 		lead.slot !== 'hero'
 	) {
 		bringIntoView(lead.element);
+	}
+	// What both rooms say lands where the room holds it, scrolled clear under the picture left: the
+	// number in its card further down Health, a title in its row further down the list.
+	const said =
+		journey.pivotOn === null || !journey.sources.has(journey.pivotOn)
+			? undefined
+			: targets.get(journey.pivotOn);
+	if (said !== undefined) {
+		bringIntoView(said.element);
 	}
 	return targets;
 }

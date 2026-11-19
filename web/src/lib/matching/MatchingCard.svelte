@@ -5,15 +5,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { morph } from '#lib/morph/registry.ts';
 	import { library } from '#lib/library/library.svelte.ts';
-	import { matchQueue } from './api.ts';
+	import { fixtureQueue, knownQueue, matchQueue } from './api.ts';
 	import type { MatchQueue } from './types.ts';
 
-	let queue = $state.raw<MatchQueue | null>(null);
+	// As last read, so a way back from Matching has its number to land on.
+	let queue = $state.raw<MatchQueue | null>(knownQueue());
 
 	onMount(() => {
-		if (library.simulated) {
-			return; // The fixtures have no MusicBrainz queue: no server to ask.
+		if (library.simulated && !fixtureQueue()) {
+			return; // The fixtures have no MusicBrainz queue unless asked: no server to ask.
 		}
 		matchQueue()
 			.then((q) => {
@@ -28,7 +30,11 @@
 {#if queue !== null && (todo > 0 || queue.counts.matched > 0)}
 	<section class="card" class:quiet={todo === 0} aria-labelledby="matching-card">
 		<span class="eyebrow">MUSICBRAINZ IDS</span>
-		<span class="number">{todo}</span>
+		<span class="number"
+			><span class="said" use:morph={{ id: 'count:matching', slot: 'card', kind: 'title' }}
+				>{todo}</span
+			></span
+		>
 		<span class="what" id="matching-card"
 			>{todo === 1 ? 'album has' : 'albums have'} no MusicBrainz IDs</span
 		>
@@ -120,5 +126,10 @@
 		.number {
 			font-size: 56px;
 		}
+	}
+
+	/* The number alone, which travels to Matching's headline: the card's line is wider than it is. */
+	.said {
+		display: inline-block;
 	}
 </style>

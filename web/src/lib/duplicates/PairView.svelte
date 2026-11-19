@@ -6,6 +6,7 @@
 <script lang="ts">
 	import { layInFront } from '#lib/morph/surface.ts';
 	import { goto } from '$app/navigation';
+	import { unfoldFrom } from '#lib/morph/journey.ts';
 	import { resolve } from '$app/paths';
 	import { clock } from '#lib/library/format.ts';
 	import { library } from '#lib/library/library.svelte.ts';
@@ -32,6 +33,7 @@
 	let kept = $state('');
 	let confirming = $state(false);
 	let busy = $state(false);
+	let back = $state<HTMLAnchorElement>();
 	let problem = $state('');
 	let fresher = $state<Record<string, MergePlan>>({});
 
@@ -83,6 +85,8 @@
 				(merged) =>
 					`Kept ${into}. ${String(merged.trashed.tracks.length)} ${merged.trashed.tracks.length === 1 ? 'copy' : 'copies'} moved to the Trash`
 			);
+			// It is gone, so no row holds it: the list is born at ‹ All duplicates' place.
+			unfoldFrom(back);
 			await goto(resolve('/server/duplicates'));
 		} catch (error) {
 			if (error instanceof DuplicatesError && error.status === 409 && error.plan !== undefined) {
@@ -104,6 +108,8 @@
 			await (pair.dismissed === true
 				? duplicates.bringBack(pair.key)
 				: duplicates.dismiss(pair.key));
+			// It is gone, so no row holds it: the list is born at ‹ All duplicates' place.
+			unfoldFrom(back);
 			await goto(resolve('/server/duplicates'));
 		} catch (error) {
 			problem = error instanceof DuplicatesError ? error.detail : 'That didn’t happen.';
@@ -114,9 +120,11 @@
 </script>
 
 <div class="pair" class:phone>
-	<a class="back mono" href={resolve('/server/duplicates')}>‹ ALL DUPLICATES</a>
+	<a class="back mono" href={resolve('/server/duplicates')} bind:this={back}>‹ ALL DUPLICATES</a>
 	<div class="head">
-		<h1>Album pair<span class="dot">.</span></h1>
+		<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>
+			Album pair<span class="dot">.</span>
+		</h1>
 		<span class="words mono"
 			>{pair.albums[0].artist.toUpperCase()} · {matched} SONGS IN BOTH · KEEP ONE ALBUM</span
 		>

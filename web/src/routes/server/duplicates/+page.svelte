@@ -7,6 +7,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { resolve } from '$app/paths';
+	import { morph } from '#lib/morph/registry.ts';
 	import CoverStack from '#lib/duplicates/CoverStack.svelte';
 	import { duplicates } from '#lib/duplicates/duplicates.svelte.ts';
 	import type { DuplicateFilter, DuplicateGroupSummary } from '#lib/duplicates/types.ts';
@@ -69,7 +70,9 @@
 		<header class="intro">
 			<div class="intro-words">
 				<ToolTabs current="duplicates" phone={phone.current} />
-				<h1>Duplicates<span class="dot">.</span></h1>
+				<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>
+					Duplicates<span class="dot">.</span>
+				</h1>
 				<p class="counts mono" data-testid="counts">
 					{counts === null ? ' ' : countsLine(counts, phone.current)}
 				</p>
@@ -129,8 +132,12 @@
 						onclick={() => void bringBack(pair.key)}>Bring back</button
 					>
 				{:else}
-					<a class="outline" href={resolve('/server/duplicates/[group]', { group: pair.key })}
-						>Compare albums ›</a
+					<a
+						class="outline"
+						href={resolve('/server/duplicates/[group]', { group: pair.key })}
+						onpointerdown={() => {
+							d.prefetch(pair.key);
+						}}>Compare albums ›</a
 					>
 				{/if}
 			</article>
@@ -151,7 +158,11 @@
 				{#each groups as g (g.key)}
 					<li class="group">
 						<span class="song">
-							<span class="title">{g.title}</span>
+							<span class="title"
+								><span class="said" use:morph={{ id: `title:${g.key}`, slot: 'row', kind: 'title' }}
+									>{g.title}</span
+								></span
+							>
 							<span class="artist mono">{g.artist.toUpperCase()}</span>
 						</span>
 						<span class="chip mono" class:sure={g.confidence !== 'probably'}
@@ -176,7 +187,10 @@
 							<a
 								class="outline small"
 								href={resolve('/server/duplicates/[group]', { group: g.key })}
-								aria-label={`Compare ${g.title}`}>Compare ›</a
+								aria-label={`Compare ${g.title}`}
+								onpointerdown={() => {
+									d.prefetch(g.key);
+								}}>Compare ›</a
 							>
 						</span>
 					</li>
@@ -591,5 +605,14 @@
 		bottom: 96px;
 		flex-wrap: wrap;
 		transform: none;
+	}
+
+	/* The words alone, which travel to the group's headline: the row's box is wider than they are. */
+	.said {
+		display: inline-block;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		vertical-align: top;
 	}
 </style>

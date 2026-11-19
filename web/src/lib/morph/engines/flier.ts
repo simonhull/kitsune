@@ -218,6 +218,8 @@ export interface Flier {
 	step(params: SpringParams, seconds: number): void;
 	write(): void;
 	readonly settled: boolean;
+	/** Gives back whatever it set on the page's own elements, as it lands or is let go. */
+	release?(): void;
 }
 
 /**
@@ -241,9 +243,19 @@ export class CoverFlier implements Flier {
 	readonly #mix: ShadowMix;
 	readonly #base: number;
 
-	constructor(from: CoverShape, target: MorphEntry, picture: Node, shadow: string) {
+	/** `drawnAt` is the width a picture laid at its own size has: it is scaled to the box, not stretched. */
+	constructor(
+		from: CoverShape,
+		target: MorphEntry,
+		picture: Node,
+		shadow: string,
+		drawnAt?: number
+	) {
 		const to = measureCover(target.element);
 		this.#base = Math.max(from.width, to.width);
+		if (drawnAt !== undefined && drawnAt > 0 && picture instanceof HTMLElement) {
+			picture.style.transform = `scale(${String(this.#base / drawnAt)})`;
+		}
 		// Each end's shadow is drawn at the size it has at rest, whatever the box is scaled by.
 		this.#mix = new ShadowMix(
 			scaleShadow(shadow, this.#base / from.width),
@@ -903,5 +915,148 @@ export class FieldFlier implements Flier {
 
 	get settled(): boolean {
 		return this.#channels.every((channel) => channel.settled(landsWithin));
+	}
+}
+
+/** Where a strip of tabs is, and the box of its fill under the tab that's on, in the viewport. */
+export interface StripShape {
+	left: number;
+	top: number;
+	fill: { left: number; top: number; right: number; bottom: number };
+}
+
+/** The tab that's on, which the fill sits under. */
+function tabOn(strip: HTMLElement): HTMLElement | null {
+	return strip.querySelector<HTMLElement>('[aria-current="page"]');
+}
+
+export function measureStrip(element: HTMLElement): StripShape {
+	const box = element.getBoundingClientRect();
+	const on = tabOn(element)?.getBoundingClientRect() ?? box;
+	return {
+		left: box.left,
+		top: box.top,
+		fill: { left: on.left, top: on.top, right: on.right, bottom: on.bottom }
+	};
+}
+
+const flowingAttribute = 'data-strip-flowing';
+
+/**
+ * A strip of tabs two pages hold at one place (Organize, Duplicates and a group's): never in the air
+ * and never giving way. The arriving page's strip is the one on screen from the first frame, its
+ * words already at their new weights; it is carried from where the old one stood, when that was
+ * elsewhere, and its fill flows from the old tab to the new one. Turned round, the fill turns where
+ * it is.
+ */
+export class StripFlier implements Flier {
+	/** Nothing of it is in the air: the strip is the page's own. */
+	readonly element = document.createElement('div');
+	#target: MorphEntry | null = null;
+	/** What this last wrote on the strip, so its place without it can be read back. */
+	#offset = { x: 0, y: 0 };
+	#fill: HTMLElement | null = null;
+	readonly #left: Channel;
+	readonly #top: Channel;
+	readonly #fillLeft: Channel;
+	readonly #fillTop: Channel;
+	readonly #fillRight: Channel;
+	readonly #fillBottom: Channel;
+
+	constructor(from: StripShape, target: MorphEntry) {
+		this.#left = new Channel(from.left);
+		this.#top = new Channel(from.top);
+		this.#fillLeft = new Channel(from.fill.left);
+		this.#fillTop = new Channel(from.fill.top);
+		this.#fillRight = new Channel(from.fill.right);
+		this.#fillBottom = new Channel(from.fill.bottom);
+		this.target = target;
+		this.measure();
+		this.write();
+	}
+
+	get target(): MorphEntry | null {
+		return this.#target;
+	}
+
+	set target(entry: MorphEntry | null) {
+		if (entry?.element !== this.#target?.element) {
+			this.release();
+		}
+		this.#target = entry;
+		if (entry !== null) {
+			entry.element.setAttribute(flowingAttribute, '');
+			this.#fill = entry.element.querySelector<HTMLElement>('[data-strip-fill]');
+		}
+	}
+
+	measure(): void {
+		const strip = this.#target?.element;
+		if (strip === undefined) {
+			return;
+		}
+		const box = strip.getBoundingClientRect();
+		const on = tabOn(strip)?.getBoundingClientRect() ?? box;
+		const { x, y } = this.#offset;
+		this.#left.target = box.left - x;
+		this.#top.target = box.top - y;
+		this.#fillLeft.target = on.left - x;
+		this.#fillTop.target = on.top - y;
+		this.#fillRight.target = on.right - x;
+		this.#fillBottom.target = on.bottom - y;
+	}
+
+	get #channels(): Channel[] {
+		return [
+			this.#left,
+			this.#top,
+			this.#fillLeft,
+			this.#fillTop,
+			this.#fillRight,
+			this.#fillBottom
+		];
+	}
+
+	step(params: SpringParams, seconds: number): void {
+		for (const channel of this.#channels) {
+			channel.step(params, seconds);
+		}
+	}
+
+	write(): void {
+		const strip = this.#target?.element;
+		if (strip === undefined) {
+			return;
+		}
+		const x = this.#left.value - this.#left.target;
+		const y = this.#top.value - this.#top.target;
+		this.#offset = { x, y };
+		strip.style.translate = `${x.toFixed(2)}px ${y.toFixed(2)}px`;
+		const fill = this.#fill;
+		if (fill !== null) {
+			// The fill sits in the strip's padding box, which starts inside its border.
+			const left = this.#fillLeft.value - this.#left.value - strip.clientLeft;
+			const top = this.#fillTop.value - this.#top.value - strip.clientTop;
+			const width = Math.max(0, this.#fillRight.value - this.#fillLeft.value);
+			const height = Math.max(0, this.#fillBottom.value - this.#fillTop.value);
+			fill.style.left = `${left.toFixed(2)}px`;
+			fill.style.top = `${top.toFixed(2)}px`;
+			fill.style.width = `${width.toFixed(2)}px`;
+			fill.style.height = `${height.toFixed(2)}px`;
+		}
+	}
+
+	get settled(): boolean {
+		return this.#channels.every((channel) => channel.settled(landsWithin));
+	}
+
+	release(): void {
+		const strip = this.#target?.element;
+		strip?.style.removeProperty('translate');
+		strip?.removeAttribute(flowingAttribute);
+		for (const property of ['left', 'top', 'width', 'height']) {
+			this.#fill?.style.removeProperty(property);
+		}
+		this.#offset = { x: 0, y: 0 };
 	}
 }

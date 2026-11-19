@@ -5,8 +5,10 @@
 	where Keep would be.
 -->
 <script lang="ts">
+	import { morph } from '#lib/morph/registry.ts';
 	import { layInFront } from '#lib/morph/surface.ts';
 	import { goto } from '$app/navigation';
+	import { unfoldFrom } from '#lib/morph/journey.ts';
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { player } from '#lib/player/player.svelte.ts';
@@ -35,6 +37,7 @@
 	let kept = $state('');
 	let confirming = $state(false);
 	let busy = $state(false);
+	let back = $state<HTMLAnchorElement>();
 	let problem = $state('');
 	/** A plan the server sent back because the library changed, by the copy it keeps. */
 	let fresher = $state<Record<string, MergePlan>>({});
@@ -81,6 +84,8 @@
 				{ keep: kept, trash: others.map((c) => c.track), plan },
 				(merged) => mergedWords(title, album, merged.trashed.tracks.length)
 			);
+			// It is gone, so no row holds it: the list is born at ‹ All duplicates' place.
+			unfoldFrom(back);
 			await goto(resolve('/server/duplicates'));
 		} catch (error) {
 			if (error instanceof DuplicatesError && error.status === 409 && error.plan !== undefined) {
@@ -104,6 +109,8 @@
 			} else {
 				await duplicates.dismiss(group.key);
 			}
+			// It is gone, so no row holds it: the list is born at ‹ All duplicates' place.
+			unfoldFrom(back);
 			await goto(resolve('/server/duplicates'));
 		} catch (error) {
 			problem = error instanceof DuplicatesError ? error.detail : 'That didn’t happen.';
@@ -114,9 +121,13 @@
 </script>
 
 <div class="group" class:phone>
-	<a class="back mono" href={resolve('/server/duplicates')}>‹ ALL DUPLICATES</a>
+	<a class="back mono" href={resolve('/server/duplicates')} bind:this={back}>‹ ALL DUPLICATES</a>
 	<div class="head">
-		<h1>{group.title}<span class="dot">.</span></h1>
+		<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>
+			<span class="said" use:morph={{ id: `title:${group.key}`, slot: 'hero', kind: 'title' }}
+				>{group.title}</span
+			><span class="dot">.</span>
+		</h1>
 		<span class="evidence">
 			<span class="chip mono" class:sure={group.confidence !== 'probably'}
 				>{chipWords(group.confidence)}</span
@@ -247,6 +258,11 @@
 		letter-spacing: -0.06em;
 		line-height: 1;
 		overflow-wrap: anywhere;
+	}
+
+	/* What travels to and from the list's row is a box of its own, so it can be measured as one. */
+	.said {
+		display: inline-block;
 	}
 
 	.dot {
