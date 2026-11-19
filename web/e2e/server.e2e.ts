@@ -220,13 +220,19 @@ test.describe('a group, and what both pages say', () => {
 
 	test('Organize’s Compare opens a group born at the button', async ({ page }) => {
 		await open(page, '/server/organize');
-		const compare = main(page).getByRole('button', { name: 'Compare in Duplicates ›' }).first();
-		test.skip((await compare.count()) === 0, 'the fixture preview names no conflict here');
-		await watch(page);
-		await compare.click();
-		await page.waitForFunction(() => location.pathname.startsWith('/server/duplicates/'));
+		await main(page).getByRole('button', { name: 'Preview', exact: true }).click();
+		await main(page)
+			.getByRole('button', { name: /^Conflicts/u })
+			.click();
+		const deluxe = main(page).getByRole('article', { name: 'Wish Upon a Blackstar (Deluxe)' });
+		await deluxe.getByRole('button', { name: 'WHY ›' }).last().click();
 		await landed(page);
-		expect((await seen(page)).journeys).toEqual(['unfold']);
+		// A button whose code navigates is the press: the group's headline is born there.
+		await expectBorn(
+			page,
+			deluxe.getByRole('button', { name: 'Compare in Duplicates ›' }),
+			'/server/duplicates/dup-best-its-gonna-get'
+		);
 	});
 
 	test('Health ⇄ Matching: the number leaves the card for the headline, and goes back', async ({
