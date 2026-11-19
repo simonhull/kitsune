@@ -832,6 +832,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   room waits one frame unseen for what it already holds to be drawn, never for the server. The same
   item pressed again only presses the pill, and lays a scrolled room again at its top (`relay`).
   Only an item holds the pill, never the fox.
+- Every page the island shows on opens into Now playing from the island's cover (`into-now-playing`;
+  from an album, its hero when on screen), and the door opens on it after a session ended there.
+  Every way out goes back into the hand (`back-into-the-hand`): the poster lands where the page now
+  holds the playing album in view (`heldInView`: a card clear of nav and island, Home's Continue card
+  first, or its own hero), else in the island's thumb, and nothing is scrolled for it. Play and the
+  bar fly back with the controls' pill; the rest of the island comes up in place. Into its artist the
+  name under the song leads. The nav comes back where it stands, a fade (`data-returning`).
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.

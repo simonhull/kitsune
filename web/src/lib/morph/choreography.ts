@@ -222,12 +222,14 @@ export type ChoreographyName =
 	| 'artist-to-albums'
 	| 'mosaic-door'
 	| 'playlist-to-playlists'
-	| 'home-to-now-playing'
-	| 'now-playing-to-home'
+	| 'into-now-playing'
 	| 'album-to-now-playing'
+	| 'back-into-the-hand'
 	| 'now-playing-to-album'
+	| 'now-playing-to-artist'
 	| 'login-to-home'
 	| 'login-to-album'
+	| 'login-to-now-playing'
 	| 'deck-to-home'
 	| 'unfold'
 	| 'blend';
@@ -264,7 +266,15 @@ interface SharedTravel {
 	landIn?: string;
 	/** Leads that leave this long after the rest, in milliseconds, for something in their way. */
 	waits?: Partial<Record<Lead, number>>;
+	/**
+	 * For `playing`, which of the player's controls fly with the cover and the song's name: all of
+	 * them into Now playing, and only Play and the bar back into the hand. The rest go with the island.
+	 */
+	controls?: readonly PlayerPart[];
 }
+
+/** The player's parts that can fly between the island and Now playing's controls. */
+export type PlayerPart = 'control:previous' | 'control:pause' | 'control:next' | 'progress';
 
 /** The light opening out of the cover: its scale at the cover and at full size, and its strength. */
 export interface Bloom {
@@ -412,9 +422,16 @@ const nowPlayingArrives: Choreography['arriving'] = {
 const islandOpens = fadeIn(280, base);
 const islandCloses = fadeIn(170, base);
 
+const everyControl: readonly PlayerPart[] = [
+	'control:previous',
+	'control:pause',
+	'control:next',
+	'progress'
+];
+
 const playing = {
-	in: { subject: 'playing', targetSlots: ['poster'] },
-	out: { subject: 'playing', sourceSlots: ['poster'] }
+	in: { subject: 'playing', targetSlots: ['poster'], controls: everyControl },
+	out: { subject: 'playing', sourceSlots: ['poster'], controls: ['control:pause', 'progress'] }
 } as const;
 
 const albumParts = ['cover', 'title', 'artist'] as const;
@@ -719,12 +736,13 @@ const playlistToPlaylists: Choreography = {
 };
 
 /**
- * Home to Now playing: two levels down in one move. The island's cover rises to the center of
- * the stage and the song's name follows it up, the rest of the island gathers into the pill
- * controls, and the poster title climbs out from behind the cover, a line at a time.
+ * Into Now playing from any page the island shows on: two levels down in one move. The island's
+ * cover rises to the center of the stage and the song's name follows it up, the rest of the island
+ * gathers into the pill controls, the page falls back around the cover under the poster's stage
+ * coming up, and the poster title climbs out from behind the cover, a line at a time.
  */
-const homeToNowPlaying: Choreography = {
-	name: 'home-to-now-playing',
+const intoNowPlaying: Choreography = {
+	name: 'into-now-playing',
 	grain: 'opening',
 	motion: slow,
 	travel: { ...playing.in, sourceSlots: ['island'] },
@@ -734,28 +752,6 @@ const homeToNowPlaying: Choreography = {
 	held: {},
 	bloom: bloomShape,
 	island: islandOpens
-};
-
-/**
- * Now playing to Home, until the player's own milestone gives it a journey of its own: everything
- * condenses back into the island while the moment gives way where it stands, and Home gathers in
- * front around the island. Nothing sinks and no light drains: that was the way in, played back.
- */
-const nowPlayingToHome: Choreography = {
-	name: 'now-playing-to-home',
-	grain: 'gathering',
-	motion: base,
-	travel: { ...playing.out, targetSlots: ['island'] },
-	leaving: giveWay(),
-	arriving: {
-		// Held until the poster title clears: two words that size can't share a stage.
-		intro: gather(0.08, 140),
-		card: gather(0.08, 90)
-	},
-	stages: {},
-	held: { poster: giveWay(base) },
-	bloom: null,
-	island: islandCloses
 };
 
 /**
@@ -769,7 +765,7 @@ const albumToNowPlaying: Choreography = {
 	motion: slow,
 	travel: { ...playing.in, sourceSlots: ['hero', 'island'] },
 	leaving: fallBack,
-	// Later than from Home: the album's headline is in the way until it has fallen back.
+	// Later than from a room: the album's headline is in the way until it has fallen back.
 	arriving: { ...nowPlayingArrives, 'line-1': posterLine(200), 'line-2': posterLine(290) },
 	stages: { poster: fadeIn(60, slow) },
 	held: { album: fadeOut(460, quick) },
@@ -778,8 +774,43 @@ const albumToNowPlaying: Choreography = {
 };
 
 /**
- * Now playing to Album, until the player's own milestone: the poster gives way under the album,
- * whose stage comes up in front, and the album gathers around the cover landing in its hero.
+ * Where the poster lands on the way out of the moment: wherever the page now holds the playing album
+ * in view (Home's Continue card, its heading in the Library, its cell in Albums, its own hero), else
+ * the island's thumb. On Home the Continue card wins over another cover of it.
+ */
+const intoTheHand = {
+	...playing.out,
+	targetSlots: ['hero', 'card', 'island'],
+	landIn: 'feature'
+} as const;
+
+/**
+ * Out of Now playing, back into the hand: to every room and record but the album and its artist.
+ * The poster reshapes at its true size and radius into wherever the page holds the playing album in
+ * view, else into the island's thumb; the controls' pill shrinks back into the island with Play and
+ * the bar riding into it, and the island's other contents come up as it gets there. The moment gives
+ * way where it stands, under the page, which is built in front around where the poster lands. The
+ * page's headline waits for the poster title to clear: two words that size never share a stage.
+ */
+const backIntoTheHand: Choreography = {
+	name: 'back-into-the-hand',
+	grain: 'gathering',
+	motion: base,
+	travel: intoTheHand,
+	leaving: giveWay(),
+	arriving: {},
+	headline: { arriving: gather(0.08, 140), leaving: giveWay() },
+	otherwise: gather(0.08, 90),
+	stages: {},
+	held: { poster: giveWay(base) },
+	bloom: null,
+	island: islandCloses
+};
+
+/**
+ * Now playing to its album, by the cover, the album link, or a Close with nowhere to go back to: the
+ * poster becomes the hero at its true size and radius, the album's stage comes up in front over the
+ * poster's, which gives way, and the album gathers around the cover. The rest goes into the hand.
  */
 const nowPlayingToAlbum: Choreography = {
 	name: 'now-playing-to-album',
@@ -797,6 +828,19 @@ const nowPlayingToAlbum: Choreography = {
 	held: { poster: giveWay(base) },
 	bloom: null,
 	island: islandCloses
+};
+
+/**
+ * Now playing to the artist, by the name under the song: the name takes the stage. It grows into the
+ * artist page's headline a beat after the rest, so it never crosses the poster title at strength,
+ * while the poster goes back into the hand and the page gathers in front around the name.
+ */
+const nowPlayingToArtist: Choreography = {
+	...backIntoTheHand,
+	name: 'now-playing-to-artist',
+	travel: { ...intoTheHand, leads: ['name:to'], waits: { name: 40 } },
+	// The name is the headline, and it flies: there is no headline left to hold back.
+	headline: undefined
 };
 
 const throughTheDoor = { subject: 'fox', sourceSlots: ['door'], targetSlots: ['nav'] } as const;
@@ -833,6 +877,27 @@ const loginToAlbum: Choreography = {
 	leaving: fallBack,
 	arriving: { art: rise(48, 160, slow), words: rise(20, 160), panel: rise(96, 160, slow) },
 	stages: albumDoor.stages,
+	held: {},
+	bloom: null,
+	island: null,
+	islandForms
+};
+
+/**
+ * Login to Now playing: a session that ended on the moment returns to it, and the door opens on it.
+ * The form and the fox fall back (the nav is gone on Now playing, so the fox has no seat to take);
+ * the poster's stage comes up, the cover rises into it, and the controls close the frame from below,
+ * as the island does through the door. The title climbs once the cover is solid, never through it.
+ */
+const loginToNowPlaying: Choreography = {
+	name: 'login-to-now-playing',
+	grain: 'opening',
+	motion: slow,
+	travel: { subject: 'pages', leads: [], sourceSlots: [], targetSlots: [] },
+	leaving: fallBack,
+	arriving: { ...nowPlayingArrives, 'line-1': posterLine(360), 'line-2': posterLine(450) },
+	arrivingByKey: { poster: rise(48, 60), song: rise(20, 160) },
+	stages: { poster: fadeIn(60, slow) },
 	held: {},
 	bloom: null,
 	island: null,
@@ -946,12 +1011,12 @@ const journeys: Partial<Record<`${RouteName}>${RouteName}`, Choreography>> = {
 	'artist>albums': artistToAlbums,
 	'playlists>playlist': mosaicDoor,
 	'playlist>playlists': playlistToPlaylists,
-	'home>now-playing': homeToNowPlaying,
-	'now-playing>home': nowPlayingToHome,
 	'album>now-playing': albumToNowPlaying,
 	'now-playing>album': nowPlayingToAlbum,
+	'now-playing>artist': nowPlayingToArtist,
 	'login>home': loginToHome,
-	'login>album': loginToAlbum
+	'login>album': loginToAlbum,
+	'login>now-playing': loginToNowPlaying
 };
 
 /** What decides a journey beyond its two routes: one pair can have two journeys. */
@@ -972,7 +1037,19 @@ export function choreographyFor(
 	if (from !== to && rooms.has(from) && rooms.has(to)) {
 		return unfold;
 	}
-	return journeys[`${from}>${to}`] ?? blend;
+	const known = journeys[`${from}>${to}`];
+	if (known !== undefined) {
+		return known;
+	}
+	// The moment: every page the island shows on opens into it, and every way out of it (but to the
+	// door, whose journey is the fifth milestone's) goes back into the hand.
+	if (to === 'now-playing' && from !== 'now-playing') {
+		return intoNowPlaying;
+	}
+	if (from === 'now-playing' && to !== 'login') {
+		return backIntoTheHand;
+	}
+	return blend;
 }
 
 /**

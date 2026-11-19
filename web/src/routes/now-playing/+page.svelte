@@ -125,17 +125,23 @@
 						aria-label={`Go to the album ${playing.album.title}`}
 						data-sveltekit-replacestate
 						onclick={goUp}
+						data-morph-key="poster"
 						use:morph={{ id: `cover:${playing.album.id}`, slot: 'poster', kind: 'cover' }}
 					>
 						<Cover albumId={playing.album.id} entry={playing.album} place="stage" />
 					</a>
 				</div>
 				<div class="names">
-					<h1 use:morph={{ id: 'song', slot: 'poster', kind: 'title' }}>{playing.track.title}</h1>
+					<h1 data-morph-key="song" use:morph={{ id: 'song', slot: 'poster', kind: 'title' }}>
+						{playing.track.title}
+					</h1>
 					<span class="artist" data-morph-part="details">
 						{#if artistId !== undefined}
+							<!-- The artist's name: it takes the stage on the way to the artist's page. -->
 							<a class="artist-link" href={resolve('/artists/[id]', { id: artistId })}
-								><strong>{playing.album.artist}</strong></a
+								><strong use:morph={{ id: `name:${artistId}`, slot: 'poster', kind: 'title' }}
+									>{playing.album.artist}</strong
+								></a
 							>
 						{:else}
 							<strong>{playing.album.artist}</strong>
@@ -401,6 +407,11 @@
 	.artist strong {
 		font-weight: 600;
 		color: var(--text);
+	}
+
+	/* A box of its own, so the name can be measured as it leaves for the artist's headline. */
+	.artist-link strong {
+		display: inline-block;
 	}
 
 	/* The song's own stars, on the art: they wear the accent, and keep 44 to press. */
