@@ -1,9 +1,13 @@
 <!--
 	The merge confirm (board I): what moves to the keeper and what doesn't, with Merge and trash and
-	Keep both. It opens in place of the actions; on a phone, as a sheet from the bottom. There is no
-	Undo after, so this is the warning.
+	Keep both. It opens in place of the actions, on a phone too, budding from Keep…; there is no scrim.
+	There is no Undo after, so this is the warning.
 -->
 <script lang="ts">
+	import { on } from 'svelte/events';
+	import { reshapeOn } from '#lib/morph/reshapeOn.svelte.ts';
+	import { SurfaceSlot } from '#lib/morph/surface.ts';
+
 	interface Props {
 		question: string;
 		moves: readonly string[];
@@ -22,8 +26,17 @@
 
 	let sheet: HTMLElement | undefined = $state();
 
+	// Buds from Keep… in place of the actions, on every screen; on a 409 it becomes the new plan in
+	// place; it gives way where it stands, and the actions are laid again in front of it.
+	const surface = new SurfaceSlot();
+	reshapeOn(
+		surface,
+		() => 1,
+		() => JSON.stringify([moves, stays, changed])
+	);
+
 	$effect(() => {
-		// The sheet takes the focus, so a keyboard lands in it.
+		// On a phone it takes the focus, so a keyboard lands in it.
 		if (phone) {
 			sheet?.querySelector<HTMLButtonElement>('button')?.focus();
 		}
@@ -37,22 +50,17 @@
 	}
 </script>
 
-{#if phone}
-	<button type="button" class="scrim" aria-label="Keep both" tabindex="-1" onclick={oncancel}
-	></button>
-{/if}
 <div
 	bind:this={sheet}
 	class="confirm"
-	class:sheet={phone}
-	role={phone ? 'dialog' : 'region'}
-	aria-modal={phone ? 'true' : undefined}
+	class:phone
+	role="region"
+	{@attach surface.attach}
 	aria-label="Merge"
 	tabindex="-1"
-	onkeydown={keydown}
+	{@attach (element) => on(element, 'keydown', keydown)}
 	data-testid="confirm"
 >
-	{#if phone}<span class="grip" aria-hidden="true"></span>{/if}
 	<p class="question">{question}</p>
 	{#if changed}
 		<p class="changed mono" role="status">THE LIBRARY CHANGED SINCE · THIS IS WHAT MOVES NOW</p>
@@ -203,58 +211,27 @@
 		color: var(--text-meta);
 	}
 
-	.scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 40;
-		border: 0;
-		background: color-mix(in srgb, var(--ground) 60%, transparent);
-	}
-
-	.sheet {
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		z-index: 41;
-		max-height: 85dvh;
-		overflow-y: auto;
-		padding: 10px 18px calc(26px + env(safe-area-inset-bottom));
-		border-radius: 28px 28px 0 0;
-		border: 0;
-		border-top: 1.5px solid var(--fox-line);
-		background: var(--card-raised);
-	}
-
-	.grip {
-		align-self: center;
-		width: 40px;
-		height: 4px;
-		border-radius: 2px;
-		background: var(--edge-strong);
-	}
-
-	.sheet .question {
+	.phone .question {
 		font-size: 19px;
 	}
 
-	.sheet .columns {
+	.phone .columns {
 		grid-template-columns: minmax(0, 1fr);
 		gap: 12px;
 	}
 
-	.sheet .buttons {
+	.phone .buttons {
 		flex-direction: column;
 		align-items: stretch;
 		gap: 8px;
 	}
 
-	.sheet .fox-button {
+	.phone .fox-button {
 		height: 50px;
 		font-size: 16px;
 	}
 
-	.sheet .outline {
+	.phone .outline {
 		height: 48px;
 	}
 </style>

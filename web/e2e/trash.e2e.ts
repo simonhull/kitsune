@@ -22,7 +22,11 @@ test('a song moved to Trash from its menu folds away, and Undo brings it back in
 	await toast(page).getByRole('button', { name: 'Undo' }).click();
 
 	await expect(row(page, 'Low Tide')).toBeVisible();
+	// The toast is what Undo did now, in place.
 	await expect(toast(page)).toHaveCount(0);
+	await expect(page.getByRole('status').filter({ hasText: 'Brought back' })).toContainText(
+		'Low Tide'
+	);
 	// In place: between Panes and Ribbons, as it was.
 	const titles = await page
 		.locator('[data-track]')

@@ -93,25 +93,28 @@ test('New playlist… names one in the menu and puts the song in it', async ({ p
 	);
 });
 
-test('on a phone, Add to playlist is a sheet from the selection bar’s More', async ({ page }) => {
+test('on a phone, the selection bar’s More becomes Add to playlist in place', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto(fixtures('/album/orbitals-14'));
 	await expect(row(page, 'orbitals-14-4')).toBeVisible();
 	await pick(page, ['orbitals-14-4', 'orbitals-14-5']);
 	await page.getByRole('toolbar').getByRole('button', { name: 'More' }).click();
+	const more = page.getByRole('menu', { name: 'More for the selection' });
+	const surface = await more.elementHandle();
 	await page.getByRole('menuitem', { name: 'Add to playlist…' }).click();
 
+	// More's own surface, reshaped into the list: never a sheet from the foot of the screen.
 	const sheet = page.getByRole('dialog', { name: 'Add to playlist' });
 	await expect(sheet).toBeVisible();
 	await expect(sheet).toContainText('ADD 2 SONGS TO');
-	// From the foot of the screen, once it has risen.
+	expect(await sheet.evaluate((element, same) => element === same, surface)).toBe(true);
+	const bar = await page.getByRole('toolbar').boundingBox();
 	await expect
 		.poll(async () => {
 			const box = await sheet.boundingBox();
-			return box === null ? 0 : Math.round(box.y + box.height);
+			return box === null || bar === null ? false : box.y + box.height <= bar.y;
 		})
-		.toBe(844);
-	expect((await sheet.boundingBox())?.y ?? 0).toBeGreaterThan(300);
+		.toBe(true);
 	await sheet.getByRole('menuitem', { name: /Falling Up/ }).click();
 
 	await expect(sheet).toHaveCount(0);

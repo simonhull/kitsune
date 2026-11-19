@@ -3,6 +3,9 @@
 	import Icon from '#lib/shell/Icon.svelte';
 	import type { StarsBy } from '#lib/library/stars.ts';
 	import StarsInput from '#lib/shell/StarsInput.svelte';
+	import { tick, untrack } from 'svelte';
+	import { Repress, SurfaceSlot } from '#lib/morph/surface.ts';
+	import PlaylistList from './PlaylistList.svelte';
 	import PlaylistPicker from './PlaylistPicker.svelte';
 	import { addHeading } from './playlistWords.ts';
 	import { factsLine, type SongActions } from './songActions.ts';
@@ -31,16 +34,46 @@
 		`Move ${count.toLocaleString('en-US')} ${count === 1 ? 'song' : 'songs'} to Trash`
 	);
 
-	let rating = $state(false);
-	let more = $state(false);
-	/** Add to…: a popover over its button, or on a phone a sheet, from More. */
-	let adding = $state<{ x: number; y: number; mode: 'popover' | 'sheet' } | null>(null);
-	let addButton: HTMLButtonElement | undefined = $state();
-	let closedAt = -Infinity;
-
 	const label = $derived(
 		`${count.toLocaleString('en-US')} selected${hidden > 0 ? `, ${hidden.toLocaleString('en-US')} hidden` : ''}`
 	);
+
+	let rating = $state(false);
+	let more = $state(false);
+	/** Add to…: a popover over its button. On a phone More's own pop becomes the list in place. */
+	let adding = $state<{ x: number; y: number } | null>(null);
+	let listing = $state(false);
+
+	// The bar is born at the floor, a toast's way; its pops bud from their buttons, and More's
+	// becomes Add to playlist's list by reshaping. Each gives way where it stands.
+	const barSurface = new SurfaceSlot({ floor: true, key: 'selection-bar' });
+	const rateSurface = new SurfaceSlot({ key: 'selection-rate' });
+	const moreSurface = new SurfaceSlot({ key: 'selection-more' });
+	/** The count, re-pressed in place as it changes: never a rolling number. */
+	const countWords = new Repress();
+	let countElement: HTMLElement | undefined = $state();
+	let counted = untrack(() => label);
+	$effect.pre(() => {
+		const next = label;
+		if (next !== untrack(() => counted) && countElement !== undefined) {
+			counted = next;
+			untrack(() => {
+				if (countElement !== undefined) {
+					countWords.hold(countElement);
+				}
+			});
+		}
+	});
+
+	async function listInMore(): Promise<void> {
+		moreSurface.hold();
+		listing = true;
+		await tick();
+		moreSurface.reshape();
+	}
+	let addButton: HTMLButtonElement | undefined = $state();
+	let closedAt = -Infinity;
+
 	const facts = $derived(factsLine({ albums, durationMs }));
 
 	/** What the stars last set, while they are open: the keys go on from it. */
@@ -71,8 +104,15 @@
 	</div>
 {/snippet}
 
-<div class="bar" class:compact role="toolbar" use:floor aria-label={`${label}. Esc clears.`}>
-	<span class="count">{label}</span>
+<div
+	class="bar"
+	class:compact
+	role="toolbar"
+	use:floor
+	{@attach barSurface.attach}
+	aria-label={`${label}. Esc clears.`}
+>
+	<span class="count" bind:this={countElement}>{label}</span>
 	{#if !compact}<span class="facts">{facts}</span>{/if}
 	<button
 		type="button"
@@ -104,7 +144,7 @@
 					return;
 				}
 				const box = event.currentTarget.getBoundingClientRect();
-				adding = { x: box.left, y: box.top - 10, mode: 'popover' };
+				adding = { x: box.left, y: box.top - 10 };
 			}}>Add to…</button
 		>
 	{/if}
@@ -124,6 +164,7 @@
 			aria-expanded={more}
 			onclick={() => {
 				more = !more;
+				listing = false;
 			}}>More</button
 		>
 	{:else}
@@ -172,74 +213,87 @@
 		><Icon name="close" size={16} /></button
 	>
 	{#if rating && !compact}
-		<div class="pop">{@render stars()}</div>
+		<div class="pop" {@attach rateSurface.attach}>{@render stars()}</div>
 	{/if}
 	{#if more && compact}
-		<div class="pop sheet" role="menu" aria-label="More for the selection">
-			<p class="sheet-facts">{facts}</p>
-			<button
-				type="button"
-				role="menuitem"
-				class="sheet-item"
-				onclick={() => {
-					actions.playNext();
-					more = false;
-				}}>Play next</button
-			>
-			<button
-				type="button"
-				role="menuitem"
-				class="sheet-item"
-				onclick={() => {
-					actions.addToQueue();
-					more = false;
-				}}>Add to queue</button
-			>
-			<button
-				type="button"
-				role="menuitem"
-				class="sheet-item"
-				onclick={() => {
-					more = false;
-					adding = { x: 0, y: 0, mode: 'sheet' };
-				}}>Add to playlist…</button
-			>
-			{#if edit !== undefined}
+		<!-- One surface: More's menu becomes Add to playlist's list in place. -->
+		<div
+			class="pop sheet"
+			role={listing ? 'dialog' : 'menu'}
+			aria-label={listing ? 'Add to playlist' : 'More for the selection'}
+			{@attach moreSurface.attach}
+		>
+			{#if listing}
+				<PlaylistList
+					big
+					trackIds={actions.trackIds}
+					{count}
+					heading={addHeading(count)}
+					onclose={() => {
+						more = false;
+						listing = false;
+					}}
+				/>
+			{:else}
+				<p class="sheet-facts">{facts}</p>
 				<button
 					type="button"
 					role="menuitem"
 					class="sheet-item"
 					onclick={() => {
+						actions.playNext();
 						more = false;
-						edit();
-					}}>{editLabel}</button
+					}}>Play next</button
 				>
-			{/if}
-			{#if actions.organize !== undefined}
-				{@const organize = actions.organize}
 				<button
 					type="button"
 					role="menuitem"
 					class="sheet-item"
 					onclick={() => {
+						actions.addToQueue();
 						more = false;
-						organize();
-					}}>Organize files…</button
+					}}>Add to queue</button
 				>
-			{/if}
-			{#if actions.trash !== undefined}
-				{@const trash = actions.trash}
-				<button
-					type="button"
-					role="menuitem"
-					class="sheet-item danger"
-					onclick={() => {
-						more = false;
-						trash();
-					}}><Icon name="trash" size={16} />{trashLabel}</button
+				<button type="button" role="menuitem" class="sheet-item" onclick={() => void listInMore()}
+					>Add to playlist…</button
 				>
+				{#if edit !== undefined}
+					<button
+						type="button"
+						role="menuitem"
+						class="sheet-item"
+						onclick={() => {
+							more = false;
+							edit();
+						}}>{editLabel}</button
+					>
+				{/if}
+				{#if actions.organize !== undefined}
+					{@const organize = actions.organize}
+					<button
+						type="button"
+						role="menuitem"
+						class="sheet-item"
+						onclick={() => {
+							more = false;
+							organize();
+						}}>Organize files…</button
+					>
+				{/if}
+				{#if actions.trash !== undefined}
+					{@const trash = actions.trash}
+					<button
+						type="button"
+						role="menuitem"
+						class="sheet-item danger"
+						onclick={() => {
+							more = false;
+							trash();
+						}}><Icon name="trash" size={16} />{trashLabel}</button
+					>
+				{/if}
+				{@render stars()}
 			{/if}
-			{@render stars()}
 		</div>
 	{/if}
 </div>
@@ -248,7 +302,7 @@
 	<PlaylistPicker
 		trackIds={actions.trackIds}
 		{count}
-		mode={adding.mode}
+		mode="popover"
 		x={adding.x}
 		y={adding.y}
 		heading={addHeading(count)}
@@ -287,14 +341,6 @@
 		background: var(--card);
 		border: 1px solid color-mix(in srgb, var(--fox) 50%, transparent);
 		box-shadow: var(--shadow-float);
-		animation: bar-in var(--morph-fast) var(--curve-settle);
-	}
-
-	@keyframes bar-in {
-		from {
-			opacity: 0;
-			transform: translate(-50%, 16px);
-		}
 	}
 
 	.count {
@@ -440,11 +486,5 @@
 		padding: 0 12px;
 		border-radius: var(--radius-12);
 		text-align: left;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.bar {
-			animation-duration: 120ms;
-		}
 	}
 </style>

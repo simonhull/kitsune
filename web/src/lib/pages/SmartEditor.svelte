@@ -8,7 +8,10 @@
 	are listed under the rules.
 -->
 <script lang="ts">
-	import { onDestroy, onMount, untrack } from 'svelte';
+	import { getContext, onDestroy, onMount, untrack } from 'svelte';
+	import { morphsKey } from '#lib/morph/engine.ts';
+	import type { Morphs } from '#lib/morph/engines/spring.ts';
+	import { pressedPoint, Surface } from '#lib/morph/surface.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { choosers, orders, ruleCount } from '#lib/library/smartlist.ts';
 	import type {
@@ -44,6 +47,11 @@
 		saving: boolean;
 		onleave: () => void;
 		onsave: () => void;
+		/**
+		 * It opens over a page that was there (Edit rules), so it buds from the press, and closing lays
+		 * the head and songs again in front of it. A new draft is a page of its own and does neither.
+		 */
+		buds?: boolean;
 	}
 
 	let {
@@ -56,8 +64,24 @@
 		playlists,
 		saving,
 		onleave,
-		onsave
+		onsave,
+		buds = false
 	}: Props = $props();
+
+	const morphs = getContext<Morphs | undefined>(morphsKey);
+	const surface = new Surface({ big: true, under: 'page' });
+	let editor: HTMLElement | undefined = $state();
+
+	onMount(() => {
+		if (!untrack(() => buds) || editor === undefined) {
+			return;
+		}
+		surface.open(editor, null);
+		return () => {
+			surface.leave();
+			morphs?.layAgain(pressedPoint());
+		};
+	});
 
 	let windowWidth = $state(1280);
 	const phone = $derived(windowWidth < 700);
@@ -326,7 +350,7 @@
 	{/if}
 {/snippet}
 
-<div class="editor" class:phone>
+<div class="editor" class:phone bind:this={editor}>
 	{#if phone}
 		<div class="phone-head">
 			<span class="kicker">EDITING THE RULES · SMART PLAYLIST</span>

@@ -26,9 +26,6 @@ export interface Opening {
 	fill?: (edit: AlbumEdit) => void;
 }
 
-/** How a step arrives. Going back is a move of its own, never the last one played in reverse. */
-export type Motion = 'rise' | 'grow' | 'back';
-
 /** A review, with what's needed to send its edit. */
 export interface Held extends Basis {
 	etag: string;
@@ -51,7 +48,6 @@ const termsKey = (albumId: string, terms: MatchTerms): string =>
 class MatchSheet {
 	current = $state.raw<Opening | null>(null);
 	step = $state<'list' | 'review'>('list');
-	motion = $state<Motion>('rise');
 	terms = $state.raw<MatchTerms>({});
 	list = $state.raw<Load<MatchList>>({ kind: 'loading' });
 	review = $state.raw<Load<Held>>({ kind: 'loading' });
@@ -66,7 +62,6 @@ class MatchSheet {
 		this.current = opening;
 		this.terms = {};
 		this.step = 'list';
-		this.motion = 'rise';
 		this.report = null;
 		void this.find({});
 	}
@@ -133,7 +128,6 @@ class MatchSheet {
 		}
 		const asked = ++this.#asked;
 		this.step = 'review';
-		this.motion = 'grow';
 		this.report = null;
 		this.review = { kind: 'loading' };
 		this.choices = null;
@@ -175,7 +169,6 @@ class MatchSheet {
 	back(): void {
 		++this.#asked;
 		this.step = 'list';
-		this.motion = 'back';
 		this.report = null;
 	}
 

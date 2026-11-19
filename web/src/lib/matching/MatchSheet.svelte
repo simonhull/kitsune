@@ -1,11 +1,14 @@
 <!--
-	The match sheet, over whatever page opened it. It rises from the bottom with the releases, and
-	grows upward into the review of the one picked, the page staying underneath. Back is a move of its
-	own: the list slides in from the left, and the sheet keeps its height. Esc closes from either
-	step. At 3840 it is one step up: releases and review side by side.
+	The match sheet, over whatever page opened it. It buds from Find matches… with the releases (M4),
+	and becomes the review of the one picked by reshaping in place, the page staying underneath; Back is
+	the same box reshaped again, never a slide, and it keeps its height. A press outside or Esc closes it
+	from either step, and it gives way where it stands. At 3840 it is one step up: releases and review
+	side by side.
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { reshapeOn } from '#lib/morph/reshapeOn.svelte.ts';
+	import { SurfaceSlot } from '#lib/morph/surface.ts';
 	import MatchList from './MatchList.svelte';
 	import MatchReview from './MatchReview.svelte';
 	import { matchSheet } from './sheet.svelte.ts';
@@ -20,6 +23,36 @@
 	/** The sheet has been tall: it stays so, so going back never plays the growth in reverse. */
 	let grown = $state(false);
 	let opener: Element | null = null;
+
+	const surface = new SurfaceSlot({ key: 'match-sheet' });
+	reshapeOn(
+		surface,
+		() => opening,
+		() =>
+			`${step}|${review.kind}|${review.kind === 'ready' ? review.value.candidate.id : ''}|${String(grown)}`
+	);
+
+	// No scrim: a press outside closes it, as a menu.
+	$effect(() => {
+		if (opening === null) {
+			return;
+		}
+		function outside(event: PointerEvent): void {
+			const target = event.target;
+			if (
+				sheet !== undefined &&
+				target instanceof Element &&
+				!sheet.contains(target) &&
+				target.closest('[data-surface], [role="menu"], [role="dialog"]') === null
+			) {
+				close();
+			}
+		}
+		addEventListener('pointerdown', outside, true);
+		return () => {
+			removeEventListener('pointerdown', outside, true);
+		};
+	});
 
 	onMount(() => {
 		const phone = matchMedia('(max-width: 720px)');
@@ -74,8 +107,6 @@
 <svelte:window {onkeydown} />
 
 {#if opening !== null}
-	<!-- The scrim is a pointer's way out; Esc is the keyboard's. -->
-	<div class="scrim" aria-hidden="true" onclick={close}></div>
 	<div
 		class="sheet"
 		class:tall={grown || step === 'review' || huge}
@@ -86,6 +117,7 @@
 		aria-labelledby={step === 'review' && !huge ? 'review-heading' : 'match-heading'}
 		tabindex="-1"
 		bind:this={sheet}
+		{@attach surface.attach}
 	>
 		{#if narrow}<span class="handle" aria-hidden="true"></span>{/if}
 		{#if huge}
@@ -110,7 +142,7 @@
 				</div>
 			</div>
 		{:else if step === 'list'}
-			<div class="slide" class:back={matchSheet.motion === 'back'}><MatchList {close} /></div>
+			<div class="slide"><MatchList {close} /></div>
 		{:else if review.kind === 'ready'}
 			<div class="slide grow"><MatchReview held={review.value} {narrow} /></div>
 		{:else if review.kind === 'failed'}
@@ -133,20 +165,6 @@
 {/if}
 
 <style>
-	.scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 5;
-		background: color-mix(in srgb, var(--ground) 60%, transparent);
-		animation: fade var(--morph) var(--curve-morph) both;
-	}
-
-	@keyframes fade {
-		from {
-			opacity: 0;
-		}
-	}
-
 	/*
 	 * The sheet is always the review's height. With the releases it sits lower, by --drop, and the
 	 * list keeps to what shows; growing into the review is the drop going to nothing: a transform,
@@ -173,8 +191,6 @@
 		box-shadow: var(--shadow-float);
 		outline: none;
 		translate: 0 var(--drop);
-		animation: rise var(--morph) var(--curve-settle) backwards;
-		transition: translate var(--morph-slow) var(--curve-settle);
 	}
 
 	/* What shows of the list, while the sheet sits low. */
@@ -188,12 +204,6 @@
 		--drop: 0px;
 	}
 
-	@keyframes rise {
-		from {
-			transform: translateY(100%);
-		}
-	}
-
 	.slide {
 		flex: 1;
 		min-height: 0;
@@ -204,29 +214,6 @@
 	.slide > :global(*) {
 		flex: 1;
 		min-height: 0;
-	}
-
-	.slide.grow {
-		animation: settle var(--morph-slow) var(--curve-settle) both;
-	}
-
-	@keyframes settle {
-		from {
-			opacity: 0;
-			translate: 0 24px;
-		}
-	}
-
-	/* Back: the list comes in from the left, a move of its own. */
-	.slide.back {
-		animation: from-left var(--morph) var(--curve-settle) both;
-	}
-
-	@keyframes from-left {
-		from {
-			opacity: 0;
-			translate: -48px 0;
-		}
 	}
 
 	.asking,
@@ -344,17 +331,8 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.sheet {
-			transition: none;
-		}
-
-		.sheet,
-		.scrim,
-		.slide.grow,
-		.slide.back,
 		.dot {
 			animation: none;
-			transition: none;
 		}
 	}
 </style>

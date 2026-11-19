@@ -8,7 +8,14 @@ import { library } from '#lib/library/library.svelte.ts';
 import type { TakenOut } from '#lib/library/playlists.svelte.ts';
 import { distinct } from '#lib/library/playlistEdits.ts';
 import type { PlaylistAdded } from '#lib/library/source.ts';
-import { addedWords, againWords, nameFor, removedWords, type ToastPart } from './playlistWords.ts';
+import {
+	addedWords,
+	againWords,
+	nameFor,
+	removedWords,
+	undoneWords,
+	type ToastPart
+} from './playlistWords.ts';
 
 /** How long a toast stays, its fox line draining all the while: as long as Trash's. */
 export const playlistToastMs = 8000;
@@ -20,8 +27,11 @@ export interface PlaylistToast {
 	words: ToastPart[];
 	/** Add it again's words, when the add skipped songs. */
 	again: string | null;
-	/** `failed`: the server refused; the words say so, and there's nothing to undo. */
-	state: 'done' | 'failed';
+	/**
+	 * `failed`: the server refused; the words say so, and there's nothing to undo. `undone`: Undo
+	 * took it back, and the same toast says so in place.
+	 */
+	state: 'done' | 'failed' | 'undone';
 }
 
 /** What the toast's buttons act on. */
@@ -133,8 +143,12 @@ class PlaylistActions {
 	undo(): void {
 		const last = this.#last;
 		this.#last = null;
-		this.dismiss();
-		if (last?.kind === 'add') {
+		if (last === null) {
+			this.dismiss();
+			return;
+		}
+		this.#undone(last);
+		if (last.kind === 'add') {
 			void last.answer.then((done) => {
 				if (done !== null && done.added.length > 0) {
 					library.playlists.takeOut(
@@ -143,7 +157,7 @@ class PlaylistActions {
 					);
 				}
 			});
-		} else if (last?.kind === 'takeOut') {
+		} else {
 			void last.saved.then(
 				() => library.playlists.putBack(last.playlistId, last.taken),
 				() => undefined
@@ -155,6 +169,24 @@ class PlaylistActions {
 	dismiss(): void {
 		clearTimeout(this.#timer);
 		this.toast = null;
+	}
+
+	/** The toast showing becomes what Undo did, in place: the same toast, its line started again. */
+	#undone(last: Undoable): void {
+		const id = this.toast?.id;
+		if (id === undefined) {
+			return;
+		}
+		const name = library.playlists.summary(last.playlistId)?.name ?? 'the playlist';
+		const count =
+			last.kind === 'add'
+				? distinct(last.trackIds)
+				: last.taken.runs.reduce((sum, { entries }) => sum + entries.length, 0);
+		clearTimeout(this.#timer);
+		this.toast = { id, words: undoneWords(last.kind, count, name), again: null, state: 'undone' };
+		this.#timer = setTimeout(() => {
+			this.toast = null;
+		}, playlistToastMs);
 	}
 
 	#fail(words: string): void {

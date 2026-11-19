@@ -6,6 +6,7 @@ import {
 	leftWords,
 	restoreLabel,
 	summaryWords,
+	restoredWords,
 	toastWords,
 	whenWords
 } from './trashWords.ts';
@@ -13,6 +14,23 @@ import {
 const dayMs = 86_400_000;
 const now = new Date(2026, 10, 14, 21, 45).getTime();
 const purgeIn = (days: number): string => new Date(now + days * dayMs).toISOString();
+
+describe('restoredWords', () => {
+	it('says what Undo brought back, in the words the toast moved it with', () => {
+		expect(restoredWords({ kind: 'song', title: 'Papercut' })).toEqual({
+			name: 'Brought back',
+			rest: ' Papercut'
+		});
+		expect(restoredWords({ kind: 'album', title: 'Falling Up', songs: 11 })).toEqual({
+			name: 'Brought back',
+			rest: ' Falling Up · 11 songs'
+		});
+		expect(restoredWords({ kind: 'songs', songs: 1 })).toEqual({
+			name: 'Brought back',
+			rest: ' 1 song'
+		});
+	});
+});
 
 describe('toastWords', () => {
 	it('names one song in bold, then says where it went', () => {

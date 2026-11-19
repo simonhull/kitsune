@@ -1,4 +1,11 @@
+<!--
+	The folder picker: a browser of what the server can see. It buds from the control that opened it
+	(Add folder…, Save in the library's Change folder), centred where it lands, over a backdrop that
+	dims where it stands; it is no native modal, which can only appear from nowhere.
+-->
 <script lang="ts">
+	import { tick } from 'svelte';
+	import { SurfaceSlot } from '#lib/morph/surface.ts';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { FolderKind, FolderListing } from '#lib/library/source.ts';
 	import { checkLine, crumbsOf, kindNote } from './serverForm.ts';
@@ -20,7 +27,11 @@
 
 	let { open, onadd, onclose, within, title = 'Add a folder', choose = 'Add' }: Props = $props();
 
-	let dialog = $state<HTMLDialogElement | undefined>();
+	let dialog = $state<HTMLElement | undefined>();
+	const surface = new SurfaceSlot();
+	const dim = new SurfaceSlot({ still: true });
+	/** What had the focus before it opened, which gets it back. */
+	let opener: HTMLElement | null = null;
 	let listing = $state.raw<FolderListing | null>(null);
 	let reading = $state(false);
 	let trouble = $state('');
@@ -54,17 +65,43 @@
 		}
 	}
 
+	let shown = false;
 	$effect(() => {
-		if (dialog === undefined) {
-			return;
-		}
-		if (open && !dialog.open) {
-			dialog.showModal();
+		if (open && !shown) {
+			shown = true;
+			opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 			void go(within?.[0] ?? '/');
-		} else if (!open && dialog.open) {
-			dialog.close();
+			void tick().then(() => {
+				dialog?.focus();
+			});
+		} else if (!open && shown) {
+			shown = false;
+			opener?.focus();
 		}
 	});
+
+	/** A modal's keys: Esc closes it, and Tab goes round inside it. */
+	function keys(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			onclose();
+			return;
+		}
+		if (event.key !== 'Tab' || dialog === undefined) {
+			return;
+		}
+		const all = [...dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input')];
+		const first = all.at(0);
+		const last = all.at(-1);
+		if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+			event.preventDefault();
+			last?.focus();
+		} else if (!event.shiftKey && document.activeElement === last) {
+			event.preventDefault();
+			first?.focus();
+		}
+	}
 
 	function enterable(kind: FolderKind): boolean {
 		if (within !== undefined) {
@@ -74,111 +111,119 @@
 	}
 </script>
 
-<dialog
-	bind:this={dialog}
-	aria-labelledby="picker-title"
-	{onclose}
-	onclick={(event) => {
-		if (event.target === dialog) {
-			onclose();
-		}
-	}}
->
-	<div class="picker">
-		<div>
-			<p class="mono eyebrow">WHAT THE SERVER CAN SEE</p>
-			<h2 id="picker-title">{title}</h2>
-		</div>
+{#if open}
+	<!-- A press outside is the pointer's way out; Esc the keyboard's. -->
+	<div class="backdrop" aria-hidden="true" {@attach dim.attach} onclick={onclose}></div>
+	<div
+		bind:this={dialog}
+		class="dialog"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="picker-title"
+		tabindex="-1"
+		{@attach surface.attach}
+		onkeydown={keys}
+	>
+		<div class="picker">
+			<div>
+				<p class="mono eyebrow">WHAT THE SERVER CAN SEE</p>
+				<h2 id="picker-title">{title}</h2>
+			</div>
 
-		<nav aria-label="Path" class="crumbs">
-			{#each crumbsOf(listing?.path ?? '/') as crumb, index (crumb.path)}
-				{#if index > 0}<span class="sep" aria-hidden="true">›</span>{/if}
-				<button
-					type="button"
-					class="crumb mono"
-					class:here={crumb.path === listing?.path}
-					aria-current={crumb.path === listing?.path ? 'location' : undefined}
-					onclick={() => void go(crumb.path)}>{crumb.name}</button
-				>
-			{/each}
-		</nav>
-
-		<div class="list" aria-busy={reading}>
-			{#if listing !== null}
-				{#each listing.folders as folder (folder.name)}
-					{@const note = kindNote(folder.kind)}
+			<nav aria-label="Path" class="crumbs">
+				{#each crumbsOf(listing?.path ?? '/') as crumb, index (crumb.path)}
+					{#if index > 0}<span class="sep" aria-hidden="true">›</span>{/if}
 					<button
 						type="button"
-						class="row"
-						class:off={folder.kind !== 'folder'}
-						disabled={!enterable(folder.kind)}
-						onclick={() => void go(folder.path)}
+						class="crumb mono"
+						class:here={crumb.path === listing?.path}
+						aria-current={crumb.path === listing?.path ? 'location' : undefined}
+						onclick={() => void go(crumb.path)}>{crumb.name}</button
 					>
-						<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-							<path
-								d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2.2h8.4A1.5 1.5 0 0 1 21 8.7v9.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"
-							></path>
-						</svg>
-						<span class="name mono">{folder.name}</span>
-						{#if note !== ''}<span class="note">{note}</span>{/if}
-						{#if enterable(folder.kind)}<span class="go" aria-hidden="true">›</span>{/if}
-					</button>
-				{:else}
-					<p class="quiet">No folders in here.</p>
 				{/each}
-			{:else if !reading}
-				<p class="quiet">{trouble}</p>
-			{/if}
-		</div>
+			</nav>
 
-		{#if listing !== null}
-			<div class="check" role="status">
-				{#if addable}
-					<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-						<path class="tick" d="M5 12.5l4.5 4.5L19 7.5"></path>
-					</svg>
+			<div class="list" aria-busy={reading}>
+				{#if listing !== null}
+					{#each listing.folders as folder (folder.name)}
+						{@const note = kindNote(folder.kind)}
+						<button
+							type="button"
+							class="row"
+							class:off={folder.kind !== 'folder'}
+							disabled={!enterable(folder.kind)}
+							onclick={() => void go(folder.path)}
+						>
+							<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+								<path
+									d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2.2h8.4A1.5 1.5 0 0 1 21 8.7v9.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"
+								></path>
+							</svg>
+							<span class="name mono">{folder.name}</span>
+							{#if note !== ''}<span class="note">{note}</span>{/if}
+							{#if enterable(folder.kind)}<span class="go" aria-hidden="true">›</span>{/if}
+						</button>
+					{:else}
+						<p class="quiet">No folders in here.</p>
+					{/each}
+				{:else if !reading}
+					<p class="quiet">{trouble}</p>
 				{/if}
-				<span
-					>{trouble !== ''
-						? trouble
-						: within === undefined
-							? checkLine(listing)
-							: addable
-								? `It goes in ${listing.path}.`
-								: 'Open one of the library’s folders.'}</span
-				>
 			</div>
-		{/if}
 
-		<p class="aside">
-			Under Docker these are the container’s paths: only what compose.yaml mounts shows up. Folders
-			only, no file names.
-		</p>
+			{#if listing !== null}
+				<div class="check" role="status">
+					{#if addable}
+						<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+							<path class="tick" d="M5 12.5l4.5 4.5L19 7.5"></path>
+						</svg>
+					{/if}
+					<span
+						>{trouble !== ''
+							? trouble
+							: within === undefined
+								? checkLine(listing)
+								: addable
+									? `It goes in ${listing.path}.`
+									: 'Open one of the library’s folders.'}</span
+					>
+				</div>
+			{/if}
 
-		<div class="buttons">
-			<button type="button" class="cancel" onclick={onclose}>Cancel</button>
-			<button
-				type="button"
-				class="add"
-				disabled={!addable || reading}
-				onclick={() => {
-					if (listing !== null) onadd(listing.path);
-				}}
-			>
-				{addable && listing !== null && listing.path.length <= 28
-					? `${choose} ${listing.path}`
-					: addable
-						? `${choose} this folder`
-						: choose}
-			</button>
+			<p class="aside">
+				Under Docker these are the container’s paths: only what compose.yaml mounts shows up.
+				Folders only, no file names.
+			</p>
+
+			<div class="buttons">
+				<button type="button" class="cancel" onclick={onclose}>Cancel</button>
+				<button
+					type="button"
+					class="add"
+					disabled={!addable || reading}
+					onclick={() => {
+						if (listing !== null) onadd(listing.path);
+					}}
+				>
+					{addable && listing !== null && listing.path.length <= 28
+						? `${choose} ${listing.path}`
+						: addable
+							? `${choose} this folder`
+							: choose}
+				</button>
+			</div>
 		</div>
 	</div>
-</dialog>
+{/if}
 
 <style>
-	dialog {
+	.dialog {
+		position: fixed;
+		z-index: 41;
+		inset: 0;
 		box-sizing: border-box;
 		width: min(600px, calc(100vw - 32px));
+		height: fit-content;
 		max-height: calc(100dvh - 48px);
 		margin: auto;
 		padding: 0;
@@ -190,11 +235,14 @@
 		overflow: auto;
 	}
 
-	dialog[open] {
-		animation: rise var(--morph) var(--curve-settle) both;
+	.dialog:focus {
+		outline: none;
 	}
 
-	dialog::backdrop {
+	.backdrop {
+		position: fixed;
+		z-index: 40;
+		inset: 0;
 		background: color-mix(in srgb, var(--ground) 72%, transparent);
 		backdrop-filter: blur(6px);
 	}
@@ -392,13 +440,6 @@
 		cursor: default;
 	}
 
-	@keyframes rise {
-		from {
-			opacity: 0;
-			transform: translateY(16px) scale(0.98);
-		}
-	}
-
 	@media (max-width: 720px) {
 		.picker {
 			padding: 24px 20px;
@@ -406,12 +447,6 @@
 
 		h2 {
 			font-size: 28px;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		dialog[open] {
-			animation: none;
 		}
 	}
 </style>

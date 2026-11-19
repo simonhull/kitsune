@@ -7,8 +7,20 @@
 	import { organizeEntry, toastMs } from '#lib/organize/entry.svelte.ts';
 	import { floorElements, floors } from './floor.svelte.ts';
 	import Icon from './Icon.svelte';
+	import { reshapeOn } from '#lib/morph/reshapeOn.svelte.ts';
+	import { SurfaceSlot } from '#lib/morph/surface.ts';
 
 	const toast = $derived(organizeEntry.toast);
+
+	// Born at the floor at its own width; Undo makes it what it did, in place; replaced, it gives way
+	// under the next, which is born in front of it.
+	const surface = new SurfaceSlot({ floor: true, quick: true });
+	const face = $derived(toast === null ? '' : JSON.stringify(toast));
+	reshapeOn(
+		surface,
+		() => toast?.id,
+		() => face
+	);
 
 	/** How far up it sits: above the highest thing at the foot of the screen. */
 	let lift = $state(24);
@@ -32,8 +44,9 @@
 	{#key toast.id}
 		<div
 			class="toast"
+			{@attach surface.attach}
 			role="status"
-			style:bottom={`calc(${String(lift)}px + env(safe-area-inset-bottom))`}
+			style:bottom={`calc((${String(lift)}px + env(safe-area-inset-bottom)) / var(--step))`}
 			style:--drain={`${String(toastMs)}ms`}
 		>
 			<span class="dot" aria-hidden="true"></span>
@@ -55,7 +68,7 @@
 					organizeEntry.dismiss();
 				}}><Icon name="close" size={14} /></button
 			>
-			<span class="drain" aria-hidden="true"></span>
+			{#key face}<span class="drain" aria-hidden="true"></span>{/key}
 		</div>
 	{/key}
 {/if}
@@ -78,14 +91,8 @@
 		border: 1px solid var(--edge-raised);
 		box-shadow: var(--shadow-float);
 		transform: translateX(-50%);
-		animation: toast-in 260ms var(--curve-settle);
-	}
-
-	@keyframes toast-in {
-		from {
-			opacity: 0;
-			transform: translate(-50%, 16px);
-		}
+		/* A step larger at 4K, with the page: its lift is divided back out. */
+		zoom: var(--step);
 	}
 
 	.dot {
@@ -140,10 +147,6 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.toast {
-			animation-duration: 120ms;
-		}
-
 		.drain {
 			animation: none;
 		}

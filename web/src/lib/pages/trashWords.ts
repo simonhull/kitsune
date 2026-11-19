@@ -33,6 +33,18 @@ export function toastWords(what: TrashedWhat): ToastWords {
 	}
 }
 
+/** What Undo did, the toast's words once it has: "Brought back *Title*", and so on. */
+export function restoredWords(what: TrashedWhat): ToastWords {
+	switch (what.kind) {
+		case 'song':
+			return { name: 'Brought back', rest: ` ${what.title}` };
+		case 'album':
+			return { name: 'Brought back', rest: ` ${what.title} · ${songs(what.songs)}` };
+		case 'songs':
+			return { name: 'Brought back', rest: ` ${songs(what.songs)}` };
+	}
+}
+
 /** How many days a song has left in Trash: a part of a day counts as one, and the past as none. */
 export function daysLeft(purgeAt: string, now: number): number {
 	return Math.max(0, Math.ceil((Date.parse(purgeAt) - now) / dayMs));

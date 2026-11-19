@@ -5,6 +5,7 @@
 	where Keep would be.
 -->
 <script lang="ts">
+	import { layInFront } from '#lib/morph/surface.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
@@ -177,10 +178,11 @@
 		/>
 	{/if}
 	{#if !confirming || phone}
-		<div class="actions">
+		<div class="actions" {@attach layInFront}>
 			{#if writes}
 				<button
 					type="button"
+					data-buds
 					class="fox-button"
 					disabled={busy}
 					onclick={() => {
