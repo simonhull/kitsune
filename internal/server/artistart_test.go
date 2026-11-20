@@ -21,7 +21,10 @@ import (
 // What artFixture's library holds beside its songs.
 const (
 	artistFolder = "Band"
+	albumFolder  = "Album"
 	nfoBio       = "Band formed in 1987."
+	thumbFile    = "artist.jpg"
+	nfoFile      = "artist.nfo"
 )
 
 // artFixture is a scanned library of one artist's album in its own folders,
@@ -57,11 +60,11 @@ func paint(t *testing.T, w, h int, c color.NRGBA, transparent bool) []byte {
 func writeExtras(t *testing.T, root string) {
 	t.Helper()
 	files := map[string][]byte{
-		"artist.jpg":         paint(t, 600, 600, color.NRGBA{R: 0xC0, G: 0x40, B: 0x40, A: 0xFF}, false),
+		thumbFile:            paint(t, 600, 600, color.NRGBA{R: 0xC0, G: 0x40, B: 0x40, A: 0xFF}, false),
 		"fanart.jpg":         paint(t, 3840, 2160, color.NRGBA{R: 0x40, G: 0x40, B: 0xC0, A: 0xFF}, false),
 		"clearlogo.png":      paint(t, 800, 310, color.NRGBA{R: 0xF0, G: 0xA0, B: 0x20, A: 0xFF}, true),
 		"banner.jpg":         paint(t, 1000, 185, color.NRGBA{R: 0x20, G: 0x90, B: 0x40, A: 0xFF}, false),
-		"artist.nfo":         []byte("<artist><biography>" + nfoBio + "\nThey split in 1994.</biography></artist>"),
+		nfoFile:              []byte("<artist><biography>" + nfoBio + "\nThey split in 1994.</biography></artist>"),
 		"Album/back.jpg":     paint(t, 500, 500, color.NRGBA{R: 0x80, G: 0x80, B: 0x80, A: 0xFF}, false),
 		"Album/discart.png":  paint(t, 500, 500, color.NRGBA{R: 0x10, G: 0x10, B: 0x10, A: 0xFF}, true),
 		"Album/cd2.png":      paint(t, 400, 400, color.NRGBA{R: 0x30, G: 0x10, B: 0x10, A: 0xFF}, true),
@@ -141,7 +144,7 @@ func TestArtistArtNamesNoPath(t *testing.T) {
 	fx := newArtFixture(t)
 	for _, path := range []string{artistsPath, artistsPath + "/" + fx.artist.ID, fx.albumPath()} {
 		body := string(fx.send(t, call{method: http.MethodGet, path: path, header: bearer(fx.token)}).Body)
-		for _, leak := range []string{fx.root, artistFolder + "/", "artist.jpg", "artist.nfo", "discart"} {
+		for _, leak := range []string{fx.root, artistFolder + "/", thumbFile, nfoFile, "discart"} {
 			if strings.Contains(body, leak) {
 				t.Errorf("GET %s holds %q", path, leak)
 			}
