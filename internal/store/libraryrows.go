@@ -69,6 +69,25 @@ func (s *Store) inLibraryTx(ctx context.Context, fn func(q *sqlcdb.Queries, tx *
 	return s.inPreparedTx(ctx, fn)
 }
 
+// inLibraryTxIf is inLibraryTx for a write that may find nothing to change: fn
+// reports whether it changed anything, and when it didn't, the kept rows still
+// hold after it. A failed write counts as a change, as a write under way does.
+func (s *Store) inLibraryTxIf(ctx context.Context, fn func(q *sqlcdb.Queries, tx *sql.Tx) (bool, error)) error {
+	s.library.writing.Add(1)
+	changed := true
+	defer func() {
+		if changed {
+			s.library.gen.Add(1)
+		}
+		s.library.writing.Add(-1)
+	}()
+	return s.inPreparedTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) error {
+		did, err := fn(q, tx)
+		changed = did || err != nil // The writer may retry: the last try says.
+		return err
+	})
+}
+
 // writesMark is where library writes stood at one moment.
 type writesMark struct {
 	gen     uint64

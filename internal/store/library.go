@@ -867,13 +867,14 @@ func deleteTracks(ctx context.Context, tx *sql.Tx, which trackDelete, arg any) (
 
 // DeleteMissingBefore deletes the tracks that have been missing since before
 // cutoff, with their tags, artist links and search rows, and returns how many
-// it deleted. A trashed track is not missing, and stays.
+// it deleted. A trashed track is not missing, and stays. Deleting none, as most
+// scans do, leaves the rows kept for the index as they are.
 func (s *Store) DeleteMissingBefore(ctx context.Context, cutoff time.Time) (int64, error) {
 	var n int64
-	err := s.inLibraryTx(ctx, func(_ *sqlcdb.Queries, tx *sql.Tx) error {
+	err := s.inLibraryTxIf(ctx, func(_ *sqlcdb.Queries, tx *sql.Tx) (bool, error) {
 		deleted, err := deleteTracks(ctx, tx, missingPastGrace, ms(cutoff))
 		n = deleted
-		return err
+		return deleted > 0, err
 	})
 	if err != nil {
 		return 0, fmt.Errorf("delete missing before %s: %w", cutoff.Format(time.RFC3339), err)
@@ -885,29 +886,30 @@ func (s *Store) DeleteMissingBefore(ctx context.Context, cutoff time.Time) (int6
 // track links to, with their images and bios, then the artwork rows nothing uses:
 // no album's cover, no artist's image and no album's extra. It returns how many
 // albums and artists went, and the hashes of the artwork, so the caller can
-// delete their files.
+// delete their files. A prune that finds nothing to delete, as most scans' do,
+// leaves the rows kept for the index and the scan as they are.
 func (s *Store) PruneOrphans(ctx context.Context) (Pruned, error) {
 	var p Pruned
-	err := s.inLibraryTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+	err := s.inLibraryTxIf(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) (bool, error) {
 		albums, albumsErr := q.PruneAlbums(ctx)
 		if albumsErr != nil {
-			return fmt.Errorf("albums: %w", albumsErr)
+			return false, fmt.Errorf("albums: %w", albumsErr)
 		}
 		// Artists go before the images, so the images of an artist pruned now
 		// (gone with it by ON DELETE CASCADE) go too.
 		artists, artistsErr := q.PruneArtists(ctx)
 		if artistsErr != nil {
-			return fmt.Errorf("artists: %w", artistsErr)
+			return false, fmt.Errorf("artists: %w", artistsErr)
 		}
 		hashes, artworkErr := q.PruneArtwork(ctx)
 		if artworkErr != nil {
-			return fmt.Errorf("artwork: %w", artworkErr)
+			return false, fmt.Errorf("artwork: %w", artworkErr)
 		}
 		p = Pruned{Albums: albums, Artists: artists}
 		for _, h := range hashes {
 			p.Artwork = append(p.Artwork, [32]byte(h))
 		}
-		return nil
+		return albums+artists > 0 || len(hashes) > 0, nil
 	})
 	if err != nil {
 		return Pruned{}, fmt.Errorf("prune orphans: %w", err)

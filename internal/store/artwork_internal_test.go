@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"time"
 )
 
 func testArtwork(seed string) *ArtworkWrite {
@@ -251,5 +252,31 @@ func TestPruneKeepsArtistAndAlbumImages(t *testing.T) {
 				t.Errorf("PruneOrphans returned the image = %v with it kept = %v", returned, kept)
 			}
 		})
+	}
+}
+
+// A prune or a delete of missing tracks that deletes nothing, as most scans'
+// do, leaves the rows kept for the index and the scan's layout standing; one
+// that deletes counts as a write.
+func TestPruneOfNothingKeepsTheRows(t *testing.T) {
+	t.Parallel()
+	s := openTest(t)
+	writeAll(t, s, newWrite(0), newWrite(1))
+	before := s.library.gen.Load()
+	if got := prune(t, s); got.Albums+got.Artists != 0 || len(got.Artwork) != 0 {
+		t.Fatalf("PruneOrphans = %+v, want nothing to prune", got)
+	}
+	if n, err := s.DeleteMissingBefore(t.Context(), time.Now()); err != nil || n != 0 {
+		t.Fatalf("DeleteMissingBefore = %d, %v; want nothing deleted", n, err)
+	}
+	if gen := s.library.gen.Load(); gen != before {
+		t.Errorf("a prune and a delete of nothing moved the library writes from %d to %d", before, gen)
+	}
+	deleteTrack(t, s, 1)
+	if got := prune(t, s); got.Albums != 1 {
+		t.Fatalf("PruneOrphans = %+v, want the emptied album", got)
+	}
+	if gen := s.library.gen.Load(); gen == before {
+		t.Error("a prune that deleted left the kept rows standing")
 	}
 }
