@@ -26,7 +26,7 @@ var (
 		FieldMusicBrainzTrackID: "MusicBrainz Release Track Id", FieldMusicBrainzRecordingID: "MusicBrainz Track Id",
 	}
 	picardVorbis = map[Field]string{
-		FieldMusicBrainzAlbumID: "MUSICBRAINZ_ALBUMID", FieldMusicBrainzReleaseGroupID: "MUSICBRAINZ_RELEASEGROUPID",
+		FieldMusicBrainzAlbumID: "MUSICBRAINZ_ALBUMID", FieldMusicBrainzReleaseGroupID: keysReleaseGroupMBID[0],
 		FieldMusicBrainzAlbumArtistID: "MUSICBRAINZ_ALBUMARTISTID", FieldMusicBrainzArtistID: "MUSICBRAINZ_ARTISTID",
 		FieldMusicBrainzTrackID: "MUSICBRAINZ_RELEASETRACKID", FieldMusicBrainzRecordingID: "MUSICBRAINZ_TRACKID",
 	}

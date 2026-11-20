@@ -423,17 +423,17 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, now tim
 		artworkHash = art.Hash[:]
 	}
 	album, err := q.UpsertAlbum(ctx, sqlcdb.UpsertAlbumParams{
-		Ulid:        tw.Album.ULID,
-		GroupKey:    tw.Album.GroupKey,
-		Name:        tw.Album.Name,
-		SortName:    tw.Album.SortName,
-		Artist:      tw.Album.Artist,
-		Mbid:        nullStr(tw.Album.MBID),
+		Ulid:             tw.Album.ULID,
+		GroupKey:         tw.Album.GroupKey,
+		Name:             tw.Album.Name,
+		SortName:         tw.Album.SortName,
+		Artist:           tw.Album.Artist,
+		Mbid:             nullStr(tw.Album.MBID),
 		ReleaseGroupMbid: nullStr(tw.Album.ReleaseGroupMBID),
-		Year:        nullInt(tw.Album.Year),
-		Compilation: flag(tw.Album.Compilation),
-		ArtworkHash: artworkHash,
-		AddedAt:     ms(now),
+		Year:             nullInt(tw.Album.Year),
+		Compilation:      flag(tw.Album.Compilation),
+		ArtworkHash:      artworkHash,
+		AddedAt:          ms(now),
 	})
 	if err != nil {
 		return refs, fmt.Errorf("upsert album: %w", err)

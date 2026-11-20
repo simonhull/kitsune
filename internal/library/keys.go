@@ -58,8 +58,9 @@ var (
 	// and M4A in a freeform "MusicBrainz Track Id". The UFID comes first: a TXXX
 	// of the M4A name is what some taggers leave in an MP3.
 	keysTrackMBID = []string{"MUSICBRAINZ_TRACKID", keyRecordingUFID, "MUSICBRAINZ TRACK ID"}
-	// keysReleaseGroupMBID and keysReleaseTrackMBID are written by a match, and
-	// read only by the tag editor.
+	// keysReleaseGroupMBID and keysReleaseTrackMBID are written by a match. A
+	// scan reads the release group onto the album (fanart.tv's and TheAudioDB's
+	// album art is keyed by it); the release track only the tag editor reads.
 	keysReleaseGroupMBID = []string{"MUSICBRAINZ_RELEASEGROUPID", "MUSICBRAINZ RELEASE GROUP ID"}
 	keysReleaseTrackMBID = []string{"MUSICBRAINZ_RELEASETRACKID", "MUSICBRAINZ RELEASE TRACK ID"}
 	// keysReleaseType hold the release's type as MusicBrainz Picard writes it:
