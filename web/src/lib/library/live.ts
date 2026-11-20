@@ -41,7 +41,8 @@ const kinds: readonly ServerEventKind[] = [
 	'settings',
 	'playlists',
 	'organize',
-	'replaygain'
+	'replaygain',
+	'artists'
 ];
 
 /**

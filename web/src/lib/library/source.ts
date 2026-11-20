@@ -146,6 +146,44 @@ export interface Album extends AlbumEntry {
 	etag: string;
 	/** In disc order, the songs with no disc number last: one for an album on one disc. */
 	discs: Disc[];
+	/** What it has beside its cover. The server always says; a fixture may leave it out. */
+	extras?: AlbumExtras;
+}
+
+/** An image for `GET /artwork/{hash}`, with its colors to lay its ground before it decodes. */
+export interface Picture extends Artwork {
+	/** Its renditions are PNG, with transparency: a logo's, a disc's. */
+	alpha: boolean;
+}
+
+/** What a source asks to be said of what it gave. The library's own files ask nothing. */
+export interface Credit {
+	author?: string;
+	license?: string;
+	licenseUrl?: string;
+	pageUrl?: string;
+}
+
+/** An artist's image or an album's extra, with where it came from. */
+export interface ExtraImage extends Picture {
+	/** `folder`: a file in the library's folders. */
+	source: 'folder' | 'fanart' | 'audiodb' | 'wikimedia' | 'pinned' | 'coverartarchive';
+	credit?: Credit;
+}
+
+/** One disc's art; `disc` 0 is every disc's. */
+export interface DiscArt {
+	disc: number;
+	image: ExtraImage;
+}
+
+/** An album's disc art and back cover. */
+export interface AlbumExtras {
+	/** Every disc's first (`disc` 0), then by disc. */
+	discs: DiscArt[];
+	back?: ExtraImage;
+	/** Where `artwork` came from; absent with none. */
+	coverSource?: 'files';
 }
 
 /**
@@ -280,6 +318,28 @@ export interface ListedArtist extends ArtistEntry {
 	addedAt: string;
 	/** How often the caller played the songs of the albums it owns. */
 	plays: number;
+	/** Its thumb, as {@link ArtistDetail.images} has it; absent with none. */
+	thumb?: Picture;
+}
+
+/** An artist's chosen images, each absent when it has none. */
+export interface ArtistImages {
+	thumb?: ExtraImage;
+	background?: ExtraImage;
+	logo?: ExtraImage;
+	banner?: ExtraImage;
+}
+
+/** An artist's bio, as plain text: `body` in paragraphs split by blank lines, `summary` its first. */
+export interface ArtistBio {
+	summary: string;
+	body: string;
+	source: 'nfo' | 'wikipedia' | 'lastfm' | 'audiodb';
+	/** The page it came from. */
+	url?: string;
+	license?: string;
+	licenseUrl?: string;
+	lang?: string;
 }
 
 export interface ArtistDetail extends ArtistEntry {
@@ -289,6 +349,10 @@ export interface ArtistDetail extends ArtistEntry {
 	appearsOn: AlbumEntry[];
 	/** The songs it is on, as an artist or an album artist: those {@link LibrarySource.artistSongs} lists. */
 	songCount: number;
+	/** Its MusicBrainz ID; absent when unknown. */
+	mbid?: string;
+	images: ArtistImages;
+	bio?: ArtistBio;
 }
 
 /** A track a search found. Everything about it leads to its album. */
@@ -722,6 +786,8 @@ export interface ServerEvents {
 	playlists: { ids: string[] };
 	organize: OrganizeEvent;
 	replaygain: ReplayGainEvent;
+	/** Artists whose images or bio changed: a page holding one reads it again. */
+	artists: { ids: string[] };
 }
 
 export type ServerEventKind = keyof ServerEvents;

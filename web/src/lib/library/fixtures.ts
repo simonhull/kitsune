@@ -569,7 +569,8 @@ function detailOf(link: ArtistLink): ArtistDetail {
 		albumCount: albumsOwned.length,
 		albums: albumsOwned.map(entryOf),
 		appearsOn: everything.filter((album) => !owns(album, link) && isOn(album, link)).map(entryOf),
-		songCount: songs.length
+		songCount: songs.length,
+		images: {}
 	};
 }
 
