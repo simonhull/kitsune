@@ -29,6 +29,7 @@ type ArtistEntry struct {
 
 	AddedAt time.Time // When the newest album it owns arrived.
 	Plays   int       // How often the person the list was read for played the songs of its albums.
+	Thumb   *Picture  // Its portrait; nil when it has none.
 }
 
 // ArtistDetail is an artist with its albums, newest first. Albums are the ones
@@ -42,6 +43,9 @@ type ArtistDetail struct {
 	// SongCount is how many live songs it is on, as an artist or an album artist:
 	// the songs of its index ([IndexOptions.Artist]).
 	SongCount int
+	MBID      string // Its MusicBrainz ID; empty when unknown.
+	Images    ArtistImages
+	Bio       *Bio // Nil when it has none.
 }
 
 // Artists returns every artist who owns an album with a live track, whole,
@@ -67,11 +71,15 @@ func (s *Store) Artists(ctx context.Context, userID int64) ([]ArtistEntry, error
 	for _, p := range played {
 		plays[p.ArtistID] = int(p.Plays)
 	}
+	thumbs, err := artistThumbs(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("artists: %w", err)
+	}
 	out := make([]ArtistEntry, 0, len(rows))
 	for i := range rows {
 		r := &rows[i]
 		if !isVarious(r.MatchKey, r.Mbid) {
-			e := ArtistEntry{AddedAt: fromMS(r.AddedAt), Plays: plays[r.ID]}
+			e := ArtistEntry{AddedAt: fromMS(r.AddedAt), Plays: plays[r.ID], Thumb: thumbs[r.ID]}
 			e.ID, e.Name, e.AlbumCount = r.Ulid, r.Name, int(r.AlbumCount)
 			out = append(out, e)
 		}
@@ -97,7 +105,11 @@ func (s *Store) Artist(ctx context.Context, id string) (ArtistDetail, error) {
 	if err != nil {
 		return ArtistDetail{}, fmt.Errorf("artist %s: songs: %w", id, err)
 	}
-	d := ArtistDetail{ID: row.Ulid, Name: row.Name, SongCount: int(songs)}
+	images, bio, err := s.artistArt(ctx, row.ID)
+	if err != nil {
+		return ArtistDetail{}, fmt.Errorf("artist %s: %w", id, err)
+	}
+	d := ArtistDetail{ID: row.Ulid, Name: row.Name, SongCount: int(songs), MBID: strOrEmpty(row.Mbid), Images: images, Bio: bio}
 	for i := range albums {
 		a := &albums[i]
 		summary := summarize(&sqlcdb.ListAlbumsByNameRow{

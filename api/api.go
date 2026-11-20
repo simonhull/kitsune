@@ -300,6 +300,12 @@ type EventPlaylists struct {
 	IDs []string `json:"ids"`
 }
 
+// EventArtists is an artists event: the artists whose images or bio changed,
+// by ID. A client holding one reads it again.
+type EventArtists struct {
+	IDs []string `json:"ids"`
+}
+
 // Where a [Playlist] came from.
 const (
 	PlaylistMade     = "kitsune"
@@ -755,6 +761,79 @@ type AlbumDetail struct {
 	DisplayGenres []string `json:"displayGenres"`
 	// Etag is the If-Match value for POST /albums/{id}/edits.
 	Etag string `json:"etag"`
+	// Extras are what the album has beside its cover.
+	Extras AlbumExtras `json:"extras"`
+}
+
+// CoverFromFiles is [AlbumExtras.CoverSource] for a cover from the album's own
+// files.
+const CoverFromFiles = "files"
+
+// AlbumExtras are an album's disc art and back cover.
+type AlbumExtras struct {
+	// Discs is every disc's art first (Disc 0), then by disc.
+	Discs []DiscArt   `json:"discs"`
+	Back  *ExtraImage `json:"back,omitzero"`
+	// CoverSource says where the album's artwork came from; empty with none.
+	CoverSource string `json:"coverSource,omitzero"`
+}
+
+// DiscArt is one disc's art; Disc 0 is every disc's.
+type DiscArt struct {
+	Disc  int        `json:"disc"`
+	Image ExtraImage `json:"image"`
+}
+
+// Picture is an image for GET /artwork/{hash} with its colors. Alpha says its
+// renditions are PNG, with transparency.
+type Picture struct {
+	Hash   string `json:"hash"`
+	Accent string `json:"accent"`
+	Ground string `json:"ground"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	Alpha  bool   `json:"alpha"`
+}
+
+// ExtraImage is an artist's image or an album's extra: a [Picture]'s fields,
+// where it came from and the credit its source asks for.
+type ExtraImage struct {
+	Hash   string  `json:"hash"`
+	Accent string  `json:"accent"`
+	Ground string  `json:"ground"`
+	Width  int     `json:"width"`
+	Height int     `json:"height"`
+	Alpha  bool    `json:"alpha"`
+	Source string  `json:"source"`
+	Credit *Credit `json:"credit,omitzero"`
+}
+
+// Credit is what a source asks to be said of what it gave.
+type Credit struct {
+	Author     string `json:"author,omitzero"`
+	License    string `json:"license,omitzero"`
+	LicenseURL string `json:"licenseUrl,omitzero"`
+	PageURL    string `json:"pageUrl,omitzero"`
+}
+
+// ArtistImages are an artist's chosen images, each nil when it has none.
+type ArtistImages struct {
+	Thumb      *ExtraImage `json:"thumb,omitzero"`
+	Background *ExtraImage `json:"background,omitzero"`
+	Logo       *ExtraImage `json:"logo,omitzero"`
+	Banner     *ExtraImage `json:"banner,omitzero"`
+}
+
+// ArtistBio is an artist's bio as plain text: Body in paragraphs split by blank
+// lines, Summary its first.
+type ArtistBio struct {
+	Summary    string `json:"summary"`
+	Body       string `json:"body"`
+	Source     string `json:"source"`
+	URL        string `json:"url,omitzero"`
+	License    string `json:"license,omitzero"`
+	LicenseURL string `json:"licenseUrl,omitzero"`
+	Lang       string `json:"lang,omitzero"`
 }
 
 // ArtistEntry is an artist as a list shows it. AlbumCount counts the albums it
@@ -766,6 +845,7 @@ type ArtistEntry struct {
 	AlbumCount int       `json:"albumCount"`
 	AddedAt    time.Time `json:"addedAt"`
 	Plays      int       `json:"plays"`
+	Thumb      *Picture  `json:"thumb,omitzero"`
 }
 
 // ArtistList is the response to GET /artists.
@@ -782,6 +862,10 @@ type ArtistDetail struct {
 	Albums     []AlbumEntry `json:"albums"`
 	AppearsOn  []AlbumEntry `json:"appearsOn"`
 	SongCount  int          `json:"songCount"`
+	// MBID is its MusicBrainz ID; empty when unknown.
+	MBID   string       `json:"mbid,omitzero"`
+	Images ArtistImages `json:"images"`
+	Bio    *ArtistBio   `json:"bio,omitzero"`
 }
 
 // ArtistLink is just enough of an artist to link to it.

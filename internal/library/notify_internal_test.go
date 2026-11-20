@@ -12,14 +12,15 @@ import (
 
 // notes are what a Notifier heard.
 type notes struct {
-	albums [][]string
-	all    int
-	scans  []Progress
-	passes []FingerprintProgress
-	loud   []LoudnessProgress
-	lists  [][]string
-	runs   []OrganizeProgress
-	gains  []GainProgress
+	albums  [][]string
+	all     int
+	scans   []Progress
+	passes  []FingerprintProgress
+	loud    []LoudnessProgress
+	lists   [][]string
+	runs    []OrganizeProgress
+	gains   []GainProgress
+	artists [][]string
 }
 
 // heard is a Notifier that keeps what it hears.
@@ -73,6 +74,12 @@ func (h *heard) GainChanged(p *GainProgress) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.gains = append(h.gains, *p)
+}
+
+func (h *heard) ArtistsChanged(ids []string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.artists = append(h.artists, ids)
 }
 
 // take returns what h heard and forgets it.

@@ -30,6 +30,11 @@ type libraryRows struct {
 	// duplicateTags are the tags finding duplicates reads: recordings and
 	// release types. Kept apart from tags, which the song columns ask for.
 	duplicateTags kept[sqlcdb.ListIndexTrackTagsRow]
+	// layoutTracks and layoutOwners are what a scan's extras step reads to
+	// find album and artist folders: every live track's file and every
+	// album's owners.
+	layoutTracks kept[sqlcdb.LayoutTracksRow]
+	layoutOwners kept[sqlcdb.LayoutOwnersRow]
 
 	// digests counts fingerprints stored, which the fingerprint pass writes
 	// outside library writes: what finding duplicates found holds while

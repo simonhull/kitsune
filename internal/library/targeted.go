@@ -87,7 +87,31 @@ func (s *Scanner) exclusiveDirs(ctx context.Context, root string, dirs []string)
 	if err = s.targetedPlaylists(ctx, &r.playlists, &stats); err != nil {
 		return stats, fmt.Errorf("targeted scan: %w", err)
 	}
+	if err = s.targetedExtras(ctx, &r.extras, &stats); err != nil {
+		return stats, fmt.Errorf("targeted scan: %w", err)
+	}
 	return stats, nil
+}
+
+// targetedExtras runs the extras step for a targeted scan when it may change
+// something: the folders read hold an image or an nfo, a song was read or went
+// missing (which moves album and artist folders), or the store holds a folder's
+// file in a folder read. A watcher's scan of a folder of playlists pays nothing.
+func (s *Scanner) targetedExtras(ctx context.Context, sv *extrasSurvey, stats *Stats) error {
+	wanted := len(sv.files) > 0 || stats.Read > 0 || stats.Missing > 0
+	if !wanted {
+		files, err := s.st.ExtraFiles(ctx)
+		if err != nil {
+			return err //nolint:wrapcheck // The store's error already says what failed.
+		}
+		wanted = slices.ContainsFunc(files, func(f store.FileRef) bool {
+			return f.Root == sv.root && sv.listed(filepath.Dir(f.RelPath))
+		})
+	}
+	if !wanted {
+		return nil
+	}
+	return s.readExtras(ctx, []extrasSurvey{*sv}, Quick, stats)
 }
 
 // refreshAfter brings genres and search up to date after a targeted scan that
@@ -177,7 +201,18 @@ func (s *Scanner) surveyDirs(ctx context.Context, root string, dirs []string) (r
 	if r.playlists, err = s.surveyPlaylists(ctx, root, &l.walked, l.covers); err != nil {
 		return rootSurvey{}, err
 	}
+	r.extras = l.extrasSurvey(root)
 	return r, nil
+}
+
+// extrasSurvey is what the listing found for the extras step: a folder counts
+// as listed when it was read, or walked whole, and nothing in it was unreadable.
+func (l *dirListing) extrasSurvey(root string) extrasSurvey {
+	readable := walkedListed(l.unreadable)
+	return extrasSurvey{root: root, files: l.extras, listed: func(dir string) bool {
+		_, read := l.read[dir]
+		return (read || l.walkedWhole(dir)) && readable(dir)
+	}}
 }
 
 // countLive counts the states that are tracks not missing.
