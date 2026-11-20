@@ -348,6 +348,7 @@ func toAPIAlbumDetail(d *store.AlbumDetail, genres map[string][]string) api.Albu
 		Genres:        []string{},
 		DisplayGenres: []string{},
 		Etag:          d.ETag,
+		Extras:        toAPIAlbumExtras(&d.Extras, d.Cover != nil),
 	}
 	for i := range d.Tracks {
 		out.Tracks[i] = toAPITrack(&d.Tracks[i], genres[d.Tracks[i].ID])

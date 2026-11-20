@@ -110,7 +110,7 @@ func TestArtworkRenditions(t *testing.T) {
 			if got := jpegSize(t, resp.Body); got != [2]int{tt.want, tt.want} {
 				t.Errorf("size = %v, want %dx%d", got, tt.want, tt.want)
 			}
-			if got := resp.Header.Get("Content-Type"); got != "image/jpeg" {
+			if got := resp.Header.Get("Content-Type"); got != mediaJPEG {
 				t.Errorf("Content-Type = %q, want image/jpeg", got)
 			}
 			if got := resp.Header.Get("Cache-Control"); got != immutableCC {
