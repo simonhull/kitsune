@@ -596,13 +596,14 @@ func (q *Queries) UpdateTrack(ctx context.Context, arg UpdateTrackParams) (int64
 }
 
 const upsertAlbum = `-- name: UpsertAlbum :one
-INSERT INTO albums (ulid, group_key, name, sort_name, artist, mbid, year, compilation, artwork_hash, added_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO albums (ulid, group_key, name, sort_name, artist, mbid, release_group_mbid, year, compilation, artwork_hash, added_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (group_key) DO UPDATE SET
     name = excluded.name,
     sort_name = excluded.sort_name,
     artist = excluded.artist,
     mbid = coalesce(excluded.mbid, albums.mbid),
+    release_group_mbid = coalesce(excluded.release_group_mbid, albums.release_group_mbid),
     year = excluded.year,
     compilation = excluded.compilation,
     artwork_hash = coalesce(excluded.artwork_hash, albums.artwork_hash)
@@ -610,16 +611,17 @@ RETURNING id, ulid
 `
 
 type UpsertAlbumParams struct {
-	Ulid        string
-	GroupKey    string
-	Name        string
-	SortName    string
-	Artist      string
-	Mbid        *string
-	Year        *int64
-	Compilation int64
-	ArtworkHash []byte
-	AddedAt     int64
+	Ulid             string
+	GroupKey         string
+	Name             string
+	SortName         string
+	Artist           string
+	Mbid             *string
+	ReleaseGroupMbid *string
+	Year             *int64
+	Compilation      int64
+	ArtworkHash      []byte
+	AddedAt          int64
 }
 
 type UpsertAlbumRow struct {
@@ -635,6 +637,7 @@ func (q *Queries) UpsertAlbum(ctx context.Context, arg UpsertAlbumParams) (Upser
 		arg.SortName,
 		arg.Artist,
 		arg.Mbid,
+		arg.ReleaseGroupMbid,
 		arg.Year,
 		arg.Compilation,
 		arg.ArtworkHash,
@@ -678,14 +681,15 @@ func (q *Queries) UpsertArtist(ctx context.Context, arg UpsertArtistParams) (int
 }
 
 const upsertArtwork = `-- name: UpsertArtwork :exec
-INSERT INTO artwork (hash, width, height, accent, ground, source)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO artwork (hash, width, height, accent, ground, source, alpha)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (hash) DO UPDATE SET
     width = excluded.width,
     height = excluded.height,
     accent = excluded.accent,
     ground = excluded.ground,
-    source = excluded.source
+    source = excluded.source,
+    alpha = excluded.alpha
 `
 
 type UpsertArtworkParams struct {
@@ -695,6 +699,7 @@ type UpsertArtworkParams struct {
 	Accent string
 	Ground string
 	Source string
+	Alpha  int64
 }
 
 func (q *Queries) UpsertArtwork(ctx context.Context, arg UpsertArtworkParams) error {
@@ -705,6 +710,7 @@ func (q *Queries) UpsertArtwork(ctx context.Context, arg UpsertArtworkParams) er
 		arg.Accent,
 		arg.Ground,
 		arg.Source,
+		arg.Alpha,
 	)
 	return err
 }

@@ -9,23 +9,25 @@ ON CONFLICT (match_key) DO UPDATE SET
 RETURNING id;
 
 -- name: UpsertArtwork :exec
-INSERT INTO artwork (hash, width, height, accent, ground, source)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO artwork (hash, width, height, accent, ground, source, alpha)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (hash) DO UPDATE SET
     width = excluded.width,
     height = excluded.height,
     accent = excluded.accent,
     ground = excluded.ground,
-    source = excluded.source;
+    source = excluded.source,
+    alpha = excluded.alpha;
 
 -- name: UpsertAlbum :one
-INSERT INTO albums (ulid, group_key, name, sort_name, artist, mbid, year, compilation, artwork_hash, added_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO albums (ulid, group_key, name, sort_name, artist, mbid, release_group_mbid, year, compilation, artwork_hash, added_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (group_key) DO UPDATE SET
     name = excluded.name,
     sort_name = excluded.sort_name,
     artist = excluded.artist,
     mbid = coalesce(excluded.mbid, albums.mbid),
+    release_group_mbid = coalesce(excluded.release_group_mbid, albums.release_group_mbid),
     year = excluded.year,
     compilation = excluded.compilation,
     artwork_hash = coalesce(excluded.artwork_hash, albums.artwork_hash)

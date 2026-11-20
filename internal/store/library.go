@@ -59,6 +59,7 @@ type ReplayGain struct{ TrackGain, TrackPeak, AlbumGain, AlbumPeak float64 }
 // ULID and the first-seen time are kept when the album already exists.
 type AlbumWrite struct {
 	GroupKey, Name, SortName, MBID string
+	ReleaseGroupMBID               string // The release group's MusicBrainz ID; empty keeps the album's.
 	ULID                           string // Required, 26 characters; the album's public ID, kept when the album already exists.
 	Artist                         string // The display artist.
 	Year                           int
@@ -84,6 +85,7 @@ type ArtworkWrite struct {
 	Accent        string // "#rrggbb".
 	Ground        string // "#rrggbb".
 	Source        ArtworkSource
+	Alpha         bool // The renditions are PNG and keep the image's transparency.
 }
 
 // ArtistWrite identifies an artist by MatchKey and carries its display fields.
@@ -414,7 +416,7 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, now tim
 	if art := tw.Album.Artwork; art != nil {
 		if err = q.UpsertArtwork(ctx, sqlcdb.UpsertArtworkParams{
 			Hash: art.Hash[:], Width: int64(art.Width), Height: int64(art.Height),
-			Accent: art.Accent, Ground: art.Ground, Source: string(art.Source),
+			Accent: art.Accent, Ground: art.Ground, Source: string(art.Source), Alpha: flag(art.Alpha),
 		}); err != nil {
 			return refs, fmt.Errorf("upsert artwork: %w", err)
 		}
@@ -427,6 +429,7 @@ func resolveRefs(ctx context.Context, q *sqlcdb.Queries, tw *TrackWrite, now tim
 		SortName:    tw.Album.SortName,
 		Artist:      tw.Album.Artist,
 		Mbid:        nullStr(tw.Album.MBID),
+		ReleaseGroupMbid: nullStr(tw.Album.ReleaseGroupMBID),
 		Year:        nullInt(tw.Album.Year),
 		Compilation: flag(tw.Album.Compilation),
 		ArtworkHash: artworkHash,

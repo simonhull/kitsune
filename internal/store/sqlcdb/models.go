@@ -5,23 +5,38 @@
 package sqlcdb
 
 type Album struct {
-	ID          int64
-	Ulid        string
-	GroupKey    string
-	Name        string
-	SortName    string
-	Artist      string
-	Mbid        *string
-	Year        *int64
-	Compilation int64
-	ArtworkHash []byte
-	AddedAt     int64
+	ID               int64
+	Ulid             string
+	GroupKey         string
+	Name             string
+	SortName         string
+	Artist           string
+	Mbid             *string
+	Year             *int64
+	Compilation      int64
+	ArtworkHash      []byte
+	AddedAt          int64
+	ReleaseGroupMbid *string
 }
 
 type AlbumHeart struct {
 	UserID    int64
 	AlbumID   int64
 	HeartedAt int64
+}
+
+type AlbumImage struct {
+	AlbumID     int64
+	Kind        string
+	Disc        int64
+	ArtworkHash []byte
+	Source      string
+	Credit      *string
+	FileRoot    *string
+	FilePath    *string
+	FileSize    *int64
+	FileMtime   *int64
+	FoundAt     int64
 }
 
 type AlbumLoudness struct {
@@ -41,10 +56,41 @@ type Artist struct {
 	Mbid     *string
 }
 
+type ArtistBio struct {
+	ArtistID   int64
+	Source     string
+	Lang       *string
+	Summary    string
+	Body       string
+	Url        *string
+	License    *string
+	LicenseUrl *string
+	FileRoot   *string
+	FilePath   *string
+	FileSize   *int64
+	FileMtime  *int64
+	FetchedAt  int64
+}
+
 type ArtistHeart struct {
 	UserID    int64
 	ArtistID  int64
 	HeartedAt int64
+}
+
+type ArtistImage struct {
+	ArtistID    int64
+	Kind        string
+	ArtworkHash []byte
+	Source      string
+	RemoteID    *string
+	Credit      *string
+	FileRoot    *string
+	FilePath    *string
+	FileSize    *int64
+	FileMtime   *int64
+	PinnedBy    *int64
+	FoundAt     int64
 }
 
 type Artwork struct {
@@ -54,6 +100,7 @@ type Artwork struct {
 	Accent string
 	Ground string
 	Source string
+	Alpha  int64
 }
 
 type DuplicateDismissal struct {

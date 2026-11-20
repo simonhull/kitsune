@@ -36,12 +36,12 @@ func TestArtworkSchema(t *testing.T) {
 		t.Errorf("artwork table and albums_artwork index: count = %d, want 2", got)
 	}
 	_, err := s.w.ExecContext(t.Context(),
-		"INSERT INTO artwork (hash, width, height, accent, ground, source) VALUES (zeroblob(32), 1, 1, '#000000', '#000000', 'web')")
+		"INSERT INTO artwork (hash, width, height, accent, ground, source, alpha) VALUES (zeroblob(32), 1, 1, '#000000', '#000000', 'web', 0)")
 	if err == nil {
 		t.Error("an unknown artwork source was accepted")
 	}
 	_, err = s.w.ExecContext(t.Context(),
-		"INSERT INTO artwork (hash, width, height, accent, ground, source) VALUES (zeroblob(5), 1, 1, '#000000', '#000000', 'folder')")
+		"INSERT INTO artwork (hash, width, height, accent, ground, source, alpha) VALUES (zeroblob(5), 1, 1, '#000000', '#000000', 'folder', 0)")
 	if err == nil {
 		t.Error("a short artwork hash was accepted")
 	}
