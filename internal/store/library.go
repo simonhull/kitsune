@@ -881,8 +881,9 @@ func (s *Store) DeleteMissingBefore(ctx context.Context, cutoff time.Time) (int6
 	return n, nil
 }
 
-// PruneOrphans deletes the albums that no track uses, then the artwork rows no
-// album uses, and the artists that no track links to. It returns how many
+// PruneOrphans deletes the albums that no track uses and the artists that no
+// track links to, with their images and bios, then the artwork rows nothing uses:
+// no album's cover, no artist's image and no album's extra. It returns how many
 // albums and artists went, and the hashes of the artwork, so the caller can
 // delete their files.
 func (s *Store) PruneOrphans(ctx context.Context) (Pruned, error) {
@@ -892,13 +893,15 @@ func (s *Store) PruneOrphans(ctx context.Context) (Pruned, error) {
 		if albumsErr != nil {
 			return fmt.Errorf("albums: %w", albumsErr)
 		}
-		hashes, artworkErr := q.PruneArtwork(ctx)
-		if artworkErr != nil {
-			return fmt.Errorf("artwork: %w", artworkErr)
-		}
+		// Artists go before the images, so the images of an artist pruned now
+		// (gone with it by ON DELETE CASCADE) go too.
 		artists, artistsErr := q.PruneArtists(ctx)
 		if artistsErr != nil {
 			return fmt.Errorf("artists: %w", artistsErr)
+		}
+		hashes, artworkErr := q.PruneArtwork(ctx)
+		if artworkErr != nil {
+			return fmt.Errorf("artwork: %w", artworkErr)
 		}
 		p = Pruned{Albums: albums, Artists: artists}
 		for _, h := range hashes {

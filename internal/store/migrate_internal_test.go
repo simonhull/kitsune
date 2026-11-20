@@ -180,6 +180,32 @@ func seedLibrary(t *testing.T, db *sql.DB) {
 		exec("INSERT INTO artist_hearts (user_id, artist_id, hearted_at) VALUES (1, 1, 1)")
 	}
 	seedLastfm(t, db)
+	seedArtistArt(t, db)
+}
+
+// seedArtistArt gives seedLibrary's artist a folder thumb and an nfo bio, and its
+// album a back cover, all on its one image, once the database has the tables.
+func seedArtistArt(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if !hasTable(t, db, "artist_images") {
+		return
+	}
+	hash := []byte(fmt.Sprintf("%032d", 0))
+	for _, q := range []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO artist_images (artist_id, kind, artwork_hash, source, file_root, file_path, file_size, file_mtime, found_at)
+			VALUES (1, 'thumb', ?, 'folder', '/m', 'artist.jpg', 1, 1, 1)`, []any{hash}},
+		{`INSERT INTO album_images (album_id, kind, disc, artwork_hash, source, file_root, file_path, file_size, file_mtime, found_at)
+			VALUES (1, 'back', 0, ?, 'folder', '/m', 'back.jpg', 1, 1, 1)`, []any{hash}},
+		{`INSERT INTO artist_bios (artist_id, source, summary, body, file_root, file_path, file_size, file_mtime, fetched_at)
+			VALUES (1, 'nfo', 'A band.', 'A band.', '/m', 'artist.nfo', 1, 1, 1)`, nil},
+	} {
+		if _, err := db.ExecContext(t.Context(), q.query, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.query, err)
+		}
+	}
 }
 
 // seedRating rates seedLibrary's track n for its user, in the column the

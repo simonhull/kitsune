@@ -143,7 +143,12 @@ UPDATE tracks SET missing_since = ? WHERE id = ? AND missing_since IS NULL;
 DELETE FROM albums WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE tracks.album_id = albums.id);
 
 -- name: PruneArtwork :many
-DELETE FROM artwork WHERE NOT EXISTS (SELECT 1 FROM albums WHERE albums.artwork_hash = artwork.hash)
+-- An image goes when nothing uses it: no album's cover, no artist's image and no
+-- album's extra.
+DELETE FROM artwork
+WHERE NOT EXISTS (SELECT 1 FROM albums WHERE albums.artwork_hash = artwork.hash)
+  AND NOT EXISTS (SELECT 1 FROM artist_images WHERE artist_images.artwork_hash = artwork.hash)
+  AND NOT EXISTS (SELECT 1 FROM album_images WHERE album_images.artwork_hash = artwork.hash)
 RETURNING hash;
 
 -- name: PruneArtists :execrows

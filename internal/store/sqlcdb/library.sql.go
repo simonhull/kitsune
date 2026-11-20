@@ -338,10 +338,15 @@ func (q *Queries) PruneArtists(ctx context.Context) (int64, error) {
 }
 
 const pruneArtwork = `-- name: PruneArtwork :many
-DELETE FROM artwork WHERE NOT EXISTS (SELECT 1 FROM albums WHERE albums.artwork_hash = artwork.hash)
+DELETE FROM artwork
+WHERE NOT EXISTS (SELECT 1 FROM albums WHERE albums.artwork_hash = artwork.hash)
+  AND NOT EXISTS (SELECT 1 FROM artist_images WHERE artist_images.artwork_hash = artwork.hash)
+  AND NOT EXISTS (SELECT 1 FROM album_images WHERE album_images.artwork_hash = artwork.hash)
 RETURNING hash
 `
 
+// An image goes when nothing uses it: no album's cover, no artist's image and no
+// album's extra.
 func (q *Queries) PruneArtwork(ctx context.Context) ([][]byte, error) {
 	rows, err := q.db.QueryContext(ctx, pruneArtwork)
 	if err != nil {
