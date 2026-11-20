@@ -168,6 +168,12 @@ func (e *LibraryEvents) GainChanged(p *library.GainProgress) {
 	publishJSON(e.hub, events.ReplayGain, events.Admins(), &ev, nil)
 }
 
+// ArtistsChanged implements [library.Notifier]: everyone hears which artists
+// have other images or another bio, by ID.
+func (e *LibraryEvents) ArtistsChanged(ids []string) {
+	publishJSON(e.hub, events.Artists, events.Everyone(), &api.EventArtists{IDs: append([]string{}, ids...)}, nil)
+}
+
 // LastfmChanged returns what the scrobbler calls when a person's connection or
 // outbox changed: that person's devices hear it.
 func LastfmChanged(hub *events.Hub) func(userID int64) {

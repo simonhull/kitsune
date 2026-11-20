@@ -184,6 +184,14 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   count `plays` (imports included, but undated ones never on repeat, `store.SourceUndated`), never
   listens, and only live tracks. Recent reads plays newest first and stops at 25 albums
   (`recentAlbumsSQL`, hand-written since sqlc reads every row); `home-history` is its budget.
+- An artist's art (plan 072): `ArtistDetail` carries `images` (`thumb`, `background`, `logo`,
+  `banner`, each an `ExtraImage` with its colors, `alpha`, `source` and `credit`, any absent), `bio`
+  (`summary`, `body`, `source`, and `url`, `license`, `licenseUrl`, `lang` where the source gives
+  them) and `mbid`; `ArtistEntry` in `GET /artists` carries `thumb` (a `Picture`), read in one query
+  for the whole list. `AlbumDetail.extras` holds `discs` (every disc's art as disc 0, then by disc),
+  `back` and `coverSource`. `GET /artwork/{hash}` takes every ladder's sizes (128, 400, 512, 640, 800,
+  1024, 1920, 3840) and answers JPEG or, for an image with `alpha`, PNG. No response names a file or a
+  root. The `artists` event (ids only) goes to everyone when a scan changes an artist's images or bio.
 - Stars are the only like: a song's own rating, ½★ to 5★ in halves, is what every list, filter, sort,
   album average and shuffle weight reads. Nothing is hearted any more. The hearts people kept from
   before (`track_hearts`, `album_hearts`, `artist_hearts`) show and weigh nowhere; they wait for
@@ -348,6 +356,18 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   already (a gain that rounds to 0.00 dB reads as none). The last 10 runs, or 90 days, whichever keeps
   more, stay. `TrackWrite.Retagged` says audiometa rewrote only a file's tags, so its update keeps the
   stored fingerprint and moves its loudness measure (`CarryTrackLoudness`) to the new size and mtime.
+- Artist art (`extras.go`, migration `0026`): `artist_images` (one row per artist and kind: `thumb`,
+  `background`, `logo`, `banner`), `album_images` (per album, kind `disc` or `back`, and `disc`, 0 for
+  every disc) and `artist_bios` (one per artist, plain text). Each says where it came from (`source`:
+  `folder` or `nfo` today) and, for a library file, which one (`file_root`, `file_path`, `file_size`,
+  `file_mtime`, NULL for any other source, a CHECK); a `pinned` row is an administrator's and no write
+  of a scan's touches it (`UpsertFolderArtistImage` skips it, the deletes take `folder` rows alone).
+  They go with their artist or album by ON DELETE CASCADE. `WriteExtras` stores a scan's finds in one
+  transaction (not a library write: the index shows none of it), returns the artists it changed and
+  notes the albums. `FolderLayout` is what the scan reads to find folders: every live track's file
+  and every album's owners, kept between library writes as the index's rows are, and what the store
+  holds of images and bios. `albums.release_group_mbid` is kept with `coalesce`, as `mbid` is.
+  `scrape_state` waits for the fetching phase.
 
 ## Matching
 - `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
@@ -583,6 +603,29 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   an `unreadable` scan issue, tried every scan. A playlist goes when the walk, or a targeted scan of
   its folder, finds its file gone, and never for a root that looks down, by the same rules as tracks.
   Files are read with tag writes off too; only saving writes.
+- Artist and album folders (`extras.go`, `extrafolders.go`, `extranames.go`, `nfo.go`): the walk keeps
+  the files named as Kodi and Jellyfin name them (`isExtraFile`), and after the songs and playlist
+  files the scan's extras step works out every folder from the store's layout. An album's folder is
+  the one folder all its live songs are in, disc folders folded; an artist's folder is the one above
+  an album's, when every live song in or below it is on an album that artist alone owns (a
+  compilation, Various Artists or a shared album makes it nobody's), so one artist never takes
+  another's images; the root can be one. In the artist's folder `artist|thumb|folder` is the thumb,
+  `fanart|backdrop|background` (then `fanart1`, `backdrop-2`…) the background, `clearlogo|logo` the
+  logo (PNG first), `banner` the banner and `artist.nfo` the bio; in the album's, `cdart|discart|disc`
+  is every disc's art, `cd2`, `discart-2` and the like one disc's, and `back` the back cover. Earlier
+  names win, then extensions, then the name sorted first. Files are read through `os.Root` and a file
+  unchanged since its row (path, size, mtime) is not read again but by a full scan; one that serves
+  nothing (a bad image, an nfo naming another artist's MBID) is logged by its root-relative path and
+  remembered until it changes (`badExtras`), and the next name is tried. A folder this scan didn't
+  read whole (a targeted scan's others, an unreadable one) keeps what it gave. A file gone takes its
+  image away; a pin is never touched. Embedded pictures are never read for these. `artist.nfo` is
+  read leniently, `<biography>` and `<musicBrainzArtistID>` straight under `<artist>` ignoring case;
+  its lines are the body's paragraphs and the first is the summary. A targeted scan runs the step
+  only when the folders it read hold such a file, it read or lost a song, or the store holds a file
+  from a folder it read. Changed artists are an `artists` event (`Notifier.ArtistsChanged`); changed
+  albums ride on `library`. Without an artwork cache only bios are read.
+- A scan reads the release group's MBID (`MUSICBRAINZ_RELEASEGROUPID` and its TXXX, through the field
+  table's `scan` list) onto the album, for the fetching phases' album art.
 - A targeted scan refreshes genres and names only when it read a song or marked one missing.
 - `internal/duplicates` is pure: `Find` buckets songs by fingerprint (same audio), MusicBrainz
   recording (lengths within 10 s) and first artist's `MatchKey` plus title folded as a search folds,
@@ -655,11 +698,20 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   and plays it, and asks `POST /me/shuffles` with it as `first` at the same time.
 
 ## Artwork
-- `internal/artwork` renders covers during the scan and knows nothing of the store or the
-  scanner. Renditions are JPEGs at `<data_dir>/artwork/<hh>/<hash>-<size>.jpg`, named by the
-  SHA-256 of the source image, so a request only ever reads a file and a file never changes.
-  The ladder is 128/512/1024 on the longest side and never upscales; `Path` returns the largest
-  rung at or below the request. A zero-size file counts as missing.
+- `internal/artwork` renders covers, artist images and album extras during the scan and knows
+  nothing of the store or the scanner. Renditions live at `<data_dir>/artwork/<hh>/<hash>-<size>.<ext>`,
+  named by the SHA-256 of the source image, so a request only ever reads a file and a file never
+  changes. `Put` takes a `Kind`, and each kind has its ladder on the longest side (`Kind.Ladder`):
+  covers, thumbs and back covers 128/512/1024, backgrounds and banners 128/640/1920/3840, logos and
+  disc art 128/400/800; every ladder starts at 128 and none upscales. Renditions are JPEG flattened
+  onto the ground, except a logo's or a disc's whose source has transparency, which stay PNG
+  (`Image.Alpha`, `artwork.alpha`). One image put as two kinds keeps both ladders. `Path` returns the
+  largest rendition of any ladder at or below the request (JPEG first at a rung), `IsPNG` its format,
+  and `Delete` takes every rung of both formats. A zero-size file counts as missing.
+- `PruneOrphans` keeps every artwork row an album's cover, an artist's image (`artist_images`) or an
+  album's extra (`album_images`) uses; artists go before the images, so an artist pruned frees its
+  own. A prune or a delete of missing tracks that deletes nothing leaves the kept rows standing
+  (`inLibraryTxIf`), which is what keeps a quick scan's extras step and the next index read warm.
 - The scanner finds one cover per album per scan (`covers` in `internal/library/cover.go`): the cover
   of the album's first track that has one. An album's first track, whose cover, year and compilation
   flag it takes, is the first the Library lists (`store.Place`): by disc, songs with no disc number
@@ -669,7 +721,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   decides. Art never fails a file: bad images become warnings, cache failures are logged. Folder art is read through
   `os.Root`, never through `fs.FS` (it rejects non-UTF-8 names).
 - A cover's accent and ground colors come from the encoded 128 rendition, so a fresh render and
-  an idempotent `Put` agree.
+  an idempotent `Put` agree; a PNG's pixels less than half opaque have no say, so a logo's colors are
+  its ink's.
 
 ## Operations
 - `mise run release` builds `dist/kitsune-server` with the web client inside it. `internal/webui` embeds
@@ -895,8 +948,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   a smart playlist's preview, a `GET /me/playlists` of ten smart ones, a 10,000-song `.m3u8` read
   against 50,000 songs, a quick scan with 50 unchanged playlist files, held to the same scan
   without them, an organize preview of 50,000 songs, an organize run of 1,000, per song, a find of duplicates over
-  50,000 songs after a fingerprint landed, a ReplayGain run of 1,000 real FLACs, per song, and
-  `GET /admin/replaygain` over 50,000 songs with 2,000 to write. The
+  50,000 songs after a fingerprint landed, a ReplayGain run of 1,000 real FLACs, per song,
+  `GET /admin/replaygain` over 50,000 songs with 2,000 to write, an artist's page with all four
+  images and a bio, `GET /artists` of 2,000 artists with thumbs, and a quick scan beside unchanged
+  art, held to the same scan without it. The
   browser suite also holds that a song plays on while its file moves. Each fails past its budget,
   and CI runs both on every PR: the speed tests in their own job, the browser suite as four shards (each
   library in two, the files split by time in `web/perf/shards.ts`, one worker each), and the `perf` job

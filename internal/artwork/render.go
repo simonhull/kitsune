@@ -8,16 +8,16 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"image/png"
 	"os"
 	"path/filepath"
-
-	_ "image/png" // Registers the PNG decoder for image.Decode.
+	"slices"
 
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // Registers the WebP decoder for image.Decode.
 )
 
-// jpegQuality is the quality of every rendition.
+// jpegQuality is the quality of every JPEG rendition.
 const jpegQuality = 82
 
 // The UI's ground, #0A0908: what transparent pixels become.
@@ -36,20 +36,19 @@ type rendition struct {
 	rung, w, h int
 }
 
-// plan lists the renditions of a w x h source, largest first. Rungs below the
-// source's longest side are written at rung size; the smallest rung at or
-// above it is written at the source's own size, so nothing is upscaled; larger
-// rungs are not written.
-func plan(w, h int) []rendition {
+// plan lists the renditions of a w x h source on the ladder rungs (smallest
+// first), largest first. Rungs below the source's longest side are written at
+// rung size; the smallest rung at or above it is written at the source's own
+// size, so nothing is upscaled; larger rungs are not written.
+func plan(rungs []int, w, h int) []rendition {
 	longest := max(w, h)
 	var out []rendition
-	rungs := ladder()
-	for i := len(rungs) - 1; i >= 0; i-- {
+	for i, rung := range slices.Backward(rungs) {
 		switch {
-		case rungs[i] < longest:
-			out = append(out, fit(rungs[i], w, h))
+		case rung < longest:
+			out = append(out, fit(rung, w, h))
 		case i == 0 || rungs[i-1] < longest:
-			out = append(out, rendition{rung: rungs[i], w: w, h: h})
+			out = append(out, rendition{rung: rung, w: w, h: h})
 		}
 	}
 	return out
@@ -77,41 +76,96 @@ func readConfig(data []byte) (image.Config, error) {
 	return cfg, nil
 }
 
-// render decodes data once and writes every rung, scaling each from the one
-// before it. It returns the encoded smallest rung. EXIF orientation is
-// ignored: covers are stored as the file's pixels have them.
-func (c *Cache) render(ctx context.Context, hash [32]byte, data []byte) ([]byte, error) {
+// hasAlpha reports whether any pixel of img is less than opaque. An image type
+// that can't say is looked at pixel by pixel.
+func hasAlpha(img image.Image) bool {
+	if o, ok := img.(interface{ Opaque() bool }); ok {
+		return !o.Opaque()
+	}
+	b := img.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a != opaque16 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// rendered is what render wrote: the encoded smallest rung, and whether the
+// renditions are PNG.
+type rendered struct {
+	small []byte
+	alpha bool
+}
+
+// render decodes data once and writes every rung of kind's ladder, scaling each
+// from the one before it. It returns the encoded smallest rung, and whether the
+// renditions are PNG: those of a kind that keeps alpha, from a source with
+// transparency. Every other is JPEG, flattened onto the ground. EXIF orientation
+// is ignored: images are stored as the file's pixels have them.
+func (c *Cache) render(ctx context.Context, hash [32]byte, kind Kind, data []byte) (rendered, error) {
 	src, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrBadImage, err)
+		return rendered{}, fmt.Errorf("%w: %w", ErrBadImage, err)
+	}
+	alpha := kind.keepsAlpha() && hasAlpha(src)
+	ext := extJPEG
+	if alpha {
+		ext = extPNG
 	}
 	b := src.Bounds()
-	steps := plan(b.Dx(), b.Dy())
 	var small []byte
-	for _, st := range steps {
+	for _, st := range plan(kind.Ladder(), b.Dx(), b.Dy()) {
 		if err = ctx.Err(); err != nil {
-			return nil, fmt.Errorf("artwork: render: %w", err)
+			return rendered{}, fmt.Errorf("artwork: render: %w", err)
 		}
-		// The first step flattens alpha onto the ground; later steps scale an
-		// opaque image.
-		dst := image.NewRGBA(image.Rect(0, 0, st.w, st.h))
-		draw.Draw(dst, dst.Bounds(), image.NewUniform(background()), image.Point{}, draw.Src)
-		if st.w == b.Dx() && st.h == b.Dy() {
-			draw.Draw(dst, dst.Bounds(), src, b.Min, draw.Over)
-		} else {
-			draw.CatmullRom.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Over, nil)
-		}
+		dst := scaled(src, st, alpha)
 		src = dst // Drops the source (and, later, the larger rung).
-		var buf bytes.Buffer
-		if err = jpeg.Encode(&buf, dst, &jpeg.Options{Quality: jpegQuality}); err != nil {
-			return nil, fmt.Errorf("artwork: encode %d px rendition: %w", st.rung, err)
+		encoded, eerr := encode(dst, alpha)
+		if eerr != nil {
+			return rendered{}, fmt.Errorf("artwork: encode %d px rendition: %w", st.rung, eerr)
 		}
-		if werr := c.write(c.file(hash, st.rung), buf.Bytes()); werr != nil {
-			return nil, werr
+		if werr := c.write(c.file(hash, st.rung, ext), encoded); werr != nil {
+			return rendered{}, werr
 		}
-		small = buf.Bytes()
+		small = encoded
 	}
-	return small, nil
+	return rendered{small: small, alpha: alpha}, nil
+}
+
+// scaled draws src at the rendition's size. Without alpha the first step
+// flattens transparency onto the ground; later steps scale an opaque image.
+func scaled(src image.Image, st rendition, alpha bool) *image.RGBA {
+	b := src.Bounds()
+	dst := image.NewRGBA(image.Rect(0, 0, st.w, st.h))
+	op := draw.Src
+	if !alpha {
+		draw.Draw(dst, dst.Bounds(), image.NewUniform(background()), image.Point{}, draw.Src)
+		op = draw.Over
+	}
+	if st.w == b.Dx() && st.h == b.Dy() {
+		draw.Draw(dst, dst.Bounds(), src, b.Min, op)
+	} else {
+		draw.CatmullRom.Scale(dst, dst.Bounds(), src, b, op, nil)
+	}
+	return dst
+}
+
+// encode is img as PNG, keeping alpha, or as JPEG.
+func encode(img image.Image, alpha bool) ([]byte, error) {
+	var buf bytes.Buffer
+	var err error
+	if alpha {
+		err = png.Encode(&buf, img)
+	} else {
+		err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: jpegQuality})
+	}
+	if err != nil {
+		return nil, err //nolint:wrapcheck // render wraps it with the rung.
+	}
+	return buf.Bytes(), nil
 }
 
 // write stores data at path through a synced temporary file and a rename, so a

@@ -1500,8 +1500,8 @@ paths:
         and versions, never whole objects, and a client fetches what it needs
         through the other routes. Who hears what: `library`
         (`EventLibrary`), `scan` (`ScanStatus`, with the failure's reason for
-        administrators only) and `ready`/`resync` (`EventStream`) go to
-        everyone; `fingerprints` (`FingerprintStatus`), `loudness`
+        administrators only), `artists` (`EventArtists`) and
+        `ready`/`resync` (`EventStream`) go to everyone; `fingerprints` (`FingerprintStatus`), `loudness`
         (`LoudnessStatus`), `organize` (`EventOrganize`), `replaygain`
         (`EventReplayGain`) and `settings`
         (`EventSettings`) to administrators; `marks` (`EventMarks`), `prefs`
@@ -1544,14 +1544,18 @@ paths:
   /artwork/{hash}:
     get:
       operationId: getArtwork
-      summary: Return a cover rendition.
+      summary: Return an image's rendition.
       description: >-
-        Covers are rendered during library scans at three sizes, so this reads
-        a file. The hash names the source image, which never changes under it:
-        the response is cached for a year and marked immutable. A `size` the
-        image has no rendition for gets the largest rendition at or below it,
-        or the smallest there is. The image is never upscaled, so a small
-        source is returned at its own size. Range requests are not supported.
+        Covers, artist images and album extras are rendered during library
+        scans, so this reads a file. Each kind has its ladder: covers, thumbs
+        and back covers 128, 512 and 1024; backgrounds and banners 128, 640,
+        1920 and 3840; logos and disc art 128, 400 and 800. The hash names the
+        source image, which never changes under it: the response is cached for
+        a year and marked immutable. A `size` the image has no rendition for
+        gets the largest rendition at or below it, or the smallest there is.
+        The image is never upscaled, so a small source is returned at its own
+        size. It is JPEG, or PNG for an image whose `alpha` is true, which
+        keeps its transparency. Range requests are not supported.
       parameters:
         - name: hash
           in: path
@@ -1562,14 +1566,14 @@ paths:
           in: query
           required: false
           description: Longest side in pixels.
-          schema: { type: integer, enum: [128, 512, 1024], default: 512 }
+          schema: { type: integer, enum: [128, 400, 512, 640, 800, 1024, 1920, 3840], default: 512 }
         - name: If-None-Match
           in: header
           required: false
           schema: { type: string }
       responses:
         "200":
-          description: The cover, as JPEG.
+          description: The image, as JPEG or PNG.
           headers:
             ETag:
               schema: { type: string }
@@ -1577,6 +1581,8 @@ paths:
               schema: { type: string }
           content:
             image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
               schema: { type: string, format: binary }
         "304":
           description: The client's copy is current.
@@ -3849,6 +3855,16 @@ components:
       required: [keys]
       properties:
         keys: { type: array, items: { type: string } }
+    EventArtists:
+      type: object
+      additionalProperties: false
+      description: >-
+        Artists whose images or bio changed, by id: a scan found, changed or
+        lost their folder's files. `GET /artists/{id}` reads one again, and
+        `GET /artists` the thumbs.
+      required: [ids]
+      properties:
+        ids: { type: array, items: { type: string } }
     EventPlaylists:
       type: object
       additionalProperties: false
@@ -5097,7 +5113,7 @@ components:
       description: An album entry's properties, repeated (allOf does not mix with additionalProperties false), plus its tracks.
       type: object
       additionalProperties: false
-      required: [id, title, sortName, artist, artists, trackCount, compilation, tracks, discs, durationMs, formats, addedAt, genres, displayGenres, etag]
+      required: [id, title, sortName, artist, artists, trackCount, compilation, tracks, discs, durationMs, formats, addedAt, genres, displayGenres, etag, extras]
       properties:
         id: { type: string }
         title: { type: string }
@@ -5137,6 +5153,106 @@ components:
         etag:
           type: string
           description: The `If-Match` value for `POST /albums/{id}/edits`.
+        extras: { $ref: "#/components/schemas/AlbumExtras" }
+    AlbumExtras:
+      type: object
+      additionalProperties: false
+      description: >-
+        What the album has beside its cover: disc art and a back cover, read
+        from `cdart`, `discart` or `disc` (every disc), `cd2` and the like (one
+        disc) and `back` in the album's folder.
+      required: [discs]
+      properties:
+        discs:
+          type: array
+          description: Every disc's art first (`disc` 0), then by disc.
+          items: { $ref: "#/components/schemas/DiscArt" }
+        back: { $ref: "#/components/schemas/ExtraImage" }
+        coverSource:
+          type: string
+          enum: [files]
+          description: >-
+            Where `artwork` came from, so a credit can say: `files`, the
+            album's own. Absent with no cover.
+    DiscArt:
+      type: object
+      additionalProperties: false
+      required: [disc, image]
+      properties:
+        disc: { type: integer, minimum: 0, description: "The disc it is for; 0 is every disc." }
+        image: { $ref: "#/components/schemas/ExtraImage" }
+    Picture:
+      type: object
+      additionalProperties: false
+      description: >-
+        An image for `GET /artwork/{hash}`, with its colors, so a page can lay
+        its ground before the picture decodes.
+      required: [hash, accent, ground, width, height, alpha]
+      properties:
+        hash: { type: string, pattern: "^[0-9a-f]{64}$" }
+        accent: { type: string, pattern: "^#[0-9a-f]{6}$" }
+        ground: { type: string, pattern: "^#[0-9a-f]{6}$" }
+        width: { type: integer, description: Of the source image. }
+        height: { type: integer, description: Of the source image. }
+        alpha: { type: boolean, description: "The renditions are PNG, with transparency." }
+    ExtraImage:
+      type: object
+      additionalProperties: false
+      description: >-
+        An artist's image or an album's extra: a `Picture`'s properties, where
+        it came from, and the credit its source asks for.
+      required: [hash, accent, ground, width, height, alpha, source]
+      properties:
+        hash: { type: string, pattern: "^[0-9a-f]{64}$" }
+        accent: { type: string, pattern: "^#[0-9a-f]{6}$" }
+        ground: { type: string, pattern: "^#[0-9a-f]{6}$" }
+        width: { type: integer, description: Of the source image. }
+        height: { type: integer, description: Of the source image. }
+        alpha: { type: boolean, description: "The renditions are PNG, with transparency." }
+        source:
+          type: string
+          enum: [folder, fanart, audiodb, wikimedia, pinned, coverartarchive]
+          description: "`folder`: a file in the library's folders."
+        credit: { $ref: "#/components/schemas/Credit" }
+    Credit:
+      type: object
+      additionalProperties: false
+      description: What a source asks to be said of what it gave. Absent for the library's own files.
+      properties:
+        author: { type: string }
+        license: { type: string }
+        licenseUrl: { type: string }
+        pageUrl: { type: string }
+    ArtistImages:
+      type: object
+      additionalProperties: false
+      description: >-
+        The artist's chosen images, each absent when it has none. From the
+        artist's folder (the one above its albums' folders, when it holds only
+        its albums): `artist`, `thumb` or `folder` is the thumb, `fanart`,
+        `backdrop` or `background` the background, `clearlogo` or `logo` the
+        logo, `banner` the banner.
+      properties:
+        thumb: { $ref: "#/components/schemas/ExtraImage" }
+        background: { $ref: "#/components/schemas/ExtraImage" }
+        logo: { $ref: "#/components/schemas/ExtraImage" }
+        banner: { $ref: "#/components/schemas/ExtraImage" }
+    ArtistBio:
+      type: object
+      additionalProperties: false
+      description: >-
+        The artist's bio as plain text: `body` in paragraphs split by blank
+        lines, `summary` its first. From `artist.nfo` (`nfo`) in the artist's
+        folder; a page shows `source`, `license` and `url` with it.
+      required: [summary, body, source]
+      properties:
+        summary: { type: string }
+        body: { type: string }
+        source: { type: string, enum: [nfo, wikipedia, lastfm, audiodb] }
+        url: { type: string, description: The page it came from. }
+        license: { type: string }
+        licenseUrl: { type: string }
+        lang: { type: string, description: A two-letter code, when the source says. }
     ArtistEntry:
       type: object
       additionalProperties: false
@@ -5152,6 +5268,7 @@ components:
         plays:
           type: integer
           description: How often the caller played the songs of the albums it owns.
+        thumb: { $ref: "#/components/schemas/Picture" }
     ArtistList:
       type: object
       additionalProperties: false
@@ -5163,10 +5280,13 @@ components:
     ArtistDetail:
       type: object
       additionalProperties: false
-      required: [id, name, albumCount, albums, appearsOn, songCount]
+      required: [id, name, albumCount, albums, appearsOn, songCount, images]
       properties:
         id: { type: string }
         name: { type: string }
+        mbid: { type: string, description: Its MusicBrainz ID; absent when unknown. }
+        images: { $ref: "#/components/schemas/ArtistImages" }
+        bio: { $ref: "#/components/schemas/ArtistBio" }
         albumCount: { type: integer, description: The albums it owns. }
         songCount:
           type: integer

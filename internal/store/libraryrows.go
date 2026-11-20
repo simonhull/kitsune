@@ -30,6 +30,11 @@ type libraryRows struct {
 	// duplicateTags are the tags finding duplicates reads: recordings and
 	// release types. Kept apart from tags, which the song columns ask for.
 	duplicateTags kept[sqlcdb.ListIndexTrackTagsRow]
+	// layoutTracks and layoutOwners are what a scan's extras step reads to
+	// find album and artist folders: every live track's file and every
+	// album's owners.
+	layoutTracks kept[sqlcdb.LayoutTracksRow]
+	layoutOwners kept[sqlcdb.LayoutOwnersRow]
 
 	// digests counts fingerprints stored, which the fingerprint pass writes
 	// outside library writes: what finding duplicates found holds while
@@ -62,6 +67,25 @@ func (s *Store) inLibraryTx(ctx context.Context, fn func(q *sqlcdb.Queries, tx *
 		s.library.writing.Add(-1)
 	}()
 	return s.inPreparedTx(ctx, fn)
+}
+
+// inLibraryTxIf is inLibraryTx for a write that may find nothing to change: fn
+// reports whether it changed anything, and when it didn't, the kept rows still
+// hold after it. A failed write counts as a change, as a write under way does.
+func (s *Store) inLibraryTxIf(ctx context.Context, fn func(q *sqlcdb.Queries, tx *sql.Tx) (bool, error)) error {
+	s.library.writing.Add(1)
+	changed := true
+	defer func() {
+		if changed {
+			s.library.gen.Add(1)
+		}
+		s.library.writing.Add(-1)
+	}()
+	return s.inPreparedTx(ctx, func(q *sqlcdb.Queries, tx *sql.Tx) error {
+		did, err := fn(q, tx)
+		changed = did || err != nil // The writer may retry: the last try says.
+		return err
+	})
 }
 
 // writesMark is where library writes stood at one moment.

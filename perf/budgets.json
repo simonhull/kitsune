@@ -214,6 +214,18 @@
     "gain-status": {
       "interaction": "GET /admin/replaygain, 50k songs, 2,000 of them to write",
       "p95Ms": 35
+    },
+    "artist-detail": {
+      "interaction": "GET /artists/{id} with all four images and a bio, 50k songs, gzip",
+      "p95Ms": 1.3
+    },
+    "artists-list": {
+      "interaction": "GET /artists, 2,000 artists each with a thumb, 50k songs, gzip",
+      "p95Ms": 320
+    },
+    "quick-scan-art": {
+      "interaction": "Quick scan of 500 unchanged songs, 50 artist folders and 50 album folders of unchanged art",
+      "p95Ms": 15
     }
   }
 }

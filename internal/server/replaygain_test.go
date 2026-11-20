@@ -339,7 +339,7 @@ func bigSine(t *testing.T, path string) {
 	copy(img, []byte{0xFF, 0xD8, 0xFF, 0xE0}) // A JPEG's start; nothing decodes the rest.
 	err := audiometa.Write(path, func(f *audiometa.File) error {
 		for _, kind := range []audiometa.ArtworkType{audiometa.ArtworkBackCover, audiometa.ArtworkMedia, audiometa.ArtworkOther} {
-			if err := f.AddArtwork(audiometa.Artwork{MIMEType: "image/jpeg", Type: kind, Data: img}); err != nil {
+			if err := f.AddArtwork(audiometa.Artwork{MIMEType: mediaJPEG, Type: kind, Data: img}); err != nil {
 				return fmt.Errorf("add a picture: %w", err)
 			}
 		}

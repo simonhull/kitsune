@@ -542,3 +542,33 @@ func BenchmarkWriteOneSong(b *testing.B) {
 		}
 	}
 }
+
+// An album keeps its release group's ID, as it keeps its MBID, through a write
+// without one, and takes a new one.
+func TestAlbumKeepsItsReleaseGroup(t *testing.T) {
+	t.Parallel()
+	const first, second = "11111111-0000-4000-8000-000000000001", "22222222-0000-4000-8000-000000000002"
+	s := openTest(t)
+	group := func() string {
+		t.Helper()
+		var g sql.NullString
+		if err := s.r.QueryRowContext(t.Context(), "SELECT release_group_mbid FROM albums WHERE group_key = 'album-0'").Scan(&g); err != nil {
+			t.Fatal(err)
+		}
+		return g.String
+	}
+	for i, step := range []struct{ write, want string }{
+		{"", ""},
+		{first, first},
+		{"", first},
+		{second, second},
+	} {
+		tw := newWrite(i)
+		tw.Album = newWrite(0).Album // Another track of the same album.
+		tw.Album.ReleaseGroupMBID = step.write
+		writeAll(t, s, tw)
+		if got := group(); got != step.want {
+			t.Errorf("after writing %q, release_group_mbid = %q, want %q", step.write, got, step.want)
+		}
+	}
+}

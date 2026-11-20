@@ -33,8 +33,8 @@ func seedBrowse(tb testing.TB, s *Store) {
 	tb.Helper()
 	const (
 		artworkSQL = `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < %d)
-INSERT INTO artwork (hash, width, height, accent, ground, source)
-SELECT CAST(printf('%%032d', i) AS BLOB), 600, 600, '#aabbcc', '#112233', 'embedded' FROM n`
+INSERT INTO artwork (hash, width, height, accent, ground, source, alpha)
+SELECT CAST(printf('%%032d', i) AS BLOB), 600, 600, '#aabbcc', '#112233', 'embedded', 0 FROM n`
 		albumsSQL = `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < %d)
 INSERT INTO albums (id, ulid, group_key, name, sort_name, artist, year, compilation, artwork_hash, added_at)
 SELECT i, printf('%%026d', i), 'g' || i, 'Album ' || i, printf('Album %%05d', i / 2), 'Artist ' || (i %% 500),

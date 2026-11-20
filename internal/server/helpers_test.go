@@ -155,7 +155,7 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	hub := events.New(events.Options{})
 	streams := &stream.Files{}
 	scanner := library.NewScanner(st, library.Options{
-		Roots: roots, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write,
+		Roots: roots, MissingGrace: time.Hour, Workers: 2, TagWrites: o.TagWrites, Write: o.Write, Artwork: o.Artwork,
 		Notify: NewLibraryEvents(hub), Streams: streams, OrganizeStep: o.OrganizeStep,
 		GainStep: o.GainStep,
 	})

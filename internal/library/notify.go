@@ -37,6 +37,9 @@ type Notifier interface {
 	// GainChanged gives a ReplayGain run's progress: at its start, after its
 	// albums (at most four times a second), and at its end.
 	GainChanged(p *GainProgress)
+	// ArtistsChanged says the artists with these public IDs have other images
+	// or another bio.
+	ArtistsChanged(ids []string)
 }
 
 // noNotify hears nothing.
@@ -49,6 +52,7 @@ func (noNotify) LoudnessChanged(LoudnessProgress)        {}
 func (noNotify) PlaylistsChanged([]string)               {}
 func (noNotify) OrganizeChanged(*OrganizeProgress)       {}
 func (noNotify) GainChanged(*GainProgress)               {}
+func (noNotify) ArtistsChanged([]string)                 {}
 
 // throttle says when a running thing may tell again.
 type throttle struct {
