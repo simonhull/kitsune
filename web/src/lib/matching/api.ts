@@ -24,7 +24,50 @@ export class MatchError extends Error {
 /** When the server gives no usable `Retry-After`, come back in ten seconds. */
 const defaultRetrySeconds = 10;
 
+/** Whether the app opened on the fixtures' queue, read once: the query is gone after a click. */
+const openedOnBoard =
+	typeof location !== 'undefined' &&
+	new URLSearchParams(location.search).get('matching') === 'board';
+
+/** Whether the fixtures draw a MusicBrainz queue, `?matching=board`. */
+export function fixtureQueue(): boolean {
+	return library.simulated && openedOnBoard;
+}
+
+/**
+ * The fixtures' queue, `?matching=board`: three of the library's albums and no releases found for
+ * any, so Health's card and Matching's page can be drawn with no server. Null otherwise.
+ */
+function fixtureAnswer(path: string): unknown {
+	if (!fixtureQueue()) {
+		return null;
+	}
+	if (path === '/matching/queue') {
+		const ids = ['glasshouse-66', 'night-ferry-94', 'tidewrack-41'];
+		const albums = ids.map((id) => {
+			const entry = library.entry(id);
+			return {
+				id,
+				title: entry?.title ?? id,
+				artist: entry?.artist ?? '',
+				songs: 8,
+				state: 'todo' as const
+			};
+		});
+		return { counts: { todo: albums.length, skipped: 0, matched: 2 }, albums };
+	}
+	if (path.endsWith('/matches')) {
+		const asked = { artist: '', album: '', catalogNumber: '', barcode: '' };
+		return { source: 'musicbrainz', asked, candidates: [] };
+	}
+	return undefined;
+}
+
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+	const fixture = fixtureAnswer(path);
+	if (fixture !== null) {
+		return fixture as T;
+	}
 	const unsafe = init.method !== undefined && init.method !== 'GET';
 	let response: Response;
 	try {
@@ -77,9 +120,18 @@ export function reviewMatch(candidateId: string): Promise<MatchReview> {
 	return call<MatchReview>(`/matches/${encodeURIComponent(candidateId)}`);
 }
 
+/** The queue as last read, for a page arriving: Matching's number lands on it at once. */
+let lastQueue: MatchQueue | null = null;
+
 /** The albums to match. */
-export function matchQueue(): Promise<MatchQueue> {
-	return call<MatchQueue>('/matching/queue');
+export async function matchQueue(): Promise<MatchQueue> {
+	lastQueue = await call<MatchQueue>('/matching/queue');
+	return lastQueue;
+}
+
+/** The queue as it was last read, or null: read again all the same, since it may have moved. */
+export function knownQueue(): MatchQueue | null {
+	return lastQueue;
 }
 
 /** Says where an album stands in the queue. */

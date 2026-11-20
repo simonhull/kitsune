@@ -25,7 +25,7 @@ const table = {
 	'/artists': { look: 'home', current: 'artists', journey: 'artists' },
 	'/artists/[id]': { look: 'home', current: 'artists', journey: 'artist' },
 	'/health': { look: 'home', current: null, journey: 'health' },
-	'/health/matching': { look: 'home', current: null, journey: 'health' },
+	'/health/matching': { look: 'home', current: null, journey: 'matching' },
 	'/library': { look: 'home', current: 'library', journey: 'library' },
 	'/login': { look: 'door', current: 'home', journey: 'login' },
 	'/now-playing': { look: 'gone', current: null, journey: 'now-playing' },
@@ -34,10 +34,10 @@ const table = {
 	'/playlists/smart': { look: 'home', current: 'playlists', journey: 'playlist' },
 	'/search': { look: 'home', current: null, journey: 'search' },
 	'/server': { look: 'home', current: null, journey: 'server' },
-	'/server/duplicates': { look: 'home', current: null, journey: 'server' },
-	'/server/duplicates/[group]': { look: 'home', current: null, journey: 'server' },
-	'/server/organize': { look: 'home', current: null, journey: 'server' },
-	'/server/trash': { look: 'home', current: null, journey: 'server' },
+	'/server/duplicates': { look: 'home', current: null, journey: 'duplicates' },
+	'/server/duplicates/[group]': { look: 'home', current: null, journey: 'duplicate' },
+	'/server/organize': { look: 'home', current: null, journey: 'organize' },
+	'/server/trash': { look: 'home', current: null, journey: 'trash' },
 	'/setup': { look: 'door', current: 'home', journey: 'login' },
 	'/you': { look: 'home', current: null, journey: 'you' }
 } as const satisfies Record<RouteId, RouteFacts>;
@@ -76,4 +76,9 @@ export function artistOn(target: RouteTarget | null | undefined): string | undef
 /** Finds the playlist a page is on: a new smart one isn't one yet. */
 export function playlistOn(target: RouteTarget | null | undefined): string | undefined {
 	return target?.route.id === '/playlists/[id]' ? target.params?.['id'] : undefined;
+}
+
+/** Finds the duplicate group or album pair a page is on. */
+export function groupOn(target: RouteTarget | null | undefined): string | undefined {
+	return target?.route.id === '/server/duplicates/[group]' ? target.params?.['group'] : undefined;
 }

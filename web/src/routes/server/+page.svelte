@@ -221,9 +221,11 @@
 </svelte:head>
 
 <div class="server">
-	<div class="intro" data-morph-part="intro" data-morph-key="intro">
+	<div class="intro">
 		<a class="crumb mono" href={resolve('/you')}>YOU › SERVER</a>
-		<h1>Server<span class="dot">.</span></h1>
+		<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>
+			Server<span class="dot">.</span>
+		</h1>
 		<p class="lede">Everything this server does, set here. Only administrators see this page.</p>
 		{#if facts !== null}
 			<p class="mono compact">{libraryFactsLine(facts, bytes).toUpperCase()}</p>
@@ -636,6 +638,9 @@
 	}
 
 	.crumb {
+		/* Over the headline: its glyphs rise above its tight line box, into the crumb, and took its press. */
+		position: relative;
+		z-index: 1;
 		color: var(--text-meta);
 		text-decoration: none;
 	}

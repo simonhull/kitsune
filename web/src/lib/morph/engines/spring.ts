@@ -41,8 +41,11 @@ import {
 	measureCover,
 	measureSurface,
 	measureTitle,
+	measureStrip,
+	StripFlier,
 	SurfaceFlier,
 	TitleFlier,
+	type StripShape,
 	type BarShape,
 	type CoverShape,
 	type Flier,
@@ -54,6 +57,8 @@ import { IslandShape } from './island.ts';
 import { Layer } from './layer.ts';
 
 const hiddenAttribute = 'data-morph-hidden';
+/** On the nav while a picture of it dissolves in its place, on the way to the door. */
+const frameHeldAttribute = 'data-morph-held';
 const sourceAttribute = 'data-morph-source';
 
 /** What's inside the island leaves at once, before the glass has got anywhere. */
@@ -94,6 +99,8 @@ interface CoverCapture {
 	shape: CoverShape;
 	picture: Node;
 	shadow: string;
+	/** The width the picture is drawn at, when it is scaled to the box rather than stretched. */
+	drawnAt?: number;
 }
 
 interface TitleCapture {
@@ -122,10 +129,20 @@ interface FieldCapture {
 	element: HTMLElement;
 }
 
-type Capture = CoverCapture | TitleCapture | BarCapture | SurfaceCapture | FieldCapture;
+/** A strip of tabs: where it stood and where its fill was. */
+interface StripCapture {
+	kind: 'strip';
+	shape: StripShape;
+}
+
+type Capture =
+	CoverCapture | TitleCapture | BarCapture | SurfaceCapture | FieldCapture | StripCapture;
 
 function capture(source: MorphEntry): Capture {
 	const { element, kind } = source;
+	if (kind === 'strip') {
+		return { kind, shape: measureStrip(element) };
+	}
 	if (kind === 'field' || kind === 'surface') {
 		return { kind, shape: measureSurface(element), element };
 	}
@@ -144,6 +161,17 @@ function capture(source: MorphEntry): Capture {
 	};
 }
 
+/**
+ * Dresses a capture as another element: the fox's own mark laid over whatever leaves in its place,
+ * at its own size, scaled with the box rather than stretched to it.
+ */
+function dressed(taken: Capture, as: MorphEntry | null): Capture {
+	if (as === null || (taken.kind !== 'cover' && taken.kind !== 'control')) {
+		return taken;
+	}
+	return { ...taken, ...markPicture(as.element) };
+}
+
 /** Draws what a flier shows: a cover's art, or a control as it stands. */
 function pictureOf({ element, kind }: MorphEntry): Node {
 	if (kind === 'cover') {
@@ -159,6 +187,23 @@ function pictureOf({ element, kind }: MorphEntry): Node {
 		picture.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;margin:0';
 	}
 	return picture;
+}
+
+/**
+ * Draws a mark at its own size, to be scaled with the box it flies in rather than stretched to it:
+ * the fox growing from its seat in the nav to the door keeps its glyph in proportion. Only the mark
+ * goes: not the ring it wears on You, nor the dot that asks for Last.fm.
+ */
+function markPicture(element: HTMLElement): { picture: Node; drawnAt: number } {
+	const picture = element.cloneNode(true);
+	const width = element.offsetWidth;
+	if (picture instanceof HTMLElement) {
+		picture.removeAttribute(hiddenAttribute);
+		picture.removeAttribute('aria-current');
+		picture.querySelector('.dot')?.remove();
+		picture.style.cssText = `position:absolute;left:0;top:0;width:${String(width)}px;height:${String(element.offsetHeight)}px;margin:0;transform-origin:0 0`;
+	}
+	return { picture, drawnAt: width };
 }
 
 /**
@@ -540,7 +585,8 @@ export function createSpringEngine(): Morphs {
 
 	// The moment a shared element mounts, before it can paint: this is what stops a flash.
 	registry.subscribe((entry) => {
-		if (inFlight.has(entry.id) && entry.slot !== 'island') {
+		// A strip is the page's own on both sides: it is never under a flier, so never hidden.
+		if (inFlight.has(entry.id) && entry.slot !== 'island' && entry.kind !== 'strip') {
 			hide(entry.element);
 		}
 	});
@@ -666,7 +712,9 @@ export function createSpringEngine(): Morphs {
 			return;
 		}
 		for (const [id, target] of targets) {
-			hide(target.element);
+			if (target.kind !== 'strip') {
+				hide(target.element);
+			}
 			const flying = fliers.get(id);
 			if (flying !== undefined) {
 				// Turning round: it goes on from here, at once, whatever it was waiting for. Where it
@@ -691,14 +739,15 @@ export function createSpringEngine(): Morphs {
 			if (wait !== undefined) {
 				waiting.set(id, wait / 1000);
 			}
-			if (journey.sources.get(id)?.slot === 'nav') {
+			const rooms = journey.choreography.travel?.subject === 'rooms';
+			if (rooms && journey.sources.get(id)?.slot === 'nav') {
 				// Born from the nav, under its glass: it comes out from under the bar, never over it.
 				born.append(flier.element);
 			} else if (flier instanceof SurfaceFlier) {
 				// A surface is still the page you leave until it lands: under that page's own parts,
 				// which sat on it and give way over it, and under the page arriving in front.
 				under.insertBefore(flier.element, ghost?.element ?? null);
-			} else if (target.kind === 'cover' || target.kind === 'bar') {
+			} else if (target.kind === 'cover' || target.kind === 'bar' || target.kind === 'strip') {
 				// Words stay in front of art, so a title never tucks behind the cover it travels with,
 				// and the fox bar passes under the controls it crosses on the way.
 				air.prepend(flier.element);
@@ -717,6 +766,9 @@ export function createSpringEngine(): Morphs {
 	}
 
 	function createFlier(source: Capture, target: MorphEntry): Flier {
+		if (source.kind === 'strip') {
+			return new StripFlier(source.shape, target);
+		}
 		if (source.kind === 'field') {
 			return new FieldFlier(source.shape, source.element, target);
 		}
@@ -736,7 +788,13 @@ export function createSpringEngine(): Morphs {
 				drawTitle(target.element)
 			);
 		}
-		const flier = new CoverFlier(source.shape, target, source.picture, source.shadow);
+		const flier = new CoverFlier(
+			source.shape,
+			target,
+			source.picture,
+			source.shadow,
+			source.drawnAt
+		);
 		const want =
 			target.element.querySelector<HTMLElement>('[data-cover-want]')?.dataset['coverWant'];
 		if (want !== undefined && measureCover(target.element).width >= source.shape.width) {
@@ -762,9 +820,13 @@ export function createSpringEngine(): Morphs {
 		}
 		const { arriving, arrivingByKey, headline, otherwise, motion } = journey.choreography;
 		const units = unitsNearFold(main);
+		// What both pages say, landed: the page gathers around it, and no headline is born.
+		const ledTo = journey.pivotOn === null ? undefined : targets.get(journey.pivotOn);
 		// A room has one headline to be born: the first of its headlines on screen.
 		const born =
-			headline === undefined ? undefined : units.find((unit) => isHeadline(unit) && shown(unit));
+			headline === undefined || ledTo !== undefined
+				? undefined
+				: units.find((unit) => isHeadline(unit) && shown(unit));
 		const partOf = (unit: HTMLElement): Part | undefined =>
 			(unit === born ? headline?.arriving : undefined) ??
 			arrivingByKey?.[unit.dataset['morphKey'] ?? ''] ??
@@ -776,11 +838,13 @@ export function createSpringEngine(): Morphs {
 			targets.get(journey.ids.at(0) ?? '') ??
 			[...targets.values()].find((entry) => entry.kind === 'cover');
 		const center =
-			journey.origin !== null
-				? middleOf(journey.origin)
-				: lead === undefined
-					? null
-					: centerOf(lead.element);
+			ledTo !== undefined
+				? centerOf(ledTo.element)
+				: journey.origin !== null
+					? middleOf(journey.origin)
+					: lead === undefined
+						? null
+						: centerOf(lead.element);
 		const flying = new Set([...targets.values()].map((entry) => entry.element));
 		const loose = everyUnit ? looseOf(main).filter(nearFold) : [];
 
@@ -931,6 +995,10 @@ export function createSpringEngine(): Morphs {
 
 	function dropGhost(ghost: Ghost): void {
 		ghost.element.remove();
+		if (ghost.element.dataset['morphGhost'] === 'frame') {
+			// Its picture has gone: the real nav has had its new look, unseen at the door, all along.
+			letFrameBe();
+		}
 		const index = ghosts.indexOf(ghost);
 		if (index >= 0) {
 			ghosts.splice(index, 1);
@@ -940,6 +1008,59 @@ export function createSpringEngine(): Morphs {
 				heldStages.delete(name);
 			}
 		}
+	}
+
+	/**
+	 * The frame going for good, to the door: a picture of the nav's glass and of the island, each
+	 * where it stands, dissolves at the bottom of the ghost layer, over the page left and under the
+	 * door, while the real nav goes at once. What leaves the frame (the fox) is gone from its picture.
+	 */
+	function holdFrame(part: Part, sources: Journey['sources']): void {
+		const under = surfaceFor('.ghost-layer');
+		if (under === null) {
+			return;
+		}
+		const leaving = [...sources.values()].map(({ element }) => element);
+		for (const selector of ['.shell > header.bar', '.shell > aside']) {
+			const element = surfaceFor(selector);
+			if (element === null) {
+				continue;
+			}
+			const { opacity, visibility } = getComputedStyle(element);
+			if (visibility === 'hidden' || Number(opacity) < 0.01) {
+				continue;
+			}
+			for (const each of leaving) {
+				if (element.contains(each)) {
+					each.setAttribute(sourceAttribute, '');
+				}
+			}
+			const clone = element.cloneNode(true);
+			for (const each of leaving) {
+				each.removeAttribute(sourceAttribute);
+			}
+			if (!(clone instanceof HTMLElement)) {
+				continue;
+			}
+			for (const mark of clone.querySelectorAll<HTMLElement>(`[${sourceAttribute}]`)) {
+				mark.removeAttribute(sourceAttribute);
+				hide(mark);
+			}
+			clone.inert = true;
+			clone.setAttribute('aria-hidden', 'true');
+			clone.dataset['morphGhost'] = 'frame';
+			// Its picture fades by the spring alone, never by a transition of its own.
+			clone.style.transition = 'none';
+			keepColors(element, clone);
+			under.append(clone);
+			ghosts.push({ path: '', element: clone, layers: [new Layer(clone, part)], units: new Map() });
+		}
+		surfaceFor('.shell > header.bar')?.setAttribute(frameHeldAttribute, '');
+	}
+
+	/** The real nav, gone at once for the frame's picture, takes its own look again. */
+	function letFrameBe(): void {
+		surfaceFor('.shell > header.bar')?.removeAttribute(frameHeldAttribute);
 	}
 
 	/** Picks up the glass and leaves a picture of the island's old contents to fade. */
@@ -1053,6 +1174,7 @@ export function createSpringEngine(): Morphs {
 	}
 
 	function land(id: string, flier: Flier): void {
+		flier.release?.();
 		if (flier.target !== null) {
 			show(flier.target.element);
 		}
@@ -1067,6 +1189,7 @@ export function createSpringEngine(): Morphs {
 	 * front, like the rest of the page it left. Gone at once would be a snap.
 	 */
 	function letGo(id: string, flier: Flier): void {
+		flier.release?.();
 		fliers.delete(id);
 		waiting.delete(id);
 		inFlight.delete(id);
@@ -1207,7 +1330,9 @@ export function createSpringEngine(): Morphs {
 				ids: [...targets.keys()],
 				sources: new Map(),
 				waits: new Map(),
-				origin: null
+				origin: null,
+				pivotOn: null,
+				dress: null
 			},
 			dealPath,
 			targets,
@@ -1275,6 +1400,7 @@ export function createSpringEngine(): Morphs {
 		for (const ghost of ghosts.splice(0)) {
 			ghost.element.remove();
 		}
+		letFrameBe();
 		heldStages.clear();
 		waiting.clear();
 		for (const stage of stages.values()) {
@@ -1350,7 +1476,7 @@ export function createSpringEngine(): Morphs {
 		const captures = new Map<string, Capture>();
 		for (const [id, source] of sources) {
 			if (!fliers.has(id)) {
-				captures.set(id, capture(source));
+				captures.set(id, dressed(capture(source), id === 'fox' ? journey.dress : null));
 			}
 		}
 		const reshaping = new Set(
@@ -1359,6 +1485,9 @@ export function createSpringEngine(): Morphs {
 		// From the bottom of the ghost layer up: the stages left, then the page left.
 		holdStages(choreography, reshaping);
 		const ghost = cloneRoute(fromPath, choreography, sources);
+		if (choreography.frame !== undefined) {
+			holdFrame(choreography.frame, sources);
+		}
 		if (choreography.island !== null) {
 			liftIsland(islandLeaves);
 		}
@@ -1374,6 +1503,7 @@ export function createSpringEngine(): Morphs {
 			if (ghost !== null) {
 				dropGhost(ghost);
 			}
+			letFrameBe();
 			if (!active()) {
 				markMoving(false);
 			}
@@ -1391,6 +1521,14 @@ export function createSpringEngine(): Morphs {
 			navigation.type !== 'popstate',
 			toPath
 		);
+		if (choreography.travel?.subject === 'rooms') {
+			// Between rooms only what both show travels: what only the new room shows comes with it.
+			for (const id of [...targets.keys()]) {
+				if (!captures.has(id) && !fliers.has(id)) {
+					targets.delete(id);
+				}
+			}
+		}
 		for (const entry of registry.of(ids)) {
 			if (targets.get(entry.id) !== entry) {
 				show(entry.element);
@@ -1497,7 +1635,9 @@ export function createSpringEngine(): Morphs {
 			ids: [],
 			sources: new Map(),
 			waits: new Map(),
-			origin: { left, top: y, width, height }
+			origin: { left, top: y, width, height },
+			pivotOn: null,
+			dress: null
 		};
 		markMoving(true);
 		startReported = false;
@@ -1530,7 +1670,9 @@ export function createSpringEngine(): Morphs {
 			ids: [],
 			sources: new Map(),
 			waits: new Map(),
-			origin: { left: center.x, top: center.y, width: 0, height: 0 }
+			origin: { left: center.x, top: center.y, width: 0, height: 0 },
+			pivotOn: null,
+			dress: null
 		};
 		markMoving(true);
 		startReported = false;

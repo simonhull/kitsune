@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import { palettes } from '#lib/cover/cover.ts';
 	import { library } from '#lib/library/library.svelte.ts';
+	import { Repress } from '#lib/morph/surface.ts';
 	import type { HeartsSummary, LastfmSwitches, Listening } from '#lib/library/source.ts';
 	import { defaultStars, hasHearts, loveFromValue, loveHint } from '#lib/pages/heartsCard.ts';
 	import HeartsToStars from '#lib/pages/HeartsToStars.svelte';
@@ -187,11 +188,27 @@
 		void library.prefs.flush();
 	}
 
+	/** Signing out: the button says so until the server has answered, then the door closes. */
+	let signingOut = $state(false);
+	let signOutButton = $state<HTMLButtonElement>();
+	const signOutWords = new Repress();
+
 	async function signOut(): Promise<void> {
+		if (signingOut) {
+			return;
+		}
+		if (signOutButton !== undefined) {
+			signOutWords.hold(signOutButton);
+		}
+		signingOut = true;
 		try {
 			await library.signOut();
 		} catch {
 			trouble = "Signing out didn't work. Try again.";
+			if (signOutButton !== undefined) {
+				signOutWords.hold(signOutButton);
+			}
+			signingOut = false;
 		}
 	}
 	import ShuffleCard from '#lib/shuffle/ShuffleCard.svelte';
@@ -220,7 +237,13 @@
 							>Server settings <span class="chevron" aria-hidden="true">›</span></a
 						>
 					{/if}
-					<button type="button" class="ghost" onclick={() => void signOut()}>Sign out</button>
+					<button
+						type="button"
+						class="ghost"
+						bind:this={signOutButton}
+						aria-busy={signingOut}
+						onclick={() => void signOut()}>{signingOut ? 'Signing out…' : 'Sign out'}</button
+					>
 				</div>
 			</div>
 			<PasswordCard />

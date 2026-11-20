@@ -206,7 +206,9 @@
 		<header class="intro">
 			<div class="intro-words">
 				<ToolTabs current="organize" phone={phone.current} />
-				<h1>Organize<span class="dot">.</span></h1>
+				<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>
+					Organize<span class="dot">.</span>
+				</h1>
 				<p class="counts mono" data-testid="counts">
 					{counts === null ? ' ' : countsLine(counts, phone.current)}
 				</p>

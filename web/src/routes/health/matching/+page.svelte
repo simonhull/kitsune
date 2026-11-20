@@ -6,15 +6,17 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { morph } from '#lib/morph/registry.ts';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { library } from '#lib/library/library.svelte.ts';
-	import { matchQueue, setMatchState } from '#lib/matching/api.ts';
+	import { knownQueue, matchQueue, setMatchState } from '#lib/matching/api.ts';
 	import { queuePlace, type Asked } from '#lib/matching/queue.svelte.ts';
 	import { matchSheet } from '#lib/matching/sheet.svelte.ts';
 	import type { MatchCandidate, MatchQueue, MatchState, QueuedAlbum } from '#lib/matching/types.ts';
 	import { chipOf, factsLine, labelOf } from '#lib/matching/words.ts';
 
-	let queue = $state.raw<MatchQueue | null>(null);
+	// As last read (Health's card read it), so the number has its headline to land in at once.
+	let queue = $state.raw<MatchQueue | null>(knownQueue());
 	let failed = $state(false);
 	let tab = $state<MatchState>('todo');
 
@@ -142,8 +144,11 @@
 		<header>
 			<div class="words">
 				<a class="crumb" href={resolve('/health')}>HEALTH › NO MUSICBRAINZ IDS</a>
-				<h1>
-					{#if queue === null}Albums to match{:else}{counts.todo}
+				<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>
+					{#if queue === null}Albums to match{:else}<span
+							class="said"
+							use:morph={{ id: 'count:matching', slot: 'hero', kind: 'title' }}>{counts.todo}</span
+						>
 						{counts.todo === 1 ? 'album' : 'albums'} to match{/if}
 				</h1>
 				<p class="lede">
@@ -540,6 +545,11 @@
 
 	.state.done {
 		color: var(--fox-text);
+	}
+
+	/* What travels to and from Health's card is a box of its own, so it can be measured as one. */
+	.said {
+		display: inline-block;
 	}
 
 	.dot {

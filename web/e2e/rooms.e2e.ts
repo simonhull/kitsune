@@ -1,6 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, fixtures, landed, test } from './fixture';
-import { expectInFront, seen, slowClock, slowMotion, watch } from './motion';
+import { expectBorn as bornAt, expectInFront, seen, slowClock, slowMotion, watch } from './motion';
 
 /**
  * The rooms, from the nav (plan 071's second milestone): every pair of the nav's eight rooms unfolds
@@ -26,6 +26,10 @@ const rooms = {
 } as const;
 
 type Room = keyof typeof rooms;
+
+/** Presses `press` and holds the room's headline to its birth there: see motion.ts. */
+const expectBorn = (page: Page, press: Locator, to: Room): Promise<void> =>
+	bornAt(page, press, rooms[to]);
 
 /** A room's place in the nav: its item, the fox for You, the field for Search. */
 const place = (page: Page, room: Room): Locator =>
@@ -98,71 +102,6 @@ async function expectPill(page: Page, room: Room): Promise<void> {
 			}, room)
 		)
 		.toBeLessThanOrEqual(1);
-}
-
-interface Born {
-	/** The headline's middle as first caught in flight, its scale then, and the press's middle. */
-	caught: { x: number; y: number };
-	scale: number;
-	from: { x: number; y: number };
-}
-
-/**
- * Presses `press` slowed down and catches the room's headline early in its birth: small, and on the
- * one straight line from the place pressed to where it comes to rest, as a scale around one fixed
- * point draws it. Lands, then measures the rest and holds the catch to that line.
- */
-async function expectBorn(page: Page, press: Locator, to: Room): Promise<void> {
-	await slowMotion(page, 20);
-	const from = await press.evaluate((element) => {
-		const box = element.getBoundingClientRect();
-		return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-	});
-	await press.click();
-	const handle = await page.waitForFunction(() => {
-		const headline = [
-			...document.querySelectorAll<HTMLElement>('.shell > main [data-morph-headline]')
-		].find((unit) => /scale\(/u.test(unit.style.transform));
-		const scale = Number(/scale\(([\d.]+)\)/u.exec(headline?.style.transform ?? '')?.[1] ?? 1);
-		if (headline === undefined || scale >= 0.6) {
-			return null;
-		}
-		const words = document.createRange();
-		words.selectNodeContents(headline);
-		const box = words.getBoundingClientRect();
-		headline.dataset['caught'] = '';
-		return { x: box.left + box.width / 2, y: box.top + box.height / 2, scale };
-	});
-	const { x, y, scale } = (await handle.jsonValue()) as { x: number; y: number; scale: number };
-	const born: Born = { caught: { x, y }, scale, from };
-	await slowMotion(page, 1);
-	await at(page, to);
-	await landed(page);
-	const rest = await page.evaluate(() => {
-		const headline = document.querySelector<HTMLElement>('.shell > main [data-caught]');
-		if (headline === null) {
-			return null;
-		}
-		delete headline.dataset['caught'];
-		const words = document.createRange();
-		words.selectNodeContents(headline);
-		const box = words.getBoundingClientRect();
-		return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-	});
-	expect(rest, 'the headline born is the one that stays').not.toBeNull();
-	if (rest === null) {
-		return;
-	}
-	// Small at the start, and somewhere between the press and its rest, on the line between them.
-	expect(born.scale).toBeLessThan(0.6);
-	const along = { x: rest.x - born.from.x, y: rest.y - born.from.y };
-	const length = Math.hypot(along.x, along.y);
-	const off = { x: born.caught.x - born.from.x, y: born.caught.y - born.from.y };
-	const share = (off.x * along.x + off.y * along.y) / (length * length);
-	const away = Math.abs(off.x * along.y - off.y * along.x) / length;
-	expect(share, 'it has come from the press, and not yet arrived').toBeGreaterThanOrEqual(-0.02);
-	expect(share).toBeLessThan(1);
-	expect(away, 'it travels the one line from the press to its rest').toBeLessThan(6);
 }
 
 /**

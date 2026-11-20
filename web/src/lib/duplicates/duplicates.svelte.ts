@@ -8,6 +8,7 @@ import { SvelteSet } from 'svelte/reactivity';
 import { library } from '#lib/library/library.svelte.ts';
 import {
 	DuplicatesError,
+	type DuplicateDetail,
 	type DuplicateFilter,
 	type DuplicateList,
 	type MergeRequest,
@@ -16,6 +17,8 @@ import {
 
 /** How long the toast after a merge stays. */
 const toastMs = 8000;
+/** How many groups read lately are kept, for a group opened again. */
+const detailsKept = 16;
 
 class Duplicates {
 	filter = $state<DuplicateFilter>('all');
@@ -30,6 +33,49 @@ class Duplicates {
 	#toastTimer: ReturnType<typeof setTimeout> | undefined;
 	/** Which read is the latest: an older answer is let go. */
 	#reading = 0;
+	/**
+	 * Groups read lately, by key, and the read on its way for each. A group arrives already holding
+	 * what it said last, so its title is there to land on; the read after brings it up to date.
+	 */
+	readonly #details = new Map<string, DuplicateDetail>();
+	readonly #asking = new Map<string, Promise<DuplicateDetail>>();
+
+	/** What a group said when last read, or null. */
+	known(key: string): DuplicateDetail | null {
+		return this.#details.get(key) ?? null;
+	}
+
+	/** Reads a group, keeping what it says for the next time it opens. */
+	async detail(key: string): Promise<DuplicateDetail> {
+		const asking = this.#asking.get(key) ?? library.duplicates.detail(key);
+		this.#asking.set(key, asking);
+		try {
+			const read = await asking;
+			this.#details.delete(key);
+			this.#details.set(key, read);
+			for (const old of this.#details.keys()) {
+				if (this.#details.size <= detailsKept) {
+					break;
+				}
+				this.#details.delete(old);
+			}
+			return read;
+		} finally {
+			if (this.#asking.get(key) === asking) {
+				this.#asking.delete(key);
+			}
+		}
+	}
+
+	/**
+	 * A press is about a hundred milliseconds of warning: the group is asked for as the pointer goes
+	 * down, so the page it opens can hold it when it arrives. Nothing waits on this.
+	 */
+	prefetch(key: string): void {
+		if (!this.#details.has(key)) {
+			this.detail(key).catch(() => undefined);
+		}
+	}
 
 	/** Reads the list's first page under `filter`. */
 	async read(filter: DuplicateFilter = this.filter): Promise<void> {
@@ -86,6 +132,7 @@ class Duplicates {
 		words: (merged: Merged) => string
 	): Promise<Merged> {
 		this.hidden.add(key);
+		this.#details.delete(key);
 		try {
 			const merged = await library.duplicates.merge(key, request);
 			this.say(words(merged));
@@ -99,12 +146,14 @@ class Duplicates {
 
 	/** Says a group or pair is not duplicates, and reads the list again. */
 	async dismiss(key: string): Promise<void> {
+		this.#details.delete(key);
 		await library.duplicates.dismiss(key);
 		await this.read();
 	}
 
 	/** Brings a dismissed group or pair back, and reads the list again. */
 	async bringBack(key: string): Promise<void> {
+		this.#details.delete(key);
 		await library.duplicates.bringBack(key);
 		await this.read();
 	}

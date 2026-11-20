@@ -201,6 +201,11 @@ export type RouteName =
 	| 'health'
 	| 'library'
 	| 'server'
+	| 'trash'
+	| 'organize'
+	| 'duplicates'
+	| 'duplicate'
+	| 'matching'
 	| 'playlists'
 	| 'playlist'
 	| 'you';
@@ -230,6 +235,11 @@ export type ChoreographyName =
 	| 'login-to-home'
 	| 'login-to-album'
 	| 'login-to-now-playing'
+	| 'login-to-page'
+	| 'door-closes'
+	| 'door-closes-on-the-moment'
+	| 'album-door-from-press'
+	| 'duplicate-to-duplicate'
 	| 'deck-to-home'
 	| 'unfold'
 	| 'laid-again'
@@ -245,7 +255,16 @@ export type Grain = 'opening' | 'gathering' | 'crossing';
 
 /** What can travel between two pages: an album's parts, an artist's name, a playlist's mosaic… */
 export type Lead =
-	'cover' | 'title' | 'artist' | 'surface' | 'play' | 'name' | 'mosaic' | 'listname' | 'field';
+	| 'cover'
+	| 'title'
+	| 'artist'
+	| 'surface'
+	| 'play'
+	| 'name'
+	| 'mosaic'
+	| 'listname'
+	| 'field'
+	| 'strip';
 
 /** A lead and whose it is: the page's at the start of the journey, or at its end. */
 export type LeadOf = `${Lead}:${'from' | 'to'}`;
@@ -256,6 +275,11 @@ interface SharedTravel {
 	 * both show (the playing album's cover in view) and, into Search, the nav's field.
 	 */
 	subject: 'pages' | 'playing' | 'fox' | 'rooms';
+	/**
+	 * For `fox`, what leaves in the fox's place when the page shows none: the Play button on Now
+	 * playing, the last orange circle on screen, which the fox is laid over at its true size.
+	 */
+	standIn?: string;
 	/** For `pages`, what travels. */
 	leads?: readonly LeadOf[];
 	sourceSlots: readonly MorphSlot[];
@@ -316,6 +340,16 @@ export interface Choreography {
 	island: Part | null;
 	/** How the island first appears, on the one journey that starts without it. */
 	islandForms?: Part;
+	/**
+	 * The frame, the nav's glass and the island, when it goes for good (to the door): a picture of it
+	 * dissolves where it stands, while the real one is gone at once.
+	 */
+	frame?: Part;
+	/**
+	 * Born at the press though no room is crossed: the parts marked `born` start that small at the
+	 * link pressed. Rooms always are.
+	 */
+	fromPress?: true;
 }
 
 const bloomShape: Bloom = { rest: 0.12, full: 2.6, peak: 0.9 };
@@ -844,7 +878,11 @@ const nowPlayingToArtist: Choreography = {
 	headline: undefined
 };
 
-const throughTheDoor = { subject: 'fox', sourceSlots: ['door'], targetSlots: ['nav'] } as const;
+const throughTheDoor: SharedTravel = {
+	subject: 'fox',
+	sourceSlots: ['door'],
+	targetSlots: ['nav']
+};
 
 /** One beat behind the page: the island closes the frame the fox has opened. */
 const islandForms = rise(32, 220);
@@ -905,7 +943,100 @@ const loginToNowPlaying: Choreography = {
 	islandForms
 };
 
-/** The rooms the nav goes between: every pair of them is a crossing that unfolds from the press. */
+/**
+ * Login to any other page `next` names (a session that ended on the Server, say): M3's Login to
+ * Home, generalised. The fox takes its seat as the glass forms, the form falls back, and the page
+ * rises in front, its intro first and everything else a beat behind, as Home's cards do.
+ */
+const loginToPage: Choreography = {
+	...loginToHome,
+	name: 'login-to-page',
+	arriving: {
+		intro: rise(20, 160),
+		words: rise(20, 160),
+		art: rise(48, 160, slow),
+		panel: rise(48, 160, slow),
+		card: rise(48, 160, slow)
+	},
+	otherwise: rise(48, 160, slow)
+};
+
+/**
+ * The door closes, from every page with the nav (Sign out, or a session ending): the fox leaves its
+ * seat for the door at its true size, while the frame, the nav's glass and the island, dissolves where
+ * it stands and what the page says goes quickly, so the door's words never sit on it. The door gathers
+ * in front around where the fox lands. Nothing falls back and nothing is unformed: it is not Login to
+ * Home played backward, only the fox's path between its two seats is shared.
+ */
+const doorCloses: Choreography = {
+	name: 'door-closes',
+	grain: 'gathering',
+	motion: base,
+	travel: { subject: 'fox', sourceSlots: ['nav'], targetSlots: ['door'] },
+	leaving: giveWay(quick),
+	arriving: {},
+	otherwise: gather(0.06, 90),
+	frame: giveWay(base),
+	stages: {},
+	// A stage is the frame too: an album's light dissolves with the glass.
+	held: { album: giveWay(base), poster: giveWay(base) },
+	bloom: null,
+	island: null
+};
+
+/**
+ * The door closes on the moment (a session ending on Now playing): there is no nav to leave, so the
+ * Play button, the last orange circle on screen and the thing the session was doing, becomes the fox:
+ * the fox is laid over it at its true size and goes to the door as the moment's stage dissolves.
+ */
+const doorClosesOnTheMoment: Choreography = {
+	...doorCloses,
+	name: 'door-closes-on-the-moment',
+	travel: {
+		subject: 'fox',
+		targetSlots: ['door'],
+		sourceSlots: [],
+		standIn: 'control:pause'
+	}
+};
+
+/**
+ * Matching to an album, by its strip's Open the album: M1's album's door, but no cover is on screen
+ * to lead, so the hero is born at the link pressed and grows into place as the album opens around it.
+ */
+const albumDoorFromPress: Choreography = {
+	...albumDoor,
+	name: 'album-door-from-press',
+	arriving: {
+		...albumDoor.arriving,
+		art: { from: { opacity: 0 }, to: {}, delay: 0, motion: slow, born: true }
+	},
+	fromPress: true
+};
+
+/**
+ * A duplicate group to its album pair, or back: two records of one kind, re-pressed in place as
+ * Album to Album is. Nothing travels; the new head and copies come up in front where the old stood.
+ */
+const duplicateToDuplicate: Choreography = {
+	name: 'duplicate-to-duplicate',
+	grain: 'crossing',
+	motion: base,
+	travel: { subject: 'pages', leads: [], sourceSlots: [], targetSlots: [] },
+	leaving: giveWay(),
+	arriving: {},
+	headline: { arriving: rise(10, 90, quick), leaving: giveWay() },
+	otherwise: rise(24, 0),
+	stages: {},
+	held: {},
+	bloom: null,
+	island: null
+};
+
+/**
+ * The rooms the nav goes between, and the Server's, which are rooms by the grain: every pair of them
+ * is a crossing that unfolds from the press, an item in the nav or a row, a crumb, a tab in the page.
+ */
 export const rooms: ReadonlySet<RouteName> = new Set([
 	'home',
 	'library',
@@ -914,8 +1045,19 @@ export const rooms: ReadonlySet<RouteName> = new Set([
 	'playlists',
 	'search',
 	'you',
-	'health'
+	'health',
+	'server',
+	'trash',
+	'organize',
+	'duplicates'
 ]);
+
+/**
+ * The Server's records: a duplicate group (or album pair) and Matching's queue. A room arriving from
+ * one, or one arriving from a room, unfolds from the press as well; where both pages say one thing (a
+ * group's title, Matching's number) it travels, and the page gathers around where it lands.
+ */
+export const serverRecords: ReadonlySet<RouteName> = new Set(['duplicate', 'matching']);
 
 /**
  * Unfold from the pill, between two of the nav's rooms. The room comes out of the item you pressed:
@@ -932,8 +1074,10 @@ export const unfold: Choreography = {
 	motion: base,
 	travel: {
 		subject: 'rooms',
-		sourceSlots: ['nav', 'card', 'thumb'],
-		targetSlots: ['hero', 'card', 'thumb']
+		// A group's title leaves its row for its headline and comes back to it; Matching's number its
+		// card for its headline; the tools' strip is the page's head on both.
+		sourceSlots: ['nav', 'card', 'thumb', 'row', 'hero'],
+		targetSlots: ['hero', 'card', 'thumb', 'row']
 	},
 	leaving: giveWay(quick),
 	arriving: {},
@@ -1055,20 +1199,38 @@ export function choreographyFor(
 	if (from === 'album' && to === 'home' && continues) {
 		return albumIntoContinue;
 	}
-	if (from !== to && rooms.has(from) && rooms.has(to)) {
+	if (to === 'login' && from !== 'login') {
+		return from === 'now-playing' ? doorClosesOnTheMoment : doorCloses;
+	}
+	if (from === 'duplicate' && to === 'duplicate') {
+		return duplicateToDuplicate;
+	}
+	const roomish = (route: RouteName): boolean => rooms.has(route) || serverRecords.has(route);
+	if (from !== to && roomish(from) && roomish(to)) {
 		return unfold;
+	}
+	// Organize, from its note in the nav, its toast or an album's menu, wherever those are pressed.
+	if (to === 'organize' && !['organize', 'now-playing', 'login'].includes(from)) {
+		return unfold;
+	}
+	if (from === 'matching' && to === 'album') {
+		return albumDoorFromPress;
 	}
 	const known = journeys[`${from}>${to}`];
 	if (known !== undefined) {
 		return known;
 	}
-	// The moment: every page the island shows on opens into it, and every way out of it (but to the
-	// door, whose journey is the fifth milestone's) goes back into the hand.
+	// The moment: every page the island shows on opens into it, and every way out of it goes back
+	// into the hand.
 	if (to === 'now-playing' && from !== 'now-playing') {
 		return intoNowPlaying;
 	}
-	if (from === 'now-playing' && to !== 'login') {
+	if (from === 'now-playing') {
 		return backIntoTheHand;
+	}
+	// Through the door again, to wherever the session ended.
+	if (from === 'login' && to !== 'login') {
+		return loginToPage;
 	}
 	return blend;
 }

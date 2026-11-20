@@ -247,6 +247,11 @@ const level: Record<RouteName, number> = {
 	you: 1,
 	health: 1,
 	server: 1,
+	trash: 1,
+	organize: 1,
+	duplicates: 1,
+	matching: 2,
+	duplicate: 2,
 	artist: 2,
 	playlist: 2,
 	album: 3,
@@ -462,14 +467,10 @@ describe('choreographyFor', () => {
 		expect(choreographyFor('home', 'home')).toBe(blend);
 	});
 
-	it('blends every pair a later milestone takes', () => {
+	it('blends the pairs no milestone has taken', () => {
 		for (const page of ['health', 'you', 'server'] as const) {
 			expect(choreographyFor('album', page)).toBe(blend);
 			expect(choreographyFor(page, 'album')).toBe(blend);
-		}
-		for (const room of rooms) {
-			expect(choreographyFor(room, 'server'), `${room} → server`).toBe(blend);
-			expect(choreographyFor('server', room), `server → ${room}`).toBe(blend);
 		}
 		expect(choreographyFor('album', 'search')).toBe(blend);
 		expect(choreographyFor('artist', 'artist')).toBe(blend);
@@ -573,8 +574,10 @@ describe('the moment', () => {
 		expect(door === undefined ? 0 : settles(door)).toBeCloseTo(1259, -1);
 	});
 
-	it('goes to the door by the blend still: that journey is the fifth milestone’s', () => {
-		expect(choreographyFor('now-playing', 'login')).toBe(blend);
+	it('goes to the door with the Play button becoming the fox', () => {
+		const { name, travel } = choreographyFor('now-playing', 'login');
+		expect(name).toBe('door-closes-on-the-moment');
+		expect(travel).toMatchObject({ subject: 'fox', standIn: 'control:pause', sourceSlots: [] });
 	});
 });
 
@@ -584,9 +587,9 @@ describe('the rooms, from the nav', () => {
 	);
 	const { headline, leaving, otherwise, arriving } = unfold;
 
-	it('are the nav’s eight, every one of their 56 pairs a crossing that unfolds', () => {
-		expect(rooms.size).toBe(8);
-		expect(roomPairs).toHaveLength(56);
+	it('are the nav’s eight and the Server’s four, every pair of them a crossing that unfolds', () => {
+		expect(rooms.size).toBe(12);
+		expect(roomPairs).toHaveLength(132);
 		for (const [from, to] of roomPairs) {
 			const journey = choreographyFor(from, to);
 			expect(journey, `${from} → ${to}`).toBe(unfold);
@@ -688,10 +691,58 @@ describe('the door', () => {
 		expect(arriving.intro?.delay).toBe(arriving.card?.delay);
 	});
 
-	it('blends back to the door from anywhere', () => {
-		for (const from of away) {
-			expect(choreographyFor(from, 'login')).toBe(blend);
+	it('closes from anywhere: the fox leaves the nav for the door, the frame dissolves where it stands', () => {
+		for (const from of [
+			...away,
+			...rooms,
+			'artist',
+			'playlist',
+			'duplicate',
+			'matching'
+		] as const) {
+			const door = choreographyFor(from, 'login');
+			expect(door.name, `${from} → login`).toMatch(/^door-closes/u);
+			expect(door.travel?.subject).toBe('fox');
+			expect(door.travel?.targetSlots).toEqual(['door']);
+			// The frame on --morph, what the page says on --morph-fast, nothing travelling away.
+			expect(door.frame?.to).toEqual({ opacity: 0 });
+			expect(door.frame?.motion.token).toBe('--morph');
+			expect(door.leaving.to).toEqual({ opacity: 0 });
+			expect(door.leaving.motion.token).toBe('--morph-fast');
+			// The door gathers in front around the fox, a beat after it leaves.
+			expect(door.otherwise?.delay).toBe(90);
+			expect(door.otherwise?.from.scale).toBeCloseTo(0.94);
+			expect(door.otherwise?.gather).toBeDefined();
 		}
+		expect(choreographyFor('home', 'login').travel?.sourceSlots).toEqual(['nav']);
+	});
+
+	it('is not Login → Home played backward: nothing falls back, and the fox is the only path shared', () => {
+		const out = choreographyFor('you', 'login');
+		const into = choreographyFor('login', 'home');
+		expect(out.leaving.to.scale).toBeUndefined();
+		expect(into.leaving.to.scale).toBeLessThan(1);
+		expect(out.islandForms).toBeUndefined();
+	});
+
+	it('opens again onto every page `next` names, by Login → Home’s parts', () => {
+		for (const to of [
+			'server',
+			'trash',
+			'organize',
+			'duplicates',
+			'duplicate',
+			'matching',
+			'you'
+		] as const) {
+			const through = choreographyFor('login', to);
+			expect(through.name, `login → ${to}`).toBe('login-to-page');
+			expect(through.travel).toEqual(choreographyFor('login', 'home').travel);
+			expect(through.islandForms).toEqual(choreographyFor('login', 'home').islandForms);
+			expect(through.motion.token).toBe('--morph-slow');
+			expect(through.otherwise?.delay).toBe(160);
+		}
+		expect(choreographyFor('login', 'login')).toBe(blend);
 	});
 });
 
@@ -731,5 +782,68 @@ describe('the deal', () => {
 		const { fade, motion } = drop(5);
 		const length = (spec: typeof motion): number => resolveMotion(spec, () => 180).duration;
 		expect(length(fade ?? motion)).toBeLessThan(length(motion) / 2);
+	});
+});
+
+describe('the Server pages and tools', () => {
+	const tools = ['server', 'trash', 'organize', 'duplicates'] as const;
+	const records = ['duplicate', 'matching'] as const;
+
+	it('are rooms: each unfolds from the press into every room, and every room into each', () => {
+		for (const tool of tools) {
+			expect(rooms.has(tool)).toBe(true);
+			for (const room of rooms) {
+				if (room !== tool) {
+					expect(choreographyFor(tool, room), `${tool} → ${room}`).toBe(unfold);
+					expect(choreographyFor(room, tool), `${room} → ${tool}`).toBe(unfold);
+				}
+			}
+		}
+	});
+
+	it('opens and leaves their records by the same unfold, where a lead may travel', () => {
+		for (const record of records) {
+			expect(rooms.has(record)).toBe(false);
+			for (const room of rooms) {
+				expect(choreographyFor(room, record), `${room} → ${record}`).toBe(unfold);
+				expect(choreographyFor(record, room), `${record} → ${room}`).toBe(unfold);
+			}
+		}
+		// The title leaves its row and the number its card for a headline, and come back to them.
+		expect(unfold.travel?.sourceSlots).toEqual(expect.arrayContaining(['row', 'hero', 'card']));
+		expect(unfold.travel?.targetSlots).toEqual(expect.arrayContaining(['row', 'hero', 'card']));
+	});
+
+	it('re-presses a group into its album pair in place, as Album → Album', () => {
+		const pair = choreographyFor('duplicate', 'duplicate');
+		expect(pair.name).toBe('duplicate-to-duplicate');
+		expect(pair.grain).toBe('crossing');
+		expect(pair.travel?.leads).toEqual([]);
+		expect(pair.leaving.to).toEqual({ opacity: 0 });
+		expect(pair.headline?.arriving.from.y).toBe(10);
+		expect(pair.headline?.arriving.delay).toBe(90);
+	});
+
+	it('unfolds Organize from whatever was pressed for it, anywhere but the moment and the door', () => {
+		for (const from of ['album', 'artist', 'playlist', 'home'] as const) {
+			expect(choreographyFor(from, 'organize'), `${from} → organize`).toBe(unfold);
+		}
+		expect(choreographyFor('now-playing', 'organize').name).toBe('back-into-the-hand');
+		expect(choreographyFor('login', 'organize').name).toBe('login-to-page');
+	});
+
+	it('opens an album from Matching by its door, the hero born at the link pressed', () => {
+		const door = choreographyFor('matching', 'album');
+		expect(door.name).toBe('album-door-from-press');
+		expect(door.fromPress).toBe(true);
+		expect(door.arriving.art?.born).toBe(true);
+		expect(door.stages).toEqual(choreographyFor('albums', 'album').stages);
+	});
+
+	it('goes into the moment and back into the hand as every other page does', () => {
+		for (const page of [...tools, ...records]) {
+			expect(choreographyFor(page, 'now-playing').name).toBe('into-now-playing');
+			expect(choreographyFor('now-playing', page).name).toBe('back-into-the-hand');
+		}
 	});
 });

@@ -2001,21 +2001,25 @@ function fromQuery(): Library {
 		// A fake library has no business vouching for the real one on this origin.
 		const readyMemory = { seen: () => false, mark: () => undefined };
 		return new Library(
-			createFixtureSource({
-				latencyMs,
-				health,
-				role,
-				editFault,
-				lastfm,
-				setup,
-				playback,
-				history,
-				tagWrites,
-				trash,
-				gain,
-				...(organizeAlbum > 0 ? { organizeAlbumMs: organizeAlbum } : {}),
-				...(gainAlbum > 0 ? { gainAlbumMs: gainAlbum } : {})
-			}),
+			(expired) => {
+				// A session ending with no server to end it: a test says when, as a 401 would.
+				addEventListener('kitsune:session-ends', expired);
+				return createFixtureSource({
+					latencyMs,
+					health,
+					role,
+					editFault,
+					lastfm,
+					setup,
+					playback,
+					history,
+					tagWrites,
+					trash,
+					gain,
+					...(organizeAlbum > 0 ? { organizeAlbumMs: organizeAlbum } : {}),
+					...(gainAlbum > 0 ? { gainAlbumMs: gainAlbum } : {})
+				});
+			},
 			{
 				readyMemory,
 				simulated: true,

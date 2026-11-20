@@ -74,10 +74,12 @@
 	<p class="gone">Trash is for administrators. <a href={resolve('/you')}>Back to You</a></p>
 {:else}
 	<div class="page-frame trash" class:phone={phone.current}>
-		<div class="intro" data-morph-part="intro" data-morph-key="intro">
+		<div class="intro">
 			<a class="crumb mono" href={resolve('/server')}>SERVER › TRASH</a>
 			<div class="head">
-				<h1>Trash<span class="dot">.</span></h1>
+				<h1 data-morph-part="intro" data-morph-key="headline" data-morph-headline>
+					Trash<span class="dot">.</span>
+				</h1>
 				{#if trashBin.can && trash !== null && trash.count > 0 && !phone.current}
 					{@render emptyControl()}
 				{/if}
