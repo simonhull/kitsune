@@ -3,7 +3,9 @@ package artwork
 import (
 	"bytes"
 	"fmt"
-	"image/jpeg"
+	"image"
+	_ "image/jpeg" // Registers the JPEG decoder for image.Decode.
+	_ "image/png"  // ...and the PNG one.
 	"math"
 )
 
@@ -23,6 +25,8 @@ const (
 	minContrast    = 4.5 // WCAG AA for text on the ground.
 	lumStep        = 0.005
 	fallbackAccent = "#f28c28" // The fox.
+	opaque16       = 0xFFFF    // A 16-bit channel at full alpha.
+	halfOpaque     = 0x8000    // Pixels less opaque than this have no say in the colors.
 )
 
 // Color-space constants (sRGB, WCAG 2, HSL).
@@ -80,11 +84,12 @@ type palette struct{ accent, ground string }
 // hsl is a color as hue in degrees, saturation and lightness in 0..1.
 type hsl struct{ h, s, l float64 }
 
-// colorsOf returns the accent and ground of an encoded JPEG. The colors come
-// from what is stored, never from pre-encode pixels, so the first Put and
-// every later one agree.
+// colorsOf returns the accent and ground of an encoded rendition, JPEG or PNG.
+// The colors come from what is stored, never from pre-encode pixels, so the
+// first Put and every later one agree. Pixels less than half opaque don't
+// count: a logo's colors are its ink's, not the transparency around it.
 func colorsOf(encoded []byte) (palette, error) {
-	img, err := jpeg.Decode(bytes.NewReader(encoded))
+	img, _, err := image.Decode(bytes.NewReader(encoded))
 	if err != nil {
 		return palette{}, fmt.Errorf("decode: %w", err)
 	}
@@ -94,8 +99,12 @@ func colorsOf(encoded []byte) (palette, error) {
 	total := 0
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			r, g, b, _ := img.At(x, y).RGBA()
-			r8, g8, b8 := int(r>>channelBits), int(g>>channelBits), int(b>>channelBits)
+			r, g, b, a := img.At(x, y).RGBA()
+			if a < halfOpaque {
+				continue
+			}
+			// Unpremultiplied, then down to a byte: what the pixel looks like.
+			r8, g8, b8 := int(r*opaque16/a>>channelBits), int(g*opaque16/a>>channelBits), int(b*opaque16/a>>channelBits)
 			k := (r8>>bucketShift)<<(bucketBits+bucketBits) | (g8>>bucketShift)<<bucketBits | b8>>bucketShift
 			buckets[k].add(r8, g8, b8)
 			//nolint:gosec // Each channel is a byte: it was shifted down from 16 bits.

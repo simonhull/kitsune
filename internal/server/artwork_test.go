@@ -61,7 +61,7 @@ func newArtServer(t *testing.T) *artServer {
 // put stores a size x size cover and returns its hash in URL form.
 func (as *artServer) put(t *testing.T, size int) string {
 	t.Helper()
-	img, err := as.cache.Put(t.Context(), coverPNG(t, size))
+	img, err := as.cache.Put(t.Context(), artwork.Cover, coverPNG(t, size))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestArtworkHashIsHexOfSHA256(t *testing.T) {
 	t.Parallel()
 	as := newArtServer(t)
 	data := coverPNG(t, 200)
-	if _, err := as.cache.Put(t.Context(), data); err != nil {
+	if _, err := as.cache.Put(t.Context(), artwork.Cover, data); err != nil {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(data)
@@ -299,7 +299,7 @@ func TestArtworkHashIsHexOfSHA256(t *testing.T) {
 func BenchmarkServeArtwork(b *testing.B) {
 	cache := artwork.NewCache(b.TempDir())
 	ts := newTestServer(b, testServerOptions{Artwork: cache})
-	img, err := cache.Put(b.Context(), coverPNG(b, benchCoverSide))
+	img, err := cache.Put(b.Context(), artwork.Cover, coverPNG(b, benchCoverSide))
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -178,7 +178,7 @@ func (s *search) embedded(ctx context.Context) (*store.ArtworkWrite, bool) {
 // candidate is tried. The bool is true when the search must end: ctx ended, or
 // the cache failed in a way another image would not fix.
 func (s *search) put(ctx context.Context, data []byte, what string, src store.ArtworkSource) (*store.ArtworkWrite, bool) {
-	img, err := s.cache.Put(ctx, data)
+	img, err := s.cache.Put(ctx, artwork.Cover, data)
 	switch {
 	case err == nil:
 		return &store.ArtworkWrite{
