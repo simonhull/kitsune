@@ -691,6 +691,11 @@
 			align-items: flex-start;
 		}
 
+		/* Out past the right edge: there is no room beside the poster for the whole of it. */
+		.sleeved .disc {
+			translate: calc(-50% + 150px) -50%;
+		}
+
 		.center {
 			gap: 18px;
 		}

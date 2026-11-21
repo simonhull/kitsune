@@ -475,7 +475,7 @@ export class Library {
 	 * line, Now playing's, a search hit) can be drawn with no request of its own. Never awaited.
 	 */
 	wantThumbs(): void {
-		if (this.#artistsAsked || this.artists.kind === 'ready' || this.user === null) {
+		if (this.#artistsAsked || this.artists.kind === 'ready') {
 			return;
 		}
 		this.#artistsAsked = true;

@@ -23,7 +23,7 @@
 	const found = $derived(results === null ? null : spotlight(results, search.answered));
 	// A hit names no thumb: the Artists list does, read once in the background.
 	$effect(() => {
-		if ((found?.artists.length ?? 0) > 0) {
+		if ((found?.artists.length ?? 0) > 0 || found?.top.kind === 'artist') {
 			untrack(() => {
 				library.wantThumbs();
 			});
