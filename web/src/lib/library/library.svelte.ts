@@ -41,6 +41,7 @@ import {
 	type AlbumTags,
 	type ArtistDetail,
 	type ListedArtist,
+	type Picture,
 	type ArtistLink,
 	type EditedTracks,
 	type IndexField,
@@ -414,6 +415,9 @@ export class Library {
 								heard(event);
 							}
 						},
+						artists: ({ ids }) => {
+							this.#heardArtists(ids);
+						},
 						settings: () => {
 							this.settingsHeard += 1;
 							void this.#readSettled();
@@ -427,6 +431,55 @@ export class Library {
 		this.#source.replayGain.changed?.((albums) => {
 			void this.#heardLibrary({ albums, all: false });
 		});
+		this.#source.artArrives?.((ids) => {
+			this.#heardArtists(ids);
+		});
+	}
+
+	/**
+	 * Artists whose images or bio changed: a page holding one reads it again, and the Artists list its
+	 * thumbs. What was on screen stays until the new reads land, and the pictures develop in place.
+	 */
+	#heardArtists(ids: readonly string[]): void {
+		for (const id of ids) {
+			if (this.#artists.get(id)?.kind === 'ready') {
+				void this.loadArtist(id);
+			}
+		}
+		if (this.artists.kind === 'ready') {
+			void this.loadArtists();
+		}
+	}
+
+	/** Whether the Artists list has been asked for, so a thumb anywhere asks once at most. */
+	#artistsAsked = false;
+
+	/**
+	 * An artist's thumb, as far as anything read says: its page's, else the Artists list's. Undefined
+	 * while nothing says; null when it has none, so it is drawn as its initial.
+	 */
+	artistThumb(id: string): Picture | null | undefined {
+		const detail = this.#artists.get(id);
+		if (detail?.kind === 'ready') {
+			return detail.value.images.thumb ?? null;
+		}
+		if (this.artists.kind !== 'ready') {
+			return undefined;
+		}
+		const listed = this.artists.value.find((artist) => artist.id === id);
+		return listed === undefined ? undefined : (listed.thumb ?? null);
+	}
+
+	/**
+	 * Asks for the Artists list once, in the background, so a thumb beside a name (an album's artist
+	 * line, Now playing's, a search hit) can be drawn with no request of its own. Never awaited.
+	 */
+	wantThumbs(): void {
+		if (this.#artistsAsked || this.artists.kind === 'ready' || this.user === null) {
+			return;
+		}
+		this.#artistsAsked = true;
+		void this.loadArtists();
 	}
 
 	/** Who hears an organize run's progress: the Organize page and the nav's note. */
@@ -1969,6 +2022,7 @@ export class Library {
 		this.#indexedAfter = undefined;
 		this.#indexEdited = false;
 		this.#artists.clear();
+		this.#artistsAsked = false;
 		this.#artistNames.clear();
 		this.#artistSongs.clear();
 		this.marks.reset();
@@ -1996,6 +2050,7 @@ function fromQuery(): Library {
 	const organizeAlbum = Number(query.get('organizeAlbum') ?? 0);
 	const gain = gainFixture(query.get('gain'));
 	const gainAlbum = Number(query.get('gainAlbum') ?? 0);
+	const art = query.get('art') === 'late' ? 'late' : undefined;
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
@@ -2016,6 +2071,7 @@ function fromQuery(): Library {
 					tagWrites,
 					trash,
 					gain,
+					art,
 					...(organizeAlbum > 0 ? { organizeAlbumMs: organizeAlbum } : {}),
 					...(gainAlbum > 0 ? { gainAlbumMs: gainAlbum } : {})
 				});
