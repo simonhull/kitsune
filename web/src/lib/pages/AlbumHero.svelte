@@ -43,12 +43,12 @@
 	/** Comes out once, when the cover has landed: a picture of the page never replays it. */
 	let sleeve = $state(true);
 
-	/** The one owner's thumb beside their name, from the Artists list, read once in the background. */
+	/** The one owner's thumb beside their name, from their page, read when the browser is idle. */
 	const owner = $derived(owners.length === 1 ? owners[0] : undefined);
 	$effect(() => {
 		if (owner !== undefined) {
 			untrack(() => {
-				library.wantThumbs();
+				library.wantThumbs([owner.id]);
 			});
 		}
 	});

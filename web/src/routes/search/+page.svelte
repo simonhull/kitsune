@@ -21,11 +21,15 @@
 	const query = $derived(queryIn(page.url));
 	const results = $derived(resultsOf(search.state));
 	const found = $derived(results === null ? null : spotlight(results, search.answered));
-	// A hit names no thumb: the Artists list does, read once in the background.
+	// A hit names no thumb: each artist's page does, read when the browser is idle.
 	$effect(() => {
-		if ((found?.artists.length ?? 0) > 0 || found?.top.kind === 'artist') {
+		const ids = [
+			...(found?.top.kind === 'artist' ? [found.top.artist.id] : []),
+			...(found?.artists.map((artist) => artist.id) ?? [])
+		];
+		if (ids.length > 0) {
 			untrack(() => {
-				library.wantThumbs();
+				library.wantThumbs(ids);
 			});
 		}
 	});

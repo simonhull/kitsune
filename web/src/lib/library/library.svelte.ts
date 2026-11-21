@@ -451,8 +451,8 @@ export class Library {
 		}
 	}
 
-	/** Whether the Artists list has been asked for, so a thumb anywhere asks once at most. */
-	#artistsAsked = false;
+	/** Artists whose page has been asked for to draw a thumb, so each is asked once at most. */
+	readonly #thumbsAsked = new SvelteSet<string>();
 
 	/**
 	 * An artist's thumb, as far as anything read says: its page's, else the Artists list's. Undefined
@@ -471,15 +471,32 @@ export class Library {
 	}
 
 	/**
-	 * Asks for the Artists list once, in the background, so a thumb beside a name (an album's artist
-	 * line, Now playing's, a search hit) can be drawn with no request of its own. Never awaited.
+	 * Reads these artists, once each and when the browser is idle, so a thumb beside a name (an album's
+	 * artist line, Now playing's, a search hit) can be drawn: one small request per artist, never the
+	 * whole list, and nothing a press waits for.
 	 */
-	wantThumbs(): void {
-		if (this.#artistsAsked || this.artists.kind === 'ready') {
+	wantThumbs(ids: readonly string[]): void {
+		const wanted = ids.filter(
+			(id) => !this.#thumbsAsked.has(id) && this.artistThumb(id) === undefined
+		);
+		if (wanted.length === 0) {
 			return;
 		}
-		this.#artistsAsked = true;
-		void this.loadArtists();
+		for (const id of wanted) {
+			this.#thumbsAsked.add(id);
+		}
+		const read = (): void => {
+			for (const id of wanted) {
+				if (this.#artists.get(id)?.kind !== 'ready') {
+					void this.loadArtist(id);
+				}
+			}
+		};
+		if (typeof requestIdleCallback === 'function') {
+			requestIdleCallback(read, { timeout: 1000 });
+		} else {
+			setTimeout(read, 0);
+		}
 	}
 
 	/** Who hears an organize run's progress: the Organize page and the nav's note. */
@@ -2022,7 +2039,7 @@ export class Library {
 		this.#indexedAfter = undefined;
 		this.#indexEdited = false;
 		this.#artists.clear();
-		this.#artistsAsked = false;
+		this.#thumbsAsked.clear();
 		this.#artistNames.clear();
 		this.#artistSongs.clear();
 		this.marks.reset();
