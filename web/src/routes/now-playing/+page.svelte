@@ -1,5 +1,9 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { discArtFor } from '#lib/art/art.ts';
+	import ArtistThumb from '#lib/art/ArtistThumb.svelte';
+	import Picture from '#lib/art/Picture.svelte';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { emWidth } from '#lib/library/fit.ts';
 	import { balancedLines, credit, gain, gainMeasured } from '#lib/library/format.ts';
@@ -26,6 +30,23 @@
 	const longest = $derived(Math.max(...lines.map((line) => emWidth(line, 900, -0.075)), 1));
 	/** Who the album is by, as a page: none for a compilation or Various Artists. */
 	const artistId = $derived(playing?.album.artists.at(0)?.id);
+	// Their backdrop and thumb, read in the background: nothing on the way to sound waits for them.
+	$effect(() => {
+		const id = artistId;
+		if (id !== undefined) {
+			untrack(() => {
+				if (library.artist(id).kind !== 'ready') {
+					void library.loadArtist(id);
+				}
+			});
+		}
+	});
+	/** The disc playing, out of its sleeve behind the poster, when the album has disc art. */
+	const disc = $derived(
+		playing === null ? undefined : discArtFor(playing.album, playing.track.discNo)
+	);
+	/** Comes out once, as it arrives: a picture of the page never replays it. */
+	let sleeve = $state(true);
 	const others = $derived(
 		playing === null ? undefined : credit(playing.track, playing.album.artist)
 	);
@@ -113,12 +134,24 @@
 			</div>
 
 			<div class="center">
-				<div class="stack">
+				<div class="stack" class:sleeved={disc !== undefined}>
 					<div class="poster" aria-hidden="true" style:--width={longest}>
 						{#each lines as line, index (index)}
 							<span data-morph-part={`line-${String(index + 1)}`}>{line}</span>
 						{/each}
 					</div>
+					{#if disc !== undefined}
+						{#key disc.image.hash}
+							<span
+								class="disc"
+								class:sleeve
+								aria-hidden="true"
+								onanimationend={() => {
+									sleeve = false;
+								}}><Picture image={disc.image} kind="disc" box={340} fit="contain" /></span
+							>
+						{/key}
+					{/if}
 					<a
 						class="art"
 						href={resolve('/album/[id]', { id: playing.album.id })}
@@ -139,7 +172,13 @@
 						{#if artistId !== undefined}
 							<!-- The artist's name: it takes the stage on the way to the artist's page. -->
 							<a class="artist-link" href={resolve('/artists/[id]', { id: artistId })}
-								><strong use:morph={{ id: `name:${artistId}`, slot: 'poster', kind: 'title' }}
+								><ArtistThumb
+									{artistId}
+									name={playing.album.artist}
+									thumb={library.artistThumb(artistId)}
+									size={22}
+									slot="poster"
+								/><strong use:morph={{ id: `name:${artistId}`, slot: 'poster', kind: 'title' }}
 									>{playing.album.artist}</strong
 								></a
 							>
@@ -237,10 +276,44 @@
 
 	/* The cover and the title behind it share a center, so they can't drift apart with height. */
 	.stack {
+		--art: min(calc(400px * var(--step)), 46dvh, 100%);
+		--middle: 50%;
+
 		position: relative;
 		display: flex;
 		justify-content: center;
 		width: 100%;
+	}
+
+	/*
+	 * The disc, out of its sleeve: behind the poster, 150 px off the cover's centre toward the open
+	 * side, still. It comes out once the poster has all but landed, sideways, an object's own gesture.
+	 */
+	.disc {
+		position: absolute;
+		left: var(--middle);
+		top: 50%;
+		width: calc(var(--art) * 0.85);
+		aspect-ratio: 1;
+		translate: calc(-50% + var(--art) * 0.375) -50%;
+		pointer-events: none;
+	}
+
+	.disc.sleeve {
+		animation: sleeve var(--morph) var(--curve-settle) 560ms both;
+	}
+
+	@keyframes sleeve {
+		from {
+			opacity: 0;
+			translate: -50% -50%;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.disc.sleeve {
+			animation: none;
+		}
 	}
 
 	.poster {
@@ -355,7 +428,7 @@
 	.art {
 		position: relative;
 		display: block;
-		width: min(calc(400px * var(--step)), 46dvh, 100%);
+		width: var(--art);
 		aspect-ratio: 1;
 		border-radius: var(--radius-28);
 		overflow: hidden;
@@ -395,9 +468,13 @@
 	}
 
 	.artist-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
 		color: inherit;
 		text-decoration: none;
 		text-underline-offset: 3px;
+		vertical-align: bottom;
 	}
 
 	.artist-link:hover {
@@ -553,8 +630,12 @@
 			grid-template-columns: minmax(0, 1fr) minmax(0, 1000px);
 		}
 
+		.stack {
+			--art: min(37dvh, 100%);
+		}
+
 		.art {
-			width: min(37dvh, 100%);
+			width: var(--art);
 		}
 
 		.poster {
@@ -568,8 +649,8 @@
 		}
 
 		/* Shuffling, the stage gives room, so the list starts on the first screen. */
-		.shuffling .art {
-			width: min(200px, 24dvh, 100%);
+		.shuffling .stack {
+			--art: min(200px, 24dvh, 100%);
 		}
 
 		.up-next-slot {
@@ -594,8 +675,20 @@
 			display: none;
 		}
 
+		.stack {
+			--art: min(280px, 33dvh, 100%);
+		}
+
 		.art {
-			width: min(280px, 33dvh, 100%);
+			width: var(--art);
+		}
+
+		/* With disc art, the poster is set left and the disc comes out past the right edge. */
+		.stack.sleeved {
+			--art: min(292px, 36dvh, 100%);
+			--middle: calc(var(--art) / 2);
+
+			align-items: flex-start;
 		}
 
 		.center {
@@ -625,8 +718,12 @@
 	}
 
 	@media (max-width: 720px) and (max-height: 700px) {
+		.stack {
+			--art: min(280px, 28dvh, 100%);
+		}
+
 		.art {
-			width: min(280px, 28dvh, 100%);
+			width: var(--art);
 		}
 
 		.center {
