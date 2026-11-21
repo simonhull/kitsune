@@ -8,6 +8,7 @@
 	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
 	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 	import { morph } from '#lib/morph/registry.ts';
+	import ArtistThumb from '#lib/art/ArtistThumb.svelte';
 
 	const load = $derived(library.artists);
 	const sort = $derived(sorts.artists.value);
@@ -67,12 +68,22 @@
 			{#each shown as artist (artist.id)}
 				<li data-morph-part="card" data-morph-key={`artist:${artist.id}`}>
 					<a href={resolve('/artists/[id]', { id: artist.id })}>
-						<span
-							class="name"
-							title={artist.name}
-							use:morph={{ id: `name:${artist.id}`, slot: 'row', kind: 'title' }}
-							>{artist.name}</span
-						>
+						<span class="who">
+							<ArtistThumb
+								artistId={artist.id}
+								name={artist.name}
+								thumb={artist.thumb ?? null}
+								size={40}
+								slot="row"
+								lazy
+							/>
+							<span
+								class="name"
+								title={artist.name}
+								use:morph={{ id: `name:${artist.id}`, slot: 'row', kind: 'title' }}
+								>{artist.name}</span
+							>
+						</span>
 						<span class="count">{artistFigure(artist, sort)}</span>
 					</a>
 				</li>
@@ -140,7 +151,7 @@
 	}
 
 	a {
-		min-height: var(--target);
+		min-height: calc(56px * var(--step));
 		padding: 0 12px;
 		margin: 0 -12px;
 		border-radius: var(--radius-16);
@@ -152,6 +163,13 @@
 
 	a:hover {
 		background: var(--hover);
+	}
+
+	.who {
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: calc(14px * var(--step));
 	}
 
 	.name {
