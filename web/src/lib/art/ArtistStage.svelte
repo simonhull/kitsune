@@ -110,6 +110,16 @@
 		}
 	}
 
+	@media (prefers-reduced-motion: reduce) {
+		.stage[data-morph-stage].arriving {
+			animation-duration: 120ms;
+		}
+
+		.stage {
+			transition: none;
+		}
+	}
+
 	/* Now playing's: the whole moment, under the cover's light. */
 	[data-place='poster'] {
 		position: fixed;
