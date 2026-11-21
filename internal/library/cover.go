@@ -27,7 +27,7 @@ const maxArtworkBytes = 32 << 20
 // Earlier names and extensions win.
 var (
 	coverNames = [...]string{"cover", "folder", "front", "album"} //nolint:gochecknoglobals // Fixed lookup tables; Go has no const arrays.
-	coverExts  = [...]string{".jpg", ".jpeg", ".png", ".webp"}    //nolint:gochecknoglobals // As above.
+	coverExts  = [...]string{extJPG, extJPEG, extPNG, extWebP}    //nolint:gochecknoglobals // As above.
 )
 
 // covers finds and stores one cover per album during a read: the one the first
@@ -178,7 +178,7 @@ func (s *search) embedded(ctx context.Context) (*store.ArtworkWrite, bool) {
 // candidate is tried. The bool is true when the search must end: ctx ended, or
 // the cache failed in a way another image would not fix.
 func (s *search) put(ctx context.Context, data []byte, what string, src store.ArtworkSource) (*store.ArtworkWrite, bool) {
-	img, err := s.cache.Put(ctx, data)
+	img, err := s.cache.Put(ctx, artwork.Cover, data)
 	switch {
 	case err == nil:
 		return &store.ArtworkWrite{
@@ -274,9 +274,14 @@ func coverFiles(root *os.Root, dir string) []string {
 // readRegular reads rel under root when it is a regular file within
 // [maxArtworkBytes], following symlinks that stay inside root. It returns nil
 // for anything else.
-func readRegular(root *os.Root, rel string) []byte {
+func readRegular(root *os.Root, rel string) []byte { return readLimited(root, rel, maxArtworkBytes) }
+
+// readLimited reads rel under root when it is a regular file within limit
+// bytes, following symlinks that stay inside root. It returns nil for anything
+// else.
+func readLimited(root *os.Root, rel string, limit int64) []byte {
 	st, err := root.Stat(rel)
-	if err != nil || !st.Mode().IsRegular() || st.Size() > maxArtworkBytes {
+	if err != nil || !st.Mode().IsRegular() || st.Size() > limit {
 		return nil
 	}
 	f, err := root.Open(rel)
@@ -284,8 +289,8 @@ func readRegular(root *os.Root, rel string) []byte {
 		return nil
 	}
 	defer func() { _ = f.Close() }() // Read-only.
-	data, err := io.ReadAll(io.LimitReader(f, maxArtworkBytes+1))
-	if err != nil || len(data) > maxArtworkBytes {
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil || int64(len(data)) > limit {
 		return nil
 	}
 	return data

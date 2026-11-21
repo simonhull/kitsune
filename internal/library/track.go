@@ -111,10 +111,11 @@ func isCompilation(t *audiometa.Tags) bool {
 // setAlbum builds the album row from the tags and the already mapped track.
 func setAlbum(tw *store.TrackWrite, t *audiometa.Tags) {
 	tw.Album = store.AlbumWrite{
-		Name:        strings.TrimSpace(t.Album),
-		MBID:        cmp.Or(single(t, scanKeys(FieldMusicBrainzAlbumID)), strings.TrimSpace(t.MusicBrainzAlbumID)),
-		Year:        tw.Year,
-		Compilation: tw.Compilation,
+		Name:             strings.TrimSpace(t.Album),
+		MBID:             cmp.Or(single(t, scanKeys(FieldMusicBrainzAlbumID)), strings.TrimSpace(t.MusicBrainzAlbumID)),
+		ReleaseGroupMBID: single(t, scanKeys(FieldMusicBrainzReleaseGroupID)),
+		Year:             tw.Year,
+		Compilation:      tw.Compilation,
 	}
 	tw.Album.SortName = cmp.Or(single(t, scanKeys(FieldSortAlbum)), tw.Album.Name)
 	tw.Album.GroupKey = groupKey(tw)

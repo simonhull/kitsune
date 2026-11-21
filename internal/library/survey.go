@@ -46,6 +46,7 @@ type surveyed struct {
 	SkippedRoots int
 	HoldDeletes  bool // Deleting missing tracks must wait: an outage may be hiding files.
 	Playlists    []playlistSurvey
+	Extras       []extrasSurvey // Of the roots walked.
 }
 
 // rootSurvey is the survey of one root.
@@ -58,6 +59,7 @@ type rootSurvey struct {
 	skipped      bool
 	hold         bool
 	playlists    playlistSurvey
+	extras       extrasSurvey
 }
 
 // seenFile is a regular audio file the walk found.
@@ -71,6 +73,7 @@ type seenFile struct {
 type walked struct {
 	files      []seenFile
 	playlists  []seenFile // Playlist files: see [IsPlaylistFile].
+	extras     []seenFile // Artist and album images and artist.nfo files: see [isExtraFile].
 	temps      []string   // Absolute paths of the temp files [isWriteTemp] recognizes.
 	unreadable []string   // Relative paths of folders and entries the walk could not read.
 	rootErr    error      // Set when the root itself is unreadable.
@@ -128,6 +131,7 @@ func (s *Scanner) survey(ctx context.Context, mode Mode) (*surveyed, error) {
 		sv.HoldDeletes = sv.HoldDeletes || r.hold
 		if !r.skipped {
 			sv.Playlists = append(sv.Playlists, r.playlists)
+			sv.Extras = append(sv.Extras, r.extras)
 		}
 		switch {
 		case r.skipped:
@@ -180,6 +184,7 @@ func (s *Scanner) surveyRoot(ctx context.Context, root string, mode Mode) (rootS
 	if r.playlists, err = s.surveyPlaylists(ctx, root, &w, every); err != nil {
 		return rootSurvey{}, err
 	}
+	r.extras = extrasSurvey{root: root, files: w.extras, listed: walkedListed(w.unreadable)}
 	return r, nil
 }
 
@@ -299,6 +304,8 @@ func (w *walked) visitEntry(path, rel string, d fs.DirEntry) error {
 		w.addFile(&w.playlists, path, rel, d)
 	case isAudio(name):
 		w.addFile(&w.files, path, rel, d)
+	case isExtraFile(name):
+		w.addFile(&w.extras, path, rel, d)
 	}
 	return nil
 }

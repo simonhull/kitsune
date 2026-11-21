@@ -90,7 +90,7 @@ type putResult struct {
 // by the size asked of Path with exact matching.
 func rungs(t *testing.T, c *artwork.Cache, data []byte) putResult {
 	t.Helper()
-	img, err := c.Put(t.Context(), data)
+	img, err := c.Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatalf("Put: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestLadder(t *testing.T) {
 func TestPutHash(t *testing.T) {
 	t.Parallel()
 	data := encodePNG(t, noisy(40, 40))
-	img, err := artwork.NewCache(t.TempDir()).Put(t.Context(), data)
+	img, err := artwork.NewCache(t.TempDir()).Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,11 +200,11 @@ func TestPathSelection(t *testing.T) {
 	t.Parallel()
 	c := artwork.NewCache(t.TempDir())
 	// 600 px: rungs 128, 512 and 1024 (at 600).
-	img, err := c.Put(t.Context(), encodePNG(t, noisy(600, 600)))
+	img, err := c.Put(t.Context(), artwork.Cover, encodePNG(t, noisy(600, 600)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	small, err := c.Put(t.Context(), encodePNG(t, noisy(100, 100)))
+	small, err := c.Put(t.Context(), artwork.Cover, encodePNG(t, noisy(100, 100)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestAlphaIsFlattenedOntoGround(t *testing.T) {
 	t.Parallel()
 	img := image.NewNRGBA(image.Rect(0, 0, 300, 300)) // Fully transparent.
 	c := artwork.NewCache(t.TempDir())
-	got, err := c.Put(t.Context(), encodePNG(t, img))
+	got, err := c.Put(t.Context(), artwork.Cover, encodePNG(t, img))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +289,7 @@ func TestBadImages(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
-			_, err := artwork.NewCache(dir).Put(t.Context(), tt.data)
+			_, err := artwork.NewCache(dir).Put(t.Context(), artwork.Cover, tt.data)
 			if !errors.Is(err, artwork.ErrBadImage) {
 				t.Errorf("Put = %v, want ErrBadImage", err)
 			}
@@ -320,7 +320,7 @@ func TestTooLarge(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	c := artwork.NewCache(dir)
-	_, err := c.Put(t.Context(), pngHeader(8001, 8001)) // 64.016 MP.
+	_, err := c.Put(t.Context(), artwork.Cover, pngHeader(8001, 8001)) // 64.016 MP.
 	if !errors.Is(err, artwork.ErrTooLarge) {
 		t.Errorf("Put = %v, want ErrTooLarge", err)
 	}
@@ -328,7 +328,7 @@ func TestTooLarge(t *testing.T) {
 		t.Error("too large must not also be a bad image")
 	}
 	// Just inside the limit reaches the decoder, which finds no pixel data.
-	_, err = c.Put(t.Context(), pngHeader(8000, 8000))
+	_, err = c.Put(t.Context(), artwork.Cover, pngHeader(8000, 8000))
 	if !errors.Is(err, artwork.ErrBadImage) {
 		t.Errorf("Put at the limit = %v, want ErrBadImage (header only)", err)
 	}
@@ -344,7 +344,7 @@ func TestWebP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	img, err := artwork.NewCache(t.TempDir()).Put(t.Context(), data)
+	img, err := artwork.NewCache(t.TempDir()).Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatalf("Put: %v", err)
 	}
@@ -357,7 +357,7 @@ func TestPutIsIdempotent(t *testing.T) {
 	t.Parallel()
 	c := artwork.NewCache(t.TempDir())
 	data := encodePNG(t, noisy(700, 500))
-	first, err := c.Put(t.Context(), data)
+	first, err := c.Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func TestPutIsIdempotent(t *testing.T) {
 	for _, size := range sizes {
 		before[size] = mustStat(t, mustPath(t, c, first.Hash, size))
 	}
-	again, err := c.Put(t.Context(), data)
+	again, err := c.Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestMissingRungRerendersAll(t *testing.T) {
 	t.Parallel()
 	c := artwork.NewCache(t.TempDir())
 	data := encodePNG(t, noisy(700, 500))
-	first, err := c.Put(t.Context(), data)
+	first, err := c.Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +398,7 @@ func TestMissingRungRerendersAll(t *testing.T) {
 	if err = os.Remove(mustPath(t, c, first.Hash, artwork.Size512)); err != nil {
 		t.Fatal(err)
 	}
-	healed, err := c.Put(t.Context(), data)
+	healed, err := c.Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestZeroSizeRungCountsAsMissing(t *testing.T) {
 	t.Parallel()
 	c := artwork.NewCache(t.TempDir())
 	data := encodePNG(t, noisy(300, 300))
-	img, err := c.Put(t.Context(), data)
+	img, err := c.Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +431,7 @@ func TestZeroSizeRungCountsAsMissing(t *testing.T) {
 	if got, perr := c.Path(img.Hash, artwork.Size128); perr == nil && got == p {
 		t.Error("Path returned a zero-size file")
 	}
-	again, err := c.Put(t.Context(), data)
+	again, err := c.Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatalf("Put over a zero-size rung: %v", err)
 	}
@@ -447,7 +447,7 @@ func TestUndecodableSmallRungIsRerendered(t *testing.T) {
 	t.Parallel()
 	c := artwork.NewCache(t.TempDir())
 	data := encodePNG(t, noisy(300, 300))
-	img, err := c.Put(t.Context(), data)
+	img, err := c.Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestUndecodableSmallRungIsRerendered(t *testing.T) {
 	if err = os.WriteFile(p, []byte("not a jpeg"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	again, err := c.Put(t.Context(), data)
+	again, err := c.Put(t.Context(), artwork.Cover, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +473,7 @@ func TestConcurrentPut(t *testing.T) {
 	errs := make([]error, n)
 	var wg sync.WaitGroup
 	for i := range n {
-		wg.Go(func() { results[i], errs[i] = c.Put(t.Context(), data) })
+		wg.Go(func() { results[i], errs[i] = c.Put(t.Context(), artwork.Cover, data) })
 	}
 	wg.Wait()
 	for i := range n {
@@ -494,7 +494,7 @@ func TestPutHonorsContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	dir := t.TempDir()
-	_, err := artwork.NewCache(dir).Put(ctx, encodePNG(t, noisy(300, 300)))
+	_, err := artwork.NewCache(dir).Put(ctx, artwork.Cover, encodePNG(t, noisy(300, 300)))
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Put = %v, want context.Canceled", err)
 	}
@@ -507,7 +507,7 @@ func TestNoTempFilesLeft(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	c := artwork.NewCache(dir)
-	if _, err := c.Put(t.Context(), encodePNG(t, noisy(800, 800))); err != nil {
+	if _, err := c.Put(t.Context(), artwork.Cover, encodePNG(t, noisy(800, 800))); err != nil {
 		t.Fatal(err)
 	}
 	var files []string
@@ -528,11 +528,11 @@ func TestNoTempFilesLeft(t *testing.T) {
 func TestDelete(t *testing.T) {
 	t.Parallel()
 	c := artwork.NewCache(t.TempDir())
-	img, err := c.Put(t.Context(), encodePNG(t, noisy(700, 700)))
+	img, err := c.Put(t.Context(), artwork.Cover, encodePNG(t, noisy(700, 700)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := c.Put(t.Context(), encodePNG(t, noisy(710, 710)))
+	other, err := c.Put(t.Context(), artwork.Cover, encodePNG(t, noisy(710, 710)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -581,7 +581,7 @@ func TestColors(t *testing.T) {
 			t.Parallel()
 			c := artwork.NewCache(t.TempDir())
 			data := encodePNG(t, tt.img)
-			img, err := c.Put(t.Context(), data)
+			img, err := c.Put(t.Context(), artwork.Cover, data)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -594,7 +594,7 @@ func TestColors(t *testing.T) {
 			}
 			// The colors are a function of the stored file, so a repeat Put
 			// (the idempotent path) agrees exactly.
-			again, err := c.Put(t.Context(), data)
+			again, err := c.Put(t.Context(), artwork.Cover, data)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -614,7 +614,7 @@ func TestAccentGathersShades(t *testing.T) {
 		shade := color.RGBA{uint8(0x70 + x), 0x20, 0x18, 0xFF}
 		draw.Draw(img, image.Rect(x, 0, x+1, 400), image.NewUniform(shade), image.Point{}, draw.Src)
 	}
-	got, err := artwork.NewCache(t.TempDir()).Put(t.Context(), encodePNG(t, img))
+	got, err := artwork.NewCache(t.TempDir()).Put(t.Context(), artwork.Cover, encodePNG(t, img))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -631,7 +631,7 @@ func TestAccentTakesTheLargerHue(t *testing.T) {
 	img := solid(400, 400, color.RGBA{0x78, 0x78, 0x88, 0xFF})
 	draw.Draw(img, image.Rect(0, 0, 400, 40), image.NewUniform(color.RGBA{0x28, 0x48, 0xD8, 0xFF}), image.Point{}, draw.Src)   // Blue, 10%.
 	draw.Draw(img, image.Rect(0, 40, 400, 160), image.NewUniform(color.RGBA{0x28, 0xC8, 0x48, 0xFF}), image.Point{}, draw.Src) // Green, 30%.
-	got, err := artwork.NewCache(t.TempDir()).Put(t.Context(), encodePNG(t, img))
+	got, err := artwork.NewCache(t.TempDir()).Put(t.Context(), artwork.Cover, encodePNG(t, img))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -640,7 +640,7 @@ func TestAccentTakesTheLargerHue(t *testing.T) {
 
 func TestGroundKeepsHueOfLightCover(t *testing.T) {
 	t.Parallel()
-	img, err := artwork.NewCache(t.TempDir()).Put(t.Context(), encodePNG(t, solid(300, 300, color.RGBA{0xE8, 0xD8, 0x78, 0xFF})))
+	img, err := artwork.NewCache(t.TempDir()).Put(t.Context(), artwork.Cover, encodePNG(t, solid(300, 300, color.RGBA{0xE8, 0xD8, 0x78, 0xFF})))
 	if err != nil {
 		t.Fatal(err)
 	}

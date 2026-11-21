@@ -87,6 +87,7 @@ type Stats struct {
 	Swept                                              int // Temp files left by an interrupted edit, removed.
 	Hashed                                             int // New files fingerprinted to look for a move.
 	Playlists                                          int // Playlist files read.
+	Extras                                             int // Artist and album images and bios set or taken away.
 	PlaylistsGone                                      int // File playlists deleted with their files.
 }
 
@@ -136,6 +137,8 @@ type Scanner struct {
 	// organizeFault, nil but in tests, is told each step of a run: it may stop
 	// the run there, as a crash would, or fail a move.
 	organizeFault func(step, rel string) error
+
+	badExtras badExtras // Artist and album files that served nothing.
 
 	gaining  atomic.Pointer[gainTask] // The ReplayGain run going now, if any.
 	gainNote throttle                 // When the notifier last heard of its progress.
@@ -269,13 +272,22 @@ func (s *Scanner) scan(ctx context.Context, mode Mode) (Stats, error) {
 	if err != nil {
 		return stats, fmt.Errorf("scan: %w", err)
 	}
-	if err = s.readPlaylists(ctx, sv.Playlists, mode, stats.Added+stats.Moved > 0, &stats); err != nil {
+	if err = s.readBeside(ctx, sv, mode, &stats); err != nil {
 		return stats, fmt.Errorf("scan: %w", err)
 	}
 	if err = s.finish(ctx, sv.HoldDeletes || hold, &stats); err != nil {
 		return stats, fmt.Errorf("scan: %w", err)
 	}
 	return stats, nil
+}
+
+// readBeside reads what lies beside the songs, once they are stored: the
+// playlist files, then the artist and album folders' images and bios.
+func (s *Scanner) readBeside(ctx context.Context, sv *surveyed, mode Mode, stats *Stats) error {
+	if err := s.readPlaylists(ctx, sv.Playlists, mode, stats.Added+stats.Moved > 0, stats); err != nil {
+		return err
+	}
+	return s.readExtras(ctx, sv.Extras, mode, stats)
 }
 
 // refreshNames brings search up to date after a scan, whatever its outcome,

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
@@ -24,7 +25,7 @@ const (
 	artworkCacheControl = "private, max-age=31536000, immutable"
 )
 
-// getArtwork serves a cover rendition from the cache. Rendering happened
+// getArtwork serves an image's rendition from the cache, JPEG or PNG. Rendering happened
 // during the scan, so a request only reads a file.
 func (s *Server) getArtwork(w http.ResponseWriter, r *http.Request) {
 	if s.artwork == nil {
@@ -51,12 +52,26 @@ func (s *Server) getArtwork(w http.ResponseWriter, r *http.Request) {
 
 	// The headers go on only now: a 404 must not say immutable.
 	h := w.Header()
-	h.Set("Content-Type", "image/jpeg")
+	h.Set("Content-Type", renditionType(path))
 	h.Set("Cache-Control", artworkCacheControl)
 	h.Set("ETag", `"`+hex.EncodeToString(hash[:])+"-"+strconv.Itoa(size)+`"`)
 	// Ranges are not in the contract: a 206 would fail a client that checks.
 	r.Header.Del("Range")
 	http.ServeContent(noRanges{w}, r, "", time.Time{}, f)
+}
+
+// The media types of a rendition.
+const (
+	mediaJPEG = "image/jpeg"
+	mediaPNG  = "image/png"
+)
+
+// renditionType is the media type of the rendition at path.
+func renditionType(path string) string {
+	if artwork.IsPNG(path) {
+		return mediaPNG
+	}
+	return mediaJPEG
 }
 
 // artworkLookupFailed answers a rendition that is not there, which includes
@@ -93,7 +108,7 @@ type artworkRequest struct {
 
 var (
 	errBadHash = errors.New("hash must be 64 lower case hex digits")
-	errBadSize = errors.New("size must be 128, 512 or 1024")
+	errBadSize = errors.New("size must be 128, 400, 512, 640, 800, 1024, 1920 or 3840")
 )
 
 func parseHash(s string) ([32]byte, error) {
@@ -120,11 +135,10 @@ func parseSize(q url.Values) (int, error) {
 	if err != nil {
 		return 0, errBadSize
 	}
-	switch size {
-	case artwork.Size128, artwork.Size512, artwork.Size1024:
-		return size, nil
+	if !slices.Contains(artwork.Sizes(), size) {
+		return 0, errBadSize
 	}
-	return 0, errBadSize
+	return size, nil
 }
 
 // noRanges keeps [http.ServeContent] from advertising byte ranges the handler

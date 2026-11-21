@@ -2,8 +2,10 @@ package store
 
 import (
 	"crypto/sha256"
+	"fmt"
 	"slices"
 	"testing"
+	"time"
 )
 
 func testArtwork(seed string) *ArtworkWrite {
@@ -36,12 +38,12 @@ func TestArtworkSchema(t *testing.T) {
 		t.Errorf("artwork table and albums_artwork index: count = %d, want 2", got)
 	}
 	_, err := s.w.ExecContext(t.Context(),
-		"INSERT INTO artwork (hash, width, height, accent, ground, source) VALUES (zeroblob(32), 1, 1, '#000000', '#000000', 'web')")
+		"INSERT INTO artwork (hash, width, height, accent, ground, source, alpha) VALUES (zeroblob(32), 1, 1, '#000000', '#000000', 'web', 0)")
 	if err == nil {
 		t.Error("an unknown artwork source was accepted")
 	}
 	_, err = s.w.ExecContext(t.Context(),
-		"INSERT INTO artwork (hash, width, height, accent, ground, source) VALUES (zeroblob(5), 1, 1, '#000000', '#000000', 'folder')")
+		"INSERT INTO artwork (hash, width, height, accent, ground, source, alpha) VALUES (zeroblob(5), 1, 1, '#000000', '#000000', 'folder', 0)")
 	if err == nil {
 		t.Error("a short artwork hash was accepted")
 	}
@@ -191,5 +193,90 @@ func TestInvalidArtworkWritesNothing(t *testing.T) {
 	}
 	if n := count(t, s, "SELECT count(*) FROM tracks"); n != 0 {
 		t.Errorf("tracks = %d, want 0", n)
+	}
+}
+
+// useArtwork stores art as an image no album uses, and has the artist of
+// newWrite(artist) use it as its thumb and the album of newWrite(album) as its
+// back cover, as a scan reading their folders would.
+func useArtwork(t *testing.T, s *Store, art *ArtworkWrite, artist, album int) {
+	t.Helper()
+	for _, q := range []struct {
+		query string
+		args  []any
+	}{
+		{"INSERT INTO artwork (hash, width, height, accent, ground, source, alpha) VALUES (?, 1, 1, '#000000', '#000000', 'folder', 0)", []any{art.Hash[:]}},
+		{`INSERT INTO artist_images (artist_id, kind, artwork_hash, source, file_root, file_path, file_size, file_mtime, found_at)
+			SELECT id, 'thumb', ?, 'folder', '/m', 'artist.jpg', 1, 1, 1 FROM artists WHERE match_key = ?`, []any{art.Hash[:], fmt.Sprintf("artist-%d", artist)}},
+		{`INSERT INTO album_images (album_id, kind, disc, artwork_hash, source, file_root, file_path, file_size, file_mtime, found_at)
+			SELECT id, 'back', 0, ?, 'folder', '/m', 'back.jpg', 1, 1, 1 FROM albums WHERE group_key = ?`, []any{art.Hash[:], fmt.Sprintf("album-%d", album)}},
+	} {
+		if _, err := s.w.ExecContext(t.Context(), q.query, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.query, err)
+		}
+	}
+}
+
+// An image that only an artist or an album extra uses stays through a prune,
+// and goes with the last of them.
+func TestPruneKeepsArtistAndAlbumImages(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		artist, album int // Whose thumb and whose back cover the image is.
+		gone          []int
+		wantKept      bool
+	}{
+		{name: "an artist's and an album's", artist: 0, album: 0, wantKept: true},
+		{name: "after another album went", artist: 0, album: 0, gone: []int{1}, wantKept: true},
+		{name: "the artist's after its album went", artist: 1, album: 0, gone: []int{0}, wantKept: true},
+		{name: "the album's after its artist went", artist: 0, album: 1, gone: []int{0}, wantKept: true},
+		{name: "after both went", artist: 0, album: 0, gone: []int{0}, wantKept: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := openTest(t)
+			writeAll(t, s, newWrite(0), newWrite(1))
+			art := testArtwork("an artist's own")
+			useArtwork(t, s, art, tt.artist, tt.album)
+			for _, i := range tt.gone {
+				deleteTrack(t, s, i)
+			}
+			got := prune(t, s)
+			kept := count(t, s, "SELECT count(*) FROM artwork WHERE hash = ?", art.Hash[:]) == 1
+			if kept != tt.wantKept {
+				t.Fatalf("image kept = %v, want %v (pruned %+v)", kept, tt.wantKept, got)
+			}
+			if returned := slices.Contains(got.Artwork, art.Hash); returned == kept {
+				t.Errorf("PruneOrphans returned the image = %v with it kept = %v", returned, kept)
+			}
+		})
+	}
+}
+
+// A prune or a delete of missing tracks that deletes nothing, as most scans'
+// do, leaves the rows kept for the index and the scan's layout standing; one
+// that deletes counts as a write.
+func TestPruneOfNothingKeepsTheRows(t *testing.T) {
+	t.Parallel()
+	s := openTest(t)
+	writeAll(t, s, newWrite(0), newWrite(1))
+	before := s.library.gen.Load()
+	if got := prune(t, s); got.Albums+got.Artists != 0 || len(got.Artwork) != 0 {
+		t.Fatalf("PruneOrphans = %+v, want nothing to prune", got)
+	}
+	if n, err := s.DeleteMissingBefore(t.Context(), time.Now()); err != nil || n != 0 {
+		t.Fatalf("DeleteMissingBefore = %d, %v; want nothing deleted", n, err)
+	}
+	if gen := s.library.gen.Load(); gen != before {
+		t.Errorf("a prune and a delete of nothing moved the library writes from %d to %d", before, gen)
+	}
+	deleteTrack(t, s, 1)
+	if got := prune(t, s); got.Albums != 1 {
+		t.Fatalf("PruneOrphans = %+v, want the emptied album", got)
+	}
+	if gen := s.library.gen.Load(); gen == before {
+		t.Error("a prune that deleted left the kept rows standing")
 	}
 }

@@ -9,23 +9,25 @@ ON CONFLICT (match_key) DO UPDATE SET
 RETURNING id;
 
 -- name: UpsertArtwork :exec
-INSERT INTO artwork (hash, width, height, accent, ground, source)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO artwork (hash, width, height, accent, ground, source, alpha)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (hash) DO UPDATE SET
     width = excluded.width,
     height = excluded.height,
     accent = excluded.accent,
     ground = excluded.ground,
-    source = excluded.source;
+    source = excluded.source,
+    alpha = excluded.alpha;
 
 -- name: UpsertAlbum :one
-INSERT INTO albums (ulid, group_key, name, sort_name, artist, mbid, year, compilation, artwork_hash, added_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO albums (ulid, group_key, name, sort_name, artist, mbid, release_group_mbid, year, compilation, artwork_hash, added_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (group_key) DO UPDATE SET
     name = excluded.name,
     sort_name = excluded.sort_name,
     artist = excluded.artist,
     mbid = coalesce(excluded.mbid, albums.mbid),
+    release_group_mbid = coalesce(excluded.release_group_mbid, albums.release_group_mbid),
     year = excluded.year,
     compilation = excluded.compilation,
     artwork_hash = coalesce(excluded.artwork_hash, albums.artwork_hash)
@@ -141,7 +143,12 @@ UPDATE tracks SET missing_since = ? WHERE id = ? AND missing_since IS NULL;
 DELETE FROM albums WHERE NOT EXISTS (SELECT 1 FROM tracks WHERE tracks.album_id = albums.id);
 
 -- name: PruneArtwork :many
-DELETE FROM artwork WHERE NOT EXISTS (SELECT 1 FROM albums WHERE albums.artwork_hash = artwork.hash)
+-- An image goes when nothing uses it: no album's cover, no artist's image and no
+-- album's extra.
+DELETE FROM artwork
+WHERE NOT EXISTS (SELECT 1 FROM albums WHERE albums.artwork_hash = artwork.hash)
+  AND NOT EXISTS (SELECT 1 FROM artist_images WHERE artist_images.artwork_hash = artwork.hash)
+  AND NOT EXISTS (SELECT 1 FROM album_images WHERE album_images.artwork_hash = artwork.hash)
 RETURNING hash;
 
 -- name: PruneArtists :execrows

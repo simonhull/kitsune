@@ -147,7 +147,11 @@ func seedLibrary(t *testing.T, db *sql.DB) {
 	exec("INSERT INTO users (id, name, password_hash, role, created_at) VALUES (1, 'simon', 'h', 'admin', 1)")
 	exec("INSERT INTO sessions (token_hash, user_id, created_at, last_seen, expires_at, user_agent) VALUES (?, 1, 1, 1, 2, 'test')", digest(0))
 	exec("INSERT INTO artists (id, ulid, match_key, name, sort_name) VALUES (1, ?, 'band', 'Band', 'Band')", fmt.Sprintf("A%025d", 1))
-	exec("INSERT INTO artwork (hash, width, height, accent, ground, source) VALUES (?, 1, 1, '#000000', '#ffffff', 'folder')", digest(0))
+	if hasColumn(t, db, "artwork", "alpha") {
+		exec("INSERT INTO artwork (hash, width, height, accent, ground, source, alpha) VALUES (?, 1, 1, '#000000', '#ffffff', 'folder', 0)", digest(0))
+	} else {
+		exec("INSERT INTO artwork (hash, width, height, accent, ground, source) VALUES (?, 1, 1, '#000000', '#ffffff', 'folder')", digest(0))
+	}
 	exec(`INSERT INTO albums (id, ulid, group_key, name, sort_name, artist, compilation, artwork_hash, added_at)
 		VALUES (1, ?, 'g', 'Album', 'Album', 'Band', 0, ?, 1)`, fmt.Sprintf("B%025d", 1), digest(0))
 	exec("INSERT INTO scan_issues (root, rel_path, kind, message, size, mtime, seen_at) VALUES ('/m', 'bad.flac', 'corrupted', 'x', 1, 1, 1)")
@@ -176,6 +180,32 @@ func seedLibrary(t *testing.T, db *sql.DB) {
 		exec("INSERT INTO artist_hearts (user_id, artist_id, hearted_at) VALUES (1, 1, 1)")
 	}
 	seedLastfm(t, db)
+	seedArtistArt(t, db)
+}
+
+// seedArtistArt gives seedLibrary's artist a folder thumb and an nfo bio, and its
+// album a back cover, all on its one image, once the database has the tables.
+func seedArtistArt(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if !hasTable(t, db, "artist_images") {
+		return
+	}
+	hash := []byte(fmt.Sprintf("%032d", 0))
+	for _, q := range []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO artist_images (artist_id, kind, artwork_hash, source, file_root, file_path, file_size, file_mtime, found_at)
+			VALUES (1, 'thumb', ?, 'folder', '/m', 'artist.jpg', 1, 1, 1)`, []any{hash}},
+		{`INSERT INTO album_images (album_id, kind, disc, artwork_hash, source, file_root, file_path, file_size, file_mtime, found_at)
+			VALUES (1, 'back', 0, ?, 'folder', '/m', 'back.jpg', 1, 1, 1)`, []any{hash}},
+		{`INSERT INTO artist_bios (artist_id, source, summary, body, file_root, file_path, file_size, file_mtime, fetched_at)
+			VALUES (1, 'nfo', 'A band.', 'A band.', '/m', 'artist.nfo', 1, 1, 1)`, nil},
+	} {
+		if _, err := db.ExecContext(t.Context(), q.query, q.args...); err != nil {
+			t.Fatalf("%s: %v", q.query, err)
+		}
+	}
 }
 
 // seedRating rates seedLibrary's track n for its user, in the column the

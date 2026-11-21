@@ -268,7 +268,15 @@ describe('albumsLine', () => {
 });
 
 describe('artistFacts', () => {
-	const artist = { id: 'a', name: 'A', albumCount: 2, albums: [], appearsOn: [], songCount: 0 };
+	const artist = {
+		id: 'a',
+		name: 'A',
+		albumCount: 2,
+		albums: [],
+		appearsOn: [],
+		songCount: 0,
+		images: {}
+	};
 
 	it('counts what an artist owns', () => {
 		expect(artistFacts(artist)).toBe('ARTIST · 2 ALBUMS IN YOUR LIBRARY');

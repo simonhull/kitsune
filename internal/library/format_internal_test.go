@@ -32,12 +32,19 @@ func copySample(t *testing.T, name string) string {
 	return filepath.Join(dir, name)
 }
 
-const mbArtist1 = "mb-artist-1"
+const (
+	mbArtist1       = "mb-artist-1"
+	mbReleaseGroup1 = "0a1b2c3d-0000-4000-8000-00000000000a"
+	// keyID3ReleaseGroupID is the release group's TXXX description, which
+	// M4A's freeform atom shares.
+	keyID3ReleaseGroupID = "MUSICBRAINZ RELEASE GROUP ID"
+)
 
 // rawKeys is the key a format uses for each field the candidate tables cover.
 type rawKeys struct {
 	titleSort, artistSort, albumSort, albumArtist, albumArtistSort string
 	artistMBID, albumArtistMBID, compilation, albumMBID, trackMBID string
+	releaseGroupMBID                                               string
 }
 
 func TestRawKeysPerFormat(t *testing.T) {
@@ -54,6 +61,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 				albumArtist: "ALBUMARTIST", albumArtistSort: "ALBUMARTISTSORT",
 				artistMBID: keyArtistMBID, albumArtistMBID: "MUSICBRAINZ_ALBUMARTISTID",
 				compilation: "COMPILATION", albumMBID: "MUSICBRAINZ_ALBUMID", trackMBID: "MUSICBRAINZ_TRACKID",
+				releaseGroupMBID: keysReleaseGroupMBID[0],
 			},
 			artistIDs: []string{mbArtist1, "mb-artist-2"},
 		},
@@ -64,6 +72,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 				albumArtist: "TPE2", albumArtistSort: "TSO2",
 				artistMBID: keyID3ArtistID, albumArtistMBID: "MUSICBRAINZ ALBUM ARTIST ID",
 				compilation: keyTCMP, albumMBID: "MUSICBRAINZ ALBUM ID", trackMBID: keyRecordingUFID,
+				releaseGroupMBID: keyID3ReleaseGroupID,
 			},
 			artistIDs: []string{mbArtist1},
 		},
@@ -74,6 +83,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 				albumArtist: "aART", albumArtistSort: "soaa",
 				artistMBID: keyID3ArtistID, albumArtistMBID: "MUSICBRAINZ ALBUM ARTIST ID",
 				compilation: "cpil", albumMBID: "MUSICBRAINZ ALBUM ID", trackMBID: "MUSICBRAINZ TRACK ID",
+				releaseGroupMBID: keyID3ReleaseGroupID,
 			},
 			artistIDs: []string{mbArtist1},
 		},
@@ -95,6 +105,7 @@ func TestRawKeysPerFormat(t *testing.T) {
 				f.Tags.Set(tt.keys.compilation, "1")
 				f.Tags.Set(tt.keys.albumMBID, "mb-album-1")
 				f.Tags.Set(tt.keys.trackMBID, "mb-track-1")
+				f.Tags.Set(tt.keys.releaseGroupMBID, mbReleaseGroup1)
 				return nil
 			})
 			if err != nil {
@@ -138,6 +149,34 @@ func TestRawKeysPerFormat(t *testing.T) {
 			wantSingle("compilation", keysCompilation, "1")
 			wantSingle("album MBID", keysAlbumMBID, "mb-album-1")
 			wantSingle("track MBID", keysTrackMBID, "mb-track-1")
+			wantSingle("release group MBID", keysReleaseGroupMBID, mbReleaseGroup1)
+		})
+	}
+}
+
+// TestReleaseGroupReadPerFormat writes a release group's ID under each format's
+// own key with audiometa, and a scan reads it onto the album.
+func TestReleaseGroupReadPerFormat(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ sample, key string }{
+		{sampleFLAC, keysReleaseGroupMBID[0]},
+		{sampleMP3, keyID3ReleaseGroupID},
+		{sampleMP3v23, keyID3ReleaseGroupID},
+		{sampleM4A, keyID3ReleaseGroupID},
+	}
+	for _, tt := range tests {
+		t.Run(tt.sample, func(t *testing.T) {
+			t.Parallel()
+			path := copySample(t, tt.sample)
+			if err := audiometa.Write(path, func(f *audiometa.File) error {
+				f.Tags.Set(tt.key, mbReleaseGroup1)
+				return nil
+			}); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			if got := reread(t, path); got.Album.ReleaseGroupMBID != mbReleaseGroup1 {
+				t.Errorf("Album.ReleaseGroupMBID = %q, want %q; tags %+v", got.Album.ReleaseGroupMBID, mbReleaseGroup1, got.Tags)
+			}
 		})
 	}
 }

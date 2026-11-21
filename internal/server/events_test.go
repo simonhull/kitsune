@@ -39,6 +39,7 @@ var eventSchemas = map[string]string{ //nolint:gochecknoglobals // A read-only t
 	string(events.Playlists):    "EventPlaylists",
 	string(events.Organize):     "EventOrganize",
 	string(events.ReplayGain):   "EventReplayGain",
+	string(events.Artists):      "EventArtists",
 	string(events.Ready):        "EventStream",
 	string(events.Resync):       "EventStream",
 }
@@ -355,6 +356,26 @@ func drainTap(sub *events.Subscription) []string {
 	}
 }
 
+// writeSoloArtist writes an album in an artist folder of its own, with a bio
+// that holds the secret: the next scan tells of the artist.
+func writeSoloArtist(t *testing.T, root string) {
+	t.Helper()
+	flac, err := os.ReadFile(filepath.Join("..", "library", "testdata", sampleFLAC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeUnder(t, root, "Solo/Album/one.flac", string(flac))
+	writeUnder(t, root, "Solo/artist.nfo", "<artist><biography>"+secretValue+" is no bio.</biography></artist>")
+}
+
+// wantHeard checks heard, as drainTap gives it, holds an event of kind.
+func wantHeard(t *testing.T, heard []string, kind events.Kind) {
+	t.Helper()
+	if !slices.ContainsFunc(heard, func(ev string) bool { return strings.HasPrefix(ev, string(kind)+" ") }) {
+		t.Errorf("heard no %s event: %v", kind, heard)
+	}
+}
+
 // TestNoEventHoldsASecret runs everything that publishes, with a password, a
 // token, a Last.fm secret and a library root in play, and reads every event an
 // administrator hears.
@@ -384,6 +405,7 @@ func TestNoEventHoldsASecret(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeUnder(t, fx.root, "sines/one.flac", string(sine))
+	writeSoloArtist(t, fx.root)
 	if _, err = fx.Scanner.Scan(t.Context(), library.Full); err != nil {
 		t.Fatal(err)
 	}
@@ -408,6 +430,7 @@ func TestNoEventHoldsASecret(t *testing.T) {
 	if len(heard) < 8 {
 		t.Fatalf("heard %d events, want every kind: %v", len(heard), heard)
 	}
+	wantHeard(t, heard, events.Artists)
 	for _, ev := range heard {
 		for _, secret := range []string{secretValue, token, testPassword, newPassword, code, fx.root} {
 			if strings.Contains(ev, secret) {

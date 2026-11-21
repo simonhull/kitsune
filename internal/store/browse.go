@@ -119,6 +119,7 @@ type AlbumDetail struct {
 	Duration time.Duration
 	Formats  []string // Distinct and sorted.
 	ETag     string   // Covers the live tracks' files; see [etag].
+	Extras   AlbumExtras
 }
 
 // EditFile is a live track's file as an edit needs it.
@@ -390,13 +391,13 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 		artists[links[i].TrackID] = append(artists[links[i].TrackID], links[i].Name)
 	}
 
-	owners, err := s.albumOwners(ctx, row.ID)
+	owners, extras, err := s.albumAround(ctx, row.ID)
 	if err != nil {
 		return AlbumDetail{}, fmt.Errorf("album %s: %w", id, err)
 	}
 
 	summary := sqlcdb.ListAlbumsByNameRow(row)
-	d := AlbumDetail{AlbumSummary: summarize(&summary), Artists: owners, Tracks: make([]Track, 0, len(tracks))}
+	d := AlbumDetail{AlbumSummary: summarize(&summary), Artists: owners, Tracks: make([]Track, 0, len(tracks)), Extras: extras}
 	stamps := make([]string, 0, len(tracks))
 	for i := range tracks {
 		t := &tracks[i]
@@ -430,6 +431,16 @@ func (s *Store) Album(ctx context.Context, id string) (AlbumDetail, error) {
 	d.Formats = slices.Compact(d.Formats)
 	d.ETag = etag(stamps...)
 	return d, nil
+}
+
+// albumAround reads who an album links to and its extras.
+func (s *Store) albumAround(ctx context.Context, albumID int64) ([]ArtistLink, AlbumExtras, error) {
+	owners, err := s.albumOwners(ctx, albumID)
+	if err != nil {
+		return nil, AlbumExtras{}, err
+	}
+	extras, err := s.albumExtras(ctx, albumID)
+	return owners, extras, err
 }
 
 // stamp is what an ETag covers of one track. It uses the stored size and time:
