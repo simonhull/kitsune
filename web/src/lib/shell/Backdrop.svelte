@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { AlbumPalette } from '#lib/cover/palette.ts';
+	import ArtistStage from '#lib/art/ArtistStage.svelte';
+	import type { ArtistBackdrop } from '#lib/art/stage.svelte.ts';
 	import { morph } from '#lib/morph/registry.ts';
 	import Wash from './Wash.svelte';
 
@@ -10,10 +12,14 @@
 		palette: AlbumPalette | null;
 		/** Whether the album is known yet: a cold deep link has to wait for its colors. */
 		known: boolean;
-		mode: 'clear' | 'album' | 'poster';
+		mode: 'clear' | 'album' | 'poster' | 'artist';
+		/** The artist's stage, while one is shown: then Now playing's own stage is its light. */
+		artist: ArtistBackdrop | null;
 	}
 
-	let { albumId, palette, known, mode }: Props = $props();
+	let { albumId, palette, known, mode, artist }: Props = $props();
+	/** Now playing stands on the artist's backdrop: the cover's light is drawn on it instead. */
+	const lit = $derived(artist?.place === 'poster');
 
 	// The one color change no morph carries: a cold deep link's stage, once its entry arrives.
 	let waitedFor: string | null = null;
@@ -25,27 +31,35 @@
 	});
 </script>
 
-{#if albumId !== null && palette !== null}
-	<div class="backdrop" data-mode={known ? mode : 'clear'} aria-hidden="true">
-		<!-- The album's surface, which reshapes into Home's Continue card when the album is its. -->
-		<div
-			class="album"
-			class:cold
-			data-morph-stage="album"
-			style:background={palette.stage}
-			use:morph={{ id: `surface:${albumId}`, slot: 'hero', kind: 'surface' }}
-		>
-			<Wash {palette} variant="hero" />
-			<div class="fade"></div>
-		</div>
-		<div
-			class="poster"
-			class:cold
-			data-morph-stage="poster"
-			style:--field={palette.field}
-			style:--band={palette.band}
-			style:--stage={palette.stage}
-		></div>
+{#if (albumId !== null && palette !== null) || artist !== null}
+	<div class="backdrop" data-mode={known || mode === 'artist' ? mode : 'clear'} aria-hidden="true">
+		{#if albumId !== null && palette !== null}
+			<!-- The album's surface, which reshapes into Home's Continue card when the album is its. -->
+			<div
+				class="album"
+				class:cold
+				data-morph-stage="album"
+				style:background={palette.stage}
+				use:morph={{ id: `surface:${albumId}`, slot: 'hero', kind: 'surface' }}
+			>
+				<Wash {palette} variant="hero" />
+				<div class="fade"></div>
+			</div>
+			<div
+				class="poster"
+				class:cold
+				class:lit
+				data-morph-stage={lit ? undefined : 'poster'}
+				style:--field={palette.field}
+				style:--band={palette.band}
+				style:--stage={palette.stage}
+			></div>
+		{/if}
+		{#if artist !== null}
+			{#key artist.id}
+				<ArtistStage stage={artist} light={artist.place === 'poster' ? palette : null} />
+			{/key}
+		{/if}
 	</div>
 {/if}
 
@@ -91,7 +105,7 @@
 	}
 
 	[data-mode='album'] .album,
-	[data-mode='poster'] .poster {
+	[data-mode='poster'] .poster:not(.lit) {
 		opacity: 1;
 	}
 

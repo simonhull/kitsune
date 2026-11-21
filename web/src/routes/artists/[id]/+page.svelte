@@ -1,5 +1,10 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import { imageCredits, phoneStagePicture } from '#lib/art/art.ts';
+	import ArtistBio from '#lib/art/ArtistBio.svelte';
+	import ArtistThumb from '#lib/art/ArtistThumb.svelte';
+	import { heroStage } from '#lib/art/stage.svelte.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -22,6 +27,15 @@
 	const artist = $derived(load.kind === 'ready' ? load.value : undefined);
 	/** Known from whatever linked here, so the first frame has its headline. */
 	const name = $derived(artist?.name ?? library.artistName(id) ?? '');
+	/** Its thumb: the page's own once read, the list's before, so the first frame has it too. */
+	const thumb = $derived(
+		artist === undefined ? library.artistThumb(id) : (artist.images.thumb ?? null)
+	);
+	/** The stage behind the hero, which the shell draws: the words stand at its foot. */
+	const stage = $derived(heroStage(id));
+	/** On a phone the square thumb is the stage, so the head has none of its own. */
+	const phone = new MediaQuery('max-width: 430px');
+	const credits = $derived(artist === undefined ? [] : imageCredits(artist.images));
 
 	/** Its albums go as an artist's do on the Library: one order, `library.sort`'s albums. */
 	const order = $derived(sorts.library.value.albums);
@@ -91,9 +105,37 @@
 		<a href={resolve('/artists')}>All artists</a>
 	</div>
 {:else}
-	<div class="page-frame artist">
+	<div
+		class="page-frame artist"
+		class:staged={stage?.wide === true}
+		class:square={stage?.square === true}
+	>
 		<div class="words" data-morph-part="words" data-morph-key="words">
-			<span class="meta">{artist === undefined ? '' : artistFacts(artist)}&nbsp;</span>
+			<div class="head">
+				{#if !(phone.current && stage !== null && phoneStagePicture(stage.images) !== undefined)}
+					<ArtistThumb artistId={id} {name} {thumb} size={112} slot="hero" />
+				{/if}
+				<div class="facts">
+					<span class="meta">{artist === undefined ? '' : artistFacts(artist)}&nbsp;</span>
+					{#if credits.length > 0}
+						<span class="credit">
+							{#each credits as line, at (at)}
+								<span class="line">
+									{#each line as part, index (index)}
+										{#if index > 0}<span class="dot" aria-hidden="true">·</span>{/if}
+										{#if part.href === undefined}
+											<span>{part.text}</span>
+										{:else}
+											<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- The source's own page, not a route. -->
+											<a href={part.href} target="_blank" rel="noreferrer noopener">{part.text}</a>
+										{/if}
+									{/each}
+								</span>
+							{/each}
+						</span>
+					{/if}
+				</div>
+			</div>
 			<!-- The fit divides by the words' width, known before layout: the first frame is final. -->
 			<h1
 				title={name}
@@ -144,6 +186,9 @@
 									Nothing of theirs is in the library right now.
 								</p>
 							{/if}
+							{#if artist.bio !== undefined}
+								<ArtistBio {name} bio={artist.bio} />
+							{/if}
 						{/if}
 					{/snippet}
 				</ArtistSongs>
@@ -165,13 +210,64 @@
 	.words {
 		display: flex;
 		flex-direction: column;
-		gap: calc(18px * var(--step));
+		gap: calc(24px * var(--step));
+	}
+
+	/* On a stage the words stand at its foot, under the picture, the name last. */
+	.staged .words {
+		min-height: calc(var(--artist-stage) - var(--frame-top) * var(--step) - 40px * var(--step));
+		justify-content: flex-end;
+	}
+
+	/* The thumb, round, beside the facts and where they came from. */
+	.head {
+		display: flex;
+		align-items: center;
+		gap: calc(22px * var(--step));
+		min-width: 0;
+	}
+
+	.head :global(.thumb) {
+		box-shadow:
+			inset 0 0 0 2px var(--edge-raised),
+			0 18px 40px color-mix(in srgb, var(--ground) 45%, transparent);
+	}
+
+	.facts {
+		display: flex;
+		flex-direction: column;
+		gap: calc(10px * var(--step));
+		min-width: 0;
 	}
 
 	.meta {
 		font-family: var(--font-mono);
 		font-size: calc(13px * var(--step));
 		color: var(--text-secondary);
+	}
+
+	.credit {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-family: var(--font-mono);
+		font-size: calc(11px * var(--step));
+		letter-spacing: 0.08em;
+		color: var(--text-meta);
+	}
+
+	.credit .dot {
+		margin: 0 0.6em;
+	}
+
+	.credit a {
+		color: inherit;
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.credit a:hover {
+		color: var(--fox-text);
 	}
 
 	/* One line, fit by length, while it can stay headline-sized; past that two lines at a floor. */
@@ -274,6 +370,37 @@
 
 		h2 {
 			font-size: 32px;
+		}
+	}
+
+	/*
+	 * A phone stands on the square thumb: the facts above the name and the credit under it, the head
+	 * opened so the three are one column.
+	 */
+	@media (max-width: 430px) {
+		.square .words {
+			min-height: calc(var(--artist-stage) - 104px + 8px);
+			justify-content: flex-end;
+			gap: 10px;
+		}
+
+		.square .head,
+		.square .facts {
+			display: contents;
+		}
+
+		.square .meta {
+			order: 1;
+			font-size: 11px;
+		}
+
+		.square .words h1 {
+			order: 2;
+		}
+
+		.square .credit {
+			order: 3;
+			font-size: 10px;
 		}
 	}
 </style>

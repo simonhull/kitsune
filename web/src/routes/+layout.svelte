@@ -44,7 +44,8 @@
 	import { replayGain } from '#lib/replaygain/gain.svelte.ts';
 	import GainToast from '#lib/shell/GainToast.svelte';
 	import PlaylistToast from '#lib/shell/PlaylistToast.svelte';
-	import { albumOn, navOf, routeIds } from '#lib/shell/routes.ts';
+	import { albumOn, artistOn, navOf, routeIds } from '#lib/shell/routes.ts';
+	import { heroStage, posterStage } from '#lib/art/stage.svelte.ts';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
@@ -67,6 +68,16 @@
 
 	const stageEntry = $derived(stageAlbum === null ? undefined : library.entry(stageAlbum));
 	const palette = $derived(stageAlbum === null ? null : paletteFor(stageEntry, theme.current));
+
+	/** The artist's stage: theirs on their page, the playing artist's backdrop on Now playing. */
+	const artistStage = $derived.by(() => {
+		const onPage = artistOn(page);
+		if (onPage !== undefined) {
+			return heroStage(onPage);
+		}
+		const playingArtist = onNowPlaying ? library.playing?.album.artists.at(0)?.id : undefined;
+		return playingArtist === undefined ? null : posterStage(playingArtist);
+	});
 
 	/** The tag editor is open over the page. */
 	const editing = $derived(tagEditor.current !== null);
@@ -248,7 +259,8 @@
 		albumId={stageAlbum}
 		{palette}
 		known={stageEntry !== undefined}
-		mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : 'clear'}
+		mode={onNowPlaying ? 'poster' : onAlbum ? 'album' : artistStage !== null ? 'artist' : 'clear'}
+		artist={artistStage}
 	/>
 	<Nav
 		look={nav.look}
@@ -296,6 +308,8 @@
 	.shell {
 		/* An album's stage takes the step with its cover and words. */
 		--hero-height: calc(680px * var(--step));
+		/* An artist's: most of the first screen, the 140 px name standing at its foot. */
+		--artist-stage: clamp(calc(560px * var(--step)), 70svh, calc(1100px * var(--step)));
 		--accent: var(--fox);
 		--on-accent: var(--fox-ink);
 		--wash: var(--text-secondary);
@@ -356,6 +370,13 @@
 	@media (max-width: 820px) {
 		.shell {
 			--hero-height: 640px;
+		}
+	}
+
+	/* On a phone the square thumb is the stage. */
+	@media (max-width: 430px) {
+		.shell {
+			--artist-stage: 100vw;
 		}
 	}
 
