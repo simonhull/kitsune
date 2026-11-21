@@ -187,7 +187,7 @@ export interface Part {
 export type Role =
 	'intro' | 'card' | 'art' | 'words' | 'panel' | 'line-1' | 'line-2' | 'details' | 'chrome';
 
-export type StageName = 'album' | 'poster';
+export type StageName = 'album' | 'poster' | 'artist';
 
 export type RouteName =
 	| 'login'
@@ -261,6 +261,7 @@ export type Lead =
 	| 'surface'
 	| 'play'
 	| 'name'
+	| 'face'
 	| 'mosaic'
 	| 'listname'
 	| 'field'
@@ -495,7 +496,8 @@ const albumDoor: Choreography = {
 	// The art only arrives on its own when no cover flew to it.
 	arriving: { art: rise(48, 160, slow), words: rise(20, 160), panel: rise(96, 160, slow) },
 	stages: { album: { from: { opacity: 0, scale: 1.08 }, to: {}, delay: 120, motion: slow } },
-	held: {},
+	// From an artist's page, their stage gives way under the album's.
+	held: { artist: giveWay(base) },
 	bloom: bloomShape,
 	island: null
 };
@@ -610,7 +612,8 @@ const albumToAlbums: Choreography = {
 /**
  * Album to Artist: the name takes the stage. The artist's name grows from its line under the
  * headline into the artist page's headline, a beat after the rest so it never crosses the album's
- * title on its way out, and the cover lands on its song in Top songs. The artist page rises in front.
+ * title on its way out, its thumb with it, and the cover lands on its song in Top songs. The artist
+ * page rises in front, and its stage comes up in front where it stands as the album's gives way.
  */
 const albumToArtist: Choreography = {
 	name: 'album-to-artist',
@@ -618,15 +621,15 @@ const albumToArtist: Choreography = {
 	motion: base,
 	travel: {
 		subject: 'pages',
-		leads: ['name:to', 'cover:from'],
+		leads: ['name:to', 'face:to', 'cover:from'],
 		sourceSlots: ['hero'],
 		targetSlots: ['hero', 'thumb', 'card'],
-		waits: { name: 40 }
+		waits: { name: 40, face: 40 }
 	},
 	...albumGivesWay,
 	// The shelves' covers are units of their own, and come with the songs.
 	arriving: { words: rise(12, 90), panel: rise(24, 90), card: rise(24, 90) },
-	stages: {},
+	stages: { artist: fadeIn(0, base) },
 	bloom: null,
 	island: null
 };
@@ -638,6 +641,7 @@ const albumToArtist: Choreography = {
 const albumToPlaylist: Choreography = {
 	...albumToArtist,
 	name: 'album-to-playlist',
+	stages: {},
 	travel: {
 		subject: 'pages',
 		leads: ['cover:from'],
@@ -668,8 +672,9 @@ const albumToAlbum: Choreography = {
 
 /**
  * The name's door, from the Artists list, a Library heading, a search result or an album card's
- * menu: the name grows out of the list into the headline, the list falls back around it, and Top
- * songs rise last. No stage: an artist has no art.
+ * menu: the name grows out of the list into the headline, its thumb into the hero's, the list falls
+ * back around it, and Top songs rise last. The stage comes up as an album's does, its ground first;
+ * its picture develops in place once decoded, and never holds the journey.
  */
 const nameDoor: Choreography = {
 	name: 'name-door',
@@ -677,13 +682,13 @@ const nameDoor: Choreography = {
 	motion: slow,
 	travel: {
 		subject: 'pages',
-		leads: ['name:to'],
+		leads: ['name:to', 'face:to'],
 		sourceSlots: ['row', 'card', 'hero'],
 		targetSlots: ['hero']
 	},
 	leaving: fallBack,
 	arriving: { words: rise(20, 160), panel: rise(48, 160, slow), card: rise(48, 160, slow) },
-	stages: {},
+	stages: { artist: { from: { opacity: 0, scale: 1.08 }, to: {}, delay: 120, motion: slow } },
 	held: {},
 	bloom: null,
 	island: null
@@ -699,7 +704,7 @@ const artistToArtists: Choreography = {
 	motion: base,
 	travel: {
 		subject: 'pages',
-		leads: ['name:from'],
+		leads: ['name:from', 'face:from'],
 		sourceSlots: ['hero'],
 		targetSlots: ['row']
 	},
@@ -707,7 +712,7 @@ const artistToArtists: Choreography = {
 	leavingByRole: { panel: giveWay(base), card: giveWay(base) },
 	arriving: { intro: gather(0.14, 60), card: gather(0.14, 60) },
 	stages: {},
-	held: {},
+	held: { artist: giveWay(base) },
 	bloom: null,
 	island: null
 };
@@ -722,7 +727,12 @@ const artistToLibrary: Choreography = { ...artistToArtists, name: 'artist-to-lib
 const artistToAlbums: Choreography = {
 	...artistToArtists,
 	name: 'artist-to-albums',
-	travel: { subject: 'pages', leads: ['name:from'], sourceSlots: ['hero'], targetSlots: ['card'] }
+	travel: {
+		subject: 'pages',
+		leads: ['name:from', 'face:from'],
+		sourceSlots: ['hero'],
+		targetSlots: ['card']
+	}
 };
 
 /**
@@ -783,8 +793,9 @@ const intoNowPlaying: Choreography = {
 	travel: { ...playing.in, sourceSlots: ['island'] },
 	leaving: fallBack,
 	arriving: nowPlayingArrives,
-	stages: { poster: fadeIn(120, slow) },
-	held: {},
+	// The playing artist's backdrop, where they have one, comes up with the cover's light on it.
+	stages: { poster: fadeIn(120, slow), artist: fadeIn(120, slow) },
+	held: { artist: giveWay(base) },
 	bloom: bloomShape,
 	island: islandOpens
 };
@@ -802,7 +813,7 @@ const albumToNowPlaying: Choreography = {
 	leaving: fallBack,
 	// Later than from a room: the album's headline is in the way until it has fallen back.
 	arriving: { ...nowPlayingArrives, 'line-1': posterLine(200), 'line-2': posterLine(290) },
-	stages: { poster: fadeIn(60, slow) },
+	stages: { poster: fadeIn(60, slow), artist: fadeIn(60, slow) },
 	held: { album: fadeOut(460, quick) },
 	bloom: null,
 	island: islandOpens
@@ -837,7 +848,7 @@ const backIntoTheHand: Choreography = {
 	headline: { arriving: gather(0.08, 140), leaving: giveWay() },
 	otherwise: gather(0.08, 90),
 	stages: {},
-	held: { poster: giveWay(base) },
+	held: { poster: giveWay(base), artist: giveWay(base) },
 	bloom: null,
 	island: islandCloses
 };
@@ -860,7 +871,7 @@ const nowPlayingToAlbum: Choreography = {
 		panel: rise(72, 90)
 	},
 	stages: { album: fadeIn(0, base) },
-	held: { poster: giveWay(base) },
+	held: { poster: giveWay(base), artist: giveWay(base) },
 	bloom: null,
 	island: islandCloses
 };
@@ -868,14 +879,18 @@ const nowPlayingToAlbum: Choreography = {
 /**
  * Now playing to the artist, by the name under the song: the name takes the stage. It grows into the
  * artist page's headline a beat after the rest, so it never crosses the poster title at strength,
- * while the poster goes back into the hand and the page gathers in front around the name.
+ * while the poster goes back into the hand and the page gathers in front around the name. The
+ * backdrop is on both pages: it stays, and reshapes at its true size into the hero's stage while the
+ * cover's light gives way off it. Without one the artist's stage comes up in front where it stands.
  */
 const nowPlayingToArtist: Choreography = {
 	...backIntoTheHand,
 	name: 'now-playing-to-artist',
-	travel: { ...intoTheHand, leads: ['name:to'], waits: { name: 40 } },
+	travel: { ...intoTheHand, leads: ['name:to', 'face:to'], waits: { name: 40, face: 40 } },
 	// The name is the headline, and it flies: there is no headline left to hold back.
-	headline: undefined
+	headline: undefined,
+	stages: { artist: fadeIn(0, base) },
+	held: { poster: giveWay(base) }
 };
 
 const throughTheDoor: SharedTravel = {
@@ -936,7 +951,7 @@ const loginToNowPlaying: Choreography = {
 	leaving: fallBack,
 	arriving: { ...nowPlayingArrives, 'line-1': posterLine(360), 'line-2': posterLine(450) },
 	arrivingByKey: { poster: rise(48, 60), song: rise(20, 160) },
-	stages: { poster: fadeIn(60, slow) },
+	stages: { poster: fadeIn(60, slow), artist: fadeIn(60, slow) },
 	held: {},
 	bloom: null,
 	island: null,
@@ -979,7 +994,7 @@ const doorCloses: Choreography = {
 	frame: giveWay(base),
 	stages: {},
 	// A stage is the frame too: an album's light dissolves with the glass.
-	held: { album: giveWay(base), poster: giveWay(base) },
+	held: { album: giveWay(base), poster: giveWay(base), artist: giveWay(base) },
 	bloom: null,
 	island: null
 };

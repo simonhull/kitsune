@@ -923,17 +923,37 @@ export function createSpringEngine(): Morphs {
 	/** How a stage looks: its album's colors, which a picture of it keeps. */
 	function lookOf(stage: HTMLElement): string {
 		const { style } = stage;
-		return `${style.background}|${style.getPropertyValue('--field')}`;
+		return `${style.background}|${style.getPropertyValue('--field')}|${stage.dataset['look'] ?? ''}`;
+	}
+
+	/**
+	 * The stages a journey names that are on screen as it starts and not held: on both pages, so they
+	 * stay where they are, as Now playing's backdrop does going to its artist, and never come up again.
+	 */
+	function stagesStaying({ stages: named, held }: Choreography): Set<StageName> {
+		const staying = new Set<StageName>();
+		for (const name of Object.keys(named) as StageName[]) {
+			const element = surfaceFor(`[data-morph-stage="${name}"]`);
+			if (
+				held[name] === undefined &&
+				element !== null &&
+				Number(getComputedStyle(element).opacity) >= 0.01
+			) {
+				staying.add(name);
+			}
+		}
+		return staying;
 	}
 
 	/**
 	 * Brings up the stages of the page arrived at, in front of everything left. Turning back to a
-	 * stage just left, the real one carries on from wherever its picture had got to.
+	 * stage just left, the real one carries on from wherever its picture had got to. A stage on both
+	 * pages stays as it is.
 	 */
-	function moveStages(journey: Journey): void {
+	function moveStages(journey: Journey, staying: ReadonlySet<StageName>): void {
 		for (const [name, part] of Object.entries(journey.choreography.stages) as [StageName, Part][]) {
 			const element = surfaceFor(`[data-morph-stage="${name}"]`);
-			if (element === null) {
+			if (element === null || staying.has(name)) {
 				continue;
 			}
 			const stage = stages.get(name);
@@ -1482,6 +1502,7 @@ export function createSpringEngine(): Morphs {
 		const reshaping = new Set(
 			[...captures.values()].flatMap((taken) => (taken.kind === 'surface' ? [taken.element] : []))
 		);
+		const staying = stagesStaying(choreography);
 		// From the bottom of the ghost layer up: the stages left, then the page left.
 		holdStages(choreography, reshaping);
 		const ghost = cloneRoute(fromPath, choreography, sources);
@@ -1550,7 +1571,7 @@ export function createSpringEngine(): Morphs {
 		for (const id of ids) {
 			inFlight.delete(id);
 		}
-		moveStages(journey);
+		moveStages(journey, staying);
 		arrive(journey, toPath, targets, true);
 		if (choreography.island !== null) {
 			landIsland(choreography.island);

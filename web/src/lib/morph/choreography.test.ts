@@ -416,8 +416,29 @@ describe('choreographyFor', () => {
 
 	it('lets the artist’s name take the stage a beat after the album’s headline has gone', () => {
 		const { travel } = choreographyFor('album', 'artist');
-		expect(travel?.leads).toEqual(['name:to', 'cover:from']);
+		expect(travel?.leads).toEqual(['name:to', 'face:to', 'cover:from']);
 		expect(travel?.waits?.name).toBe(40);
+		expect(travel?.waits?.face).toBe(40);
+	});
+
+	it('brings the artist’s stage up in front where it stands as the album’s gives way', () => {
+		const { stages, held } = choreographyFor('album', 'artist');
+		expect(held.album?.to).toEqual({ opacity: 0 });
+		expect(stages.artist?.from).toEqual({ opacity: 0 });
+	});
+
+	it('opens an artist as an album opens: the stage comes up, its picture never holding it', () => {
+		for (const from of ['artists', 'library', 'search'] as const) {
+			const { stages, travel } = choreographyFor(from, 'artist');
+			expect(travel?.leads, from).toEqual(['name:to', 'face:to']);
+			expect(stages.artist, from).toEqual(choreographyFor('albums', 'album').stages.album);
+		}
+	});
+
+	it('lets an artist’s stage give way under whatever comes after it', () => {
+		for (const to of ['artists', 'library', 'albums', 'album'] as const) {
+			expect(choreographyFor('artist', to).held.artist?.to, to).toEqual({ opacity: 0 });
+		}
 	});
 
 	it('re-presses an album in place: nothing travels, and the new stage comes up over the old', () => {
@@ -536,9 +557,18 @@ describe('the moment', () => {
 
 	it('lets the artist’s name take the stage, a beat after the poster title has gone', () => {
 		const { travel, headline } = choreographyFor('now-playing', 'artist');
-		expect(travel?.leads).toEqual(['name:to']);
+		expect(travel?.leads).toEqual(['name:to', 'face:to']);
 		expect(travel?.waits?.name).toBe(40);
 		expect(headline).toBeUndefined();
+	});
+
+	it('keeps the backdrop going to the artist: it is never held, and the cover’s light gives way', () => {
+		const { held, stages } = choreographyFor('now-playing', 'artist');
+		expect(held.artist).toBeUndefined();
+		expect(held.poster?.to).toEqual({ opacity: 0 });
+		// Only a stage that wasn't on screen comes up: the engine leaves one on both pages be.
+		expect(stages.artist?.from).toEqual({ opacity: 0 });
+		expect(choreographyFor('now-playing', 'home').held.artist?.to).toEqual({ opacity: 0 });
 	});
 
 	it('opens the door on the moment: no island to rise from, the controls close the frame', () => {

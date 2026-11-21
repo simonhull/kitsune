@@ -341,6 +341,7 @@ function originOf(
 function ownerOf(lead: Lead, target: RouteTarget | null): string | undefined {
 	switch (lead) {
 		case 'name':
+		case 'face':
 			return artistOn(target);
 		case 'mosaic':
 		case 'listname':
