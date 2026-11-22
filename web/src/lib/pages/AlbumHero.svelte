@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { discArtFor } from '#lib/art/art.ts';
+	import ArtistThumb from '#lib/art/ArtistThumb.svelte';
+	import Picture from '#lib/art/Picture.svelte';
 	import Cover from '#lib/cover/Cover.svelte';
 	import { emWidth } from '#lib/library/fit.ts';
 	import { resolve } from '$app/paths';
@@ -34,6 +38,20 @@
 		player.queue?.album.id === albumId && player.queue.albums === undefined && player.sounding
 	);
 	const stars = $derived(album === undefined ? null : albumStars(album.tracks, library.marks));
+	/** The first disc's art, out of its sleeve behind the cover, toward the words. */
+	const disc = $derived(album === undefined ? undefined : discArtFor(album, undefined));
+	/** Comes out once, when the cover has landed: a picture of the page never replays it. */
+	let sleeve = $state(true);
+
+	/** The one owner's thumb beside their name, from their page, read when the browser is idle. */
+	const owner = $derived(owners.length === 1 ? owners[0] : undefined);
+	$effect(() => {
+		if (owner !== undefined) {
+			untrack(() => {
+				library.wantThumbs([owner.id]);
+			});
+		}
+	});
 
 	function play(): void {
 		if (album !== undefined) {
@@ -59,6 +77,16 @@
 </script>
 
 <section aria-label="Album" class="hero stepped">
+	{#if disc !== undefined}
+		<span
+			class="disc"
+			class:sleeve
+			aria-hidden="true"
+			onanimationend={() => {
+				sleeve = false;
+			}}><Picture image={disc.image} kind="disc" box={330} fit="contain" /></span
+		>
+	{/if}
 	<div
 		class="art"
 		data-morph-part="art"
@@ -66,6 +94,17 @@
 	>
 		<Cover {albumId} {entry} place="stage" />
 	</div>
+	{#if album?.extras?.coverSource === 'coverartarchive'}
+		<!-- What the Cover Art Archive asks: say where the cover came from, under it. -->
+		<a
+			class="cover-credit"
+			href="https://coverartarchive.org/"
+			target="_blank"
+			rel="noreferrer noopener"
+			data-morph-part="art"
+			data-morph-key="cover-credit">COVER FROM THE COVER ART ARCHIVE ›</a
+		>
+	{/if}
 	<div class="words" data-morph-part="words">
 		<span class="meta" class:ready={album !== undefined}>{meta}&nbsp;</span>
 		<!-- The fit divides by the words' width, known before layout: the first frame is final. -->
@@ -88,6 +127,15 @@
 				<Icon name={sounding ? 'pause' : 'play'} size={28} />
 			</button>
 			<span class="artist">
+				{#if owner !== undefined}
+					<ArtistThumb
+						artistId={owner.id}
+						name={owner.name}
+						thumb={library.artistThumb(owner.id)}
+						size={28}
+						slot="hero"
+					/>
+				{/if}
 				<!-- The album's artist line is its artist's name too, which their page's headline answers. -->
 				<span
 					class="name"
@@ -173,6 +221,52 @@
 			width var(--morph-slow) var(--curve-settle),
 			height var(--morph-slow) var(--curve-settle),
 			top var(--morph-slow) var(--curve-settle);
+	}
+
+	/* The disc, half out of its sleeve: behind the cover, toward the words, still. */
+	.disc {
+		position: absolute;
+		right: var(--hero-pad);
+		top: calc(120px * var(--step));
+		width: var(--hero-cover);
+		height: var(--hero-cover);
+		pointer-events: none;
+		scale: 0.86;
+		translate: calc(var(--hero-cover) * -0.34) 0;
+	}
+
+	.disc.sleeve {
+		animation: sleeve var(--morph) var(--curve-settle) 560ms both;
+	}
+
+	@keyframes sleeve {
+		from {
+			opacity: 0;
+			translate: 0 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.disc.sleeve {
+			animation: none;
+		}
+	}
+
+	.cover-credit {
+		position: absolute;
+		right: var(--hero-pad);
+		top: calc(120px * var(--step) + var(--hero-cover) + 14px);
+		min-height: var(--target);
+		display: flex;
+		align-items: center;
+		font-family: var(--font-mono);
+		font-size: calc(11px * var(--step));
+		letter-spacing: 0.08em;
+		color: var(--wash);
+	}
+
+	.cover-credit:hover {
+		color: var(--accent);
 	}
 
 	.words {
@@ -271,6 +365,9 @@
 
 	.artist {
 		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: calc(12px * var(--step));
 		font-size: calc(22px * var(--step));
 		font-weight: 700;
 		letter-spacing: var(--tracking-title);
@@ -345,6 +442,22 @@
 			width: min(280px, 72cqw);
 			height: auto;
 			aspect-ratio: 1;
+		}
+
+		/* The cover centred, the disc out to its right. */
+		.disc {
+			--hero-cover: min(280px, 72cqw);
+
+			right: auto;
+			left: calc(50% - var(--hero-cover) / 2);
+			top: 96px;
+			translate: calc(var(--hero-cover) * 0.4) 0;
+		}
+
+		.cover-credit {
+			position: static;
+			align-self: center;
+			margin-top: -12px;
 		}
 
 		.words {

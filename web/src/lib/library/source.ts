@@ -182,8 +182,11 @@ export interface AlbumExtras {
 	/** Every disc's first (`disc` 0), then by disc. */
 	discs: DiscArt[];
 	back?: ExtraImage;
-	/** Where `artwork` came from; absent with none. */
-	coverSource?: 'files';
+	/**
+	 * Where `artwork` came from; absent with none. The server says `files` until it fetches covers
+	 * from the Cover Art Archive, which the album page then credits.
+	 */
+	coverSource?: 'files' | 'coverartarchive';
 }
 
 /**
@@ -1456,6 +1459,11 @@ export interface LibrarySource {
 	readonly duplicates: DuplicatesSource;
 	/** The ReplayGain routes, for administrators: writing Kitsune's measure into the files. */
 	readonly replayGain: ReplayGainSource;
+	/**
+	 * Only the fixtures: calls `heard` with the artists whose art arrived, as the server's `artists`
+	 * event says. Returns what stops it.
+	 */
+	artArrives?: (heard: (ids: string[]) => void) => () => void;
 }
 
 /** A save found a file where it was going: nothing was written. */

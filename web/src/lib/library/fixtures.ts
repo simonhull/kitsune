@@ -1,3 +1,4 @@
+import { createArtFixture } from './artFixture.ts';
 import { changedSettings, foldersFixture, settingsFixture } from './settingsFixtures.ts';
 import { fnv1a } from '#lib/cover/cover.ts';
 import { letterOf } from '#lib/pages/libraryRows.ts';
@@ -949,6 +950,8 @@ export interface FixtureOptions {
 	gain?: GainFixture | undefined;
 	/** How long each album of a ReplayGain run takes, in milliseconds. */
 	gainAlbumMs?: number | undefined;
+	/** `late`: Low Tide Choir's art arrives only on `kitsune:art-arrives`, as an `artists` event. */
+	art?: 'late' | undefined;
 }
 
 /** A song in a fixture Trash: where it came from, and when. */
@@ -1014,6 +1017,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	}
 	/** Whether a song is out of the library: in Trash, or deleted from it. */
 	const gone = (trackId: string): boolean => bin.has(trackId) || deleted.has(trackId);
+	const art = createArtFixture({ late: options.art === 'late' });
 	const scans = createHealthFixture(health, role);
 	let fault = options.editFault;
 	// Each source has its own: an edit is for this tab, until a reload.
@@ -1212,9 +1216,11 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 	/** An album as the server reads it: its songs out of the library left out, none if all are. */
 	function liveAlbum(id: string): Album | undefined {
 		const album = held.get(id) ?? listOnly.get(id);
-		return album === undefined || album.tracks.every((track) => gone(track.id))
-			? undefined
-			: marked(album);
+		if (album === undefined || album.tracks.every((track) => gone(track.id))) {
+			return undefined;
+		}
+		const extras = art.extras(album.id);
+		return marked(extras === undefined ? album : { ...album, extras });
 	}
 
 	/** Leaves out of an index what's out of the library, with albums and headings left empty. */
@@ -1645,15 +1651,29 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				}
 				return album;
 			}),
-		artists: () => respond(() => owners),
+		artists: () =>
+			respond(() =>
+				owners.map((owner) => {
+					const { thumb } = art.images(owner.id);
+					return thumb === undefined ? owner : { ...owner, thumb };
+				})
+			),
 		artist: (id) =>
 			respond(() => {
 				const link = artistLinks.find((artist) => artist.id === id);
 				if (link === undefined) {
 					throw new ArtistNotFoundError(id);
 				}
-				return detailOf(link);
+				const bio = art.bio(id);
+				const mbid = art.mbid(id);
+				return {
+					...detailOf(link),
+					images: art.images(id),
+					...(bio === undefined ? {} : { bio }),
+					...(mbid === undefined ? {} : { mbid })
+				};
 			}),
+		artArrives: (heard) => art.changed(heard),
 		search: (query, signal) =>
 			respond(() => {
 				signal?.throwIfAborted();

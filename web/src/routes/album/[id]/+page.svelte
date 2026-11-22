@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { library } from '#lib/library/library.svelte.ts';
 	import type { ColumnId } from '#lib/library/source.ts';
+	import ArtworkStrip from '#lib/art/ArtworkStrip.svelte';
 	import AlbumHero from '#lib/pages/AlbumHero.svelte';
 	import { tagEditor } from '#lib/pages/tagEditor.svelte.ts';
 	import AlbumSongs from '#lib/pages/AlbumSongs.svelte';
@@ -202,6 +203,9 @@
 				retry={() => void library.loadAlbum(id)}
 			/>
 		</div>
+		{#if album !== undefined}
+			<ArtworkStrip {album} />
+		{/if}
 		{#if selection.any && !editing}
 			{@const facts = pickedFacts(picked, songFacts)}
 			<SelectionBar

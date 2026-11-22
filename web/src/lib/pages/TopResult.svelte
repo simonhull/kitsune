@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import ArtistThumb from '#lib/art/ArtistThumb.svelte';
 	import Cover from '#lib/cover/Cover.svelte';
+	import { library } from '#lib/library/library.svelte.ts';
 	import { paletteFor } from '#lib/cover/palette.ts';
 	import { theme } from '#lib/theme/theme.svelte.ts';
 	import { emWidth } from '#lib/library/fit.ts';
@@ -59,7 +61,17 @@
 >
 	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	<span class="disc" aria-hidden="true"></span>
-	{#if shown.cover !== null}
+	{#if top.kind === 'artist'}
+		<!-- An artist's face where an album's cover would stand: round, a person. -->
+		<span class="face"
+			><ArtistThumb
+				artistId={top.artist.id}
+				name={top.artist.name}
+				thumb={library.artistThumb(top.artist.id)}
+				size={176}
+			/></span
+		>
+	{:else if shown.cover !== null}
 		<span class="art"
 			><Cover albumId={shown.cover.albumId} entry={shown.cover.entry} place="card" /></span
 		>
@@ -110,6 +122,15 @@
 		height: calc(176px * var(--step));
 		border-radius: calc(18px * var(--step));
 		overflow: hidden;
+		box-shadow: var(--shadow-tile);
+	}
+
+	.face {
+		position: absolute;
+		right: calc(28px * var(--step));
+		top: calc(28px * var(--step));
+		display: flex;
+		border-radius: 50%;
 		box-shadow: var(--shadow-tile);
 	}
 

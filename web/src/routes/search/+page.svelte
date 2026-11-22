@@ -4,6 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { morph } from '#lib/morph/registry.ts';
+	import ArtistThumb from '#lib/art/ArtistThumb.svelte';
 	import { library } from '#lib/library/library.svelte.ts';
 	import { emWidth } from '#lib/library/fit.ts';
 	import { resultsOf, searchLine, spotlight } from '#lib/library/search.svelte.ts';
@@ -20,6 +21,18 @@
 	const query = $derived(queryIn(page.url));
 	const results = $derived(resultsOf(search.state));
 	const found = $derived(results === null ? null : spotlight(results, search.answered));
+	// A hit names no thumb: each artist's page does, read when the browser is idle.
+	$effect(() => {
+		const ids = [
+			...(found?.top.kind === 'artist' ? [found.top.artist.id] : []),
+			...(found?.artists.map((artist) => artist.id) ?? [])
+		];
+		if (ids.length > 0) {
+			untrack(() => {
+				library.wantThumbs(ids);
+			});
+		}
+	});
 	const line = $derived(searchLine(search.state));
 	/** Looking is a passing note over results. Everything else has the page to itself. */
 	const speaks = $derived(!line.fact && search.state.kind !== 'looking');
@@ -178,7 +191,13 @@
 						{#each found.artists as artist (artist.id)}
 							<li>
 								<a class="artist" href={resolve('/artists/[id]', { id: artist.id })}
-									><span use:morph={{ id: `name:${artist.id}`, slot: 'row', kind: 'title' }}
+									><ArtistThumb
+										artistId={artist.id}
+										name={artist.name}
+										thumb={library.artistThumb(artist.id)}
+										size={32}
+										slot="row"
+									/><span use:morph={{ id: `name:${artist.id}`, slot: 'row', kind: 'title' }}
 										>{artist.name}</span
 									></a
 								>
@@ -396,7 +415,8 @@
 
 	.artist {
 		min-height: var(--target);
-		padding: 0 18px;
+		padding: 0 18px 0 6px;
+		gap: 10px;
 		border-radius: var(--radius-pill);
 		border: 1px solid var(--edge-strong);
 		display: flex;

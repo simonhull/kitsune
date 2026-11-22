@@ -929,6 +929,24 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   in for the fox (`standIn`). Sign out says "Signing out…" (`Repress`) until the server has answered.
   Login → any page `next` names is Login → Home's door (`login-to-page`). In the fixtures a session
   ends on `dispatchEvent(new Event('kitsune:session-ends'))`, and `?matching=board` draws a queue.
+- Artist art (`lib/art/`): `art.ts` is pure (rungs per kind, `pictureUrl`, the initial, credit
+  lines, the Artwork strip, `fallbackAlbum`). `Picture.svelte` lays a picture's ground, then develops
+  it once decoded (`--morph-slow`, `saturate(0) contrast(1.6) brightness(0.5)` to none; opacity alone
+  under reduced motion), never holding anything; a new hash develops over the old. `ArtistThumb` is
+  round everywhere (the Artists list, Search's hits and Top result, the album's artist line, Now
+  playing's name, the hero's head), the initial on `initialColors` with none, registered as
+  `face:<artistId>`, the lead that travels with `name:`. A thumb with no read of its own comes from
+  `library.artistThumb`, which `wantThumbs` fills from `GET /artists` once, in the background.
+- An artist's stage (`ArtistStage.svelte`, `stage.svelte.ts`) is the shell Backdrop's third stage,
+  `data-morph-stage="artist"`, keyed by artist: on their page the backdrop under the name (its logo at
+  the top right, off register), else the stage of the album they play most (`heroStage`); under 431 px
+  the square thumb (`--artist-stage`, set on `.shell`). On Now playing it is the playing artist's
+  backdrop with the cover's light on it (`.poster.lit` then steps aside); going to the artist the same
+  element stays and its height reshapes: the engine leaves a stage a journey names but doesn't hold,
+  and that is already on screen, be (`stagesStaying`). The `artists` event re-reads an open artist
+  and the Artists list; the fixtures' `?art=late` holds Low Tide Choir's art for `kitsune:art-arrives`.
+  Album extras: the disc out of its sleeve behind the cover and Now playing's poster (@560, still,
+  `translate` only), the Artwork strip after the songs, a Cover Art Archive credit under the cover.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
