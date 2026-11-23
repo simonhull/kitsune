@@ -2,6 +2,7 @@ import { defaultCompilations, defaultTemplate } from '#lib/organize/template.ts'
 import type {
 	FolderKind,
 	FolderListing,
+	MetadataSettings,
 	ServerSettings,
 	Setting,
 	SettingsChange
@@ -22,15 +23,32 @@ const defaults = {
 	'organize.roots': {},
 	'organize.on_edit': false,
 	'organize.companions': true,
-	'organize.rewrite_playlists': false
+	'organize.rewrite_playlists': false,
+	'metadata.remote': false,
+	'metadata.fanarttv': true,
+	'metadata.wikipedia': true,
+	'metadata.language': 'en'
 } as const;
+
+/** The write-only keys: a change says only whether each is set. */
+const secrets = new Set<keyof SettingsChange>([
+	'lastfm.shared_secret',
+	'fanarttv.api_key',
+	'fanarttv.client_key'
+]);
 
 function unset<T>(value: T, restartRequired = false): Setting<T> {
 	return { value, source: 'default', ...(restartRequired ? { restartRequired } : {}) };
 }
 
-/** The boards' server: one folder from the file, a key from the environment when Last.fm is on. */
-export function settingsFixture(lastfmConfigured: boolean): ServerSettings {
+/**
+ * The boards' server: one folder from the file, a key from the environment when Last.fm is on, and
+ * the artist pass's settings as its fixture starts.
+ */
+export function settingsFixture(
+	lastfmConfigured: boolean,
+	metadata: MetadataSettings
+): ServerSettings {
 	return {
 		settings: {
 			'lastfm.api_key': lastfmConfigured
@@ -51,7 +69,8 @@ export function settingsFixture(lastfmConfigured: boolean): ServerSettings {
 			'organize.roots': unset({}),
 			'organize.on_edit': unset(false),
 			'organize.companions': unset(true),
-			'organize.rewrite_playlists': unset(false)
+			'organize.rewrite_playlists': unset(false),
+			...metadata
 		},
 		listen: ':4533',
 		listenSource: 'server.toml',
@@ -112,11 +131,13 @@ export function changedSettings(current: ServerSettings, change: SettingsChange)
 	const next = structuredClone(current);
 	const s = next.settings;
 	for (const [key, value] of Object.entries(change) as [keyof SettingsChange, unknown][]) {
-		if (key === 'lastfm.shared_secret') {
-			s[key] =
-				value === null || value === ''
-					? { set: false, source: 'default' }
-					: { set: true, source: 'web' };
+		if (secrets.has(key)) {
+			Object.assign(s, {
+				[key]:
+					value === null || value === ''
+						? { set: false, source: 'default' }
+						: { set: true, source: 'web' }
+			});
 			continue;
 		}
 		const cleared = value === null || value === '' || (Array.isArray(value) && value.length === 0);
@@ -128,7 +149,7 @@ export function changedSettings(current: ServerSettings, change: SettingsChange)
 				[
 					key,
 					{
-						value: cleared ? defaults[key] : value,
+						value: cleared ? defaults[key as keyof typeof defaults] : value,
 						source: cleared ? 'default' : 'web',
 						...(restart ? { restartRequired: true, pendingRestart: true } : {})
 					}
