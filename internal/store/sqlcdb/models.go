@@ -294,6 +294,22 @@ type ScanIssue struct {
 	Reader  string
 }
 
+type ScrapeFeed struct {
+	Source string
+	ReadAt int64
+}
+
+type ScrapeState struct {
+	Source    string
+	Kind      string
+	Mbid      string
+	Status    string
+	FetchedAt int64
+	NextAt    int64
+	Failures  int64
+	Error     *string
+}
+
 type Session struct {
 	TokenHash []byte
 	UserID    int64
