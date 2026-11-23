@@ -5906,6 +5906,12 @@ components:
             - organize.on_edit
             - organize.companions
             - organize.rewrite_playlists
+            - metadata.remote
+            - metadata.fanarttv
+            - metadata.wikipedia
+            - metadata.language
+            - fanarttv.api_key
+            - fanarttv.client_key
           properties:
             lastfm.api_key: { $ref: "#/components/schemas/StringSetting" }
             lastfm.shared_secret: { $ref: "#/components/schemas/SecretSetting" }
@@ -5922,6 +5928,12 @@ components:
             organize.on_edit: { $ref: "#/components/schemas/BoolSetting" }
             organize.companions: { $ref: "#/components/schemas/BoolSetting" }
             organize.rewrite_playlists: { $ref: "#/components/schemas/BoolSetting" }
+            metadata.remote: { $ref: "#/components/schemas/BoolSetting" }
+            metadata.fanarttv: { $ref: "#/components/schemas/BoolSetting" }
+            metadata.wikipedia: { $ref: "#/components/schemas/BoolSetting" }
+            metadata.language: { $ref: "#/components/schemas/StringSetting" }
+            fanarttv.api_key: { $ref: "#/components/schemas/SecretSetting" }
+            fanarttv.client_key: { $ref: "#/components/schemas/SecretSetting" }
         listen:
           type: string
           description: >-
@@ -6067,6 +6079,17 @@ components:
         organize.on_edit: { type: [boolean, "null"] }
         organize.companions: { type: [boolean, "null"] }
         organize.rewrite_playlists: { type: [boolean, "null"] }
+        metadata.remote:
+          type: [boolean, "null"]
+          description: >-
+            The master switch for every lookup on the internet (artist art and
+            bios). Off on a new server. Turned on, it sends MusicBrainz IDs to the
+            sources and nothing else.
+        metadata.fanarttv: { type: [boolean, "null"], description: "fanart.tv, under metadata.remote; it also needs fanarttv.api_key." }
+        metadata.wikipedia: { type: [boolean, "null"], description: "Wikipedia, Wikidata and Wikimedia Commons, under metadata.remote." }
+        metadata.language: { type: [string, "null"], description: 'A two-letter code, in any case, such as "en": the bios and art wanted.' }
+        fanarttv.api_key: { type: [string, "null"], maxLength: 256, description: "The fanart.tv project key. Kitsune ships none." }
+        fanarttv.client_key: { type: [string, "null"], maxLength: 256, description: "A person's own fanart.tv key, which brings new art sooner." }
     OrganizeRequest:
       type: object
       additionalProperties: false
