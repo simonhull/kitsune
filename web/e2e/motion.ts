@@ -238,14 +238,30 @@ export async function expectBorn(
 	/** Where it is born, when that isn't what is pressed: ‹ All duplicates, after a merge. */
 	bornAt: Locator = press
 ): Promise<void> {
-	// Where it is pressed, which a click would otherwise scroll to after it was measured.
 	await press.scrollIntoViewIfNeeded();
 	await slowMotion(page, 20);
-	const from = await bornAt.evaluate((element) => {
-		const box = element.getBoundingClientRect();
-		return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+	// Where it is at the press itself: a click may scroll again first, when something covers it.
+	await bornAt.evaluate((element) => {
+		addEventListener(
+			'click',
+			() => {
+				const box = element.getBoundingClientRect();
+				(window as Window & { bornFrom?: { x: number; y: number } }).bornFrom = {
+					x: box.left + box.width / 2,
+					y: box.top + box.height / 2
+				};
+			},
+			{ capture: true, once: true }
+		);
 	});
 	await press.click();
+	const from = await page.evaluate(
+		() => (window as Window & { bornFrom?: { x: number; y: number } }).bornFrom ?? null
+	);
+	expect(from, 'the press was seen').not.toBeNull();
+	if (from === null) {
+		return;
+	}
 	const handle = await page.waitForFunction(() => {
 		const headline = [
 			...document.querySelectorAll<HTMLElement>('.shell > main [data-morph-headline]')
