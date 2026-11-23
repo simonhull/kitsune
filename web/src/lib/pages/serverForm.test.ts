@@ -20,8 +20,9 @@ import {
 	size,
 	undone
 } from './serverForm.ts';
+import { metadataSettings } from '#lib/metadata/fixture.ts';
 
-const server = settingsFixture(true);
+const server = settingsFixture(true, metadataSettings('off'));
 
 describe('the Server page form', () => {
 	it('starts clean, as the server has it', () => {
@@ -204,5 +205,51 @@ describe('the folder picker', () => {
 		expect(at('data')).toMatch(/Kitsune’s own/);
 		expect(kindNote('config')).toBe('Kitsune’s config');
 		expect(kindNote('folder')).toBe('');
+	});
+});
+
+describe('artist art and bios', () => {
+	it('starts as the server has it, with no key ever in the draft', () => {
+		const base = draftOf(server);
+		expect(base).toMatchObject({
+			lookups: false,
+			fanart: true,
+			wikipedia: true,
+			language: 'en',
+			fanartKey: { kind: 'keep' },
+			fanartClientKey: { kind: 'keep' }
+		});
+		expect(dirty(base, base, 'art')).toBe(false);
+	});
+
+	it('saves only what changed: switches, the language in lower case, and keys', () => {
+		const base = draftOf(server);
+		const draft = {
+			...base,
+			lookups: true,
+			language: 'DE',
+			fanartKey: { kind: 'replace' as const, text: '  k3y  ' },
+			fanartClientKey: { kind: 'clear' as const }
+		};
+		expect(dirty(base, draft, 'art')).toBe(true);
+		expect(dirty(base, draft, 'lastfm')).toBe(false);
+		expect(changeFor(base, draft, 'art')).toEqual({
+			change: {
+				'metadata.remote': true,
+				'metadata.language': 'de',
+				'fanarttv.api_key': 'k3y',
+				'fanarttv.client_key': null
+			}
+		});
+	});
+
+	it('refuses an empty key and a language that isn’t two letters', () => {
+		const base = draftOf(server);
+		expect(changeFor(base, { ...base, fanartKey: { kind: 'replace', text: ' ' } }, 'art')).toEqual({
+			problem: { key: 'fanarttv.api_key', message: 'Paste the key, or keep the one set.' }
+		});
+		expect(changeFor(base, { ...base, language: 'eng' }, 'art')).toEqual({
+			problem: { key: 'metadata.language', message: 'Give the language as two letters.' }
+		});
 	});
 });
