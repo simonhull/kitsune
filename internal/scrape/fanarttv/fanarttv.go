@@ -44,6 +44,10 @@ const (
 // November 2025 it sent bare file names. It is never fetched.
 var ErrBadAnswer = errors.New("fanart.tv's answer isn't usable")
 
+// ErrNotALink means an image's address wasn't fanart.tv's: a bare file name, or
+// somewhere else. It is an [ErrBadAnswer].
+var ErrNotALink = fmt.Errorf("%w: an image's address isn't fanart.tv's", ErrBadAnswer)
+
 // ErrNoKey means there is no project key: fanart.tv answers nothing without one.
 var ErrNoKey = errors.New("fanart.tv needs a project key")
 
@@ -186,7 +190,7 @@ func (c *Client) Latest(ctx context.Context, keys Keys, since time.Time) ([]stri
 // address isn't under the assets root is [ErrBadAnswer], never fetched.
 func (c *Client) Download(ctx context.Context, u string) ([]byte, error) {
 	if !c.isAsset(u) {
-		return nil, fmt.Errorf("fanart.tv image: %w", ErrBadAnswer)
+		return nil, fmt.Errorf("fanart.tv image: %w", ErrNotALink)
 	}
 	body, err := c.images.Get(ctx, u, u, nil)
 	if err != nil {
@@ -212,7 +216,7 @@ func (c *Client) artist(raw *artistJSON) (Artist, error) {
 	} {
 		for _, img := range k.from {
 			if !c.isAsset(img.URL) {
-				return Artist{}, fmt.Errorf("fanart.tv artist: %w: an image's address isn't fanart.tv's", ErrBadAnswer)
+				return Artist{}, fmt.Errorf("fanart.tv artist: %w", ErrNotALink)
 			}
 			*k.to = append(*k.to, Image{
 				ID: string(img.ID), URL: img.URL, Lang: lang(img.Lang), Likes: int(img.Likes),

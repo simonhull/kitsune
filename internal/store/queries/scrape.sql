@@ -2,11 +2,10 @@
 -- each source last said, and what it chose of their images and bios.
 
 -- name: ListScrapeArtists :many
--- Every artist with a MusicBrainz ID and a live track.
+-- Every artist with a live track, with or without a MusicBrainz ID.
 SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid
 FROM artists ar
-WHERE ar.mbid IS NOT NULL
-  AND EXISTS (
+WHERE EXISTS (
     SELECT 1 FROM track_artists ta
     JOIN tracks t ON t.id = ta.track_id
     WHERE ta.artist_id = ar.id AND t.missing_since IS NULL);

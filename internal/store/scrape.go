@@ -53,9 +53,9 @@ type ScrapeArtist struct {
 	States     map[ScrapeSource]ScrapeState
 }
 
-// ScrapeArtists returns every artist with an MBID and a live track, Various
-// Artists left out, with what each source last said of it, read in one
-// transaction.
+// ScrapeArtists returns every artist with a live track, Various Artists left
+// out, with what each source last said of it, read in one transaction. Only
+// those with an MBID are ever asked about; the others are counted.
 func (s *Store) ScrapeArtists(ctx context.Context) ([]ScrapeArtist, error) {
 	tx, err := s.r.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {

@@ -55,15 +55,15 @@ func TestScrapeArtistsCarryTheirStates(t *testing.T) {
 	t.Parallel()
 	s := openTest(t)
 	artist := scrapeArtist(t, s)
-	writeAll(t, s, newWrite(1)) // No MBID: never asked about.
+	writeAll(t, s, newWrite(1)) // No MBID: counted, never asked about.
 	failed := ScrapeState{Status: ScrapeFailed, FetchedAt: testNow(), NextAt: testNow().Add(time.Hour), Failures: 2, Error: "fanart.tv answered 503"}
 	mustWriteRemote(t, s, &RemoteWrite{ArtistID: artist, Answers: []ScrapeAnswer{{Source: ScrapeFanart, State: failed}}})
 	got, err := s.ScrapeArtists(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].ID != artist || got[0].MBID != scrapeMBID || !got[0].Owner {
-		t.Fatalf("scrape artists = %+v, want the one with an MBID, an owner", got)
+	if len(got) != 2 || got[0].ID != artist || got[0].MBID != scrapeMBID || !got[0].Owner || got[1].MBID != "" {
+		t.Fatalf("scrape artists = %+v, want the one with an MBID, an owner, and the one without", got)
 	}
 	if st := got[0].States; st[ScrapeFanart] != failed || len(st) != 1 {
 		t.Errorf("states = %+v, want fanart.tv's failure alone", st)
