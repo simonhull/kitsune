@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/simonhull/kitsune/internal/remote"
 )
 
 // SourceMusicBrainz names MusicBrainz as a source.
@@ -24,7 +26,7 @@ const (
 	DefaultMusicBrainzURL = "https://musicbrainz.org/ws/2/"
 	DefaultCoverURL       = "https://coverartarchive.org/"
 	// ProjectURL is the contact MusicBrainz asks every client's User-Agent to give.
-	ProjectURL = "https://github.com/simonhull/kitsune"
+	ProjectURL = remote.ProjectURL
 )
 
 // What a lookup or search that failed means for the caller. Every error the
@@ -53,6 +55,12 @@ const (
 	maxBody = 8 << 20
 	// searchLimit is how many releases a search asks for.
 	searchLimit = 10
+)
+
+// fmtParam and fmtJSON ask MusicBrainz for JSON.
+const (
+	fmtParam = "fmt"
+	fmtJSON  = "json"
 )
 
 // lookupInc is what a release lookup asks MusicBrainz to include.
@@ -97,7 +105,7 @@ type MusicBrainz struct {
 	agent        string
 	http         *http.Client
 	cache        Cache
-	gate         *gate
+	gate         *remote.Gate
 	retries      int
 	backoff      time.Duration
 	log          *slog.Logger
@@ -118,10 +126,10 @@ func NewMusicBrainz(o MusicBrainzOptions) *MusicBrainz { //nolint:gocritic // hu
 	c := &MusicBrainz{
 		base:    withSlash(cmp.Or(o.BaseURL, DefaultMusicBrainzURL)),
 		covers:  withSlash(cmp.Or(o.CoverURL, DefaultCoverURL)),
-		agent:   fmt.Sprintf("Kitsune/%s ( %s )", cmp.Or(o.Version, "dev"), ProjectURL),
+		agent:   remote.UserAgent(o.Version),
 		http:    o.HTTP,
 		cache:   o.Cache,
-		gate:    newGate(cmp.Or(o.Interval, defaultInterval)),
+		gate:    remote.NewGate(cmp.Or(o.Interval, defaultInterval)),
 		retries: cmp.Or(o.Retries, defaultRetries),
 		backoff: cmp.Or(o.Backoff, defaultBackoff),
 		log:     o.Logger,
@@ -166,7 +174,7 @@ func (c *MusicBrainz) Release(ctx context.Context, id string) (Release, error) {
 	if !mbidPattern.MatchString(id) {
 		return Release{}, fmt.Errorf("release %q: %w", id, ErrNotFound)
 	}
-	key := "release/" + id + "?" + url.Values{"inc": {lookupInc}, "fmt": {"json"}}.Encode()
+	key := "release/" + id + "?" + url.Values{"inc": {lookupInc}, fmtParam: {fmtJSON}}.Encode()
 	body, err := c.get(ctx, key)
 	if err != nil {
 		return Release{}, fmt.Errorf("release %s: %w", id, err)
@@ -185,7 +193,7 @@ func (c *MusicBrainz) Search(ctx context.Context, q *Query) ([]Release, error) {
 	if lucene == "" {
 		return nil, fmt.Errorf("search: %w: nothing to search for", ErrRejected)
 	}
-	key := "release?" + url.Values{"query": {lucene}, "limit": {strconv.Itoa(searchLimit)}, "fmt": {"json"}}.Encode()
+	key := "release?" + url.Values{"query": {lucene}, "limit": {strconv.Itoa(searchLimit)}, fmtParam: {fmtJSON}}.Encode()
 	body, err := c.get(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
@@ -207,8 +215,13 @@ func (c *MusicBrainz) Search(ctx context.Context, q *Query) ([]Release, error) {
 // cache while it is fresh, from a request already under way, or asked through
 // the gate.
 func (c *MusicBrainz) get(ctx context.Context, key string) ([]byte, error) {
+	return c.getFresh(ctx, key, CacheFor)
+}
+
+// getFresh is get with answers kept for maxAge.
+func (c *MusicBrainz) getFresh(ctx context.Context, key string, maxAge time.Duration) ([]byte, error) {
 	if c.cache != nil {
-		body, err := c.cache.Get(ctx, key, time.Now().Add(-CacheFor))
+		body, err := c.cache.Get(ctx, key, time.Now().Add(-maxAge))
 		if err != nil {
 			c.log.WarnContext(ctx, "reading a kept MusicBrainz answer failed", "err", err)
 		}
@@ -267,20 +280,20 @@ func (c *MusicBrainz) fetch(ctx context.Context, key string) ([]byte, error) {
 		}
 		pause := cmp.Or(retryAfter, wait)
 		c.log.InfoContext(ctx, "MusicBrainz is busy: asking again", "after", pause)
-		if slept := sleep(ctx, pause, nil); slept != nil {
-			return nil, slept
+		if slept := remote.Sleep(ctx, pause); slept != nil {
+			return nil, fmt.Errorf("back off: %w", slept)
 		}
 		wait *= 2
 	}
 }
 
-// errBusy is a 503: MusicBrainz asks for slower requests.
+// errBusy is a 503 or a 429: MusicBrainz asks for slower requests.
 var errBusy = errors.New("busy")
 
-// once sends one request. A 503 is [errBusy] with the wait the source asked for, if any.
+// once sends one request. A 503 or a 429 is [errBusy] with the wait the source asked for, if any.
 func (c *MusicBrainz) once(ctx context.Context, key string) ([]byte, time.Duration, error) {
-	if err := c.gate.wait(ctx); err != nil {
-		return nil, 0, err
+	if err := c.gate.Wait(ctx); err != nil {
+		return nil, 0, fmt.Errorf("gate: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+key, http.NoBody)
 	if err != nil {
@@ -298,7 +311,7 @@ func (c *MusicBrainz) once(ctx context.Context, key string) ([]byte, time.Durati
 	defer func() { _ = resp.Body.Close() }() // Read to the end below, or abandoned.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	switch {
-	case resp.StatusCode == http.StatusServiceUnavailable:
+	case busy(resp.StatusCode):
 		return nil, retryAfter(resp.Header.Get("Retry-After")), errBusy
 	case err != nil:
 		return nil, 0, fmt.Errorf("%w: %w", ErrUnavailable, err)
@@ -310,6 +323,11 @@ func (c *MusicBrainz) once(ctx context.Context, key string) ([]byte, time.Durati
 		return nil, 0, fmt.Errorf("%w: %s", ErrUnavailable, resp.Status)
 	}
 	return nil, 0, fmt.Errorf("%w: %s", ErrRejected, resp.Status)
+}
+
+// busy reports whether status asks for slower requests: a 503 or a 429.
+func busy(status int) bool {
+	return status == http.StatusServiceUnavailable || status == http.StatusTooManyRequests
 }
 
 // maxRetryAfter caps a wait the source asks for.
