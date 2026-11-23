@@ -2101,6 +2101,42 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "403":
           $ref: "#/components/responses/Problem"
+  /admin/metadata:
+    get:
+      operationId: getMetadata
+      summary: Read how artist art and bios are fetched.
+      description: >-
+        For administrators: Health's Metadata card. Whether lookups are on
+        (`metadata.remote`, off on a new server) and the language wanted; how
+        each source stands (`musicbrainz`, which names an artist's Wikidata
+        item; `wikipedia`, which is Wikipedia, Wikidata and Commons; and
+        `fanarttv`), with whether its keys are set, never their values, and
+        its last failure in words; where the artist pass stands; and the
+        library's album artists by what it has of them, `withoutMbid` being
+        those only Matching can give art (by matching their albums). Lookups
+        send MusicBrainz IDs and nothing else. Progress isn't an event: read
+        this again while `pass.running`.
+      responses:
+        "200":
+          description: The status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetadataStatus" }
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: The artist pass isn't set up on this server.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /admin/users:
     get:
       operationId: getUsers
@@ -6621,6 +6657,82 @@ components:
         total: { type: integer }
         albumsDone: { type: integer }
         album: { type: string }
+    MetadataStatus:
+      type: object
+      additionalProperties: false
+      description: >-
+        `nextRefresh` is when the next artist falls due, absent when none
+        waits.
+      required: [remote, language, pass, sources, artists]
+      properties:
+        remote: { type: boolean, description: "metadata.remote: off, nothing is asked." }
+        language: { type: string, description: The two-letter language bios and art are wanted in. }
+        pass: { $ref: "#/components/schemas/MetadataPass" }
+        sources:
+          type: array
+          items: { $ref: "#/components/schemas/MetadataSource" }
+        artists: { $ref: "#/components/schemas/MetadataArtists" }
+        nextRefresh: { type: string, format: date-time }
+    MetadataPass:
+      type: object
+      additionalProperties: false
+      description: >-
+        The artist pass: `done` of the `total` artists it set out to ask about,
+        and the one in hand. All zero while none runs.
+      required: [running, done, total]
+      properties:
+        running: { type: boolean }
+        done: { type: integer }
+        total: { type: integer }
+        artist: { $ref: "#/components/schemas/ArtistLink" }
+    MetadataSource:
+      type: object
+      additionalProperties: false
+      description: >-
+        `state`: `on` (asked as artists fall due), `off` (its switch or the
+        master switch), `needsKey` (fanart.tv without its project key, which
+        Kitsune doesn't ship), `refused` (it refused the key: asked no more
+        until a setting changes) or `resting` (down or busy: asked again at
+        `until`). `key` and `clientKey` are `set`, `missing`, or `none` for a
+        source that takes none; a key's value is never sent.
+      required: [name, enabled, state, key, clientKey]
+      properties:
+        name: { type: string, enum: [musicbrainz, wikipedia, fanarttv] }
+        enabled: { type: boolean, description: Its own switch, under the master switch. }
+        state: { type: string, enum: [on, "off", needsKey, refused, resting] }
+        key: { $ref: "#/components/schemas/KeyState" }
+        clientKey: { $ref: "#/components/schemas/KeyState" }
+        until: { type: string, format: date-time }
+        failure: { $ref: "#/components/schemas/MetadataFailure" }
+    KeyState:
+      type: string
+      enum: [none, set, missing]
+    MetadataFailure:
+      type: object
+      additionalProperties: false
+      description: The last thing that went wrong, in words that never hold a key, a URL or a path; `status` the HTTP status when there was one.
+      required: [words, at]
+      properties:
+        words: { type: string }
+        status: { type: integer }
+        at: { type: string, format: date-time }
+    MetadataArtists:
+      type: object
+      additionalProperties: false
+      description: >-
+        The library's album artists: all of them; those with a MusicBrainz ID
+        the pass may ask about; those every source on has answered about; those
+        with an image or a bio from anywhere; those every source answered with
+        nothing; and those with no MusicBrainz ID, which only matching their
+        albums gives one.
+      required: [albumArtists, withMbid, lookedUp, withArt, foundNothing, withoutMbid]
+      properties:
+        albumArtists: { type: integer }
+        withMbid: { type: integer }
+        lookedUp: { type: integer }
+        withArt: { type: integer }
+        foundNothing: { type: integer }
+        withoutMbid: { type: integer }
     ReplayGainStatus:
       type: object
       additionalProperties: false

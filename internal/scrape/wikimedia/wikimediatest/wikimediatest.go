@@ -78,6 +78,7 @@ type Server struct {
 	huge     bool
 	calls    []Call
 	mux      *http.ServeMux
+	images   map[string][]byte // Drawn once each, so a speed test times Kitsune, not the stand-in.
 }
 
 // New starts a stand-in on the loopback network and stops it when the test ends.
@@ -351,7 +352,22 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", fanarttvtest.MediaType(false))
-	_, _ = w.Write(fanarttvtest.Draw("commons "+f.Name, size(&f), false)) // The client may have gone.
+	_, _ = w.Write(s.drawn("commons "+f.Name, size(&f))) // The client may have gone.
+}
+
+// drawn is a portrait for seed, drawn once.
+func (s *Server) drawn(seed string, size image.Point) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.images == nil {
+		s.images = map[string][]byte{}
+	}
+	b, ok := s.images[seed]
+	if !ok {
+		b = fanarttvtest.Draw(seed, size, false)
+		s.images[seed] = b
+	}
+	return b
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

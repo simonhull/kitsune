@@ -19,6 +19,7 @@ type ownerChanges struct {
 	schedule <-chan struct{} // The quick scan's time.
 	level    <-chan struct{} // The log level.
 	organize <-chan struct{} // The organizer's templates and switches.
+	metadata <-chan struct{} // The artist pass's switches, language and keys.
 }
 
 // subscribe subscribes every owner to its keys in live.
@@ -30,6 +31,8 @@ func subscribe(live *settings.Service) ownerChanges {
 		level:    live.Subscribe(settings.LogLevel),
 		organize: live.Subscribe(settings.OrganizeTemplate, settings.OrganizeCompilations, settings.OrganizeRoots,
 			settings.OrganizeOnEdit, settings.OrganizeCompanions, settings.OrganizeRewritePlaylists),
+		metadata: live.Subscribe(settings.MetadataRemote, settings.MetadataFanart, settings.MetadataWikipedia,
+			settings.MetadataLanguage, settings.FanartAPIKey, settings.FanartClientKey),
 	}
 }
 
@@ -59,8 +62,9 @@ func (a *app) followLibrary(ctx context.Context) {
 	}
 }
 
-// followRest applies every change to the Last.fm key, the schedule and the log
-// level until ctx ends. None of them waits.
+// followRest applies every change to the Last.fm key, the schedule, the
+// organizer, the artist pass and the log level until ctx ends. None of them
+// waits.
 func (a *app) followRest(ctx context.Context) {
 	for {
 		select {
@@ -74,6 +78,8 @@ func (a *app) followRest(ctx context.Context) {
 			a.log.InfoContext(ctx, "quick scan rescheduled", "at", t.String())
 		case <-a.changes.organize:
 			a.applyOrganize(ctx)
+		case <-a.changes.metadata:
+			a.applyMetadata(ctx)
 		case <-a.changes.level:
 			if a.level != nil {
 				level := a.live.Snapshot().LogLevel

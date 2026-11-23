@@ -105,6 +105,7 @@ type Server struct {
 	huge     bool
 	calls    []Call
 	mux      *http.ServeMux
+	images   map[string][]byte // Drawn once each, so a speed test times Kitsune, not the stand-in.
 }
 
 // New starts a stand-in on the loopback network, holding artists, and stops
@@ -345,7 +346,7 @@ func (s *Server) getImage(w http.ResponseWriter, r *http.Request) {
 	}
 	alpha := ext(kind) == ".png"
 	w.Header().Set("Content-Type", MediaType(alpha))
-	_, _ = w.Write(Draw(mbid+kind+id, size, alpha)) // The client may have gone.
+	_, _ = w.Write(s.drawn(mbid+kind+id, size, alpha)) //nolint:gosec // G705: an image drawn from a hash of the path, served as an image, never HTML.
 }
 
 // find returns the image of kind with id, and the size to draw it at when it
@@ -392,6 +393,21 @@ func MediaType(alpha bool) string {
 		return "image/png"
 	}
 	return "image/jpeg"
+}
+
+// drawn is [Draw]'s image, drawn once.
+func (s *Server) drawn(seed string, size image.Point, alpha bool) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.images == nil {
+		s.images = map[string][]byte{}
+	}
+	b, ok := s.images[seed]
+	if !ok {
+		b = Draw(seed, size, alpha)
+		s.images[seed] = b
+	}
+	return b
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
