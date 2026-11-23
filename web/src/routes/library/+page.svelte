@@ -771,7 +771,7 @@
 	/* Solid, because the name it stands under leaves upward, past it. */
 	.top {
 		position: fixed;
-		z-index: 2;
+		z-index: 3;
 		top: var(--head-top);
 		left: var(--page-edge);
 		width: var(--name-column);
@@ -908,13 +908,16 @@
 		background: var(--ground);
 	}
 
+	/* The veil: the whole band above the list line, edge to edge, so a cover's shadow or an artist's
+	   name passing under it is cut by one straight line and never shows round a narrower box. */
 	.columns-head::before {
 		content: '';
 		position: absolute;
-		left: 0;
-		right: 0;
-		bottom: 100%;
-		height: var(--head-top);
+		z-index: -1;
+		top: calc(-1 * var(--head-top));
+		bottom: 0;
+		left: calc(-1 * var(--songs-left));
+		right: calc(-1 * var(--songs-right));
 		background: var(--ground);
 	}
 
