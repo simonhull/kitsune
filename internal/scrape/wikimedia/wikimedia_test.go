@@ -115,7 +115,7 @@ func TestFailures(t *testing.T) {
 			wm := standIn(t)
 			c.set(wm)
 			o := wm.Options()
-			o.HTTP.Timeout = 200 * time.Millisecond
+			o.HTTP.Timeout = timeoutFor(c.name)
 			if _, err := wikimedia.New(o).File(t.Context(), picture, 1024); !errors.Is(err, c.want) {
 				t.Errorf("err = %v, want %v", err, c.want)
 			}
@@ -148,4 +148,14 @@ func TestPlainText(t *testing.T) {
 			t.Errorf("PlainText(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+// timeoutFor is how long a request may take in the failure named: a slow
+// stand-in outlasts it, and nothing else comes near it, however busy the
+// machine running the tests.
+func timeoutFor(name string) time.Duration {
+	if name == "slow" {
+		return 200 * time.Millisecond
+	}
+	return time.Minute
 }

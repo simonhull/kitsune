@@ -102,7 +102,7 @@ func TestNoErrorQuotesAKey(t *testing.T) {
 			ft := fanarttvtest.New(t, lowTide())
 			c.set(ft)
 			o := ft.Options()
-			o.HTTP.Timeout = 200 * time.Millisecond
+			o.HTTP.Timeout = timeoutFor(c.name)
 			ask := mbid
 			if c.name == "none" {
 				ask = "00000000-0000-4000-8000-000000000000"
@@ -141,4 +141,14 @@ func TestAnImageElsewhereIsNeverFetched(t *testing.T) {
 	if n := len(ft.Calls()); n != 0 {
 		t.Errorf("%d calls for images elsewhere", n)
 	}
+}
+
+// timeoutFor is how long a request may take in the failure named: a slow
+// stand-in outlasts it, and nothing else comes near it, however busy the
+// machine running the tests.
+func timeoutFor(name string) time.Duration {
+	if name == "slow" {
+		return 200 * time.Millisecond
+	}
+	return time.Minute
 }
