@@ -191,7 +191,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   for the whole list. `AlbumDetail.extras` holds `discs` (every disc's art as disc 0, then by disc),
   `back` and `coverSource`. `GET /artwork/{hash}` takes every ladder's sizes (128, 400, 512, 640, 800,
   1024, 1920, 3840) and answers JPEG or, for an image with `alpha`, PNG. No response names a file or a
-  root. The `artists` event (ids only) goes to everyone when a scan changes an artist's images or bio.
+  root. The `artists` event (ids only) goes to everyone when a scan or the artist pass changes an
+  artist's images or bio. `GET /artists/{id}` for an artist with an MBID and no art at all asks the
+  pass for it at a person's priority (`Scraper.Want`) and answers at once; the art comes on the event.
+- `GET /admin/metadata` is Health's Metadata card (Phase 2, see Scrape): `remote`, `language`, each
+  source (`musicbrainz`, `wikipedia`, `fanarttv`) with `enabled`, `state` (`on`, `off`, `needsKey`,
+  `refused`, `resting` with `until`), `key` and `clientKey` (`set`, `missing` or `none`, never a value)
+  and its last `failure` in words; `pass` (running, done of total, the artist in hand); `artists`
+  counting album artists (`withMbid`, `lookedUp`, `withArt`, `foundNothing`, `withoutMbid`, which
+  Matching fixes); `nextRefresh`. A 503 without a scraper. Progress is no event: read it again.
 - Stars are the only like: a song's own rating, ½★ to 5★ in halves, is what every list, filter, sort,
   album average and shuffle weight reads. Nothing is hearted any more. The hearts people kept from
   before (`track_hearts`, `album_hearts`, `artist_hearts`) show and weigh nowhere; they wait for
@@ -367,7 +375,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   notes the albums. `FolderLayout` is what the scan reads to find folders: every live track's file
   and every album's owners, kept between library writes as the index's rows are, and what the store
   holds of images and bios. `albums.release_group_mbid` is kept with `coalesce`, as `mbid` is.
-  `scrape_state` waits for the fetching phase.
+- The artist pass's state (`scrape.go`, migration `0027`): `scrape_state` (source `fanarttv` or
+  `wikimedia`, kind `artist` (`album` later), keyed by MBID not row, `status` `found`, `none` or
+  `failed` with `failures` in a row and `error` in words, `fetched_at`, `next_at`) and `scrape_feeds`
+  (when fanart.tv's latest feed was read). `WriteRemote` is one transaction per artist: images as
+  `artist_images` rows of source `fanart` or `wikimedia` on `artwork` rows of source `remote`, with
+  `remote_id` and `credit`; a bio of source `wikipedia`; the states. Its upserts skip a `folder` or
+  `pinned` row and an `nfo` bio, and its deletes take only the named source's row (a `folder` or
+  `pinned` source is `ErrInvalidWrite`). A folder that gives up an image or a bio brings every
+  source's `next_at` for that artist forward (`AskAgainForArtist`), as does `AskAgain` for the feed.
 
 ## Matching
 - `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
@@ -375,8 +391,10 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   a person ticks through `POST /albums/{id}/edits`, so everything editing guarantees holds. It knows
   nothing of the store; `server.LookupCache` keeps its answers in `lookups` for a day.
 - One `MusicBrainz` client serves the process (built in `cmd/`): its gate keeps every request to one a
-  second and serves people before prefetch (`matching.Background`). It names itself
-  `Kitsune/<version> ( https://github.com/simonhull/kitsune )` and asks again after a 503.
+  second and serves people before prefetch (`matching.Background`, which is `remote.Background`). It
+  names itself `Kitsune/<version> ( https://github.com/simonhull/kitsune )` and asks again after a 503
+  or a 429. `ArtistLinks` (`artist/{mbid}?inc=url-rels`, kept a week) gives the artist pass an artist's
+  Wikidata item.
 - Confidence is evidence-weighted, and evidence is structured facts the client words, as shuffle's
   `why`. Matching never proposes taking a value away, and never guesses: a field the release lacks is
   left out.
@@ -454,6 +472,13 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `organize.rewrite_playlists`. server.toml doesn't carry them; a variable or `-set` may seed them.
   `follow.go` hands them to the scanner (`SetOrganize`), which doesn't wait: a run keeps its preview's
   templates.
+- The artist pass's keys (`settings/metadata.go`): `metadata.remote`, the master switch, off on a new
+  server; `metadata.fanarttv` and `metadata.wikipedia` (on, under it); `metadata.language` (two letters,
+  `en`); `fanarttv.api_key` (the project key) and `fanarttv.client_key` (a person's own), secrets as
+  `lastfm.shared_secret` is, unset by default. Kitsune ships no key and builds none into a release:
+  without a project key fanart.tv is off and says so. server.toml doesn't carry them; a variable (or
+  `-set`, keys aside) seeds them. `follow.go` hands them to `Scraper.Configure`, which takes them at
+  once and asks every source again.
 
 ## Auth
 - `internal/auth` owns credentials. Passwords are Argon2id in PHC format; the store only
@@ -674,6 +699,46 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   linking the original to `<name>.kitsune-bak`; its undo rewrites them back and removes the copy. A
   test seam, `organizeFault`, stops a run at each step as a crash would.
 
+## Scrape
+- `internal/scrape` is the artist pass (plan 072, Phase 2): images and bios for artists, only ever by
+  the MBID the library holds (`artists.mbid`), never by a name. Not an MBID, Various Artists and
+  MusicBrainz's special-purpose artists (`Askable`) are never asked about. Turning `metadata.remote` on
+  sends MBIDs to the sources and nothing else.
+- Sources, in precedence after pins and the library's own files: fanart.tv (`scrape/fanarttv`:
+  `artistthumb`, `artist4kbackground` then `artistbackground`, `hdmusiclogo` then `musiclogo`,
+  `musicbanner`), then Wikimedia (`scrape/wikimedia`: MusicBrainz names the Wikidata item; its
+  article's lead in `metadata.language`, else English, from Wikipedia's page summary, credited CC BY-SA
+  4.0 with its link; its P18 portrait from Commons at 1024 px, credited from `extmetadata`, as a thumb
+  fanart.tv lacks). `Decide`/`DecideBio` and `Pick` are pure: a pin or a folder's image (an `nfo` bio)
+  is never replaced; the first source that answered with an image gives it; one not asked or failed
+  keeps its own; an image goes only when its own source answered with none and no later one has one
+  (then the other sources are asked again). Among one source's images: tier, language (wanted,
+  English, none, other), likes, size, the oldest ID. Nothing remote ever removes local art.
+- `internal/remote` is every service's client (the gate MusicBrainz used, moved): a gate per service
+  with people before `Background` work, one request per key at once, retries on 429 and 503 honoring
+  `Retry-After` (a wait past a minute ends the request), a body cap, the User-Agent, and errors that
+  wrap `ErrUnavailable`, `ErrNotFound`, `ErrRefused` (401, 403), `ErrRejected` or `ErrTooLarge` and never
+  quote a URL. Keys go in headers (fanart.tv's `api-key` and `client-key`), never a URL. Gates:
+  fanart.tv's JSON one a second, its images two; Wikimedia one a second for all its sites.
+- `Scraper.Run` is the app's background work: a pass at start, when kicked (every `LibraryChanged`,
+  so a scan, an edit or a match that gave an MBID), and when the next artist falls due. It waits on
+  `Scanner.WaitScanFree` before each artist (a scan's covers first) and renders through the scan's
+  `artwork.Cache`, sharing its two renders. People's artists go first, then album artists by
+  everyone's plays, then the rest; one artist is one `WriteRemote` and, when it changed, one `artists`
+  event. A source is asked only when due and only for what pins and folders leave free.
+- Refresh (`NextAsk`, pure): found, 27 to 33 days by a hash of the MBID; none, 7 days then 30; a
+  failure (5xx, timeout, a body that doesn't parse or is too large, an image's address not the
+  source's, as fanart.tv's bare file names of November 2025) 1 h, 6 h, a day, a week. A 404 is none. A
+  refusal (401, 403) stops that source until a setting changes; a source down or busy rests (a minute,
+  doubling to an hour, or its `Retry-After`) without counting against later artists. fanart.tv's
+  `latest` feed is read once a day and brings forward every artist on it already asked about.
+- `describe` words a failure for the card ("fanart.tv refused the key", "fanart.tv answered 503") from
+  sentinels and statuses alone. `TestNoErrorQuotesAKey` (`fanarttv`, `scrape`) holds every error,
+  log line, stored error and the report to no key against every stand-in fault.
+- Tests use `fanarttvtest`, `wikimediatest` and `musicbrainztest` (`AddArtist`); each answers 429 with
+  Retry-After, 503, a refused key, bare file names, slowly and too much. The pass's tests guard their
+  transports so a request that would leave httptest fails the test.
+
 ## Shuffle
 - `internal/shuffle` is the pure engine: units, weights, a finite order and an endless stream, given
   plain values. It knows nothing of the store. Its bench (`internal/shuffle/bench`, `BASELINE.md`) is
@@ -754,6 +819,8 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   are one 403. Success ends every session of that person and signs them in, as login does.
 - `KITSUNE_MUSICBRAINZ_URL`, read only in `cmd/`, points the server at a stand-in MusicBrainz (its web
   service at `/ws/2/`, covers at `/coverart/`), as `KITSUNE_LASTFM_URL` does for Last.fm.
+  `KITSUNE_FANARTTV_URL` (its API at `/v3.2/`, images at `/fanart/`) and `KITSUNE_WIKIMEDIA_URL`
+  (`/wikidata/`, `/wikipedia/{lang}/`, `/commons/`, `/upload/`) do the same for the artist pass.
 - `KITSUNE_LASTFM_URL`, read only in `cmd/`, points the server at a stand-in Last.fm (its API at
   `/2.0/`, its approval page at `/api/auth/`) for manual checks; production never sets it. Tests use
   `internal/lastfm/lastfmtest` and nothing ever talks to the real Last.fm.
@@ -968,8 +1035,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   without them, an organize preview of 50,000 songs, an organize run of 1,000, per song, a find of duplicates over
   50,000 songs after a fingerprint landed, a ReplayGain run of 1,000 real FLACs, per song,
   `GET /admin/replaygain` over 50,000 songs with 2,000 to write, an artist's page with all four
-  images and a bio, `GET /artists` of 2,000 artists with thumbs, and a quick scan beside unchanged
-  art, held to the same scan without it. The
+  images and a bio, `GET /artists` of 2,000 artists with thumbs, a quick scan beside unchanged
+  art, held to the same scan without it, and the artist pass over one artist against the stand-ins
+  (`scrape-artist`: its JSON, choices, a 4K background and three more images rendered, one write). The
   browser suite also holds that a song plays on while its file moves. Each fails past its budget,
   and CI runs both on every PR: the speed tests in their own job, the browser suite as four shards (each
   library in two, the files split by time in `web/perf/shards.ts`, one worker each), and the `perf` job
