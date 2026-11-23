@@ -186,3 +186,22 @@ func TestOneKeyIsAskedOnce(t *testing.T) {
 		}
 	})
 }
+
+// A timeout is the service being slow, not another asker giving up: it ends
+// the request instead of asking again forever.
+func TestATimeoutIsUnavailable(t *testing.T) {
+	t.Parallel()
+	slow := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	}))
+	t.Cleanup(slow.Close)
+	hc := slow.Client()
+	hc.Timeout = 50 * time.Millisecond
+	_, err := remote.New(remote.Options{HTTP: hc}).Get(t.Context(), "k", slow.URL, nil)
+	if !errors.Is(err, remote.ErrUnavailable) {
+		t.Errorf("err = %v, want unavailable", err)
+	}
+}

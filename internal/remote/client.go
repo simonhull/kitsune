@@ -208,7 +208,7 @@ func (c *Client) once(ctx context.Context, u string, header http.Header) ([]byte
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("ask: %w", context.Cause(ctx))
 		}
-		return nil, fmt.Errorf("%w: %w", ErrUnavailable, unquoted(err))
+		return nil, fmt.Errorf("%w: %s", ErrUnavailable, unquoted(err).Error()) // Not wrapped: a timeout is no abandoned wait.
 	}
 	defer func() { _ = resp.Body.Close() }() // Read below, or abandoned.
 	if resp.StatusCode != http.StatusOK {
@@ -225,7 +225,7 @@ func (c *Client) read(ctx context.Context, r io.Reader) ([]byte, error) {
 	case err != nil && ctx.Err() != nil:
 		return nil, fmt.Errorf("read: %w", context.Cause(ctx))
 	case err != nil:
-		return nil, fmt.Errorf("%w: %w", ErrUnavailable, unquoted(err))
+		return nil, fmt.Errorf("%w: %s", ErrUnavailable, unquoted(err).Error()) // Not wrapped: a timeout is no abandoned wait.
 	case int64(len(body)) > c.maxBody:
 		return nil, fmt.Errorf("%w: over %d bytes", ErrTooLarge, c.maxBody)
 	}

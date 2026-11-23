@@ -306,7 +306,7 @@ func (c *MusicBrainz) once(ctx context.Context, key string) ([]byte, time.Durati
 		if ctx.Err() != nil {
 			return nil, 0, fmt.Errorf("ask: %w", context.Cause(ctx))
 		}
-		return nil, 0, fmt.Errorf("%w: %w", ErrUnavailable, err)
+		return nil, 0, fmt.Errorf("%w: %s", ErrUnavailable, err.Error()) // Not wrapped: a timeout is no abandoned wait.
 	}
 	defer func() { _ = resp.Body.Close() }() // Read to the end below, or abandoned.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
@@ -314,7 +314,7 @@ func (c *MusicBrainz) once(ctx context.Context, key string) ([]byte, time.Durati
 	case busy(resp.StatusCode):
 		return nil, retryAfter(resp.Header.Get("Retry-After")), errBusy
 	case err != nil:
-		return nil, 0, fmt.Errorf("%w: %w", ErrUnavailable, err)
+		return nil, 0, fmt.Errorf("%w: %s", ErrUnavailable, err.Error()) // As above.
 	case resp.StatusCode == http.StatusOK:
 		return body, 0, nil
 	case resp.StatusCode == http.StatusNotFound:
