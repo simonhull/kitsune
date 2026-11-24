@@ -368,7 +368,7 @@
 		--pill-inset: 1.5px;
 
 		position: fixed;
-		z-index: 1;
+		z-index: 3;
 		top: 104px;
 		right: 24px;
 		width: 32px;
