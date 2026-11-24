@@ -110,6 +110,27 @@ func TestOpenEmptyHasTheDefaults(t *testing.T) {
 	}
 }
 
+// Lookups are off on a new server, and fanart.tv has no key: Kitsune ships none.
+func TestLookupsAreOffOnANewServer(t *testing.T) {
+	t.Parallel()
+	snap := open(t, openStore(t)).Snapshot()
+	if snap.MetadataRemote || !snap.MetadataFanart || !snap.MetadataWikipedia || snap.MetadataLanguage != "en" || snap.FanartAPIKey != "" {
+		t.Errorf("metadata = %+v, want lookups off, both sources on, English and no key", snap.Values)
+	}
+}
+
+func TestFanartKeysAreSecrets(t *testing.T) {
+	t.Parallel()
+	for _, k := range []settings.Key{settings.FanartAPIKey, settings.FanartClientKey, settings.LastfmSharedSecret} {
+		if !k.Secret() {
+			t.Errorf("%s isn't a secret", k)
+		}
+	}
+	if settings.MetadataLanguage.Secret() {
+		t.Error("the language is a secret")
+	}
+}
+
 // checkLogs fails unless logs hold every one of want and none of never.
 func checkLogs(t *testing.T, logs string, want, never []string) {
 	t.Helper()
@@ -239,6 +260,10 @@ func TestChangeChecksEveryKey(t *testing.T) {
 		{settings.LogLevel, `"WARN"`, `"loud"`},
 		{settings.ServerBaseURL, `"https://example.com/music"`, `"example.com"`},
 		{settings.ServerTrustedProxies, `["10.0.0.2", "172.17.0.0/16"]`, `["not an ip"]`},
+		{settings.MetadataLanguage, `" DE "`, `"eng"`},
+		{settings.MetadataRemote, trueJSON, `"on"`},
+		{settings.FanartAPIKey, `"0f1e2d"`, `"two words"`},
+		{settings.FanartClientKey, `"0f1e2d"`, `42`},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.key)+" "+tt.bad, func(t *testing.T) {

@@ -312,6 +312,9 @@ func upsertImage(ctx context.Context, q *sqlcdb.Queries, art *ArtworkWrite) erro
 func writeArtistImage(ctx context.Context, q *sqlcdb.Queries, w *ArtistImageWrite, now time.Time) (int64, error) {
 	if w.Image == nil {
 		n, err := q.DeleteFolderArtistImage(ctx, sqlcdb.DeleteFolderArtistImageParams{ArtistID: w.ArtistID, Kind: string(w.Kind)})
+		if err == nil && n > 0 {
+			err = askAgainFor(ctx, q, w.ArtistID, now)
+		}
 		if err != nil {
 			return 0, fmt.Errorf("artist %d %s: %w", w.ArtistID, w.Kind, err)
 		}
@@ -357,6 +360,9 @@ func writeAlbumImage(ctx context.Context, q *sqlcdb.Queries, w *AlbumImageWrite,
 func writeBio(ctx context.Context, q *sqlcdb.Queries, w *BioWrite, now time.Time) (int64, error) {
 	if w.Bio == nil {
 		n, err := q.DeleteNfoBio(ctx, w.ArtistID)
+		if err == nil && n > 0 {
+			err = askAgainFor(ctx, q, w.ArtistID, now)
+		}
 		if err != nil {
 			return 0, fmt.Errorf("artist %d bio: %w", w.ArtistID, err)
 		}
@@ -371,6 +377,15 @@ func writeBio(ctx context.Context, q *sqlcdb.Queries, w *BioWrite, now time.Time
 		return 0, fmt.Errorf("artist %d bio: %w", w.ArtistID, err)
 	}
 	return n, nil
+}
+
+// askAgainFor brings every source's next ask about the artist forward: its
+// folder gave up an image or a bio, which a source may have.
+func askAgainFor(ctx context.Context, q *sqlcdb.Queries, artistID int64, now time.Time) error {
+	if err := q.AskAgainForArtist(ctx, sqlcdb.AskAgainForArtistParams{Now: ms(now), ArtistID: artistID}); err != nil {
+		return fmt.Errorf("ask again: %w", err)
+	}
+	return nil
 }
 
 // Picture is a stored image as a page shows it: a [Cover], and whether its

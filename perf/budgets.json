@@ -226,6 +226,10 @@
     "quick-scan-art": {
       "interaction": "Quick scan of 500 unchanged songs, 50 artist folders and 50 album folders of unchanged art",
       "p95Ms": 15
+    },
+    "scrape-artist": {
+      "interaction": "The artist pass over one artist, every source on, against stand-ins: JSON, choices, a 1000 px thumb, a 4K background, a logo and a banner rendered, a bio, one write",
+      "p95Ms": 850
     }
   }
 }

@@ -151,7 +151,7 @@ func markUnmigrated(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	const back = "DROP TABLE artist_bios; DROP TABLE album_images; DROP TABLE artist_images; ALTER TABLE albums DROP COLUMN release_group_mbid; ALTER TABLE artwork DROP COLUMN alpha; " +
+	const back = "DROP TABLE scrape_feeds; DROP TABLE scrape_state; DROP TABLE artist_bios; DROP TABLE album_images; DROP TABLE artist_images; ALTER TABLE albums DROP COLUMN release_group_mbid; ALTER TABLE artwork DROP COLUMN alpha; " +
 		"DROP TABLE gain_writes; DROP TABLE gain_runs; DROP TABLE duplicate_dismissals; DROP TABLE organize_moves; DROP TABLE organize_runs; DROP TABLE playlist_files; DROP TABLE playlist_tracks; DROP TABLE playlists; DROP TABLE playback; DROP TABLE track_loudness; DROP TABLE album_loudness; DROP INDEX tracks_ungained; DROP TABLE match_states; DROP TABLE lookups; DROP TABLE shuffle_sessions; DROP TABLE listens; DROP TABLE shuffle_run_tracks; DROP TABLE shuffle_runs; DROP TABLE shuffle_excluded; DROP TABLE settings; DROP TABLE user_prefs; DROP TABLE lastfm_outbox; DROP TABLE lastfm_accounts; DROP TABLE plays; DROP TABLE track_hearts; DROP TABLE album_hearts; DROP TABLE artist_hearts; DROP TABLE track_ratings; " +
 		"ALTER TABLE scan_issues DROP COLUMN reader; " +
 		"PRAGMA user_version = 852615662"

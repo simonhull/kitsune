@@ -385,7 +385,7 @@ func TestNoEventHoldsASecret(t *testing.T) {
 	tap := fx.Events.Subscribe(events.Viewer{UserID: 1, Admin: true}, "")
 	defer fx.Events.Unsubscribe(tap)
 	token := fx.token
-	fx.patchSettings(t, token, `{"lastfm.shared_secret":"`+secretValue+`","library.roots":["`+fx.root+`"]}`, false)
+	fx.patchSettings(t, token, `{"lastfm.shared_secret":"`+secretValue+`","fanarttv.api_key":"`+fanartProjectKey+`","fanarttv.client_key":"`+fanartPersonalKey+`","library.roots":["`+fx.root+`"]}`, false)
 	fx.send(t, putPrefCall(token, themePath, `"dark"`))
 	fx.heart(t, 1, store.KindTrack, fx.album.Tracks[1].ID)
 	fx.send(t, rateCall(token, fx.album.Tracks[0].ID, stars(3)))
@@ -432,7 +432,7 @@ func TestNoEventHoldsASecret(t *testing.T) {
 	}
 	wantHeard(t, heard, events.Artists)
 	for _, ev := range heard {
-		for _, secret := range []string{secretValue, token, testPassword, newPassword, code, fx.root} {
+		for _, secret := range []string{secretValue, fanartProjectKey, fanartPersonalKey, token, testPassword, newPassword, code, fx.root} {
 			if strings.Contains(ev, secret) {
 				t.Errorf("event %s holds %q", ev, secret)
 			}
