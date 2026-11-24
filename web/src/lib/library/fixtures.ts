@@ -8,6 +8,11 @@ import { partOf } from './indexPatch.ts';
 import { createPlaybackFixture, type PlaybackFixture } from './playbackFixture.ts';
 import { createPlaylistsFixture } from './playlistsFixture.ts';
 import { createDuplicatesFixture } from '#lib/duplicates/fixture.ts';
+import {
+	createMetadataFixture,
+	metadataSettings,
+	type MetadataFixture
+} from '#lib/metadata/fixture.ts';
 import { createOrganizeFixture } from '#lib/organize/fixture.ts';
 import { createReplayGainFixture, type GainFixture } from '#lib/replaygain/fixture.ts';
 import { defaultCompilations, defaultTemplate } from '#lib/organize/template.ts';
@@ -952,6 +957,10 @@ export interface FixtureOptions {
 	gainAlbumMs?: number | undefined;
 	/** `late`: Low Tide Choir's art arrives only on `kitsune:art-arrives`, as an `artists` event. */
 	art?: 'late' | undefined;
+	/** Where Health's Metadata card starts: `off` unless said. */
+	metadata?: MetadataFixture | undefined;
+	/** How long each artist of the artist pass takes, in milliseconds. */
+	metadataArtistMs?: number | undefined;
 }
 
 /** A song in a fixture Trash: where it came from, and when. */
@@ -1128,7 +1137,7 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 		...(options.playbackStore === undefined ? {} : { store: options.playbackStore })
 	});
 	let lastfm = lastfmStatusOf(options.lastfm ?? 'none');
-	let settings = settingsFixture(lastfm.configured);
+	let settings = settingsFixture(lastfm.configured, metadataSettings(options.metadata ?? 'off'));
 	const prefs = new Map<PrefKey, unknown>(
 		Object.entries(options.prefs ?? {}) as [PrefKey, unknown][]
 	);
@@ -1281,6 +1290,19 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 			albums: [...new Set(songs.map(({ albumId }) => albumId))]
 		};
 	}
+
+	/** Health's Metadata card, following the settings as the server's report does. */
+	const metadata = createMetadataFixture({
+		start: options.metadata ?? 'off',
+		settings: () => settings.settings,
+		artists: () => artistLinks,
+		...(options.metadataArtistMs === undefined ? {} : { artistMs: options.metadataArtistMs }),
+		respond: (answer) =>
+			respond(() => {
+				adminOnly();
+				return answer();
+			})
+	});
 
 	/** Duplicates on the boards' own albums: a merge sends its copies to this Trash. */
 	const duplicates = createDuplicatesFixture({
@@ -1893,10 +1915,12 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 					return answer();
 				})
 		}),
+		metadata,
 		changeSettings: (change) =>
 			respond(() => {
 				adminOnly();
 				settings = changedSettings(settings, change);
+				metadata.changed(change);
 				const key = settings.settings['lastfm.api_key'].value;
 				const configured = key !== '' && settings.settings['lastfm.shared_secret'].set;
 				if (configured !== lastfm.configured) {

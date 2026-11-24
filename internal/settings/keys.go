@@ -71,6 +71,7 @@ func Keys() []Key {
 		LibraryRoots, LibraryTagWrites, LastfmAPIKey, LastfmSharedSecret,
 		LibraryQuickScan, LibraryMissingGrace, ServerBaseURL, ServerTrustedProxies, LogLevel,
 		OrganizeTemplate, OrganizeCompilations, OrganizeRoots, OrganizeOnEdit, OrganizeCompanions, OrganizeRewritePlaylists,
+		MetadataRemote, MetadataFanart, MetadataWikipedia, MetadataLanguage, FanartAPIKey, FanartClientKey,
 	}
 }
 
@@ -84,7 +85,9 @@ func Lookup(name string) (Key, error) {
 }
 
 // Secret reports whether k is write-only: its value never leaves the server.
-func (k Key) Secret() bool { return k == LastfmSharedSecret }
+func (k Key) Secret() bool {
+	return k == LastfmSharedSecret || k == FanartAPIKey || k == FanartClientKey
+}
 
 // RestartRequired reports whether a change to k waits for a restart, because
 // changing it live could cut off the page making the change.
@@ -114,6 +117,12 @@ type Values struct {
 	OrganizeRoots                          map[string]RootTemplates // Never change it: a snapshot shares it.
 	OrganizeOnEdit, OrganizeCompanions     bool
 	OrganizeRewritePlaylists               bool
+
+	// The artist pass's: the master switch, a switch per source, the language,
+	// and fanart.tv's keys, which are never logged or sent to a client.
+	MetadataRemote, MetadataFanart, MetadataWikipedia bool
+	MetadataLanguage                                  string
+	FanartAPIKey, FanartClientKey                     string
 }
 
 // LastfmEnabled reports whether both Last.fm values are set.
@@ -127,6 +136,7 @@ func Defaults() Values {
 		LogLevel: d.Log.Level, TrustedProxies: []netip.Prefix{},
 		OrganizeTemplate: organize.DefaultTemplate, OrganizeCompilations: organize.DefaultCompilations,
 		OrganizeRoots: map[string]RootTemplates{}, OrganizeCompanions: true,
+		MetadataFanart: true, MetadataWikipedia: true, MetadataLanguage: defaultLanguage,
 	}
 }
 
@@ -227,6 +237,7 @@ var defs = sync.OnceValue(func() map[Key]def {
 	all := libraryDefs()
 	maps.Copy(all, timeDefs())
 	maps.Copy(all, organizeDefs())
+	maps.Copy(all, metadataDefs())
 	return all
 })
 

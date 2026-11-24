@@ -44,6 +44,9 @@ func (s *Server) getArtist(w http.ResponseWriter, r *http.Request) {
 		Albums: s.toAPIAlbumEntries(d.Albums), AppearsOn: s.toAPIAlbumEntries(d.AppearsOn),
 		MBID: d.MBID, Images: toAPIArtistImages(&d.Images), Bio: toAPIBio(d.Bio),
 	}
+	if s.scraper != nil && d.MBID != "" && d.Images == (store.ArtistImages{}) && d.Bio == nil {
+		s.scraper.Want(d.ID) // Without waiting: the art comes in on the artists event.
+	}
 	writeBody(w, http.StatusOK, api.JSONMediaType, &body)
 }
 

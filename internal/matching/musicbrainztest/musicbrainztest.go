@@ -13,6 +13,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"maps"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -40,6 +41,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	releases []matching.Release
+	artists  map[string]Artist
 	calls    []Call
 	failures []int // Statuses for the next API calls, in order.
 	retry    string
@@ -60,8 +62,9 @@ func New(tb testing.TB, releases ...matching.Release) *Server {
 // opening no listener, for a [testing/synctest] bubble, or [Server.Handler]
 // for a server of its own.
 func NewInMemory(releases ...matching.Release) *Server {
-	s := &Server{releases: releases, mux: http.NewServeMux()}
+	s := &Server{releases: releases, artists: map[string]Artist{}, mux: http.NewServeMux()}
 	s.mux.HandleFunc("GET /ws/2/release/{id}", s.lookup)
+	s.mux.HandleFunc("GET /ws/2/artist/{id}", s.artist)
 	s.mux.HandleFunc("GET /ws/2/release", s.search)
 	s.mux.HandleFunc("GET /coverart/release/{id}/{size}", s.cover)
 	return s
@@ -94,6 +97,26 @@ func (s *Server) Add(releases ...matching.Release) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.releases = append(s.releases, releases...)
+}
+
+// Artist is an artist the stand-in knows, with its links elsewhere.
+type Artist struct {
+	ID, Name string
+	// Wikidata is its Wikidata item, such as Q2831, or "".
+	Wikidata string
+	// Wikipedia is an article linked straight to, by language: its title.
+	Wikipedia map[string]string
+	// Raw, when set, is answered in place of the artist's JSON.
+	Raw string
+}
+
+// AddArtist holds artists, for artist/{mbid}?inc=url-rels.
+func (s *Server) AddArtist(artists ...Artist) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range artists {
+		s.artists[a.ID] = a
+	}
 }
 
 // Fail answers the next API calls with statuses, in order, then goes back to
@@ -163,6 +186,43 @@ func (s *Server) lookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toJSON(&release, true))
+}
+
+// rel is one of an artist's URL relations.
+type rel struct {
+	Type string            `json:"type"`
+	URL  map[string]string `json:"url"`
+}
+
+// resource is a URL relation's member holding the URL.
+const resource = "resource"
+
+func (s *Server) artist(w http.ResponseWriter, r *http.Request) {
+	if s.fail(w, r) {
+		return
+	}
+	s.mu.Lock()
+	a, ok := s.artists[r.PathValue("id")]
+	s.mu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Not Found"})
+		return
+	}
+	if a.Raw != "" {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(a.Raw)) // The client may have gone.
+		return
+	}
+	rels := []rel{}
+	if a.Wikidata != "" {
+		rels = append(rels, rel{Type: "wikidata", URL: map[string]string{resource: "https://www.wikidata.org/wiki/" + a.Wikidata}})
+	}
+	for _, lang := range slices.Sorted(maps.Keys(a.Wikipedia)) {
+		page := "https://" + lang + ".wikipedia.org/wiki/" + a.Wikipedia[lang]
+		rels = append(rels, rel{Type: "wikipedia", URL: map[string]string{resource: page}})
+	}
+	rels = append(rels, rel{Type: "official homepage", URL: map[string]string{resource: "https://example.com/"}})
+	writeJSON(w, http.StatusOK, map[string]any{"id": a.ID, "name": a.Name, "relations": rels})
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {

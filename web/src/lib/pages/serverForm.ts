@@ -14,11 +14,11 @@ import type {
 } from '#lib/library/source.ts';
 
 /** The Server page's sections, in the order they're shown. */
-export type SectionId = 'library' | 'lastfm' | 'scanning' | 'advanced';
+export type SectionId = 'library' | 'lastfm' | 'scanning' | 'advanced' | 'art';
 
-export const sections: readonly SectionId[] = ['library', 'lastfm', 'scanning', 'advanced'];
+export const sections: readonly SectionId[] = ['library', 'lastfm', 'scanning', 'advanced', 'art'];
 
-/** What happens to the shared secret on save. */
+/** What happens to a write-only key on save: Last.fm's shared secret, fanart.tv's two keys. */
 export type SecretDraft = { kind: 'keep' } | { kind: 'replace'; text: string } | { kind: 'clear' };
 
 /** What the page's fields hold, as they're edited. */
@@ -34,6 +34,14 @@ export interface Draft {
 	/** The proxies as typed: commas between them. */
 	proxies: string;
 	level: LogLevel;
+	/** `metadata.remote`, the master switch for lookups. */
+	lookups: boolean;
+	fanart: boolean;
+	wikipedia: boolean;
+	/** `metadata.language`, a two-letter code. */
+	language: string;
+	fanartKey: SecretDraft;
+	fanartClientKey: SecretDraft;
 }
 
 /** Each section's fields. */
@@ -41,7 +49,8 @@ const fieldsOf: Record<SectionId, readonly (keyof Draft)[]> = {
 	library: ['roots', 'tagWrites'],
 	lastfm: ['apiKey', 'secret'],
 	scanning: ['quickScan', 'graceDays'],
-	advanced: ['baseUrl', 'proxies', 'level']
+	advanced: ['baseUrl', 'proxies', 'level'],
+	art: ['lookups', 'fanart', 'wikipedia', 'language', 'fanartKey', 'fanartClientKey']
 };
 
 /** The section a key's field is in, for a refusal the server names. */
@@ -54,7 +63,13 @@ export const sectionOfKey: Record<SettingKey, SectionId> = {
 	'library.missing_grace': 'scanning',
 	'server.base_url': 'advanced',
 	'server.trusted_proxies': 'advanced',
-	'log.level': 'advanced'
+	'log.level': 'advanced',
+	'metadata.remote': 'art',
+	'metadata.fanarttv': 'art',
+	'metadata.wikipedia': 'art',
+	'metadata.language': 'art',
+	'fanarttv.api_key': 'art',
+	'fanarttv.client_key': 'art'
 };
 
 const secondsPerDay = 86_400;
@@ -111,7 +126,13 @@ export function draftOf({ settings: s }: ServerSettings): Draft {
 		graceDays: grace === null ? s['library.missing_grace'].value : daysText(grace),
 		baseUrl: s['server.base_url'].value,
 		proxies: proxiesText(s['server.trusted_proxies'].value),
-		level: s['log.level'].value
+		level: s['log.level'].value,
+		lookups: s['metadata.remote'].value,
+		fanart: s['metadata.fanarttv'].value,
+		wikipedia: s['metadata.wikipedia'].value,
+		language: s['metadata.language'].value,
+		fanartKey: { kind: 'keep' },
+		fanartClientKey: { kind: 'keep' }
 	};
 }
 
@@ -176,22 +197,17 @@ export function changeFor(
 			if (differs('roots')) change['library.roots'] = draft.roots;
 			if (differs('tagWrites')) change['library.tag_writes'] = draft.tagWrites;
 			break;
-		case 'lastfm':
+		case 'lastfm': {
 			if (differs('apiKey')) change['lastfm.api_key'] = draft.apiKey.trim();
-			if (draft.secret.kind === 'replace') {
-				if (draft.secret.text.trim() === '') {
-					return {
-						problem: {
-							key: 'lastfm.shared_secret',
-							message: 'Paste the shared secret, or keep the one set.'
-						}
-					};
-				}
-				change['lastfm.shared_secret'] = draft.secret.text.trim();
-			} else if (draft.secret.kind === 'clear') {
-				change['lastfm.shared_secret'] = null;
-			}
+			const secret = secretChange(
+				draft.secret,
+				'lastfm.shared_secret',
+				'Paste the shared secret, or keep the one set.'
+			);
+			if ('problem' in secret) return secret;
+			Object.assign(change, secret.change);
 			break;
+		}
 		case 'scanning':
 			if (differs('quickScan')) {
 				if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.quickScan)) {
@@ -217,8 +233,49 @@ export function changeFor(
 			if (differs('proxies')) change['server.trusted_proxies'] = proxiesOf(draft.proxies);
 			if (differs('level')) change['log.level'] = draft.level;
 			break;
+		case 'art': {
+			if (differs('lookups')) change['metadata.remote'] = draft.lookups;
+			if (differs('fanart')) change['metadata.fanarttv'] = draft.fanart;
+			if (differs('wikipedia')) change['metadata.wikipedia'] = draft.wikipedia;
+			if (differs('language')) {
+				const language = draft.language.trim().toLowerCase();
+				if (!/^[a-z]{2}$/.test(language)) {
+					return {
+						problem: { key: 'metadata.language', message: 'Give the language as two letters.' }
+					};
+				}
+				change['metadata.language'] = language;
+			}
+			for (const [key, field] of [
+				['fanarttv.api_key', 'fanartKey'],
+				['fanarttv.client_key', 'fanartClientKey']
+			] as const) {
+				const secret = secretChange(draft[field], key, 'Paste the key, or keep the one set.');
+				if ('problem' in secret) return secret;
+				Object.assign(change, secret.change);
+			}
+			break;
+		}
 	}
 	return { change };
+}
+
+/** A write-only key's part of a change: its new value, null to clear it, or nothing. */
+function secretChange(
+	secret: SecretDraft,
+	key: 'lastfm.shared_secret' | 'fanarttv.api_key' | 'fanarttv.client_key',
+	empty: string
+): { change: SettingsChange } | { problem: DraftProblem } {
+	switch (secret.kind) {
+		case 'replace': {
+			const text = secret.text.trim();
+			return text === '' ? { problem: { key, message: empty } } : { change: { [key]: text } };
+		}
+		case 'clear':
+			return { change: { [key]: null } };
+		case 'keep':
+	}
+	return { change: {} };
 }
 
 /** Where a value came from, when that's a file, a variable or a flag: the page says so. */
@@ -243,6 +300,31 @@ export function restartNote(setting: Setting<unknown>): string | null {
 	}
 	return setting.pendingRestart === true ? 'SAVED · AFTER A RESTART' : 'AFTER A RESTART';
 }
+
+/** The languages offered for bios and art with words, by their two-letter codes. */
+export const bioLanguages: readonly { code: string; name: string }[] = [
+	{ code: 'en', name: 'English' },
+	{ code: 'de', name: 'Deutsch' },
+	{ code: 'es', name: 'Español' },
+	{ code: 'fr', name: 'Français' },
+	{ code: 'it', name: 'Italiano' },
+	{ code: 'nl', name: 'Nederlands' },
+	{ code: 'pt', name: 'Português' },
+	{ code: 'sv', name: 'Svenska' },
+	{ code: 'da', name: 'Dansk' },
+	{ code: 'no', name: 'Norsk' },
+	{ code: 'fi', name: 'Suomi' },
+	{ code: 'pl', name: 'Polski' },
+	{ code: 'cs', name: 'Čeština' },
+	{ code: 'hu', name: 'Magyar' },
+	{ code: 'tr', name: 'Türkçe' },
+	{ code: 'el', name: 'Ελληνικά' },
+	{ code: 'ru', name: 'Русский' },
+	{ code: 'uk', name: 'Українська' },
+	{ code: 'ja', name: '日本語' },
+	{ code: 'ko', name: '한국어' },
+	{ code: 'zh', name: '中文' }
+];
 
 /** The log levels, as the page names them. */
 export const levels: readonly { value: LogLevel; label: string }[] = [

@@ -98,6 +98,9 @@ linters:
       # MusicBrainz's JSON is kebab-case: its tags name its members, not the API's.
       - path: ^internal/matching/(mbjson\.go|musicbrainztest/)
         linters: [tagliatelle]
+      # fanart.tv's and Wikimedia's JSON is theirs, as MusicBrainz's is.
+      - path: ^internal/scrape/(fanarttv|wikimedia)/
+        linters: [tagliatelle]
 
 issues:
   max-issues-per-linter: 0

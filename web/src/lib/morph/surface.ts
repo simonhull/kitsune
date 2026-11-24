@@ -365,6 +365,21 @@ export class Surface {
 		schedule(this);
 	}
 
+	/**
+	 * Takes an element already at rest on its page (Health's Metadata card) as this surface, without
+	 * budding, so a new face can reshape it in place with `hold` and `reshape`. As an attachment: it
+	 * leaves with its page, so going takes away whatever it was drawing at once.
+	 */
+	readonly rests = (element: HTMLElement): (() => void) => {
+		this.#element = element;
+		this.#parent = element.parentElement;
+		return () => {
+			this.#resize?.disconnect();
+			this.#dispose();
+			this.#element = null;
+		};
+	};
+
 	/** Gives up a surface giving way to its next self: where its box had got to, and its opacities. */
 	#handOver(): { shape: Shape | null; box: number; words: number } {
 		const layer = clamp(this.#layerOpacity.value);

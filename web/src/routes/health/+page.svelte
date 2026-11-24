@@ -4,6 +4,7 @@
 	import { library } from '#lib/library/library.svelte.ts';
 	import MatchingCard from '#lib/matching/MatchingCard.svelte';
 	import ReplayGainCard from '#lib/replaygain/ReplayGainCard.svelte';
+	import MetadataCard from '#lib/metadata/MetadataCard.svelte';
 	import IssuesPanel from '#lib/pages/IssuesPanel.svelte';
 	import ScanPanel from '#lib/pages/ScanPanel.svelte';
 
@@ -76,6 +77,7 @@
 		{#if admin}
 			<div class="replaygain"><ReplayGainCard /></div>
 			<div class="matching"><MatchingCard /></div>
+			<div class="metadata"><MetadataCard /></div>
 		{/if}
 	</div>
 {/if}
@@ -106,9 +108,15 @@
 		grid-column: 2;
 	}
 
-	/* An empty slot takes no room: neither card is drawn on every library. */
+	/* Artist art and bios in the second column, under ReplayGain, or in its place when it isn't drawn. */
+	.metadata {
+		grid-column: 2;
+	}
+
+	/* An empty slot takes no room: no card is drawn on every library. */
 	.matching:empty,
-	.replaygain:empty {
+	.replaygain:empty,
+	.metadata:empty {
 		display: none;
 	}
 
@@ -121,7 +129,8 @@
 		}
 
 		.matching,
-		.replaygain {
+		.replaygain,
+		.metadata {
 			grid-row: auto;
 			grid-column: auto;
 		}

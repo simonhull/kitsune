@@ -26,6 +26,11 @@ import (
 	"github.com/simonhull/kitsune/internal/matching"
 	"github.com/simonhull/kitsune/internal/matching/musicbrainztest"
 	"github.com/simonhull/kitsune/internal/openapitest"
+	"github.com/simonhull/kitsune/internal/scrape"
+	"github.com/simonhull/kitsune/internal/scrape/fanarttv"
+	"github.com/simonhull/kitsune/internal/scrape/fanarttv/fanarttvtest"
+	"github.com/simonhull/kitsune/internal/scrape/wikimedia"
+	"github.com/simonhull/kitsune/internal/scrape/wikimedia/wikimediatest"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/store"
@@ -111,6 +116,15 @@ type testServerOptions struct {
 	MusicBrainz   *musicbrainztest.Server      // Nil means matching is not set up; else it asks the stand-in.
 	OrganizeStep  func(step, rel string) error // Told each step of an organize run; nil hears nothing.
 	GainStep      func(step, rel string)       // Told each step of a ReplayGain run; nil hears nothing.
+	// Scrape sets up the artist pass over these stand-ins (and MusicBrainz),
+	// with lookups off until a test configures it. Nil means none.
+	Scrape *scrapeStandIns
+}
+
+// scrapeStandIns are the sources the artist pass asks in a test.
+type scrapeStandIns struct {
+	Fanart    *fanarttvtest.Server
+	Wikimedia *wikimediatest.Server
 }
 
 // testServer is a running API over a real store and auth service.
@@ -125,6 +139,7 @@ type testServer struct {
 	Settings *settings.Service
 	Scanner  *library.Scanner
 	Events   *events.Hub
+	Scraper  *scrape.Scraper // Nil unless the options asked for one.
 }
 
 // newTestServer starts a server over a temporary store.
@@ -199,7 +214,9 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 		watching.Go(func() { watcher.Run(ctx) })
 		tb.Cleanup(func() { cancel(); watching.Wait() }) // Before the store closes.
 	}
+	scraper := testScraper(&o, st, hub, scanner)
 	h := New(Config{
+		Scraper:       scraper,
 		Matcher:       testMatcher(o.MusicBrainz, st),
 		Watcher:       watcher,
 		Events:        hub,
@@ -227,7 +244,25 @@ func newTestServer(tb testing.TB, opts ...testServerOptions) *testServer {
 	})
 	srv := httptest.NewServer(h)
 	tb.Cleanup(srv.Close)
-	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st, Scanner: scanner, Settings: live, Events: hub}
+	return &testServer{Server: srv, URL: srv.URL + o.BasePath + apiPrefix, Clock: clock, Log: logs, Auth: svc, Handle: h, Store: st, Scanner: scanner, Settings: live, Events: hub, Scraper: scraper}
+}
+
+// testScraper returns the artist pass o asks for, or nil.
+func testScraper(o *testServerOptions, st *store.Store, hub *events.Hub, scanner *library.Scanner) *scrape.Scraper {
+	if o.Scrape == nil {
+		return nil
+	}
+	so := scrape.Options{Store: st, Artwork: o.Artwork, Library: scanner, Notify: NewLibraryEvents(hub).ArtistsChanged}
+	if f := o.Scrape.Fanart; f != nil {
+		so.Fanart = fanarttv.New(f.Options())
+	}
+	if w := o.Scrape.Wikimedia; w != nil {
+		so.Wikimedia = wikimedia.New(w.Options())
+	}
+	if o.MusicBrainz != nil {
+		so.MusicBrainz = matching.NewMusicBrainz(o.MusicBrainz.Options())
+	}
+	return scrape.New(so)
 }
 
 // What GET /admin/settings reports of a test server.

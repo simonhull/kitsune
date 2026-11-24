@@ -1,6 +1,7 @@
 /** The contract's types, by name: see `api/openapi.yaml`. Real tags are messy, so much is optional. */
 
 import type { DuplicatesSource } from '#lib/duplicates/types.ts';
+import type { MetadataStatusSource } from '#lib/metadata/types.ts';
 import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
 import type { ReplayGainEvent, ReplayGainSource } from '#lib/replaygain/types.ts';
 import type { ThemeChoice } from '#lib/theme/theme.svelte.ts';
@@ -703,7 +704,17 @@ export type SettingKey =
 	| 'library.missing_grace'
 	| 'log.level'
 	| 'server.base_url'
-	| 'server.trusted_proxies';
+	| 'server.trusted_proxies'
+	| MetadataKey;
+
+/** The artist pass's settings, which the Server page's Artist art and bios section sets. */
+export type MetadataKey =
+	| 'metadata.remote'
+	| 'metadata.fanarttv'
+	| 'metadata.wikipedia'
+	| 'metadata.language'
+	| 'fanarttv.api_key'
+	| 'fanarttv.client_key';
 
 /** Where a setting's value came from. `default`: nothing has set it. */
 export type SettingSource = 'default' | 'web' | 'server.toml' | 'env' | 'flag';
@@ -1055,7 +1066,8 @@ export interface ServerSettings {
 		'log.level': Setting<LogLevel>;
 		'server.base_url': Setting<string>;
 		'server.trusted_proxies': Setting<string[]>;
-	} & Partial<OrganizeSettings>;
+	} & Partial<OrganizeSettings> &
+		MetadataSettings;
 	listen: string;
 	listenSource: 'server.toml' | 'default';
 	version: string;
@@ -1080,6 +1092,20 @@ export interface OrganizeSettings {
 	'organize.rewrite_playlists': Setting<boolean>;
 }
 
+/** The artist pass's settings: its switches, the bio language and fanart.tv's two write-only keys. */
+export interface MetadataSettings {
+	/** The master switch for every lookup on the internet. Off on a new server. */
+	'metadata.remote': Setting<boolean>;
+	'metadata.fanarttv': Setting<boolean>;
+	'metadata.wikipedia': Setting<boolean>;
+	/** A two-letter code. */
+	'metadata.language': Setting<string>;
+	/** The project key. Kitsune ships none. */
+	'fanarttv.api_key': SecretSetting;
+	/** A person's own key, which brings new art sooner. */
+	'fanarttv.client_key': SecretSetting;
+}
+
 /** The settings to change. Null clears one: it takes its default, and the next start seeds it. */
 export type SettingsChange = Partial<{
 	'lastfm.api_key': string | null;
@@ -1097,6 +1123,12 @@ export type SettingsChange = Partial<{
 	'organize.on_edit': boolean | null;
 	'organize.companions': boolean | null;
 	'organize.rewrite_playlists': boolean | null;
+	'metadata.remote': boolean | null;
+	'metadata.fanarttv': boolean | null;
+	'metadata.wikipedia': boolean | null;
+	'metadata.language': string | null;
+	'fanarttv.api_key': string | null;
+	'fanarttv.client_key': string | null;
 }>;
 
 export interface IssueCounts {
@@ -1459,6 +1491,8 @@ export interface LibrarySource {
 	readonly duplicates: DuplicatesSource;
 	/** The ReplayGain routes, for administrators: writing Kitsune's measure into the files. */
 	readonly replayGain: ReplayGainSource;
+	/** Health's Metadata card: how the artist pass and its sources stand, for administrators. */
+	readonly metadata: MetadataStatusSource;
 	/**
 	 * Only the fixtures: calls `heard` with the artists whose art arrived, as the server's `artists`
 	 * event says. Returns what stops it.

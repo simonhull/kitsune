@@ -728,6 +728,42 @@ CREATE TABLE scan_issues (
 --   column cid=6 name=seen_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=7 name=reader type=TEXT notnull=1 dflt_value='' pk=0 hidden=0
 
+-- table scrape_feeds
+CREATE TABLE scrape_feeds (
+	source  TEXT    PRIMARY KEY CHECK (source IN ('fanarttv')),
+	read_at INTEGER NOT NULL
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=source type=TEXT notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=read_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+
+-- table scrape_state
+CREATE TABLE scrape_state (
+	source     TEXT    NOT NULL CHECK (source IN ('fanarttv', 'wikimedia')),
+	kind       TEXT    NOT NULL CHECK (kind IN ('artist', 'album')),
+	mbid       TEXT    NOT NULL CHECK (length(mbid) = 36),
+	status     TEXT    NOT NULL CHECK (status IN ('found', 'none', 'failed')),
+	fetched_at INTEGER NOT NULL,
+	next_at    INTEGER NOT NULL,
+	failures   INTEGER NOT NULL CHECK (failures >= 0),
+	error      TEXT,
+	PRIMARY KEY (source, kind, mbid),
+	CHECK ((status = 'failed') = (failures > 0))
+) STRICT, WITHOUT ROWID;
+--   column cid=0 name=source type=TEXT notnull=1 dflt_value=<nil> pk=1 hidden=0
+--   column cid=1 name=kind type=TEXT notnull=1 dflt_value=<nil> pk=2 hidden=0
+--   column cid=2 name=mbid type=TEXT notnull=1 dflt_value=<nil> pk=3 hidden=0
+--   column cid=3 name=status type=TEXT notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=4 name=fetched_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=5 name=next_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=6 name=failures type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=7 name=error type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
+
+-- index scrape_state_mbid
+CREATE INDEX scrape_state_mbid ON scrape_state (kind, mbid);
+--   key seqno=0 cid=1 name=kind desc=0 coll=BINARY key=1
+--   key seqno=1 cid=2 name=mbid desc=0 coll=BINARY key=1
+--   key seqno=2 cid=0 name=source desc=0 coll=BINARY key=0
+
 -- table sessions
 CREATE TABLE sessions (
 	token_hash BLOB    PRIMARY KEY CHECK (length(token_hash) = 32),

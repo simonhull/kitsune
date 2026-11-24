@@ -23,6 +23,8 @@ import { eventsUrl, Live, type EventStream } from './live.ts';
 import type { DuplicatesSource } from '#lib/duplicates/types.ts';
 import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
 import { gainFixture } from '#lib/replaygain/fixture.ts';
+import { metadataFixture } from '#lib/metadata/fixture.ts';
+import type { MetadataStatusSource } from '#lib/metadata/types.ts';
 import type { ReplayGainEvent, ReplayGainSource } from '#lib/replaygain/types.ts';
 import { Marks } from './marks.svelte.ts';
 import { Playlists } from './playlists.svelte.ts';
@@ -291,6 +293,8 @@ export class Library {
 	indexFields = $state('');
 	/** Moves on whenever the server says its settings changed, so an open Server page reads them. */
 	settingsHeard = $state(0);
+	/** Moves on with every `artists` event, so Health's Metadata card reads its counts again. */
+	artistsHeard = $state(0);
 	/** Moves on whenever the server says albums changed, so an open Trash count reads again. */
 	libraryHeard = $state(0);
 
@@ -441,6 +445,7 @@ export class Library {
 	 * thumbs. What was on screen stays until the new reads land, and the pictures develop in place.
 	 */
 	#heardArtists(ids: readonly string[]): void {
+		this.artistsHeard += 1;
 		for (const id of ids) {
 			if (this.#artists.get(id)?.kind === 'ready') {
 				void this.loadArtist(id);
@@ -504,6 +509,11 @@ export class Library {
 
 	/** Who hears a ReplayGain run's progress: Health's card, the nav's note and the album toast. */
 	readonly #gainHeard = new SvelteSet<(event: ReplayGainEvent) => void>();
+
+	/** Health's Metadata card's route. */
+	get metadata(): MetadataStatusSource {
+		return this.#source.metadata;
+	}
 
 	/** The ReplayGain routes. */
 	get replayGain(): ReplayGainSource {
@@ -2068,6 +2078,8 @@ function fromQuery(): Library {
 	const gain = gainFixture(query.get('gain'));
 	const gainAlbum = Number(query.get('gainAlbum') ?? 0);
 	const art = query.get('art') === 'late' ? 'late' : undefined;
+	const metadata = metadataFixture(query.get('metadata'));
+	const metadataArtist = Number(query.get('metadataArtist') ?? 0);
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
@@ -2089,6 +2101,8 @@ function fromQuery(): Library {
 					trash,
 					gain,
 					art,
+					metadata,
+					...(metadataArtist > 0 ? { metadataArtistMs: metadataArtist } : {}),
 					...(organizeAlbum > 0 ? { organizeAlbumMs: organizeAlbum } : {}),
 					...(gainAlbum > 0 ? { gainAlbumMs: gainAlbum } : {})
 				});

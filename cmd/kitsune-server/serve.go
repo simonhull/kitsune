@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -28,6 +27,7 @@ import (
 	"github.com/simonhull/kitsune/internal/lastfm"
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/matching"
+	"github.com/simonhull/kitsune/internal/scrape"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/server"
 	"github.com/simonhull/kitsune/internal/settings"
@@ -95,8 +95,11 @@ func runServe(args []string, env config.Env, stderr io.Writer) error {
 
 	lastfmURL, _ := env(lastfmURLEnv)
 	musicbrainzURL, _ := env(musicbrainzURLEnv)
+	fanartURL, _ := env(fanartURLEnv)
+	wikimediaURL, _ := env(wikimediaURLEnv)
 	l := launch{
-		lastfmURL: lastfmURL, musicbrainzURL: musicbrainzURL, seeds: seeds, level: level, listenFromFile: keys.Has("server.listen"),
+		lastfmURL: lastfmURL, musicbrainzURL: musicbrainzURL, fanartURL: fanartURL, wikimediaURL: wikimediaURL,
+		seeds: seeds, level: level, listenFromFile: keys.Has("server.listen"),
 		configDir: configDir(*path, config.DefaultPaths(env)),
 	}
 	return serveConfig(ctx, &cfg, &l, log)
@@ -127,6 +130,8 @@ var errBadLastfmURL = errors.New(lastfmURLEnv + " must be an absolute http or ht
 type launch struct {
 	lastfmURL      string // "" means the real Last.fm.
 	musicbrainzURL string // "" means the real MusicBrainz.
+	fanartURL      string // "" means the real fanart.tv.
+	wikimediaURL   string // "" means the real Wikimedia sites.
 	seeds          []settings.Seed
 	level          *slog.LevelVar // Nil means the level can't change.
 	listenFromFile bool           // server.toml set listen.
@@ -173,6 +178,7 @@ type app struct {
 	genres    *library.Genres
 	matcher   *matching.Matcher // The process's one way to MusicBrainz.
 	streams   *stream.Files     // The files streams hold open, which a ReplayGain run asks of.
+	scraper   *scrape.Scraper   // The artist pass.
 
 	// live holds the settings, and the owners of the ones that apply at once
 	// follow it (follow.go).
@@ -257,7 +263,7 @@ func buildApp(ctx context.Context, cfg *config.Config, l *launch, st *store.Stor
 	if err != nil {
 		return nil, err
 	}
-	matcher, err := newMatcher(l.musicbrainzURL, st, log)
+	mb, err := newMusicBrainz(l.musicbrainzURL, st, log)
 	if err != nil {
 		return nil, err
 	}
@@ -269,13 +275,19 @@ func buildApp(ctx context.Context, cfg *config.Config, l *launch, st *store.Stor
 	// live could cut off the page that changed them.
 	public := config.Server{BaseURL: snap.BaseURL}
 	streams := &stream.Files{}
+	notify := &kickOnLibrary{Notifier: server.NewLibraryEvents(hub)}
 	a := &app{
 		log: log, store: st, auth: svc, lastfm: sender, drain: shutdownTimeout,
-		scanner: newScanner(snap, st, covers, genres, hub, streams, log), events: hub, streams: streams,
+		scanner: newScanner(snap, st, covers, genres, notify, streams, log), events: hub, streams: streams,
 		basePath: public.BasePath(), dataDir: cfg.Storage.DataDir, baseURL: snap.BaseURL,
 		setupCode: setupCode, covers: covers, genres: genres,
-		live: live, level: l.level, lastfmURL: l.lastfmURL, changes: subscribe(live), matcher: matcher,
+		live: live, level: l.level, lastfmURL: l.lastfmURL, changes: subscribe(live), matcher: matching.New(mb),
 	}
+	if a.scraper, err = newScraper(l, a, mb, log); err != nil {
+		return nil, err
+	}
+	notify.kick = a.scraper.Kick // Before anything scans.
+	a.applyMetadata(ctx)
 	a.applyOrganize(ctx)
 	a.watcher = library.NewWatcher(a.scanner, library.WatchOptions{OnChange: server.FoldersChanged(hub)})
 	a.http = newHTTPServer(a.handler(ctx, cfg, l, &public), log)
@@ -315,6 +327,7 @@ func (a *app) handler(ctx context.Context, cfg *config.Config, l *launch, public
 		Matcher:        a.matcher,
 		Work:           a.startWork,
 		Streams:        a.streams,
+		Scraper:        a.scraper,
 	})
 }
 
@@ -332,8 +345,9 @@ func readGenres(ctx context.Context, st *store.Store) (*library.Genres, error) {
 	return genres, nil
 }
 
-// newScanner returns the library scanner over st that snap sets up.
-func newScanner(snap *settings.Snapshot, st *store.Store, covers *artwork.Cache, genres *library.Genres, hub *events.Hub, streams *stream.Files, log *slog.Logger) *library.Scanner {
+// newScanner returns the library scanner over st that snap sets up, telling
+// notify what it changes.
+func newScanner(snap *settings.Snapshot, st *store.Store, covers *artwork.Cache, genres *library.Genres, notify library.Notifier, streams *stream.Files, log *slog.Logger) *library.Scanner {
 	return library.NewScanner(st, library.Options{
 		Roots:        snap.Roots,
 		MissingGrace: snap.MissingGrace,
@@ -341,7 +355,7 @@ func newScanner(snap *settings.Snapshot, st *store.Store, covers *artwork.Cache,
 		Artwork:      covers,
 		TagWrites:    snap.TagWrites,
 		Genres:       genres,
-		Notify:       server.NewLibraryEvents(hub),
+		Notify:       notify,
 		Streams:      streams,
 		QuickScan:    library.Daily{Hour: snap.QuickScan.Hour, Minute: snap.QuickScan.Minute},
 	})
@@ -368,11 +382,10 @@ func lastfmClient(cfg config.LastFM, fakeURL string, log *slog.Logger) (*lastfm.
 	if fakeURL == "" {
 		return client, nil
 	}
-	u, err := url.Parse(fakeURL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, errBadLastfmURL
+	root, err := standInRoot(fakeURL, errBadLastfmURL)
+	if err != nil {
+		return nil, err
 	}
-	root := strings.TrimSuffix(fakeURL, "/")
 	client.APIBase, client.AuthBase = root+"/2.0/", root+"/api/auth/"
 	log.Warn("talking to a stand-in Last.fm, not the real one", "env", lastfmURLEnv, "url", root)
 	return client, nil
@@ -386,22 +399,21 @@ const musicbrainzURLEnv = "KITSUNE_MUSICBRAINZ_URL"
 // errBadMusicBrainzURL means KITSUNE_MUSICBRAINZ_URL is not an absolute http URL.
 var errBadMusicBrainzURL = errors.New(musicbrainzURLEnv + " must be an absolute http or https URL")
 
-// newMatcher returns the matcher over the process's one MusicBrainz client,
-// which keeps its answers in st, aimed at the stand-in at standIn when set.
-func newMatcher(standIn string, st *store.Store, log *slog.Logger) (*matching.Matcher, error) {
+// newMusicBrainz returns the process's one MusicBrainz client, which keeps its
+// answers in st, aimed at the stand-in at standIn when set.
+func newMusicBrainz(standIn string, st *store.Store, log *slog.Logger) (*matching.MusicBrainz, error) {
 	o := matching.MusicBrainzOptions{
 		Version: agentVersion(), Cache: server.NewLookupCache(st, matching.SourceMusicBrainz), Logger: log,
 	}
-	if standIn != "" {
-		u, err := url.Parse(standIn)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return nil, errBadMusicBrainzURL
-		}
-		root := strings.TrimSuffix(standIn, "/")
+	root, err := standInRoot(standIn, errBadMusicBrainzURL)
+	if err != nil {
+		return nil, err
+	}
+	if root != "" {
 		o.BaseURL, o.CoverURL = root+"/ws/2/", root+"/coverart/"
 		log.Warn("talking to a stand-in MusicBrainz, not the real one", "env", musicbrainzURLEnv, "url", root)
 	}
-	return matching.New(matching.NewMusicBrainz(o)), nil
+	return matching.NewMusicBrainz(o), nil
 }
 
 // agentVersion is the version MusicBrainz is told: this build's, or dev.
@@ -501,6 +513,7 @@ func (a *app) serve(ctx context.Context, ln net.Listener) error {
 	a.work.Go(func() { a.scanner.RunLoudness(bgCtx) })     // nor for this.
 	a.work.Go(func() { a.watcher.Run(bgCtx) })
 	a.work.Go(func() { a.scanner.RunOrganizeEdits(bgCtx) })
+	a.work.Go(func() { a.scraper.Run(bgCtx) }) // Off until metadata.remote; never on the play path.
 
 	served := make(chan error, 1)
 	go func() { served <- a.http.Serve(ln) }()

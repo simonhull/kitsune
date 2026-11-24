@@ -24,6 +24,7 @@ import (
 	"github.com/simonhull/kitsune/internal/events"
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/matching"
+	"github.com/simonhull/kitsune/internal/scrape"
 	"github.com/simonhull/kitsune/internal/scrobbler"
 	"github.com/simonhull/kitsune/internal/settings"
 	"github.com/simonhull/kitsune/internal/shuffler"
@@ -100,6 +101,10 @@ type Config struct {
 	// Streams counts the track files streams hold open, which the scanner asks
 	// before it writes one in place. Nil counts nothing.
 	Streams *stream.Files
+	// Scraper is the artist pass: GET /admin/metadata reports it, and opening
+	// an artist with no art asks it at a person's priority. Nil means it isn't
+	// set up: the report answers 503.
+	Scraper *scrape.Scraper
 }
 
 // Server serves the API. It is safe for concurrent use.
@@ -141,6 +146,7 @@ type Server struct {
 	work          func(fn func(context.Context)) error
 	previews      previews // Organize previews, kept for their pages and runs.
 	streams       *stream.Files
+	scraper       *scrape.Scraper
 }
 
 // route is one contract operation: its ServeMux pattern, which is the spec's
@@ -192,6 +198,7 @@ func New(cfg Config) *Server { //nolint:gocritic // hugeParam: Config is built o
 		events:        cfg.Events,
 		matcher:       cfg.Matcher,
 		work:          cfg.Work,
+		scraper:       cfg.Scraper,
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
@@ -323,6 +330,7 @@ func (s *Server) serverRoutes() []route {
 		{pattern: "POST /admin/duplicates/{group}/merge", admin: true, handle: s.postDuplicateMerge},
 		{pattern: "POST /admin/duplicates/{group}/dismiss", admin: true, handle: s.postDuplicateDismiss},
 		{pattern: "DELETE /admin/duplicates/{group}/dismiss", admin: true, handle: s.deleteDuplicateDismiss},
+		{pattern: "GET /admin/metadata", admin: true, handle: s.getMetadata},
 		{pattern: "GET /admin/users", admin: true, handle: s.getUsers},
 		{pattern: "POST /admin/users/{id}/password", admin: true, handle: s.postUserPassword},
 		{pattern: "GET /lastfm/callback", public: true, handle: s.lastfmCallback},

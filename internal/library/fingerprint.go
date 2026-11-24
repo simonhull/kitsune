@@ -54,6 +54,11 @@ type FingerprintStats struct {
 // Fingerprints returns the fingerprint pass's progress. It never waits.
 func (s *Scanner) Fingerprints() FingerprintProgress { return *s.fingerprints.Load() }
 
+// WaitScanFree waits, without claiming anything, until no scan, organize run
+// or ReplayGain run holds the claim, or ctx ends. The artist pass pauses on it
+// as the fingerprint pass does, so a scan's covers render first.
+func (s *Scanner) WaitScanFree(ctx context.Context) error { return s.claim.waitFree(ctx) }
+
 // askForPass asks [Scanner.RunFingerprints] and [Scanner.RunLoudness] for a
 // pass each, without waiting. One already asked for is enough.
 func (s *Scanner) askForPass() {
