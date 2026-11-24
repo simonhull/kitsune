@@ -24,7 +24,9 @@
 		sectionOfKey,
 		undone,
 		watchLine,
+		bioLanguages,
 		type Draft,
+		type SecretDraft,
 		type SectionId
 	} from '#lib/pages/serverForm.ts';
 
@@ -42,7 +44,8 @@
 		library: '',
 		lastfm: '',
 		scanning: '',
-		advanced: ''
+		advanced: '',
+		art: ''
 	});
 	let scanTrouble = $state('');
 	let now = $state(Date.now());
@@ -124,6 +127,10 @@
 	onMount(() => {
 		void library.refreshFacts();
 		void read().then(async () => {
+			if (location.hash === '#art') {
+				await tick();
+				document.getElementById('art')?.scrollIntoView({ block: 'start' });
+			}
 			if (location.hash === '#lastfm') {
 				await tick();
 				document.getElementById('lastfm')?.scrollIntoView({ block: 'center' });
@@ -201,6 +208,27 @@
 			await tick();
 			secretField?.focus();
 		}
+	}
+
+	/** Opens a write-only key's field to type a new one, and puts the caret in it. */
+	async function typeKey(field: 'fanartKey' | 'fanartClientKey'): Promise<void> {
+		if (draft !== null) {
+			draft[field] = { kind: 'replace', text: '' };
+			await tick();
+			document.getElementById(`${field}-input`)?.focus();
+		}
+	}
+
+	/** Whether a key will be set once saved: set and kept, or being typed. */
+	function keyWillBeSet(set: boolean, secret: SecretDraft): boolean {
+		return secret.kind === 'replace' ? secret.text.trim() !== '' : set && secret.kind === 'keep';
+	}
+
+	/** The languages offered for bios, with the one set when it isn't among them. */
+	function languagesWith(code: string): readonly { code: string; name: string }[] {
+		return bioLanguages.some((language) => language.code === code)
+			? bioLanguages
+			: [...bioLanguages, { code, name: code.toUpperCase() }];
 	}
 
 	async function scanNow(): Promise<void> {
@@ -592,9 +620,165 @@
 					{/if}
 				</div>
 			</SettingsSection>
+
+			<SettingsSection
+				id="art"
+				title="Artist art and bios"
+				changed={changed('art')}
+				saving={saving === 'art'}
+				saved={saved === 'art'}
+				problem={problems.art}
+				onundo={() => {
+					undo('art');
+				}}
+				onsave={() => void save('art')}
+			>
+				<div class="art">
+					<div class="art-switches">
+						<label class="switch">
+							<input type="checkbox" bind:checked={draft.lookups} />
+							<span class="track" aria-hidden="true"><span class="knob"></span></span>
+							<span class="words">
+								<span class="name">Look up art and bios</span>
+								<span class="hint"
+									>Sends MusicBrainz IDs to the sources below, and nothing else: no names, paths,
+									plays or people. Off on a new server.</span
+								>
+								{#if fromLine(s['metadata.remote']) !== null}
+									<span class="from mono">{fromLine(s['metadata.remote'])}</span>
+								{/if}
+							</span>
+						</label>
+						<div class="subs" class:dim={!draft.lookups}>
+							<label class="switch">
+								<input type="checkbox" bind:checked={draft.wikipedia} />
+								<span class="track" aria-hidden="true"><span class="knob"></span></span>
+								<span class="words">
+									<span class="name">Wikipedia, Wikidata, Commons</span>
+									<span class="hint">Bios and portraits. No key.</span>
+								</span>
+							</label>
+							<label class="switch">
+								<input type="checkbox" bind:checked={draft.fanart} />
+								<span class="track" aria-hidden="true"><span class="knob"></span></span>
+								<span class="words">
+									<span class="name">fanart.tv</span>
+									<span class="hint"
+										>{keyWillBeSet(s['fanarttv.api_key'].set, draft.fanartKey)
+											? 'Thumbs, backdrops, logos and banners.'
+											: 'Needs a project key. Off until it has one.'}</span
+									>
+								</span>
+							</label>
+						</div>
+					</div>
+					<div class="art-keys">
+						{@render keyRow(
+							'fanartKey',
+							'fanarttv.api_key',
+							'fanart.tv project key',
+							'GET AN API KEY',
+							'KITSUNE SHIPS NONE',
+							''
+						)}
+						{@render keyRow(
+							'fanartClientKey',
+							'fanarttv.client_key',
+							'fanart.tv personal key · optional',
+							'',
+							'NEW ART REACHES YOU IN 2 DAYS, NOT 7 · AT ONCE WITH VIP',
+							'NEW ART IN 2 DAYS, NOT 7'
+						)}
+						<label class="field">
+							<span class="label">Bio language</span>
+							<select class="input language" bind:value={draft.language}>
+								{#each languagesWith(draft.language) as language (language.code)}
+									<option value={language.code}>{language.name} · {language.code}</option>
+								{/each}
+							</select>
+							<span class="from mono">BIOS IN THIS LANGUAGE, ELSE ENGLISH</span>
+						</label>
+					</div>
+				</div>
+			</SettingsSection>
 		</div>
 	{/if}
 </div>
+
+{#snippet keyRow(
+	field: 'fanartKey' | 'fanartClientKey',
+	key: 'fanarttv.api_key' | 'fanarttv.client_key',
+	label: string,
+	link: string,
+	note: string,
+	phoneNote: string
+)}
+	{#if draft !== null && settings !== null}
+		{@const held = settings.settings[key]}
+		{@const secret = draft[field]}
+		<div class="field" data-testid={`key-${key}`}>
+			<span class="label" id={`${field}-label`}>{label}</span>
+			{#if secret.kind === 'replace'}
+				<input
+					class="input code"
+					type="password"
+					id={`${field}-input`}
+					aria-labelledby={`${field}-label`}
+					value={secret.text}
+					oninput={(event) => {
+						if (draft !== null) {
+							draft[field] = { kind: 'replace', text: event.currentTarget.value };
+						}
+					}}
+					autocomplete="off"
+					spellcheck="false"
+					placeholder="Paste the key"
+				/>
+			{:else if !held.set}
+				<div class="secret">
+					<span class="secret-state unset">Not set</span>
+					<button type="button" class="pill" onclick={() => void typeKey(field)}>Add key</button>
+				</div>
+			{:else}
+				<div class="secret">
+					<span class="secret-state">
+						{secret.kind === 'clear' ? 'Cleared when you save' : 'Set · never shown'}
+					</span>
+					{#if secret.kind === 'clear'}
+						<button
+							type="button"
+							class="pill"
+							onclick={() => {
+								if (draft !== null) draft[field] = { kind: 'keep' };
+							}}>Keep it</button
+						>
+					{:else}
+						<button type="button" class="pill" onclick={() => void typeKey(field)}>Replace</button>
+						<button
+							type="button"
+							class="pill quiet"
+							onclick={() => {
+								if (draft !== null) draft[field] = { kind: 'clear' };
+							}}>Clear</button
+						>
+					{/if}
+				</div>
+			{/if}
+			<span class="from mono"
+				>{#if link !== ''}<a
+						href="https://fanart.tv/get-an-api-key/"
+						target="_blank"
+						rel="noopener noreferrer">FANART.TV › {link}</a
+					>{/if}<span class="wide-note">{link === '' ? note : ` · ${note}`}</span><span
+					class="phone-note">{phoneNote}</span
+				></span
+			>
+			{#if fromLine(held) !== null}
+				<span class="from mono">{fromLine(held)}</span>
+			{/if}
+		</div>
+	{/if}
+{/snippet}
 
 <FolderPicker
 	open={picking}
@@ -1019,6 +1203,59 @@
 		cursor: default;
 	}
 
+	/* Artist art and bios: the whole row, its switches beside its keys. */
+	.sections > :global(#art) {
+		grid-column: 1 / -1;
+	}
+
+	.art {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 24px 48px;
+		align-items: start;
+	}
+
+	.art-switches,
+	.art-keys,
+	.subs {
+		display: flex;
+		flex-direction: column;
+		gap: 22px;
+		min-width: 0;
+	}
+
+	.subs {
+		padding-left: 28px;
+		transition: opacity var(--morph-fast) var(--curve-morph);
+	}
+
+	.subs.dim {
+		opacity: 0.45;
+	}
+
+	.phone-note {
+		display: none;
+	}
+
+	.secret-state.unset {
+		color: var(--text-meta);
+	}
+
+	.language {
+		width: fit-content;
+		min-width: 220px;
+		cursor: pointer;
+	}
+
+	.from a {
+		color: var(--fox-text);
+		text-decoration: none;
+	}
+
+	.from a:hover {
+		text-decoration: underline;
+	}
+
 	.levels {
 		display: flex;
 		flex-wrap: wrap;
@@ -1135,6 +1372,10 @@
 			grid-template-columns: minmax(0, 1fr);
 			gap: 16px;
 		}
+
+		.art {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 
 	@media (max-width: 720px) {
@@ -1176,6 +1417,19 @@
 
 		.level-select {
 			display: block;
+		}
+
+		.subs {
+			padding-left: 0;
+		}
+
+		/* A phone's note is the link alone, or a shorter one. */
+		.wide-note {
+			display: none;
+		}
+
+		.phone-note {
+			display: inline;
 		}
 	}
 

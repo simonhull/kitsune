@@ -936,6 +936,16 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   toast (`GainToast.svelte`) with its Undo. The nav says REPLAYGAIN · n% in Organize's slot. Words live
   in `words.ts`; the fixtures (`fixture.ts`, `?gain=` and `?gainAlbum=`) run on a timer. Nothing is
   optimistic, and nothing on the play path waits on it.
+- Artist art and bios from the internet (`lib/metadata/`): `MetadataCard.svelte` on Health, in the
+  second column, for admins, from `GET /admin/metadata`. Lookups off, it offers them with what they
+  send, and Turn on (`PATCH` `metadata.remote`) reshapes the card in place (`Surface.rests`, a card at
+  rest taken as a surface without budding); on, the pass's progress, each source's state worded in
+  `words.ts` (a failure only in the server's words; a key's trouble links `/server#art`), the artists
+  without an MBID to Matching, and the Credits. Progress is no event: it reads again every 2.5 s while
+  a pass goes and the card is on screen, and on `artists` and `settings` events. Server › Settings'
+  Artist art and bios section (`art` in `serverForm.ts`) holds the switches, the bio language and
+  fanart.tv's two keys, write-only as Last.fm's secret (Add key, Set · never shown, Replace, Clear).
+  The fixtures: `?metadata=off|running|refused|resting|done`, `?metadataArtist=` ms per artist.
 - Journeys (`lib/morph/`) keep the In-Front Rule: the page you go to is always drawn in front of the
   page you leave, and nothing leaving moves away to uncover it. The ghost layer is the first thing in
   the shell, under the stages and the page, and a stage left is held there as a picture. A ghost is a
