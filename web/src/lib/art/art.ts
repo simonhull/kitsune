@@ -76,6 +76,30 @@ const sourceNames: Partial<Record<ExtraImage['source'], string>> = {
 	coverartarchive: 'COVER ART ARCHIVE'
 };
 
+/**
+ * The source a credit line names. A pin says only that it is pinned, so a pinned picture that came
+ * from a source is named by the page its credit links: what that source asks to be said stays said.
+ */
+function creditName(image: ExtraImage): string | undefined {
+	const named = sourceNames[image.source];
+	if (named !== undefined || image.source !== 'pinned' || image.credit === undefined) {
+		return named;
+	}
+	const host = URL.canParse(image.credit.pageUrl ?? '')
+		? new URL(image.credit.pageUrl ?? '').hostname
+		: undefined;
+	if (host === undefined) {
+		return image.credit.license === undefined ? undefined : 'PINNED';
+	}
+	if (host === 'fanart.tv' || host.endsWith('.fanart.tv')) {
+		return 'FANART.TV';
+	}
+	if (host.endsWith('wikimedia.org') || host.endsWith('wikipedia.org')) {
+		return 'COMMONS';
+	}
+	return 'PINNED';
+}
+
 const kindWords: Record<'thumb' | 'background' | 'logo', string> = {
 	thumb: 'PHOTO',
 	background: 'BACKDROP',
@@ -99,7 +123,7 @@ export function imageCredits(images: ArtistImages): CreditPart[][] {
 	const bySource = new Map<string, { kinds: string[]; image: ExtraImage }[]>();
 	for (const kind of kinds) {
 		const image = images[kind];
-		const name = image === undefined ? undefined : sourceNames[image.source];
+		const name = image === undefined ? undefined : creditName(image);
 		if (image === undefined || name === undefined) {
 			continue;
 		}
@@ -111,7 +135,7 @@ export function imageCredits(images: ArtistImages): CreditPart[][] {
 	return [...bySource.values()].map((group) => {
 		const { image } = group[0] ?? { image: undefined };
 		const credit = image?.credit;
-		const name = image === undefined ? '' : (sourceNames[image.source] ?? '');
+		const name = image === undefined ? '' : (creditName(image) ?? '');
 		const parts: CreditPart[] = [{ text: listed(group.flatMap(({ kinds: each }) => each)) }];
 		if (credit?.author !== undefined) {
 			parts.push({ text: credit.author.toUpperCase() });

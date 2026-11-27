@@ -102,6 +102,29 @@ describe('imageCredits', () => {
 		expect(imageCredits({ thumb: image('folder'), background: image('folder') })).toEqual([]);
 	});
 
+	it('still credits a pinned picture by where its credit says it came from', () => {
+		const pinned = image('pinned', { pageUrl: 'https://fanart.tv/x' });
+		expect(
+			imageCredits({
+				background: pinned,
+				thumb: image('fanart', { pageUrl: 'https://fanart.tv/x' })
+			})
+		).toEqual([
+			[{ text: 'PHOTO AND BACKDROP' }, { text: 'FANART.TV ›', href: 'https://fanart.tv/x' }]
+		]);
+		const commons = image('pinned', {
+			author: 'J. Rowe',
+			license: 'CC BY-SA 4.0',
+			pageUrl: 'https://commons.wikimedia.org/x'
+		});
+		expect(imageCredits({ thumb: commons })[0]?.at(-1)).toEqual({
+			text: 'COMMONS ›',
+			href: 'https://commons.wikimedia.org/x'
+		});
+		// An upload asks nothing to be said.
+		expect(imageCredits({ thumb: image('pinned') })).toEqual([]);
+	});
+
 	it('lists three kinds with commas', () => {
 		const fanart = image('fanart');
 		expect(imageCredits({ thumb: fanart, background: fanart, logo: fanart })[0]?.[0]).toEqual({

@@ -44,6 +44,8 @@
 	import { replayGain } from '#lib/replaygain/gain.svelte.ts';
 	import GainToast from '#lib/shell/GainToast.svelte';
 	import PlaylistToast from '#lib/shell/PlaylistToast.svelte';
+	import ArtworkToast from '#lib/shell/ArtworkToast.svelte';
+	import ArtistMenu from '#lib/choose/ArtistMenu.svelte';
 	import { albumOn, artistOn, navOf, routeIds } from '#lib/shell/routes.ts';
 	import { heroStage, posterStage } from '#lib/art/stage.svelte.ts';
 	import type { LayoutProps } from './$types';
@@ -299,8 +301,8 @@
 	{/if}
 	<div class="morph-layer" aria-hidden="true"></div>
 	<AlbumMenu />
-	{#if !atDoor}<TrashToast /><PlaylistToast /><OrganizeToast /><GainToast />{/if}
-	{#if library.admin && !atDoor}<MatchSheet />{/if}
+	{#if !atDoor}<TrashToast /><PlaylistToast /><OrganizeToast /><GainToast /><ArtworkToast />{/if}
+	{#if library.admin && !atDoor}<MatchSheet /><ArtistMenu />{/if}
 	{#if import.meta.env.DEV}<Hud />{/if}
 </div>
 

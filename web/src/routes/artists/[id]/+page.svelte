@@ -18,6 +18,7 @@
 	import SortControl, { type SortGroup } from '#lib/pages/SortControl.svelte';
 	import { sorts } from '#lib/pages/sortsView.svelte.ts';
 	import { morph } from '#lib/morph/registry.ts';
+	import { chooser } from '#lib/choose/chooser.svelte.ts';
 	import type { PageProps } from './$types';
 
 	let { params }: PageProps = $props();
@@ -60,6 +61,32 @@
 		const wanted = id;
 		untrack(() => void library.loadArtist(wanted));
 	});
+
+	/** Administrators choose the artist's pictures from the hero's ⋯. */
+	const choosing = $derived(chooser.can && artist !== undefined);
+
+	// Leaving the artist, or going to another, takes their menu with them.
+	$effect(() => {
+		const here = id;
+		return () => {
+			if (chooser.current?.artistId === here) {
+				chooser.close(false);
+			}
+		};
+	});
+
+	function openMenu(event: MouseEvent & { currentTarget: HTMLButtonElement }): void {
+		if (artist === undefined) {
+			return;
+		}
+		const { left, right, top, bottom } = event.currentTarget.getBoundingClientRect();
+		chooser.open({
+			artistId: id,
+			name: artist.name,
+			mbid: artist.mbid,
+			anchor: { left, right, top, bottom }
+		});
+	}
 
 	/** The full list of songs shows: a view in the URL, so Back folds it and a link lands on it. */
 	const inUrl = $derived(page.url.searchParams.has('songs'));
@@ -136,14 +163,35 @@
 					{/if}
 				</div>
 			</div>
-			<!-- The fit divides by the words' width, known before layout: the first frame is final. -->
-			<h1
-				title={name}
-				style:--width={emWidth(name, 900, -0.07)}
-				use:morph={{ id: `name:${id}`, slot: 'hero', kind: 'title' }}
-			>
-				{name}
-			</h1>
+			<div class="name" class:choosing>
+				<!-- The fit divides by the words' width, known before layout: the first frame is final. -->
+				<h1
+					title={name}
+					style:--width={emWidth(name, 900, -0.07)}
+					use:morph={{ id: `name:${id}`, slot: 'hero', kind: 'title' }}
+				>
+					{name}
+				</h1>
+				{#if choosing}
+					<button
+						type="button"
+						class="more"
+						aria-label={`More for ${name}`}
+						aria-haspopup="menu"
+						aria-expanded={chooser.current?.artistId === id}
+						onclick={openMenu}
+						><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"
+							><path
+								d="M5 12h.01M12 12h.01M19 12h.01"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="3.4"
+								stroke-linecap="round"
+							></path></svg
+						></button
+					>
+				{/if}
+			</div>
 		</div>
 
 		{#if load.kind === 'unavailable'}
@@ -291,6 +339,41 @@
 		text-wrap: balance;
 	}
 
+	/* The name, and for an administrator the ⋯ at the gutter beside it. */
+	.name {
+		position: relative;
+	}
+
+	.choosing h1 {
+		--room: calc(100cqw - 64px - 60px * var(--step));
+	}
+
+	.more {
+		position: absolute;
+		right: 0;
+		top: calc(41px * var(--step));
+		width: calc(44px * var(--step));
+		height: calc(44px * var(--step));
+		display: grid;
+		place-items: center;
+		border: 0;
+		border-radius: 50%;
+		background: color-mix(in srgb, var(--ground) 35%, transparent);
+		box-shadow: inset 0 0 0 1px var(--edge-strong);
+		color: var(--text);
+		cursor: pointer;
+	}
+
+	.more:hover,
+	.more[aria-expanded='true'] {
+		background: var(--hover);
+	}
+
+	.more:focus-visible {
+		outline: 2px solid var(--fox-line);
+		outline-offset: 3px;
+	}
+
 	.body {
 		display: flex;
 		flex-direction: column;
@@ -366,6 +449,15 @@
 
 		.words h1 {
 			--room: calc(100cqw - 32px);
+		}
+
+		.choosing h1 {
+			--room: calc(100cqw - 32px - 56px);
+		}
+
+		.more {
+			top: auto;
+			bottom: 0;
 		}
 
 		h2 {

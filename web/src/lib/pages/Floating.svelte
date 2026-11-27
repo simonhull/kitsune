@@ -34,8 +34,11 @@
 		from?: Rect | undefined;
 		/** Names it, so one opened again while it gives way takes over from where it had got to. */
 		name?: string | undefined;
-		/** How its box is drawn: a menu's, or a confirm's fox edge and misprint. */
-		look?: 'menu' | 'confirm';
+		/**
+		 * How its box is drawn: a menu's, a confirm's fox edge and misprint, or a danger confirm's
+		 * (Not this artist) danger edge and misprint.
+		 */
+		look?: 'menu' | 'confirm' | 'danger';
 		/** What it is to assistive technology: a menu, or a confirm's dialog in its place. */
 		role?: 'menu' | 'dialog';
 	}
@@ -223,6 +226,7 @@
 	class:placed
 	class:full
 	class:confirm={look === 'confirm'}
+	class:danger={look === 'danger'}
 	data-surface
 	data-submenu={submenu ? '' : undefined}
 	{role}
@@ -274,6 +278,15 @@
 		border: 1.5px solid var(--fox-line);
 		box-shadow:
 			3px 3px 0 color-mix(in srgb, var(--accent, var(--fox)) 50%, transparent),
+			var(--shadow-float);
+	}
+
+	/* A confirm that takes something away: the danger edge, the misprint behind it. */
+	.floating.danger {
+		padding: calc(22px * var(--step)) calc(24px * var(--step));
+		border: 1.5px solid var(--danger-edge);
+		box-shadow:
+			5px 5px 0 color-mix(in srgb, var(--misprint) 40%, transparent),
 			var(--shadow-float);
 	}
 
