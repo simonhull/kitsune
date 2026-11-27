@@ -64,6 +64,9 @@ const (
 	Logo
 	// Disc is an album's disc art, usually on a transparent ground.
 	Disc
+	// Preview is a candidate Choose artwork shows before anyone picks it: a
+	// source's own small rendition, kept for a day.
+	Preview
 )
 
 // Ladder returns the kind's rung sizes, smallest first.
@@ -73,6 +76,8 @@ func (k Kind) Ladder() []int {
 		return []int{Size128, Size640, Size1920, Size3840}
 	case Logo, Disc:
 		return []int{Size128, Size400, Size800}
+	case Preview:
+		return []int{Size128, Size400}
 	case Cover, Thumb, Back:
 	}
 	return []int{Size128, Size512, Size1024}
@@ -95,13 +100,16 @@ func (k Kind) String() string {
 		return "logo"
 	case Disc:
 		return "disc"
+	case Preview:
+		return "preview"
 	}
 	return fmt.Sprintf("Kind(%d)", int(k))
 }
 
 // keepsAlpha reports whether the kind's renditions stay PNG when the source has
-// transparency, rather than being flattened onto the ground.
-func (k Kind) keepsAlpha() bool { return k == Logo || k == Disc }
+// transparency, rather than being flattened onto the ground. A preview may be
+// a logo's.
+func (k Kind) keepsAlpha() bool { return k == Logo || k == Disc || k == Preview }
 
 // Sentinels callers match with [errors.Is].
 var (
