@@ -195,6 +195,19 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   root. The `artists` event (ids only) goes to everyone when a scan or the artist pass changes an
   artist's images or bio. `GET /artists/{id}` for an artist with an MBID and no art at all asks the
   pass for it at a person's priority (`Scraper.Want`) and answers at once; the art comes on the event.
+- Choose artwork (plan 072, Phase 4) is six admin routes under `/admin/artists/{id}`. `GET
+  images?kind=` lists the candidates (at most 24): what the artist shows (its pin, else what lies
+  beneath), then fanart.tv's images of the kind and, for `thumb`, the Commons portrait, as the pass
+  would choose them, each with an opaque `id`, `source`, size, `lang`, `credit` and `preview` (a
+  `Picture` the server fetched and rendered, at most 400 px), `chosen`, and for a pin `pinnedBy` and
+  `pinnedAt`; `sources` says how each source stood (`answered`, `off`, `held`, `unavailable`, `failed`
+  with words). `PUT images/{kind}` (`candidate`) pins one, `DELETE` is Automatic, `POST
+  images/{kind}/upload` pins the image sent as the body itself (JPEG, PNG or WebP, at most 32 MiB:
+  not a form, whose parts would spill to temp files the scratch image has nowhere to keep), `POST
+  refresh` is Look again now (202; a 409 with lookups off, no MBID, or held) and `POST reject` is Not
+  this artist (204; a 409 with no MBID). Each change publishes `artists`. A pinned image is `source:
+  pinned` with `pinnedFrom` (`folder`, `fanart`, `wikimedia`, `upload`), so its credit still names its
+  source. The client never talks to a source, and likes are never sent.
 - `GET /admin/metadata` is Health's Metadata card (see Scrape): `remote`, `language`, each source
   (`musicbrainz`, `wikipedia`, `fanarttv`, `lastfm`, `coverartarchive`) with `enabled`, `state` (`on`,
   `off`, `needsKey`, `refused`, `resting` with `until`), `key` and `clientKey` (`set`, `missing` or
@@ -371,8 +384,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `background`, `logo`, `banner`), `album_images` (per album, kind `disc` or `back`, and `disc`, 0 for
   every disc) and `artist_bios` (one per artist, plain text). Each says where it came from (`source`:
   `folder` or `nfo` today) and, for a library file, which one (`file_root`, `file_path`, `file_size`,
-  `file_mtime`, NULL for any other source, a CHECK); a `pinned` row is an administrator's and no write
-  of a scan's touches it (`UpsertFolderArtistImage` skips it, the deletes take `folder` rows alone).
+  `file_mtime`, NULL for any other source, a CHECK). `artist_images` keeps what the folders and the
+  sources give; its `pinned` source, which 0026 allowed, is never written (pins are `artist_pins`, below),
+  and the scan's upserts still skip one and its deletes take `folder` rows alone.
   They go with their artist or album by ON DELETE CASCADE. `WriteExtras` stores a scan's finds in one
   transaction (not a library write: the index shows none of it), returns the artists it changed and
   notes the albums. `FolderLayout` is what the scan reads to find folders: every live track's file
@@ -402,6 +416,20 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   (`DeleteRemoteDiscArt`); a folder extra gone brings the album's sources forward
   (`AskAgainForAlbum`). `ScrapeAlbums` reads every album with a live track, its plays, discs, held
   extras and states in one transaction; `CountAlbums` is the card's counts.
+- Choose artwork (`pins.go`, migration `0029`): `artist_pins` is an administrator's choice per artist
+  and kind (the image's hash, `source` `folder`, `fanart`, `wikimedia` or `upload`, `remote_id`,
+  `credit`, `pinned_by`, `pinned_at`), its own table and not a row of `artist_images`, so the scan and
+  the pass go on keeping what lies beneath a pin and unpinning shows it at once. No scan or pass writes
+  a pin. Every read of what an artist shows (`ListArtistImages`, `ListArtistThumbs`) takes a pin over
+  `artist_images`, and `ListHeldImages` gives it to the pass as `pinned`, so no source fills a kind an
+  administrator chose. `PinArtistImage` writes the image and the pin in one transaction;
+  `UnpinArtistImage` brings the artist's sources forward in the same write. `artist_holds` is Not this
+  artist: the MBID held back, which holds while `artists.mbid` is that one (`ScrapeArtist.Held`, a
+  new MBID ends it with no write); `HoldArtist` deletes in one write what the sources gave (images,
+  pins of them, the bio) and holds. `artwork_previews` names the picker's previews (by source and the
+  source's ID: the hash, size and colors, `made_at`), which have no `artwork` row; `SweepPreviews`
+  forgets those over a day old and returns the hashes nothing else uses. `artwork.source` gains
+  `upload`. All go with their artist by ON DELETE CASCADE.
 
 ## Matching
 - `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
@@ -778,6 +806,19 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - `describe` words a failure for the card ("fanart.tv refused the key", "fanart.tv answered 503") from
   sentinels and statuses alone. `TestNoErrorQuotesAKey` (`fanarttv`, `scrape`) holds every error,
   log line, stored error and the report to no key against every stand-in fault.
+- Choose artwork (`scrape/picker.go`): `Candidates` lists what the artist shows of a kind (its pin,
+  then what lies beneath, each its own preview), then what each source offers, ranked as `Pick` would
+  (`Ranked`). What a source offers is kept in `lookups` (`scrape:fanarttv`, `scrape:wikimedia`, by
+  MBID) whenever the pass asks it a whole answer, and asked again at a person's priority only when
+  over a day old. Previews are fetched four at once through the sources' gates (fanart.tv's
+  `bigpreview`, else the image; Commons at 400 px) and rendered as `artwork.Preview`; one made within
+  the day isn't fetched again, and the sweep (at most hourly, under `sweep`'s lock, which every render
+  and note takes for reading) removes older ones' files unless an `artwork` row or a fresher preview
+  shares the hash. `Pin` pins what the artist holds as it is (no fetch), else downloads the source's
+  image at a person's priority; `PinUpload` renders an upload on the kind's ladder; `Unpin` asks the
+  sources again (`Want`); `Refresh` brings every source forward, forgets what they offered and asks
+  now; `Reject` holds the artist (`HoldArtist`), and the pass skips a held artist everywhere. Handlers
+  publish `artists`; the scraper's own `Notify` stays the pass's.
 - Tests use `fanarttvtest` (`AddAlbum` for disc art), `wikimediatest`, `musicbrainztest` (`AddArtist`;
   `AddBack` and a release's `Cover` for the archive, its images 1200 px JPEGs drawn once) and
   `lastfmtest` (`AddArtist`, `Bio`, an `Answered` MBID for a mismatch); each answers 429 with
@@ -813,14 +854,15 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   named by the SHA-256 of the source image, so a request only ever reads a file and a file never
   changes. `Put` takes a `Kind`, and each kind has its ladder on the longest side (`Kind.Ladder`):
   covers, thumbs and back covers 128/512/1024, backgrounds and banners 128/640/1920/3840, logos and
-  disc art 128/400/800; every ladder starts at 128 and none upscales. Renditions are JPEG flattened
+  disc art 128/400/800, Choose artwork's previews 128/400 (`Preview`, PNG when transparent); every
+  ladder starts at 128 and none upscales. Renditions are JPEG flattened
   onto the ground, except a logo's or a disc's whose source has transparency, which stay PNG
   (`Image.Alpha`, `artwork.alpha`). One image put as two kinds keeps both ladders. `Path` returns the
   largest rendition of any ladder at or below the request (JPEG first at a rung), `IsPNG` its format,
   and `Delete` takes every rung of both formats. A zero-size file counts as missing.
-- `PruneOrphans` keeps every artwork row an album's cover, an artist's image (`artist_images`) or an
-  album's extra (`album_images`) uses; artists go before the images, so an artist pruned frees its
-  own. A prune or a delete of missing tracks that deletes nothing leaves the kept rows standing
+- `PruneOrphans` keeps every artwork row an album's cover, an artist's image (`artist_images`), a pin
+  (`artist_pins`) or an album's extra (`album_images`) uses; artists go before the images, so an artist
+  pruned frees its own. Previews have no row: the picker's sweep removes them. A prune or a delete of missing tracks that deletes nothing leaves the kept rows standing
   (`inLibraryTxIf`), which is what keeps a quick scan's extras step and the next index read warm.
 - The scanner finds one cover per album per scan (`covers` in `internal/library/cover.go`): the cover
   of the album's first track that has one. An album's first track, whose cover, year and compilation
@@ -1071,6 +1113,20 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   and the Artists list; the fixtures' `?art=late` holds Low Tide Choir's art for `kitsune:art-arrives`.
   Album extras: the disc out of its sleeve behind the cover and Now playing's poster (@560, still,
   `translate` only), the Artwork strip after the songs, a Cover Art Archive credit under the cover.
+- Choose artwork (`lib/choose/`): the artist hero's ⋯, only for `library.admin`, buds one Floating
+  (`ArtistMenu.svelte`, `chooser.svelte.ts`) whose faces are the menu (Choose artwork…; with an MBID,
+  Look again now and Not this artist…), the picker (`ArtworkPicker.svelte`, the menu reshaped in place:
+  880 at the step, its right edge on the ⋯'s side, on a phone `full`, two across) and Not this artist's
+  confirm (`NotThisArtist.svelte`, Floating's `danger` look; Keep it or Esc goes back). The picker reads
+  `GET /admin/artists/{id}/images` per kind once an opening (Background first), the kinds one strip,
+  each candidate a `CandidateTile` (its preview through `Picture`, the chosen one ringed off register,
+  a pin stamped, captions from `words.ts`, never likes), an upload tile sending the file itself, and
+  Automatic at its foot. A pin moves the ring at the press, and once the server has it
+  `library.showArtistImage` puts it on the page so the stage develops it in place; a list read again
+  keeps the tiles where they stood (`keepOrder`). Look again now has no surface: the menu closes, a
+  toast says so (`ArtworkToast`, never up with Trash's or a playlist's). The hero credits a pinned
+  picture by its `pinnedFrom`. The fixtures' states are `?artwork=pinned|failed|off|held` and
+  `?artworkMs=`; nothing on the play path waits on any of it.
 - Nothing is cued: `library.playing` follows the player, which starts empty until something plays or
   `resume` restores the record, paused. Saving (`lib/player/resume.svelte.ts`) never waits on the play
   path and only writes once this browser has changed something.
@@ -1096,7 +1152,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   art, held to the same scan without it, and the artist pass over one artist against the stand-ins
   (`scrape-artist`: its JSON, choices, a 4K background and three more images rendered, one write), and
   the album pass over one album (`scrape-album`: a release-group lookup, the archive's 1200 px front and
-  back and fanart.tv's disc art rendered, one library write). The
+  back and fanart.tv's disc art rendered, one library write), and Choose artwork's list of 12
+  backgrounds, kept (`choose-candidates`) and on a first look with every preview fetched and rendered
+  (`choose-candidates-first`). The
   browser suite also holds that a song plays on while its file moves. Each fails past its budget,
   and CI runs both on every PR: the speed tests in their own job, the browser suite as four shards (each
   library in two, the files split by time in `web/perf/shards.ts`, one worker each), and the `perf` job
