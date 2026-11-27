@@ -18,8 +18,8 @@ env:
   BUN_VERSION: '1.4.4'
   GOVULNCHECK_VERSION: v1.9.0
   # A static ffmpeg for the perf libraries, pinned by build and checksum.
-  FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-11-12-39/ffmpeg-N-128790-g9bee1e603c-linux64-gpl.tar.xz
-  FFMPEG_SHA256: f5752bf3597cbc9fc7a60fe5cea3522797a5ea2493d91cffb6f13e5b4c861233
+  FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-27-12-42/ffmpeg-N-129333-g7fdb4c2341-linux64-gpl.tar.xz
+  FFMPEG_SHA256: bb1f342c70282ae16f030fddeef6d116fbd5dc95088b15b9e239d22abbc72bc7
 
 jobs:
   test:
