@@ -133,7 +133,7 @@ test('Settings adds, replaces and clears fanart.tv’s keys, and never shows one
 	await expect(field).toBeFocused();
 	await expect(field).toHaveAttribute('type', 'password');
 	await field.fill(typed);
-	await expect(section).toContainText('Thumbs, backdrops, logos and banners.');
+	await expect(section).toContainText('Thumbs, backdrops, logos, banners and disc art.');
 	await section.getByRole('button', { name: 'Save' }).click();
 	await expect(section).toContainText('SAVED');
 	await expect(project).toContainText('Set · never shown');
@@ -232,5 +232,82 @@ test('the card and the rows hold at 4K', async ({ page }) => {
 	const [masterBox, keyBox] = [await master.boundingBox(), await key.boundingBox()];
 	// Two columns: the switches beside the keys.
 	expect(masterBox !== null && keyBox !== null && keyBox.x > masterBox.x + 400).toBe(true);
+	expect(await overflows(page)).toBe(false);
+});
+
+test('a pass through albums says which, counts the archive’s covers, and Last.fm without its key leads to it', async ({
+	page
+}) => {
+	await health(page, 'albums', '&lastfm=unset');
+	const card = page.getByTestId('metadata');
+	await expect(card).toContainText(
+		/NOW · .+ · THE RECORD · \d+ OF 96 ALBUMS · MUSIC KEEPS PLAYING/
+	);
+	await expect(card.getByTestId('albums-line')).toContainText(
+		/\d+ ALBUM COVERS? FROM THE COVER ART ARCHIVE · \d+ ALBUMS HAVE NO COVER/
+	);
+	await expect(card.locator('[data-source=coverartarchive]')).toContainText('ON');
+	await expect(card.locator('[data-source=coverartarchive]')).toContainText(
+		'covers your files lack, back covers · no key'
+	);
+	const lastfm = card.locator('[data-source=lastfm]');
+	await expect(lastfm).toContainText('bios Wikipedia lacks');
+	await lastfm.getByRole('link', { name: 'NEEDS A KEY ›' }).click();
+	await expect(page).toHaveURL(/\/server#lastfm$/);
+	await expect(page.locator('#art')).toContainText(
+		'Needs the Last.fm API key above. Off until it has one.'
+	);
+});
+
+test('the Credits name Last.fm and the Cover Art Archive', async ({ page }) => {
+	await health(page, 'done');
+	const card = page.getByTestId('metadata');
+	await expect(card.locator('[data-source=lastfm]')).toContainText('ON');
+	await expect(card.getByRole('link', { name: 'Last.fm', exact: true })).toHaveAttribute(
+		'href',
+		'https://www.last.fm'
+	);
+	await expect(card.getByRole('link', { name: 'CC BY-SA', exact: true })).toHaveAttribute(
+		'href',
+		'https://creativecommons.org/licenses/by-sa/3.0/'
+	);
+	await expect(card.getByRole('link', { name: 'Cover Art Archive' })).toHaveAttribute(
+		'href',
+		'https://coverartarchive.org'
+	);
+});
+
+test('Settings switches Last.fm’s bios and the Cover Art Archive, and Health follows', async ({
+	page
+}) => {
+	await page.goto(fixtures('/server?metadata=done'));
+	const section = page.locator('#art');
+	const lastfm = section.getByRole('checkbox', { name: /Last\.fm/ });
+	const archive = section.getByRole('checkbox', { name: /Cover Art Archive/ });
+	await expect(lastfm).toBeChecked();
+	await expect(archive).toBeChecked();
+	await expect(section).toContainText('Bios Wikipedia doesn’t have, with the Last.fm key above.');
+	await expect(section).toContainText(
+		'Covers for albums with none in their files, and back covers. No key.'
+	);
+	await section.getByText('Cover Art Archive', { exact: true }).click();
+	await expect(section).toContainText('UNSAVED');
+	await section.getByRole('button', { name: 'Save' }).click();
+	await expect(section).toContainText('SAVED');
+	await expect(archive).not.toBeChecked();
+
+	await page.locator('a.item.health').click();
+	const caa = page.getByTestId('metadata').locator('[data-source=coverartarchive]');
+	await expect(caa).toContainText('OFF');
+	await expect(page.getByTestId('metadata').locator('[data-source=lastfm]')).toContainText('ON');
+});
+
+test('a pass through albums fits a phone at 390', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await health(page, 'albums', '&lastfm=unset');
+	const card = page.getByTestId('metadata');
+	await expect(card).toContainText(/NOW · .+ · \d+ OF 96 ALBUMS/);
+	await expect(card.getByTestId('albums-line')).toContainText(/COVERS? FROM THE ARCHIVE/);
+	await expect(card.locator('[data-source=lastfm]').getByRole('link')).toBeVisible();
 	expect(await overflows(page)).toBe(false);
 });

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { MetadataSource, MetadataStatus } from './types.ts';
 import {
+	albumsWords,
 	chipLeadsToKey,
 	chipWords,
 	eyebrowWords,
 	failureWords,
 	figureWords,
+	keyPlace,
 	keysWords,
 	noMbidWords,
 	nowWords,
@@ -36,18 +38,19 @@ const artists = {
 const status = (over: Partial<MetadataStatus> = {}): MetadataStatus => ({
 	remote: true,
 	language: 'en',
-	pass: { running: false, done: 0, total: 0 },
+	pass: { running: false, phase: 'artists', done: 0, total: 0 },
 	sources: [source()],
 	artists,
+	albums: { albums: 931, withMbid: 805, fromArchive: 0, withoutCover: 0 },
 	...over
 });
 
 describe('the Metadata card in words', () => {
 	it('says off, fetching, up to date, or that no source is on', () => {
 		expect(eyebrowWords(status({ remote: false }))).toBe('ARTIST ART AND BIOS · OFF');
-		expect(eyebrowWords(status({ pass: { running: true, done: 1, total: 4 } }))).toBe(
-			'ARTIST ART AND BIOS · FETCHING'
-		);
+		expect(
+			eyebrowWords(status({ pass: { running: true, phase: 'artists', done: 1, total: 4 } }))
+		).toBe('ARTIST ART AND BIOS · FETCHING');
 		expect(eyebrowWords(status())).toBe('ARTIST ART AND BIOS · UP TO DATE');
 		expect(eyebrowWords(status({ sources: [source({ state: 'resting' })] }))).toBe(
 			'ARTIST ART AND BIOS · UP TO DATE'
@@ -72,7 +75,9 @@ describe('the Metadata card in words', () => {
 	});
 
 	it('counts what is looked up while a pass goes, and what has art after', () => {
-		expect(figureWords(status({ pass: { running: true, done: 3, total: 9 } }))).toEqual({
+		expect(
+			figureWords(status({ pass: { running: true, phase: 'artists', done: 3, total: 9 } }))
+		).toEqual({
 			figure: '212',
 			of: 'of 351 artists looked up'
 		});
@@ -83,11 +88,39 @@ describe('the Metadata card in words', () => {
 	});
 
 	it('says how far the pass is and who is in hand', () => {
-		expect(passShare({ running: true, done: 3, total: 12 })).toBe(0.25);
-		expect(passShare({ running: false, done: 0, total: 0 })).toBe(0);
-		const pass = { running: true, done: 3, total: 1200, artist: { id: 'a', name: 'Mere Coast' } };
+		expect(passShare({ running: true, phase: 'artists', done: 3, total: 12 })).toBe(0.25);
+		expect(passShare({ running: false, phase: 'artists', done: 0, total: 0 })).toBe(0);
+		const pass = {
+			running: true,
+			phase: 'artists' as const,
+			done: 3,
+			total: 1200,
+			artist: { id: 'a', name: 'Mere Coast' }
+		};
 		expect(nowWords(pass, false)).toBe('NOW · MERE COAST · 3 OF 1,200 · MUSIC KEEPS PLAYING');
-		expect(nowWords({ running: true, done: 0, total: 4 }, true)).toBe('NOW · 0 OF 4');
+		expect(nowWords({ running: true, phase: 'artists', done: 0, total: 4 }, true)).toBe(
+			'NOW · 0 OF 4'
+		);
+		const albums = {
+			running: true,
+			phase: 'albums' as const,
+			done: 12,
+			total: 96,
+			album: { id: 'b', name: 'Tidelines' }
+		};
+		expect(nowWords(albums, false)).toBe('NOW · TIDELINES · 12 OF 96 ALBUMS · MUSIC KEEPS PLAYING');
+	});
+
+	it('says how many covers came from the Cover Art Archive, and how many albums have none', () => {
+		const albums = { albums: 931, withMbid: 805, fromArchive: 23, withoutCover: 12 };
+		expect(albumsWords(albums, false)).toBe(
+			'23 ALBUM COVERS FROM THE COVER ART ARCHIVE · 12 ALBUMS HAVE NO COVER'
+		);
+		expect(albumsWords(albums, true)).toBe('23 COVERS FROM THE ARCHIVE');
+		expect(albumsWords({ ...albums, fromArchive: 1, withoutCover: 1 }, false)).toBe(
+			'1 ALBUM COVER FROM THE COVER ART ARCHIVE · 1 ALBUM HAS NO COVER'
+		);
+		expect(albumsWords({ ...albums, fromArchive: 0, withoutCover: 0 }, false)).toBeNull();
 	});
 
 	it('says what found nothing and when the next refresh is', () => {
@@ -111,6 +144,8 @@ describe('the Metadata card in words', () => {
 		expect(chipLeadsToKey(source({ state: 'needsKey' }))).toBe(true);
 		expect(chipLeadsToKey(source({ state: 'refused' }))).toBe(true);
 		expect(chipLeadsToKey(source({ state: 'resting' }))).toBe(false);
+		expect(keyPlace(source())).toBe('/server#art');
+		expect(keyPlace(source({ name: 'lastfm', state: 'needsKey' }))).toBe('/server#lastfm');
 	});
 
 	it('gives a failure only in the server’s words, and only while it matters', () => {
@@ -132,7 +167,10 @@ describe('the Metadata card in words', () => {
 
 	it('says what a personal key adds, and leads artists without an MBID to Matching', () => {
 		expect(sourceWhat(source({ clientKey: 'set' }))).toBe(
-			'thumbs, backdrops, logos and banners · your own key too'
+			'thumbs, backdrops, logos, banners and disc art · your own key too'
+		);
+		expect(sourceWhat(source({ name: 'coverartarchive', key: 'none', clientKey: 'none' }))).toBe(
+			'covers your files lack, back covers · no key'
 		);
 		expect(sourceWhat(source({ name: 'wikipedia', key: 'none', clientKey: 'none' }))).toBe(
 			'bios and portraits · no key'

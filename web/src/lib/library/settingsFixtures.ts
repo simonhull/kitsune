@@ -27,6 +27,8 @@ const defaults = {
 	'metadata.remote': false,
 	'metadata.fanarttv': true,
 	'metadata.wikipedia': true,
+	'metadata.lastfm_bios': true,
+	'metadata.coverartarchive': true,
 	'metadata.language': 'en'
 } as const;
 

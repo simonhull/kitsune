@@ -14,11 +14,13 @@
 	import { Surface } from '#lib/morph/surface.ts';
 	import type { MetadataStatus } from './types.ts';
 	import {
+		albumsWords,
 		chipLeadsToKey,
 		chipWords,
 		eyebrowWords,
 		failureWords,
 		figureWords,
+		keyPlace,
 		keysWords,
 		never,
 		noMbidWords,
@@ -145,6 +147,7 @@
 	const fanart = $derived(status?.sources.find((source) => source.name === 'fanarttv'));
 	const figure = $derived(status === null ? null : figureWords(status));
 	const running = $derived(status?.pass.running === true);
+	const albumsLine = $derived(status === null ? null : albumsWords(status.albums, phone.current));
 	const eyebrow = $derived.by(() => {
 		if (status === null) {
 			return '';
@@ -174,7 +177,7 @@
 			<h2 class="title">{offerTitle(status.artists.withMbid)}</h2>
 			<p class="body">
 				Kitsune knows them by their MusicBrainz IDs. Turned on, it asks for their pictures, logos
-				and bios in the background. Nothing in your files changes.
+				and bios, and for covers your albums lack, in the background. Nothing in your files changes.
 			</p>
 			<dl class="block">
 				<div class="row">
@@ -212,7 +215,7 @@
 				class="bar"
 				class:full={!running}
 				role="progressbar"
-				aria-label="Artists asked about in this pass"
+				aria-label="Artists and albums asked about in this pass"
 				aria-valuemin={0}
 				aria-valuemax={running ? status.pass.total : 1}
 				aria-valuenow={running ? status.pass.done : 1}
@@ -224,6 +227,9 @@
 					? nowWords(status.pass, phone.current)
 					: restWords(status.artists, status.nextRefresh, phone.current)}</span
 			>
+
+			{#if albumsLine !== null}<span class="small line" data-testid="albums-line">{albumsLine}</span
+				>{/if}
 
 			<span class="label">SOURCES</span>
 			<ul class="sources">
@@ -240,7 +246,7 @@
 								class="chip"
 								class:key={source.state === 'needsKey'}
 								class:trouble={source.state === 'refused'}
-								href={resolve('/server#art')}>{chipWords(source)} ›</a
+								href={resolve(keyPlace(source))}>{chipWords(source)} ›</a
 							>
 						{:else}
 							<span
@@ -277,7 +283,16 @@
 					>). Portraits from
 					<a href="https://commons.wikimedia.org" target="_blank" rel="noopener noreferrer"
 						>Wikimedia Commons</a
-					>, each under its own license. Who is who from
+					>, each under its own license. Bios Wikipedia lacks from
+					<a href="https://www.last.fm" target="_blank" rel="noopener noreferrer">Last.fm</a>
+					(<a
+						href="https://creativecommons.org/licenses/by-sa/3.0/"
+						target="_blank"
+						rel="noopener noreferrer">CC BY-SA</a
+					>). Album covers from the
+					<a href="https://coverartarchive.org" target="_blank" rel="noopener noreferrer"
+						>Cover Art Archive</a
+					>. Who is who from
 					<a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a
 					>.
 				</p>

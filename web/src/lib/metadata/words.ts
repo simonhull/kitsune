@@ -6,6 +6,7 @@
 import { count } from '#lib/library/home.ts';
 import { whenWords } from '#lib/organize/words.ts';
 import type {
+	MetadataAlbums,
 	MetadataArtists,
 	MetadataPass,
 	MetadataSource,
@@ -44,8 +45,8 @@ export function offerTitle(withMbid: number): string {
 /** Where lookups go, as one line; a phone's is shorter. */
 export function toWords(phone: boolean): string {
 	return phone
-		? 'MUSICBRAINZ, WIKIMEDIA, FANART.TV'
-		: 'MUSICBRAINZ · WIKIPEDIA · WIKIDATA · COMMONS · FANART.TV';
+		? 'MUSICBRAINZ, WIKIMEDIA, FANART.TV, LAST.FM, COVER ART ARCHIVE'
+		: 'MUSICBRAINZ · WIKIPEDIA · WIKIDATA · COMMONS · FANART.TV · LAST.FM · COVER ART ARCHIVE';
 }
 
 /** The offer's keys row: fanart.tv's project key, which Kitsune doesn't ship. */
@@ -76,11 +77,35 @@ export function passShare(pass: MetadataPass): number {
 	return pass.total <= 0 ? 0 : Math.min(1, pass.done / pass.total);
 }
 
-/** Under the bar while a pass goes: the artist in hand and how far. */
+/** Under the bar while a pass goes: the artist or album in hand and how far. */
 export function nowWords(pass: MetadataPass, phone: boolean): string {
-	const far = `${count(pass.done)} OF ${count(pass.total)}`;
-	const who = pass.artist === undefined ? '' : ` · ${pass.artist.name.toUpperCase()}`;
+	const albums = pass.phase === 'albums';
+	const far = `${count(pass.done)} OF ${count(pass.total)}${albums ? ' ALBUMS' : ''}`;
+	const inHand = albums ? pass.album : pass.artist;
+	const who = inHand === undefined ? '' : ` · ${inHand.name.toUpperCase()}`;
 	return phone ? `NOW${who} · ${far}` : `NOW${who} · ${far} · MUSIC KEEPS PLAYING`;
+}
+
+/**
+ * The albums' line: how many covers came from the Cover Art Archive, and how many albums still have
+ * none, or null when there's nothing to say.
+ */
+export function albumsWords(albums: MetadataAlbums, phone: boolean): string | null {
+	const parts: string[] = [];
+	if (albums.fromArchive > 0) {
+		const n = count(albums.fromArchive);
+		parts.push(
+			phone
+				? `${n} ${albums.fromArchive === 1 ? 'COVER' : 'COVERS'} FROM THE ARCHIVE`
+				: `${n} ALBUM ${albums.fromArchive === 1 ? 'COVER' : 'COVERS'} FROM THE COVER ART ARCHIVE`
+		);
+	}
+	if (albums.withoutCover > 0 && !phone) {
+		parts.push(
+			`${count(albums.withoutCover)} ${albums.withoutCover === 1 ? 'ALBUM HAS' : 'ALBUMS HAVE'} NO COVER`
+		);
+	}
+	return parts.length === 0 ? null : parts.join(' · ');
 }
 
 /** Under the bar once the pass is done: what found nothing, and when the next refresh falls due. */
@@ -105,13 +130,17 @@ export function restWords(
 const names: Record<MetadataSourceName, string> = {
 	musicbrainz: 'MusicBrainz',
 	wikipedia: 'Wikipedia, Wikidata, Commons',
-	fanarttv: 'fanart.tv'
+	fanarttv: 'fanart.tv',
+	lastfm: 'Last.fm',
+	coverartarchive: 'Cover Art Archive'
 };
 
 const whats: Record<MetadataSourceName, string> = {
-	musicbrainz: 'who each artist is · no key',
+	musicbrainz: 'who each artist and album is · no key',
 	wikipedia: 'bios and portraits · no key',
-	fanarttv: 'thumbs, backdrops, logos and banners'
+	fanarttv: 'thumbs, backdrops, logos, banners and disc art',
+	lastfm: 'bios Wikipedia lacks · your Last.fm key',
+	coverartarchive: 'covers your files lack, back covers · no key'
 };
 
 export function sourceName(name: MetadataSourceName): string {
@@ -152,6 +181,11 @@ export function chipWords(source: MetadataSource): string {
 /** Whether a source's chip leads to its key in Server › Settings. */
 export function chipLeadsToKey(source: MetadataSource): boolean {
 	return source.state === 'needsKey' || source.state === 'refused';
+}
+
+/** Where a source's key is set: Last.fm's in its own section, fanart.tv's under Artist art. */
+export function keyPlace(source: MetadataSource): '/server#lastfm' | '/server#art' {
+	return source.name === 'lastfm' ? '/server#lastfm' : '/server#art';
 }
 
 /**

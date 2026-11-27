@@ -38,6 +38,10 @@ export interface Draft {
 	lookups: boolean;
 	fanart: boolean;
 	wikipedia: boolean;
+	/** `metadata.lastfm_bios`: Last.fm's bios, through the Last.fm API key. */
+	lastfmBios: boolean;
+	/** `metadata.coverartarchive`: covers for albums with none. */
+	archive: boolean;
 	/** `metadata.language`, a two-letter code. */
 	language: string;
 	fanartKey: SecretDraft;
@@ -50,7 +54,16 @@ const fieldsOf: Record<SectionId, readonly (keyof Draft)[]> = {
 	lastfm: ['apiKey', 'secret'],
 	scanning: ['quickScan', 'graceDays'],
 	advanced: ['baseUrl', 'proxies', 'level'],
-	art: ['lookups', 'fanart', 'wikipedia', 'language', 'fanartKey', 'fanartClientKey']
+	art: [
+		'lookups',
+		'fanart',
+		'wikipedia',
+		'lastfmBios',
+		'archive',
+		'language',
+		'fanartKey',
+		'fanartClientKey'
+	]
 };
 
 /** The section a key's field is in, for a refusal the server names. */
@@ -67,6 +80,8 @@ export const sectionOfKey: Record<SettingKey, SectionId> = {
 	'metadata.remote': 'art',
 	'metadata.fanarttv': 'art',
 	'metadata.wikipedia': 'art',
+	'metadata.lastfm_bios': 'art',
+	'metadata.coverartarchive': 'art',
 	'metadata.language': 'art',
 	'fanarttv.api_key': 'art',
 	'fanarttv.client_key': 'art'
@@ -130,6 +145,8 @@ export function draftOf({ settings: s }: ServerSettings): Draft {
 		lookups: s['metadata.remote'].value,
 		fanart: s['metadata.fanarttv'].value,
 		wikipedia: s['metadata.wikipedia'].value,
+		lastfmBios: s['metadata.lastfm_bios'].value,
+		archive: s['metadata.coverartarchive'].value,
 		language: s['metadata.language'].value,
 		fanartKey: { kind: 'keep' },
 		fanartClientKey: { kind: 'keep' }
@@ -237,6 +254,8 @@ export function changeFor(
 			if (differs('lookups')) change['metadata.remote'] = draft.lookups;
 			if (differs('fanart')) change['metadata.fanarttv'] = draft.fanart;
 			if (differs('wikipedia')) change['metadata.wikipedia'] = draft.wikipedia;
+			if (differs('lastfmBios')) change['metadata.lastfm_bios'] = draft.lastfmBios;
+			if (differs('archive')) change['metadata.coverartarchive'] = draft.archive;
 			if (differs('language')) {
 				const language = draft.language.trim().toLowerCase();
 				if (!/^[a-z]{2}$/.test(language)) {
