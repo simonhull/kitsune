@@ -61,6 +61,12 @@ type Disc struct {
 	Disc int // From 1; 0 sends no disc.
 }
 
+// artistName is the name the stand-in gives an artist it answers about.
+const (
+	artistName = "Artist"
+	nameKey    = "name"
+)
+
 // kindDisc is fanart.tv's name for disc art.
 const kindDisc = "cdart"
 
@@ -296,7 +302,7 @@ func (a answer) write(w http.ResponseWriter, r *http.Request) bool {
 	case a.retry != "" && (a.status == http.StatusTooManyRequests || a.status == http.StatusServiceUnavailable):
 		w.Header().Set("Retry-After", a.retry)
 	}
-	writeJSON(w, a.status, map[string]string{"status": "error", "error message": http.StatusText(a.status)})
+	writeJSON(w, a.status, failed(http.StatusText(a.status)))
 	return true
 }
 
@@ -310,10 +316,10 @@ func (s *Server) getArtist(w http.ResponseWriter, r *http.Request) {
 	bare := s.bare
 	s.mu.Unlock()
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"status": "error", "error message": "Not found"})
+		writeJSON(w, http.StatusNotFound, notFound())
 		return
 	}
-	out := map[string]any{"name": "Artist " + mbid[:8], "mbid_id": mbid}
+	out := map[string]any{nameKey: artistName + " " + mbid[:8], "mbid_id": mbid}
 	for _, k := range a.kinds() {
 		if len(k.imgs) == 0 {
 			continue
@@ -342,7 +348,7 @@ func (s *Server) getAlbum(w http.ResponseWriter, r *http.Request) {
 	bare := s.bare
 	s.mu.Unlock()
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"status": "error", "error message": "Not found"})
+		writeJSON(w, http.StatusNotFound, notFound())
 		return
 	}
 	discs := make([]map[string]string, len(a.Discs))
@@ -357,7 +363,7 @@ func (s *Server) getAlbum(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"name": "Artist", "mbid_id": "00000000-0000-0000-0000-000000000000",
+		nameKey: artistName, "mbid_id": "00000000-0000-0000-0000-000000000000",
 		"albums": map[string]any{mbid: map[string]any{"cdart": discs}},
 	})
 }
@@ -369,7 +375,7 @@ func (s *Server) getLatest(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	list := make([]map[string]string, len(s.latest))
 	for i, id := range s.latest {
-		list[i] = map[string]string{"id": id, "name": "Artist", "new_images": "1", "total_images": "3"}
+		list[i] = map[string]string{"id": id, nameKey: artistName, "new_images": "1", "total_images": "3"}
 	}
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, list)
@@ -482,6 +488,14 @@ func (s *Server) drawn(seed string, size image.Point, alpha bool) []byte {
 	}
 	return b
 }
+
+// failed is fanart.tv's way of saying something went wrong, in message.
+func failed(message string) map[string]string {
+	return map[string]string{"status": "error", "error message": message}
+}
+
+// notFound is fanart.tv's way of saying it has none.
+func notFound() map[string]string { return failed("Not found") }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")

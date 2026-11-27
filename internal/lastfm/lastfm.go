@@ -334,18 +334,24 @@ func Sign(params url.Values, secret string) string {
 // call posts a signed method call and decodes the response into out, which
 // may be nil.
 func (c *Client) call(ctx context.Context, method string, params url.Values, out any) error {
-	return c.post(ctx, method, params, out, true)
-}
-
-// post posts a method call, signed when sign is set, and decodes the response
-// into out, which may be nil. Every parameter, the key included, travels in the
-// body, never in the URL.
-func (c *Client) post(ctx context.Context, method string, params url.Values, out any, sign bool) error {
 	params.Set("method", method)
 	params.Set("api_key", c.apiKey)
-	if sign {
-		params.Set("api_sig", Sign(params, c.secret))
-	}
+	params.Set("api_sig", Sign(params, c.secret))
+	return c.post(ctx, method, params, out)
+}
+
+// read posts an unsigned method call, as Last.fm's read methods take, which
+// needs the API key alone, and decodes the response into out.
+func (c *Client) read(ctx context.Context, method string, params url.Values, out any) error {
+	params.Set("method", method)
+	params.Set("api_key", c.apiKey)
+	return c.post(ctx, method, params, out)
+}
+
+// post posts params, the method and key set, and decodes the response into
+// out, which may be nil. Every parameter, the key included, travels in the
+// body, never in the URL.
+func (c *Client) post(ctx context.Context, method string, params url.Values, out any) error {
 	params.Set("format", "json")
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.APIBase, strings.NewReader(params.Encode()))
 	if err != nil {

@@ -195,7 +195,7 @@ func (s *Server) lookup(w http.ResponseWriter, r *http.Request) {
 	}
 	release, ok := s.find(r.PathValue("id"))
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Not Found"})
+		writeNotFound(w)
 		return
 	}
 	writeJSON(w, http.StatusOK, toJSON(&release, true))
@@ -218,7 +218,7 @@ func (s *Server) artist(w http.ResponseWriter, r *http.Request) {
 	a, ok := s.artists[r.PathValue("id")]
 	s.mu.Unlock()
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Not Found"})
+		writeNotFound(w)
 		return
 	}
 	if a.Raw != "" {
@@ -280,11 +280,11 @@ func (s *Server) coverArt(w http.ResponseWriter, r *http.Request) {
 	back := s.backs[id]
 	s.mu.Unlock()
 	if !ok || (!release.Cover && !back) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Not Found"})
+		writeNotFound(w)
 		return
 	}
 	root := "http://" + r.Host + "/coverart/release/" + id + "/"
-	image := func(imageID string, front bool) map[string]any {
+	entry := func(imageID string, front bool) map[string]any {
 		return map[string]any{
 			"id": imageID, "front": front, "back": !front, "approved": true,
 			"image":      root + imageID + ".png",
@@ -293,10 +293,10 @@ func (s *Server) coverArt(w http.ResponseWriter, r *http.Request) {
 	}
 	images := []any{}
 	if release.Cover {
-		images = append(images, image(frontID, true))
+		images = append(images, entry(frontID, true))
 	}
 	if back {
-		images = append(images, image(backID, false))
+		images = append(images, entry(backID, false))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"images": images, "release": "https://musicbrainz.org/release/" + id})
 }
@@ -522,3 +522,8 @@ func idOf(s string) string {
 // ID returns an MBID-shaped ID made from s, the same every time, for tests
 // that make their own releases.
 func ID(s string) string { return idOf(s) }
+
+// writeNotFound answers 404 as MusicBrainz does.
+func writeNotFound(w http.ResponseWriter) {
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "Not Found"})
+}

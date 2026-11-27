@@ -52,16 +52,8 @@ func TestCoverArtFindsFrontAndBack(t *testing.T) {
 	if err != nil || art.Front == nil || art.Back == nil || art.Front.ID == art.Back.ID {
 		t.Fatalf("both = %+v, %v", art, err)
 	}
-	frontBytes, err := c.DownloadArt(ctx, art.Front.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	backBytes, err := c.DownloadArt(ctx, art.Back.URL)
-	if err != nil || bytes.Equal(frontBytes, backBytes) {
-		t.Fatalf("back = %d bytes, %v; want another image", len(backBytes), err)
-	}
-	if _, _, err = image.Decode(bytes.NewReader(frontBytes)); err != nil {
-		t.Errorf("front doesn't decode: %v", err)
+	if frontBytes, backBytes := download(t, c, art.Front.URL), download(t, c, art.Back.URL); bytes.Equal(frontBytes, backBytes) {
+		t.Error("the back is the front")
 	}
 	if art, err = c.CoverArt(ctx, front); err != nil || art.Front == nil || art.Back != nil {
 		t.Errorf("front only = %+v, %v", art, err)
@@ -69,6 +61,19 @@ func TestCoverArtFindsFrontAndBack(t *testing.T) {
 	if _, err = c.CoverArt(ctx, none); !errors.Is(err, remote.ErrNotFound) {
 		t.Errorf("none: %v, want not found", err)
 	}
+}
+
+// download fetches an image of the archive's, which must decode.
+func download(t *testing.T, c *matching.MusicBrainz, u string) []byte {
+	t.Helper()
+	body, err := c.DownloadArt(matching.Background(t.Context()), u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = image.Decode(bytes.NewReader(body)); err != nil {
+		t.Errorf("%s doesn't decode: %v", u, err)
+	}
+	return body
 }
 
 func TestDownloadArtFetchesOnlyTheArchive(t *testing.T) {

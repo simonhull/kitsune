@@ -34,7 +34,7 @@ func (c *MusicBrainz) ArtistLinks(ctx context.Context, id string) (ArtistLinks, 
 	if !mbidPattern.MatchString(id) {
 		return ArtistLinks{}, fmt.Errorf("artist %q: %w", id, ErrNotFound)
 	}
-	key := "artist/" + id + "?" + url.Values{"inc": {"url-rels"}, fmtParam: {fmtJSON}}.Encode()
+	key := "artist/" + id + "?" + url.Values{incParam: {"url-rels"}, fmtParam: {fmtJSON}}.Encode()
 	body, err := c.getFresh(ctx, key, ArtistLinksFor)
 	if err != nil {
 		return ArtistLinks{}, fmt.Errorf("artist %s: %w", id, err)
@@ -60,7 +60,7 @@ func (a *mbArtistRels) links() ArtistLinks {
 	var out ArtistLinks
 	for _, r := range a.Relations {
 		u, err := url.Parse(r.URL.Resource)
-		if err != nil || u.Scheme != "https" {
+		if err != nil || u.Scheme != schemeHTTPS {
 			continue
 		}
 		if id, ok := wikidataItem(u); ok && r.Type == "wikidata" {

@@ -17,8 +17,8 @@ func TestAlbumReadsDiscArt(t *testing.T) {
 	t.Parallel()
 	ft := fanarttvtest.New(t)
 	ft.AddAlbum(fanarttvtest.Album{MBID: group, Discs: []fanarttvtest.Disc{
-		{Image: fanarttvtest.Image{ID: "71", Likes: 2}, Disc: 1},
-		{Image: fanarttvtest.Image{ID: "72"}, Disc: 2},
+		{ID: "71", Likes: 2, Disc: 1},
+		{ID: "72", Disc: 2},
 	}})
 	c := fanarttv.New(ft.Options())
 
@@ -53,7 +53,7 @@ func TestAlbumSaysWhatFailed(t *testing.T) {
 	if _, err := c.Album(t.Context(), fanarttv.Keys{}, group); !errors.Is(err, fanarttv.ErrNoKey) {
 		t.Errorf("no key: %v, want ErrNoKey", err)
 	}
-	ft.AddAlbum(fanarttvtest.Album{MBID: group, Discs: []fanarttvtest.Disc{{Image: fanarttvtest.Image{ID: "71"}}}})
+	ft.AddAlbum(fanarttvtest.Album{MBID: group, Discs: []fanarttvtest.Disc{{ID: "71"}}})
 	ft.BareNames(true)
 	if _, err := c.Album(t.Context(), keys, group); !errors.Is(err, fanarttv.ErrNotALink) {
 		t.Errorf("bare names: %v, want ErrNotALink", err)

@@ -61,7 +61,7 @@ func (c *Client) ArtistInfo(ctx context.Context, mbid, lang string) (Bio, error)
 			} `json:"bio"`
 		} `json:"artist"`
 	}
-	err := c.post(ctx, method, params, &resp, false)
+	err := c.read(ctx, method, params, &resp)
 	if e, ok := errors.AsType[*Error](err); ok {
 		switch e.Code {
 		case codeInvalidParameters:
@@ -75,13 +75,12 @@ func (c *Client) ArtistInfo(ctx context.Context, mbid, lang string) (Bio, error)
 		return Bio{}, err
 	}
 	a := &resp.Artist
-	paras, more := Paragraphs(a.Bio.Content)
-	summary, _ := Paragraphs(a.Bio.Summary)
-	b := Bio{MBID: a.MBID, Paragraphs: paras, ReadMore: more}
-	if len(summary) > 0 {
-		b.Summary = summary[0]
-	} else if len(paras) > 0 {
-		b.Summary = paras[0]
+	content, summary := Strip(a.Bio.Content), Strip(a.Bio.Summary)
+	b := Bio{MBID: a.MBID, Paragraphs: content.Paragraphs, ReadMore: content.ReadMore}
+	if len(summary.Paragraphs) > 0 {
+		b.Summary = summary.Paragraphs[0]
+	} else if len(content.Paragraphs) > 0 {
+		b.Summary = content.Paragraphs[0]
 	}
 	if b.ReadMore == "" && isLastfmPage(a.URL) {
 		b.ReadMore = a.URL
@@ -90,35 +89,42 @@ func (c *Client) ArtistInfo(ctx context.Context, mbid, lang string) (Bio, error)
 }
 
 var (
-	// readMore is Last.fm's closing link, and everything after it: the
+	// readMoreLink is Last.fm's closing link, and everything after it: the
 	// license line, which a credit says instead.
-	readMore = regexp.MustCompile(`(?is)<a\s[^>]*href="([^"]*)"[^>]*>\s*Read more on Last\.fm\s*</a>.*$`)
+	readMoreLink = regexp.MustCompile(`(?is)<a\s[^>]*href="([^"]*)"[^>]*>\s*Read more on Last\.fm\s*</a>.*$`)
 	// lineBreak is a tag that breaks a line.
 	lineBreak = regexp.MustCompile(`(?i)<br\s*/?>|</p>`)
 	// tag is any tag; a link's words stay, the link goes.
 	tag = regexp.MustCompile(`<[^>]*>`)
 )
 
-// Paragraphs is Last.fm's bio HTML as plain paragraphs, with the page its
-// "Read more on Last.fm" link names ("" when it has none, or one that isn't
-// last.fm's). Links are dropped, keeping their words.
-func Paragraphs(s string) ([]string, string) {
-	more := ""
-	if m := readMore.FindStringSubmatch(s); m != nil {
+// Stripped is Last.fm's bio HTML as plain text.
+type Stripped struct {
+	Paragraphs []string // Nil for none.
+	// ReadMore is the page its "Read more on Last.fm" link names: "" when it
+	// has none, or one that isn't last.fm's.
+	ReadMore string
+}
+
+// Strip is Last.fm's bio HTML as plain paragraphs, with the page its "Read
+// more" link names. Links are dropped, keeping their words, and the license
+// line after the link goes with it: a credit says it instead.
+func Strip(s string) Stripped {
+	var out Stripped
+	if m := readMoreLink.FindStringSubmatch(s); m != nil {
 		if u := html.UnescapeString(m[1]); isLastfmPage(u) {
-			more = u
+			out.ReadMore = u
 		}
 		s = s[:len(s)-len(m[0])]
 	}
 	s = lineBreak.ReplaceAllString(s, "\n")
 	s = html.UnescapeString(tag.ReplaceAllString(s, ""))
-	var out []string
 	for line := range strings.SplitSeq(s, "\n") {
 		if line = strings.Join(strings.Fields(line), " "); line != "" {
-			out = append(out, line)
+			out.Paragraphs = append(out.Paragraphs, line)
 		}
 	}
-	return out, more
+	return out
 }
 
 // isLastfmPage reports whether u is a page on last.fm, over https or http.

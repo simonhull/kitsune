@@ -23,7 +23,7 @@ func TestArtistInfoStripsTheBioToParagraphs(t *testing.T) {
 		Content: lastfmtest.Bio(tidePage, true,
 			`Low Tide Choir is a <a href="https://www.last.fm/tag/folk">folk</a> band &amp; choir.`,
 			``,
-			`They formed in 2009.<br/>In a harbour town.`),
+			`They formed in 2009.<br/>In a harbor town.`),
 	})
 	c := fake.Client()
 
@@ -32,7 +32,7 @@ func TestArtistInfoStripsTheBioToParagraphs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []string{"Low Tide Choir is a folk band & choir.", "They formed in 2009.", "In a harbour town."}
+	want := []string{"Low Tide Choir is a folk band & choir.", "They formed in 2009.", "In a harbor town."}
 	if !slices.Equal(bio.Paragraphs, want) {
 		t.Errorf("paragraphs = %q, want %q", bio.Paragraphs, want)
 	}
@@ -68,13 +68,13 @@ func TestArtistInfoSaysWhatFailed(t *testing.T) {
 	}
 }
 
-func TestParagraphsKeepsOnlyLastfmsReadMore(t *testing.T) {
+func TestStripKeepsOnlyLastfmsReadMore(t *testing.T) {
 	t.Parallel()
-	paras, more := lastfm.Paragraphs(`Text. <a href="https://example.com/x">Read more on Last.fm</a>`)
-	if more != "" || !slices.Equal(paras, []string{"Text."}) {
-		t.Errorf("paragraphs, more = %q, %q", paras, more)
+	got := lastfm.Strip(`Text. <a href="https://example.com/x">Read more on Last.fm</a>`)
+	if got.ReadMore != "" || !slices.Equal(got.Paragraphs, []string{"Text."}) {
+		t.Errorf("stripped = %+v", got)
 	}
-	if paras, more = lastfm.Paragraphs(""); paras != nil || more != "" {
-		t.Errorf("empty = %q, %q", paras, more)
+	if got = lastfm.Strip(""); got.Paragraphs != nil || got.ReadMore != "" {
+		t.Errorf("empty = %+v", got)
 	}
 }

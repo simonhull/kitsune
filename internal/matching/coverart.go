@@ -2,6 +2,7 @@ package matching
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -43,23 +44,19 @@ func (c *MusicBrainz) ReleaseGroup(ctx context.Context, id string) (string, erro
 	if !mbidPattern.MatchString(id) {
 		return "", fmt.Errorf("release %q: %w", id, ErrNotFound)
 	}
-	key := "release/" + id + "?" + url.Values{"inc": {"release-groups"}, fmtParam: {fmtJSON}}.Encode()
+	key := "release/" + id + "?" + url.Values{incParam: {"release-groups"}, fmtParam: {fmtJSON}}.Encode()
 	body, err := c.getFresh(ctx, key, ReleaseGroupFor)
 	if err != nil {
 		return "", fmt.Errorf("release %s group: %w", id, err)
 	}
-	var r struct {
-		Group struct {
-			ID string `json:"id"`
-		} `json:"release-group"`
-	}
+	var r mbRelease
 	if err = json.Unmarshal(body, &r); err != nil {
 		return "", fmt.Errorf("release %s group: %w: %w", id, ErrUnavailable, err)
 	}
-	if !mbidPattern.MatchString(r.Group.ID) {
+	if !mbidPattern.MatchString(r.ReleaseGroup.ID) {
 		return "", nil
 	}
-	return r.Group.ID, nil
+	return r.ReleaseGroup.ID, nil
 }
 
 // ArtImage is one of a release's images at the Cover Art Archive.
@@ -91,29 +88,36 @@ func (c *MusicBrainz) CoverArt(ctx context.Context, id string) (CoverArt, error)
 	if err != nil {
 		return CoverArt{}, fmt.Errorf("cover art of %s: %w", id, err)
 	}
-	var raw struct {
-		Images []struct {
-			ID         looseID           `json:"id"`
-			Image      string            `json:"image"`
-			Front      bool              `json:"front"`
-			Back       bool              `json:"back"`
-			Thumbnails map[string]string `json:"thumbnails"`
-		} `json:"images"`
-	}
+	var raw artListing
 	if err = json.Unmarshal(body, &raw); err != nil {
 		return CoverArt{}, fmt.Errorf("cover art of %s: %w: it doesn't parse", id, ErrBadArt)
 	}
+	out, err := c.coverArt(&raw)
+	if err != nil {
+		return CoverArt{}, fmt.Errorf("cover art of %s: %w", id, err)
+	}
+	return out, nil
+}
+
+// artListing is the archive's listing of a release, as much as Kitsune reads.
+type artListing struct {
+	Images []struct {
+		ID         looseID           `json:"id"`
+		Image      string            `json:"image"`
+		Front      bool              `json:"front"`
+		Back       bool              `json:"back"`
+		Thumbnails map[string]string `json:"thumbnails"`
+	} `json:"images"`
+}
+
+// coverArt is the first front and the first back of raw, each at its largest
+// rendition up to 1200 pixels, checked to be the archive's.
+func (c *MusicBrainz) coverArt(raw *artListing) (CoverArt, error) {
 	var out CoverArt
 	for _, img := range raw.Images {
-		u := img.Thumbnails["1200"]
-		for _, alt := range []string{img.Thumbnails["large"], img.Image} {
-			if u == "" {
-				u = alt
-			}
-		}
-		u, ok := c.artURL(u)
+		u, ok := c.artURL(cmp.Or(img.Thumbnails["1200"], img.Thumbnails["large"], img.Image))
 		if !ok {
-			return CoverArt{}, fmt.Errorf("cover art of %s: %w: an image is elsewhere", id, ErrBadArt)
+			return CoverArt{}, fmt.Errorf("%w: an image is elsewhere", ErrBadArt)
 		}
 		a := &ArtImage{ID: string(img.ID), URL: u}
 		if img.Front && out.Front == nil {
@@ -149,18 +153,30 @@ func (c *MusicBrainz) DownloadArt(ctx context.Context, u string) ([]byte, error)
 // and false otherwise.
 func (c *MusicBrainz) artURL(u string) (string, bool) {
 	p, err := url.Parse(u)
-	if err != nil || (p.Scheme != "https" && p.Scheme != "http") || p.Host == "" || strings.Contains(p.Path, "..") {
+	if err != nil || !webURL(p) {
 		return "", false
 	}
-	host := strings.ToLower(p.Hostname())
 	if root, rerr := url.Parse(c.covers); rerr == nil && p.Host == root.Host {
 		return u, true
 	}
-	if host == "coverartarchive.org" || host == "archive.org" || strings.HasSuffix(host, ".archive.org") {
-		p.Scheme = "https" // The archive's own JSON says http.
+	if archiveHost(p.Hostname()) {
+		p.Scheme = schemeHTTPS // The archive's own JSON says http.
 		return p.String(), true
 	}
 	return "", false
+}
+
+// webURL reports whether p is an http or https URL with a host and a path
+// that climbs nowhere.
+func webURL(p *url.URL) bool {
+	return (p.Scheme == schemeHTTPS || p.Scheme == "http") && p.Host != "" && !strings.Contains(p.Path, "..")
+}
+
+// archiveHost reports whether host is the Cover Art Archive's or the Internet
+// Archive's, where it keeps its images.
+func archiveHost(host string) bool {
+	host = strings.ToLower(host)
+	return host == "coverartarchive.org" || host == "archive.org" || strings.HasSuffix(host, ".archive.org")
 }
 
 // artJSON asks the archive for JSON.
