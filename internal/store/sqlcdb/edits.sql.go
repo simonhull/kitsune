@@ -117,7 +117,12 @@ func (q *Queries) MatchKeyTaken(ctx context.Context, matchKey string) (bool, err
 
 const mergeAlbumInto = `-- name: MergeAlbumInto :exec
 UPDATE albums SET
-    artwork_hash = coalesce(albums.artwork_hash, (SELECT f.artwork_hash FROM albums f WHERE f.id = ?1)),
+    artwork_hash = coalesce(
+        CASE WHEN NOT EXISTS (SELECT 1 FROM album_images c WHERE c.album_id = albums.id AND c.kind = 'cover')
+             THEN albums.artwork_hash END,
+        (SELECT f.artwork_hash FROM albums f WHERE f.id = ?1
+           AND NOT EXISTS (SELECT 1 FROM album_images c WHERE c.album_id = f.id AND c.kind = 'cover')),
+        albums.artwork_hash),
     added_at = min(albums.added_at, (SELECT f.added_at FROM albums f WHERE f.id = ?1))
 WHERE albums.id = ?2
 `
@@ -128,7 +133,9 @@ type MergeAlbumIntoParams struct {
 }
 
 // The album a merge lands in keeps its cover, or takes the other's, and was
-// first seen when the older of the two was.
+// first seen when the older of the two was. A cover from the files beats one
+// from the Cover Art Archive (an album_images 'cover' row), whichever album it
+// is on; the other album's archive cover goes with it, and the pass asks again.
 func (q *Queries) MergeAlbumInto(ctx context.Context, arg MergeAlbumIntoParams) error {
 	_, err := q.db.ExecContext(ctx, mergeAlbumInto, arg.FromID, arg.IntoID)
 	return err
