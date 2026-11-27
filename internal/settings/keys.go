@@ -71,7 +71,8 @@ func Keys() []Key {
 		LibraryRoots, LibraryTagWrites, LastfmAPIKey, LastfmSharedSecret,
 		LibraryQuickScan, LibraryMissingGrace, ServerBaseURL, ServerTrustedProxies, LogLevel,
 		OrganizeTemplate, OrganizeCompilations, OrganizeRoots, OrganizeOnEdit, OrganizeCompanions, OrganizeRewritePlaylists,
-		MetadataRemote, MetadataFanart, MetadataWikipedia, MetadataLanguage, FanartAPIKey, FanartClientKey,
+		MetadataRemote, MetadataFanart, MetadataWikipedia, MetadataLastfmBios, MetadataArchive, MetadataLanguage,
+		FanartAPIKey, FanartClientKey,
 	}
 }
 
@@ -121,6 +122,7 @@ type Values struct {
 	// The artist pass's: the master switch, a switch per source, the language,
 	// and fanart.tv's keys, which are never logged or sent to a client.
 	MetadataRemote, MetadataFanart, MetadataWikipedia bool
+	MetadataLastfmBios, MetadataArchive               bool
 	MetadataLanguage                                  string
 	FanartAPIKey, FanartClientKey                     string
 }
@@ -136,7 +138,8 @@ func Defaults() Values {
 		LogLevel: d.Log.Level, TrustedProxies: []netip.Prefix{},
 		OrganizeTemplate: organize.DefaultTemplate, OrganizeCompilations: organize.DefaultCompilations,
 		OrganizeRoots: map[string]RootTemplates{}, OrganizeCompanions: true,
-		MetadataFanart: true, MetadataWikipedia: true, MetadataLanguage: defaultLanguage,
+		MetadataFanart: true, MetadataWikipedia: true, MetadataLastfmBios: true, MetadataArchive: true,
+		MetadataLanguage: defaultLanguage,
 	}
 }
 

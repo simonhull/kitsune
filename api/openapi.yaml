@@ -5196,7 +5196,10 @@ components:
       description: >-
         What the album has beside its cover: disc art and a back cover, read
         from `cdart`, `discart` or `disc` (every disc), `cd2` and the like (one
-        disc) and `back` in the album's folder.
+        disc) and `back` in the album's folder; while lookups are on, disc art
+        from fanart.tv (by the release group) for an album whose folder has
+        none, and a back cover from the Cover Art Archive (by the release) for
+        one whose folder has none. Each says where it came from.
       required: [discs]
       properties:
         discs:
@@ -5206,10 +5209,13 @@ components:
         back: { $ref: "#/components/schemas/ExtraImage" }
         coverSource:
           type: string
-          enum: [files]
+          enum: [files, coverartarchive]
           description: >-
             Where `artwork` came from, so a credit can say: `files`, the
-            album's own. Absent with no cover.
+            album's own, or `coverartarchive`, the Cover Art Archive's front
+            for the album's release, which an album with no cover in its files
+            is given while lookups are on (and loses the moment its files have
+            one). Absent with no cover.
     DiscArt:
       type: object
       additionalProperties: false
@@ -5945,6 +5951,8 @@ components:
             - metadata.remote
             - metadata.fanarttv
             - metadata.wikipedia
+            - metadata.lastfm_bios
+            - metadata.coverartarchive
             - metadata.language
             - fanarttv.api_key
             - fanarttv.client_key
@@ -5967,6 +5975,8 @@ components:
             metadata.remote: { $ref: "#/components/schemas/BoolSetting" }
             metadata.fanarttv: { $ref: "#/components/schemas/BoolSetting" }
             metadata.wikipedia: { $ref: "#/components/schemas/BoolSetting" }
+            metadata.lastfm_bios: { $ref: "#/components/schemas/BoolSetting" }
+            metadata.coverartarchive: { $ref: "#/components/schemas/BoolSetting" }
             metadata.language: { $ref: "#/components/schemas/StringSetting" }
             fanarttv.api_key: { $ref: "#/components/schemas/SecretSetting" }
             fanarttv.client_key: { $ref: "#/components/schemas/SecretSetting" }
@@ -6123,6 +6133,8 @@ components:
             sources and nothing else.
         metadata.fanarttv: { type: [boolean, "null"], description: "fanart.tv, under metadata.remote; it also needs fanarttv.api_key." }
         metadata.wikipedia: { type: [boolean, "null"], description: "Wikipedia, Wikidata and Wikimedia Commons, under metadata.remote." }
+        metadata.lastfm_bios: { type: [boolean, "null"], description: "Last.fm's bio of an artist with none from its folder or Wikipedia, under metadata.remote; it also needs lastfm.api_key." }
+        metadata.coverartarchive: { type: [boolean, "null"], description: "The Cover Art Archive's front cover for an album with none in its files, and its back cover for one whose folder has none, under metadata.remote." }
         metadata.language: { type: [string, "null"], description: 'A two-letter code, in any case, such as "en": the bios and art wanted.' }
         fanarttv.api_key: { type: [string, "null"], maxLength: 256, description: "The fanart.tv project key. Kitsune ships none." }
         fanarttv.client_key: { type: [string, "null"], maxLength: 256, description: "A person's own fanart.tv key, which brings new art sooner." }
