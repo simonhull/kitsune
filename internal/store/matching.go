@@ -38,6 +38,17 @@ func (s *Store) PutLookup(ctx context.Context, source, key string, body []byte, 
 	})
 }
 
+// DropLookup forgets source's answer to the request key, so the next ask goes
+// to the source.
+func (s *Store) DropLookup(ctx context.Context, source, key string) error {
+	return s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
+		if err := q.DropLookup(ctx, sqlcdb.DropLookupParams{Source: source, Key: key}); err != nil {
+			return fmt.Errorf("drop lookup %s: %w", source, err)
+		}
+		return nil
+	})
+}
+
 // MatchState is where an album stands in the matching queue.
 type MatchState string
 

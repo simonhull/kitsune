@@ -108,17 +108,37 @@ func (s *Scraper) ask(ctx context.Context, cfg *Config, src store.ScrapeSource, 
 			f.asked, f.status = true, store.ScrapeFound // The folders hold it all: nothing to ask.
 			return f
 		}
-		err = s.askFanart(ctx, cfg, mbid, f)
+		err = s.askFanartKept(ctx, cfg, mbid, f)
 	case store.ScrapeWikimedia:
 		if !free(held, store.ArtistThumb) && !freeBio(held) {
 			f.asked, f.status = true, store.ScrapeFound
 			return f
 		}
-		err = s.askWikimedia(ctx, cfg, mbid, held, f)
+		err = s.askWikimediaKept(ctx, cfg, mbid, held, f)
 	case store.ScrapeLastfm, store.ScrapeArchive, store.ScrapeMusicBrainz: // Asked elsewhere, or of albums.
 	}
 	s.settle(ctx, f, err)
 	return f
+}
+
+// askFanartKept asks fanart.tv about mbid into f, and keeps what it offers for
+// Choose artwork, which then asks nothing.
+func (s *Scraper) askFanartKept(ctx context.Context, cfg *Config, mbid string, f *found) error {
+	err := s.askFanart(ctx, cfg, mbid, f)
+	if err == nil || errors.Is(err, remote.ErrNotFound) {
+		s.keepOffers(ctx, store.ScrapeFanart, mbid, f.images)
+	}
+	return err
+}
+
+// askWikimediaKept asks Wikimedia about mbid into f, and keeps the portrait it
+// offers for Choose artwork when it was asked for one.
+func (s *Scraper) askWikimediaKept(ctx context.Context, cfg *Config, mbid string, held *store.HeldArt, f *found) error {
+	err := s.askWikimedia(ctx, cfg, mbid, held, f)
+	if err == nil && free(held, store.ArtistThumb) {
+		s.keepOffers(ctx, store.ScrapeWikimedia, mbid, map[store.ArtistImageKind][]Candidate{store.ArtistThumb: f.images[store.ArtistThumb]})
+	}
+	return err
 }
 
 // settle records how an answer went: found or none, a failure for the artist,

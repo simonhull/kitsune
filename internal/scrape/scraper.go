@@ -102,6 +102,11 @@ type Scraper struct {
 	mu      sync.Mutex
 	wanted  []string                       // Public IDs a person opened, oldest first.
 	sources map[store.ScrapeSource]*health // Each source's state, since the last setting change.
+
+	// sweep keeps a sweep of Choose artwork's previews (its writer) from
+	// taking files a listing is rendering and noting (its readers).
+	sweep sync.RWMutex
+	swept atomic.Pointer[time.Time] // When previews were last swept.
 }
 
 // health is what the pass knows of a source as a whole.
@@ -222,6 +227,7 @@ func (s *Scraper) Pass(ctx context.Context) time.Time {
 		return s.now()
 	}
 	s.readFeed(ctx, cfg)
+	s.maybeSweep(ctx)
 	artists, err := s.o.Store.ScrapeArtists(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -305,7 +311,7 @@ func (s *Scraper) servePeople(ctx context.Context, cfg *Config, asked map[int64]
 			s.log.WarnContext(ctx, "artist pass: reading an artist opened failed", "artist", id, "err", err)
 			continue
 		}
-		if Askable(a.MBID) && !asked[a.ID] {
+		if Askable(a.MBID) && !a.Held && !asked[a.ID] {
 			s.artist(ctx, cfg, &a, false)
 			asked[a.ID] = true
 		}
@@ -319,7 +325,7 @@ func (s *Scraper) queue(cfg *Config, artists []store.ScrapeArtist) []store.Scrap
 	now := s.now()
 	var q []store.ScrapeArtist
 	for i := range artists {
-		if a := &artists[i]; Askable(a.MBID) && len(s.dueSources(cfg, a, now)) > 0 {
+		if a := &artists[i]; Askable(a.MBID) && !a.Held && len(s.dueSources(cfg, a, now)) > 0 {
 			q = append(q, *a)
 		}
 	}
@@ -335,21 +341,26 @@ func (s *Scraper) queue(cfg *Config, artists []store.ScrapeArtist) []store.Scrap
 	return q
 }
 
+// artistNext is when a is next asked by any of sources, if before next, else
+// next. One due before this pass has been asked since, so only what waits
+// counts; an artist never asked was asked by it.
+func artistNext(a *store.ScrapeArtist, sources []store.ScrapeSource, now, next time.Time) time.Time {
+	for _, src := range sources {
+		if st, ok := a.States[src]; ok && st.NextAt.After(now) && st.NextAt.Before(next) {
+			next = st.NextAt
+		}
+	}
+	return next
+}
+
 // nextDue is when the next artist falls due, or a day from now.
 func (s *Scraper) nextDue(cfg *Config, artists []store.ScrapeArtist) time.Time {
 	now := s.now()
 	next := now.Add(idleWait)
+	usable := s.usable(cfg, now, artistSources())
 	for i := range artists {
-		a := &artists[i]
-		if !Askable(a.MBID) {
-			continue
-		}
-		for _, src := range s.usable(cfg, now, artistSources()) {
-			// One due before this pass has been asked since, so only what
-			// waits counts; an artist never asked was asked by it.
-			if st, ok := a.States[src]; ok && st.NextAt.After(now) && st.NextAt.Before(next) {
-				next = st.NextAt
-			}
+		if a := &artists[i]; Askable(a.MBID) && !a.Held {
+			next = artistNext(a, usable, now, next)
 		}
 	}
 	s.mu.Lock()

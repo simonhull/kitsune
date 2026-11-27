@@ -113,7 +113,7 @@ func TestRemoteArtNeverReplacesAFolderOrAPin(t *testing.T) {
 			{Kind: ArtistLogo, Source: ImageFromFanart, RemoteID: "2", Image: remoteArt("fanart logo")},
 			{Kind: ArtistBackground, Source: ImageFromFanart, RemoteID: "3", Image: remoteArt("fanart bg"), Credit: &Credit{Author: "fanart.tv"}},
 		},
-		Bios: []RemoteBio{{Source: BioFromWikipedia, Bio: &Bio{Summary: "Wiki.", Body: "Wiki.", URL: "https://en.wikipedia.org/wiki/X", License: "CC BY-SA 4.0", Lang: "en"}}},
+		Bios: []RemoteBio{{Source: BioFromWikipedia, Bio: wikiBio()}},
 	}
 	if !mustWriteRemote(t, s, w) || mustWriteRemote(t, s, w) { // A refresh with the same answer changes nothing.
 		t.Error("want the background written once")

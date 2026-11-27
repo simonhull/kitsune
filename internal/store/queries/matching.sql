@@ -10,6 +10,9 @@ ON CONFLICT (source, key) DO UPDATE SET body = excluded.body, fetched_at = exclu
 -- name: PruneLookups :exec
 DELETE FROM lookups WHERE fetched_at < ?;
 
+-- name: DropLookup :exec
+DELETE FROM lookups WHERE source = ? AND key = ?;
+
 -- MatchQueue lists the albums the queue holds: every one with live tracks and
 -- no MBID, and every one matched here, with its state and its live songs.
 -- name: MatchQueue :many

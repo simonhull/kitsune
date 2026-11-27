@@ -29,6 +29,20 @@ func (q *Queries) ClearMatchState(ctx context.Context, ulid string) error {
 	return err
 }
 
+const dropLookup = `-- name: DropLookup :exec
+DELETE FROM lookups WHERE source = ? AND key = ?
+`
+
+type DropLookupParams struct {
+	Source string
+	Key    string
+}
+
+func (q *Queries) DropLookup(ctx context.Context, arg DropLookupParams) error {
+	_, err := q.db.ExecContext(ctx, dropLookup, arg.Source, arg.Key)
+	return err
+}
+
 const getLookup = `-- name: GetLookup :one
 
 SELECT body FROM lookups WHERE source = ? AND key = ? AND fetched_at >= ?

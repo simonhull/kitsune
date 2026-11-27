@@ -46,16 +46,22 @@ type PinWrite struct {
 // does, so a bad write fails before it reaches SQL.
 func (w *PinWrite) validate() error {
 	fetched := w.Source == PinFromFanart || w.Source == PinFromWikimedia
+	_, kindOK := ParseArtistImageKind(string(w.Kind))
 	switch {
 	case !fetched && w.Source != PinFromFolder && w.Source != PinFromUpload:
 		return fmt.Errorf("pin from %q: %w", w.Source, ErrInvalidWrite)
 	case fetched != (w.RemoteID != ""):
 		return fmt.Errorf("pin from %q with remote ID %q: %w", w.Source, w.RemoteID, ErrInvalidWrite)
-	case w.Image.Width <= 0 || w.Image.Height <= 0 || w.Image.Accent == "" || w.Image.Ground == "":
-		return fmt.Errorf("pin's image: %w", ErrInvalidWrite)
-	}
-	if _, ok := ParseArtistImageKind(string(w.Kind)); !ok {
+	case !kindOK:
 		return fmt.Errorf("pin of kind %q: %w", w.Kind, ErrInvalidWrite)
+	}
+	return w.Image.described()
+}
+
+// described checks that a has what a page needs to lay it: a size and colors.
+func (a *ArtworkWrite) described() error {
+	if a.Width <= 0 || a.Height <= 0 || a.Accent == "" || a.Ground == "" {
+		return fmt.Errorf("image %d x %d, colors %q and %q: %w", a.Width, a.Height, a.Accent, a.Ground, ErrInvalidWrite)
 	}
 	return nil
 }
@@ -71,7 +77,7 @@ func (s *Store) PinArtistImage(ctx context.Context, w *PinWrite, now time.Time) 
 		if err := upsertImage(ctx, q, &w.Image); err != nil {
 			return err
 		}
-		return q.UpsertArtistPin(ctx, sqlcdb.UpsertArtistPinParams{ //nolint:wrapcheck // Wrapped below.
+		return q.UpsertArtistPin(ctx, sqlcdb.UpsertArtistPinParams{
 			ArtistID: w.ArtistID, Kind: string(w.Kind), ArtworkHash: w.Image.Hash[:], Source: w.Source,
 			RemoteID: orNil(w.RemoteID), Credit: creditJSON(w.Credit), PinnedBy: &w.By, PinnedAt: ms(now),
 		})
@@ -149,11 +155,8 @@ func (s *Store) ArtistImageBeneath(ctx context.Context, artistID int64, kind Art
 		return nil, fmt.Errorf("artist %d's %s: %w", artistID, kind, err)
 	}
 	return &Beneath{
-		ExtraImage: ExtraImage{
-			Picture: picture(r.ArtworkHash, r.Width, r.Height, r.Accent, r.Ground, r.Alpha),
-			Source:  r.Source, Credit: credit(r.Credit),
-		},
-		RemoteID: strOrEmpty(r.RemoteID),
+		Picture: picture(r.ArtworkHash, r.Width, r.Height, r.Accent, r.Ground, r.Alpha),
+		Source:  r.Source, Credit: credit(r.Credit), RemoteID: strOrEmpty(r.RemoteID),
 	}, nil
 }
 
@@ -208,7 +211,7 @@ func (s *Store) ArtworkPreview(ctx context.Context, source, remoteID string, not
 // PutArtworkPreview notes p as the preview of a source's image, made at now.
 func (s *Store) PutArtworkPreview(ctx context.Context, source, remoteID string, p *Picture, now time.Time) error {
 	err := s.inTx(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) error {
-		return q.UpsertArtworkPreview(ctx, sqlcdb.UpsertArtworkPreviewParams{ //nolint:wrapcheck // Wrapped below.
+		return q.UpsertArtworkPreview(ctx, sqlcdb.UpsertArtworkPreviewParams{
 			Source: source, RemoteID: remoteID, Hash: p.Hash[:], Width: int64(p.Width), Height: int64(p.Height),
 			Accent: p.Accent, Ground: p.Ground, Alpha: flag(p.Alpha), MadeAt: ms(now),
 		})
@@ -231,9 +234,9 @@ func (s *Store) SweepPreviews(ctx context.Context, before time.Time) ([][32]byte
 			return fmt.Errorf("delete: %w", err)
 		}
 		for _, h := range hashes {
-			used, err := q.HashInUse(ctx, h)
-			if err != nil {
-				return fmt.Errorf("in use: %w", err)
+			used, uerr := q.HashInUse(ctx, h)
+			if uerr != nil {
+				return fmt.Errorf("in use: %w", uerr)
 			}
 			if used == 0 {
 				unused = append(unused, [32]byte(h))
