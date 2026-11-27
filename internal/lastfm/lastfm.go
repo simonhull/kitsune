@@ -1,5 +1,5 @@
 // Package lastfm is a small client for the Last.fm API: web authentication,
-// now playing, scrobbles and loves. It knows nothing of the store; callers
+// now playing, scrobbles and loves, and artists' bios. It knows nothing of the store; callers
 // pass tracks and session keys in.
 //
 // Every call is a signed POST, so neither the shared secret nor a session key
@@ -48,7 +48,8 @@ const (
 )
 
 // What a failed call means for the caller. Every error a call returns wraps
-// exactly one of these.
+// exactly one of these, or for [Client.ArtistInfo] [ErrNotFound] or
+// [ErrKeyRefused].
 var (
 	// ErrTemporary means Last.fm is unreachable or busy: try again later.
 	ErrTemporary = errors.New("last.fm is unavailable")
@@ -333,9 +334,18 @@ func Sign(params url.Values, secret string) string {
 // call posts a signed method call and decodes the response into out, which
 // may be nil.
 func (c *Client) call(ctx context.Context, method string, params url.Values, out any) error {
+	return c.post(ctx, method, params, out, true)
+}
+
+// post posts a method call, signed when sign is set, and decodes the response
+// into out, which may be nil. Every parameter, the key included, travels in the
+// body, never in the URL.
+func (c *Client) post(ctx context.Context, method string, params url.Values, out any, sign bool) error {
 	params.Set("method", method)
 	params.Set("api_key", c.apiKey)
-	params.Set("api_sig", Sign(params, c.secret))
+	if sign {
+		params.Set("api_sig", Sign(params, c.secret))
+	}
 	params.Set("format", "json")
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.APIBase, strings.NewReader(params.Encode()))
 	if err != nil {

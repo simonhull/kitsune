@@ -56,7 +56,41 @@ type Server struct {
 	ignore   map[string]bool           // Artists whose scrobbles are ignored.
 	next     int                       // Tokens handed out by the approval page.
 	down     bool                      // Every API call fails with 503, as an outage does.
+	artists  map[string]Artist         // By the MBID asked.
 	mux      *http.ServeMux
+}
+
+// Artist is what the fake answers artist.getInfo with for one MBID.
+type Artist struct {
+	// MBID is the one asked about.
+	MBID string
+	// Answered is the MBID the answer names; "" names MBID, and anything else
+	// is the mismatch Last.fm has been known to send.
+	Answered string
+	// Summary and Content are the bio's, as Last.fm writes them: HTML, closed
+	// by its "Read more on Last.fm" link and, in Content, its license line.
+	// Empty is no bio. ByLang holds them in other languages.
+	Summary, Content string
+	ByLang           map[string][2]string // Summary and content, by lang.
+}
+
+// Bio returns Last.fm-shaped HTML for paragraphs, closed by the "Read more"
+// link to page and, with license, Last.fm's license line.
+func Bio(page string, license bool, paragraphs ...string) string {
+	s := strings.Join(paragraphs, "\n") + ` <a href="` + page + `">Read more on Last.fm</a>`
+	if license {
+		s += ". User-contributed text is available under the Creative Commons By-SA License; additional terms may apply."
+	}
+	return s
+}
+
+// AddArtist makes the fake answer artist.getInfo for each artist's MBID.
+func (s *Server) AddArtist(artists ...Artist) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range artists {
+		s.artists[a.MBID] = a
+	}
 }
 
 // New starts a fake on the loopback network and stops it when the test ends.
@@ -74,7 +108,7 @@ func New(tb testing.TB) *Server {
 func NewInMemory() *Server {
 	s := &Server{
 		tokens: map[string]lastfm.Session{}, sessions: map[string]string{},
-		issued: map[string]bool{}, ignore: map[string]bool{},
+		issued: map[string]bool{}, ignore: map[string]bool{}, artists: map[string]Artist{},
 		mux: http.NewServeMux(),
 	}
 	s.mux.HandleFunc("POST /2.0/", s.api)
@@ -288,6 +322,8 @@ func (s *Server) answer(params url.Values) answer {
 		return ok(map[string]any{})
 	case "track.scrobble":
 		return s.scrobble(params)
+	case "artist.getInfo":
+		return s.artistInfo(params)
 	default:
 		return fail(http.StatusBadRequest, codeInvalidMethod, "Invalid Method")
 	}
@@ -307,6 +343,8 @@ func (s *Server) check(params url.Values) (answer, bool) {
 		return fail(http.StatusBadRequest, codeInvalidParams, "want format=json"), true
 	case params.Get("api_key") != APIKey:
 		return fail(http.StatusForbidden, codeInvalidAPIKey, "Invalid API key"), true
+	case params.Get("method") == "artist.getInfo":
+		return answer{}, false // A read: Last.fm wants the key alone.
 	case params.Get("api_sig") != lastfm.Sign(signed, Secret):
 		return fail(http.StatusForbidden, codeInvalidSignature, "Invalid method signature supplied"), true
 	}
@@ -367,3 +405,30 @@ func (s *Server) scrobble(params url.Values) answer {
 
 // indexed is a scrobble parameter's name, such as "artist[2]".
 func indexed(name string, i int) string { return name + "[" + strconv.Itoa(i) + "]" }
+
+// artistInfo answers artist.getInfo, by MBID only, as Kitsune asks. It runs
+// with s.mu held.
+func (s *Server) artistInfo(params url.Values) answer {
+	mbid := params.Get("mbid")
+	a, found := s.artists[mbid]
+	if mbid == "" || !found {
+		return fail(http.StatusOK, codeInvalidParams, "The artist you supplied could not be found")
+	}
+	summary, content := a.Summary, a.Content
+	if alt, ok := a.ByLang[params.Get("lang")]; ok {
+		summary, content = alt[0], alt[1]
+	}
+	answered := a.Answered
+	if answered == "" {
+		answered = mbid
+	}
+	return ok(map[string]any{"artist": map[string]any{
+		"name": "Artist", "mbid": answered, "url": "https://www.last.fm/music/Artist",
+		// Every image Last.fm sends is its placeholder: never read.
+		"image": []any{map[string]any{"#text": placeholder, "size": "small"}},
+		"bio":   map[string]any{"published": "01 Jan 2020, 00:00", "summary": summary, "content": content},
+	}})
+}
+
+// placeholder is the grey star Last.fm sends for every artist's image.
+const placeholder = "https://lastfm.freetls.fastly.net/i/u/34s/2a96cbd8b46e442fc41c2b86b821562f.png"
