@@ -810,6 +810,9 @@ type ExtraImage struct {
 	Alpha  bool    `json:"alpha"`
 	Source string  `json:"source"`
 	Credit *Credit `json:"credit,omitzero"`
+	// PinnedFrom is where a pinned image came from: "folder", "fanart",
+	// "wikimedia" or "upload"; absent for one no pin chose.
+	PinnedFrom string `json:"pinnedFrom,omitzero"`
 }
 
 // Credit is what a source asks to be said of what it gave.

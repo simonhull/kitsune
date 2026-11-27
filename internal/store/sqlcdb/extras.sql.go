@@ -242,13 +242,13 @@ func (q *Queries) ListAlbumImages(ctx context.Context, albumID int64) ([]ListAlb
 }
 
 const listArtistImages = `-- name: ListArtistImages :many
-SELECT shown.kind, shown.source, shown.credit, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
+SELECT shown.kind, shown.source, shown.pinned_from, shown.credit, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
 FROM (
-    SELECT p.kind, 'pinned' AS source, p.credit, p.artwork_hash
+    SELECT p.kind, 'pinned' AS source, p.source AS pinned_from, p.credit, p.artwork_hash
     FROM artist_pins p
     WHERE p.artist_id = ?1
     UNION ALL
-    SELECT ai.kind, ai.source, ai.credit, ai.artwork_hash
+    SELECT ai.kind, ai.source, '' AS pinned_from, ai.credit, ai.artwork_hash
     FROM artist_images ai
     WHERE ai.artist_id = ?1
       AND NOT EXISTS (SELECT 1 FROM artist_pins p WHERE p.artist_id = ai.artist_id AND p.kind = ai.kind)
@@ -258,15 +258,16 @@ ORDER BY shown.kind
 `
 
 type ListArtistImagesRow struct {
-	Kind   string
-	Source string
-	Credit *string
-	Hash   []byte
-	Width  int64
-	Height int64
-	Accent string
-	Ground string
-	Alpha  int64
+	Kind       string
+	Source     string
+	PinnedFrom string
+	Credit     *string
+	Hash       []byte
+	Width      int64
+	Height     int64
+	Accent     string
+	Ground     string
+	Alpha      int64
 }
 
 // What the artist shows of each kind: a pin, else what the folders and the
@@ -283,6 +284,7 @@ func (q *Queries) ListArtistImages(ctx context.Context, artistID int64) ([]ListA
 		if err := rows.Scan(
 			&i.Kind,
 			&i.Source,
+			&i.PinnedFrom,
 			&i.Credit,
 			&i.Hash,
 			&i.Width,

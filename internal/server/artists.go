@@ -82,14 +82,11 @@ func toAPIExtraImage(img *store.ExtraImage) *api.ExtraImage {
 	if img == nil {
 		return nil
 	}
-	out := &api.ExtraImage{
+	return &api.ExtraImage{
 		Hash: hex.EncodeToString(img.Hash[:]), Accent: img.Accent, Ground: img.Ground,
 		Width: img.Width, Height: img.Height, Alpha: img.Alpha, Source: img.Source,
+		Credit: toAPICredit(img.Credit), PinnedFrom: img.PinnedFrom,
 	}
-	if c := img.Credit; c != nil {
-		out.Credit = &api.Credit{Author: c.Author, License: c.License, LicenseURL: c.LicenseURL, PageURL: c.PageURL}
-	}
-	return out
 }
 
 func toAPIArtistImages(imgs *store.ArtistImages) api.ArtistImages {

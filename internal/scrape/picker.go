@@ -470,7 +470,7 @@ func (s *Scraper) Pin(ctx context.Context, id string, kind store.ArtistImageKind
 // or what lies beneath it.
 func (s *Scraper) pinHeld(ctx context.Context, a *store.ScrapeArtist, kind store.ArtistImageKind, o *Offer, by int64) (*store.ExtraImage, error) {
 	if o.Pinned {
-		return &store.ExtraImage{Picture: *o.Preview, Source: fromPinned, Credit: o.Credit}, nil
+		return &store.ExtraImage{Picture: *o.Preview, Source: fromPinned, Credit: o.Credit, PinnedFrom: o.Source}, nil
 	}
 	src := store.ArtworkRemote
 	if o.Source == OfferFolder {
@@ -538,7 +538,7 @@ func (s *Scraper) storePin(ctx context.Context, w *store.PinWrite) (*store.Extra
 	i := &w.Image
 	return &store.ExtraImage{
 		Hash: i.Hash, Width: i.Width, Height: i.Height, Accent: i.Accent, Ground: i.Ground, Alpha: i.Alpha,
-		Source: fromPinned, Credit: w.Credit,
+		Source: fromPinned, Credit: w.Credit, PinnedFrom: w.Source,
 	}, nil
 }
 

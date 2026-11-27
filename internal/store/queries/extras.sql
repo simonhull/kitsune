@@ -93,13 +93,13 @@ DELETE FROM artist_bios WHERE artist_id = ? AND source = 'nfo';
 -- name: ListArtistImages :many
 -- What the artist shows of each kind: a pin, else what the folders and the
 -- sources gave, which goes on being kept beneath it.
-SELECT shown.kind, shown.source, shown.credit, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
+SELECT shown.kind, shown.source, shown.pinned_from, shown.credit, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
 FROM (
-    SELECT p.kind, 'pinned' AS source, p.credit, p.artwork_hash
+    SELECT p.kind, 'pinned' AS source, p.source AS pinned_from, p.credit, p.artwork_hash
     FROM artist_pins p
     WHERE p.artist_id = sqlc.arg(artist_id)
     UNION ALL
-    SELECT ai.kind, ai.source, ai.credit, ai.artwork_hash
+    SELECT ai.kind, ai.source, '' AS pinned_from, ai.credit, ai.artwork_hash
     FROM artist_images ai
     WHERE ai.artist_id = sqlc.arg(artist_id)
       AND NOT EXISTS (SELECT 1 FROM artist_pins p WHERE p.artist_id = ai.artist_id AND p.kind = ai.kind)

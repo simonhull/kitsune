@@ -2283,6 +2283,11 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           $ref: "#/components/responses/Problem"
+        "503":
+          description: Artist art isn't set up on this server.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /admin/artists/{id}/images/{kind}/upload:
     post:
       operationId: postArtistImageUpload
@@ -2428,6 +2433,11 @@ paths:
           $ref: "#/components/responses/Problem"
         "409":
           $ref: "#/components/responses/Problem"
+        "503":
+          description: The artist pass isn't set up on this server.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /admin/users:
     get:
       operationId: getUsers
@@ -5545,8 +5555,15 @@ components:
         source:
           type: string
           enum: [folder, fanart, audiodb, wikimedia, pinned, coverartarchive]
-          description: "`folder`: a file in the library's folders."
+          description: "`folder`: a file in the library's folders; `pinned`: an administrator's choice, which `pinnedFrom` says the source of."
         credit: { $ref: "#/components/schemas/Credit" }
+        pinnedFrom:
+          type: string
+          enum: [folder, fanart, wikimedia, upload]
+          description: >-
+            Where a pinned image came from, so its credit line can still name
+            its source; `upload` is an image an administrator sent. Absent for
+            an image no pin chose.
     Credit:
       type: object
       additionalProperties: false
