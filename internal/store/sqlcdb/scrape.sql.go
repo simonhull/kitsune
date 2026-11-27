@@ -102,7 +102,9 @@ func (q *Queries) GetHeldBio(ctx context.Context, artistID int64) (GetHeldBioRow
 }
 
 const getScrapeArtist = `-- name: GetScrapeArtist :one
-SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid FROM artists ar WHERE ar.ulid = ?
+SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid,
+    CAST(EXISTS (SELECT 1 FROM artist_holds h WHERE h.artist_id = ar.id AND h.mbid = ar.mbid) AS INTEGER) AS held
+FROM artists ar WHERE ar.ulid = ?
 `
 
 type GetScrapeArtistRow struct {
@@ -111,6 +113,7 @@ type GetScrapeArtistRow struct {
 	Name     string
 	MatchKey string
 	Mbid     *string
+	Held     int64
 }
 
 // One artist by its public ID, as ListScrapeArtists has it, its MBID maybe NULL.
@@ -123,6 +126,7 @@ func (q *Queries) GetScrapeArtist(ctx context.Context, ulid string) (GetScrapeAr
 		&i.Name,
 		&i.MatchKey,
 		&i.Mbid,
+		&i.Held,
 	)
 	return i, err
 }
@@ -140,6 +144,7 @@ func (q *Queries) GetScrapeFeed(ctx context.Context, source string) (int64, erro
 
 const listArtedArtists = `-- name: ListArtedArtists :many
 SELECT artist_id FROM artist_images
+UNION SELECT artist_id FROM artist_pins
 UNION SELECT artist_id FROM artist_bios
 `
 
@@ -168,7 +173,14 @@ func (q *Queries) ListArtedArtists(ctx context.Context) ([]int64, error) {
 }
 
 const listHeldImages = `-- name: ListHeldImages :many
-SELECT kind, source, remote_id, artwork_hash FROM artist_images WHERE artist_id = ?
+SELECT p.kind, 'pinned' AS source, p.remote_id, p.artwork_hash
+FROM artist_pins p
+WHERE p.artist_id = ?1
+UNION ALL
+SELECT ai.kind, ai.source, ai.remote_id, ai.artwork_hash
+FROM artist_images ai
+WHERE ai.artist_id = ?1
+  AND NOT EXISTS (SELECT 1 FROM artist_pins p WHERE p.artist_id = ai.artist_id AND p.kind = ai.kind)
 `
 
 type ListHeldImagesRow struct {
@@ -178,7 +190,9 @@ type ListHeldImagesRow struct {
 	ArtworkHash []byte
 }
 
-// What an artist holds of each kind: where it came from and the source's ID.
+// What an artist holds of each kind: where it came from and the source's ID. A
+// pin is held as 'pinned', over what lies beneath it, so no source is asked to
+// fill a kind an administrator chose.
 func (q *Queries) ListHeldImages(ctx context.Context, artistID int64) ([]ListHeldImagesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listHeldImages, artistID)
 	if err != nil {
@@ -253,7 +267,8 @@ func (q *Queries) ListOwnersByPlays(ctx context.Context) ([]ListOwnersByPlaysRow
 
 const listScrapeArtists = `-- name: ListScrapeArtists :many
 
-SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid
+SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid,
+    CAST(EXISTS (SELECT 1 FROM artist_holds h WHERE h.artist_id = ar.id AND h.mbid = ar.mbid) AS INTEGER) AS held
 FROM artists ar
 WHERE EXISTS (
     SELECT 1 FROM track_artists ta
@@ -267,11 +282,13 @@ type ListScrapeArtistsRow struct {
 	Name     string
 	MatchKey string
 	Mbid     *string
+	Held     int64
 }
 
 // The artist pass (plan 072, Phase 2): which artists it may ask about, what
 // each source last said, and what it chose of their images and bios.
-// Every artist with a live track, with or without a MusicBrainz ID.
+// Every artist with a live track, with or without a MusicBrainz ID; held says
+// Not this artist holds back the ID it has now.
 func (q *Queries) ListScrapeArtists(ctx context.Context) ([]ListScrapeArtistsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listScrapeArtists)
 	if err != nil {
@@ -287,6 +304,7 @@ func (q *Queries) ListScrapeArtists(ctx context.Context) ([]ListScrapeArtistsRow
 			&i.Name,
 			&i.MatchKey,
 			&i.Mbid,
+			&i.Held,
 		); err != nil {
 			return nil, err
 		}

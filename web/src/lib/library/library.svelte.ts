@@ -24,6 +24,8 @@ import type { DuplicatesSource } from '#lib/duplicates/types.ts';
 import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
 import { gainFixture } from '#lib/replaygain/fixture.ts';
 import { metadataFixture } from '#lib/metadata/fixture.ts';
+import { artworkFixture } from '#lib/choose/fixture.ts';
+import type { ArtworkSource } from '#lib/choose/types.ts';
 import type { MetadataStatusSource } from '#lib/metadata/types.ts';
 import type { ReplayGainEvent, ReplayGainSource } from '#lib/replaygain/types.ts';
 import { Marks } from './marks.svelte.ts';
@@ -42,6 +44,8 @@ import {
 	type AlbumEntry,
 	type AlbumTags,
 	type ArtistDetail,
+	type ArtistImages,
+	type ExtraImage,
 	type ListedArtist,
 	type Picture,
 	type ArtistLink,
@@ -456,6 +460,20 @@ export class Library {
 		}
 	}
 
+	/**
+	 * Shows an image Choose artwork just pinned on the artist's page at once, so the stage develops it
+	 * in place; the `artists` event's read that follows agrees.
+	 */
+	showArtistImage(id: string, kind: keyof ArtistImages, image: ExtraImage): void {
+		const held = this.#artists.get(id);
+		if (held?.kind === 'ready') {
+			this.#artists.set(id, {
+				kind: 'ready',
+				value: { ...held.value, images: { ...held.value.images, [kind]: image } }
+			});
+		}
+	}
+
 	/** Artists whose page has been asked for to draw a thumb, so each is asked once at most. */
 	readonly #thumbsAsked = new SvelteSet<string>();
 
@@ -513,6 +531,11 @@ export class Library {
 	/** Health's Metadata card's route. */
 	get metadata(): MetadataStatusSource {
 		return this.#source.metadata;
+	}
+
+	/** Choose artwork's routes. */
+	get artwork(): ArtworkSource {
+		return this.#source.artwork;
 	}
 
 	/** The ReplayGain routes. */
@@ -2080,6 +2103,8 @@ function fromQuery(): Library {
 	const art = query.get('art') === 'late' ? 'late' : undefined;
 	const metadata = metadataFixture(query.get('metadata'));
 	const metadataArtist = Number(query.get('metadataArtist') ?? 0);
+	const artwork = artworkFixture(query.get('artwork'));
+	const artworkMs = Number(query.get('artworkMs') ?? 0);
 	const scan = Number(query.get('scan') ?? 0);
 	if (scan <= 0) {
 		// A fake library has no business vouching for the real one on this origin.
@@ -2102,6 +2127,8 @@ function fromQuery(): Library {
 					gain,
 					art,
 					metadata,
+					artwork,
+					...(artworkMs > 0 ? { artworkMs } : {}),
 					...(metadataArtist > 0 ? { metadataArtistMs: metadataArtist } : {}),
 					...(organizeAlbum > 0 ? { organizeAlbumMs: organizeAlbum } : {}),
 					...(gainAlbum > 0 ? { gainAlbumMs: gainAlbum } : {})

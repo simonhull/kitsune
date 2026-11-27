@@ -76,6 +76,7 @@ func TestKindLadders(t *testing.T) {
 		{"a thumb", artwork.Thumb, 1000, 1000, []string{j1024, j128, j512}},
 		{"a back cover", artwork.Back, 1400, 1400, []string{j1024, j128, j512}},
 		{"an opaque disc", artwork.Disc, 1000, 1000, []string{j128, j400, j800}},
+		{"a preview", artwork.Preview, 400, 225, []string{j128, j400}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -97,6 +98,20 @@ func TestKindLadders(t *testing.T) {
 				t.Errorf("largest rendition %v is bigger than its %dx%d source", d, tt.w, tt.h)
 			}
 		})
+	}
+}
+
+// A logo's preview keeps its transparency, as the logo will.
+func TestPreviewKeepsAlpha(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	c := artwork.NewCache(dir)
+	img, err := c.Put(t.Context(), artwork.Preview, encodePNG(t, logo(400, 155)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := files(t, dir, img.Hash), []string{p128, p400}; !img.Alpha || !slices.Equal(got, want) {
+		t.Errorf("alpha %v, renditions %v; want %v with alpha", img.Alpha, got, want)
 	}
 }
 

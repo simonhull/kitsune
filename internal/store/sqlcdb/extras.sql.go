@@ -242,25 +242,36 @@ func (q *Queries) ListAlbumImages(ctx context.Context, albumID int64) ([]ListAlb
 }
 
 const listArtistImages = `-- name: ListArtistImages :many
-SELECT ai.kind, ai.source, ai.credit, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
-FROM artist_images ai
-JOIN artwork w ON w.hash = ai.artwork_hash
-WHERE ai.artist_id = ?
-ORDER BY ai.kind
+SELECT shown.kind, shown.source, shown.pinned_from, shown.credit, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
+FROM (
+    SELECT p.kind, 'pinned' AS source, p.source AS pinned_from, p.credit, p.artwork_hash
+    FROM artist_pins p
+    WHERE p.artist_id = ?1
+    UNION ALL
+    SELECT ai.kind, ai.source, '' AS pinned_from, ai.credit, ai.artwork_hash
+    FROM artist_images ai
+    WHERE ai.artist_id = ?1
+      AND NOT EXISTS (SELECT 1 FROM artist_pins p WHERE p.artist_id = ai.artist_id AND p.kind = ai.kind)
+) shown
+JOIN artwork w ON w.hash = shown.artwork_hash
+ORDER BY shown.kind
 `
 
 type ListArtistImagesRow struct {
-	Kind   string
-	Source string
-	Credit *string
-	Hash   []byte
-	Width  int64
-	Height int64
-	Accent string
-	Ground string
-	Alpha  int64
+	Kind       string
+	Source     string
+	PinnedFrom string
+	Credit     *string
+	Hash       []byte
+	Width      int64
+	Height     int64
+	Accent     string
+	Ground     string
+	Alpha      int64
 }
 
+// What the artist shows of each kind: a pin, else what the folders and the
+// sources gave, which goes on being kept beneath it.
 func (q *Queries) ListArtistImages(ctx context.Context, artistID int64) ([]ListArtistImagesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listArtistImages, artistID)
 	if err != nil {
@@ -273,6 +284,7 @@ func (q *Queries) ListArtistImages(ctx context.Context, artistID int64) ([]ListA
 		if err := rows.Scan(
 			&i.Kind,
 			&i.Source,
+			&i.PinnedFrom,
 			&i.Credit,
 			&i.Hash,
 			&i.Width,
@@ -295,10 +307,16 @@ func (q *Queries) ListArtistImages(ctx context.Context, artistID int64) ([]ListA
 }
 
 const listArtistThumbs = `-- name: ListArtistThumbs :many
-SELECT ai.artist_id, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
-FROM artist_images ai
-JOIN artwork w ON w.hash = ai.artwork_hash
-WHERE ai.kind = 'thumb'
+SELECT shown.artist_id, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
+FROM (
+    SELECT p.artist_id, p.artwork_hash FROM artist_pins p WHERE p.kind = 'thumb'
+    UNION ALL
+    SELECT ai.artist_id, ai.artwork_hash
+    FROM artist_images ai
+    WHERE ai.kind = 'thumb'
+      AND NOT EXISTS (SELECT 1 FROM artist_pins p WHERE p.artist_id = ai.artist_id AND p.kind = 'thumb')
+) shown
+JOIN artwork w ON w.hash = shown.artwork_hash
 `
 
 type ListArtistThumbsRow struct {
@@ -311,6 +329,7 @@ type ListArtistThumbsRow struct {
 	Alpha    int64
 }
 
+// Every artist's thumb: a pin, else what the folders and the sources gave.
 func (q *Queries) ListArtistThumbs(ctx context.Context) ([]ListArtistThumbsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listArtistThumbs)
 	if err != nil {

@@ -39,6 +39,8 @@
 		plus: { path: 'M12 5v14M5 12h14', circle: false },
 		'chevron-right': { path: 'M9 6l6 6-6 6', circle: false },
 		tick: { path: 'M5 12l5 5 9-10', circle: false },
+		// The Choose artwork board's upload tile: an arrow up from a line.
+		upload: { path: 'M12 19V6M6 11l6-6 6 6', circle: false },
 		// The smart playlist boards': three sliders, the rules glyph.
 		rules: {
 			path: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M18 6a2 2 0 1 1-4 0 2 2 0 1 1 4 0M12 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0M20 18a2 2 0 1 1-4 0 2 2 0 1 1 4 0',
@@ -55,7 +57,8 @@
 		'plus',
 		'chevron-right',
 		'tick',
-		'rules'
+		'rules',
+		'upload'
 	];
 
 	interface Props {

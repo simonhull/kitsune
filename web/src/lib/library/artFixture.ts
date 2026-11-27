@@ -232,7 +232,29 @@ export interface ArtFixture {
 	extras(albumId: string): AlbumExtras | undefined;
 	/** Calls `heard` with the artists whose art arrived. Returns what stops it. */
 	changed(heard: (ids: string[]) => void): () => void;
+	/** What the folders and the sources give one kind, a pin aside: what Automatic goes back to. */
+	automatic(artistId: string, kind: keyof ArtistImages): ExtraImage | undefined;
+	/** Choose artwork's pin of one kind, if any. */
+	pinOf(artistId: string, kind: keyof ArtistImages): FixturePin | undefined;
+	/** Pins an image, or with `undefined` unpins: the artist's page hears it as an `artists` event. */
+	pin(artistId: string, kind: keyof ArtistImages, pin: FixturePin | undefined): void;
+	/** Not this artist held the artist back. */
+	held(artistId: string): boolean;
+	/** Not this artist: what the sources gave goes, with any pin of it, and the artist is held back. */
+	reject(artistId: string): void;
 }
+
+/** A pin the fixtures hold: the image shown, which candidate it was, and who made it when. */
+export interface FixturePin {
+	image: ExtraImage;
+	candidate: string;
+	from: 'folder' | 'fanart' | 'wikimedia' | 'upload';
+	by: string;
+	at: string;
+}
+
+/** Sources whose images and bios Not this artist takes away: never the library's own files. */
+const fetched = new Set<string>(['fanart', 'wikimedia', 'audiodb', 'wikipedia', 'lastfm']);
 
 /** Draws the pictures and holds who has what. `late` keeps Low Tide Choir's for a test to bring. */
 export function createArtFixture({ late = false }: { late?: boolean } = {}): ArtFixture {
@@ -258,27 +280,74 @@ export function createArtFixture({ late = false }: { late?: boolean } = {}): Art
 		});
 	}
 	const others = new Map<string, ExtraImage>(faces.map(([id, [image]]) => [id, image]));
+	const pins = new Map<string, FixturePin>();
+	const heldBack = new Set<string>();
+	const tell = (artistId: string): void => {
+		for (const heard of listeners) {
+			heard([artistId]);
+		}
+	};
+	const given = (artistId: string): ArtistImages => {
+		if (artistId === lowTideChoir) {
+			return arrived
+				? { thumb: choirThumb[0], background: choirBackdrop[0], logo: choirLogo[0] }
+				: {};
+		}
+		if (artistId === anaLindqvist) {
+			return { thumb: anaThumb[0] };
+		}
+		const thumb = others.get(artistId);
+		return thumb === undefined ? {} : { thumb };
+	};
+	/** What precedence gives, without what Not this artist took away. */
+	const automatic = (artistId: string): ArtistImages =>
+		Object.fromEntries(
+			Object.entries(given(artistId)).filter(
+				([, image]) => !heldBack.has(artistId) || !fetched.has(image.source)
+			)
+		);
 	return {
 		images: (artistId) => {
-			if (artistId === lowTideChoir) {
-				return arrived
-					? { thumb: choirThumb[0], background: choirBackdrop[0], logo: choirLogo[0] }
-					: {};
+			const shown = automatic(artistId);
+			for (const kind of ['thumb', 'background', 'logo', 'banner'] as const) {
+				const pin = pins.get(`${artistId}/${kind}`);
+				if (pin !== undefined) {
+					shown[kind] = pin.image;
+				}
 			}
-			if (artistId === anaLindqvist) {
-				return { thumb: anaThumb[0] };
+			return shown;
+		},
+		automatic: (artistId, kind) => automatic(artistId)[kind],
+		pinOf: (artistId, kind) => pins.get(`${artistId}/${kind}`),
+		pin: (artistId, kind, pin) => {
+			if (pin === undefined) {
+				pins.delete(`${artistId}/${kind}`);
+			} else {
+				pins.set(`${artistId}/${kind}`, pin);
 			}
-			const thumb = others.get(artistId);
-			return thumb === undefined ? {} : { thumb };
+			tell(artistId);
+		},
+		held: (artistId) => heldBack.has(artistId),
+		reject: (artistId) => {
+			heldBack.add(artistId);
+			for (const kind of ['thumb', 'background', 'logo', 'banner'] as const) {
+				const pin = pins.get(`${artistId}/${kind}`);
+				if (pin !== undefined && fetched.has(pin.from)) {
+					pins.delete(`${artistId}/${kind}`);
+				}
+			}
+			tell(artistId);
 		},
 		bio: (artistId) =>
-			artistId === lowTideChoir
-				? arrived
-					? wikipedia
-					: undefined
-				: artistId === anaLindqvist
-					? nfo
-					: undefined,
+			heldBack.has(artistId)
+				? undefined
+				: artistId === lowTideChoir
+					? arrived
+						? wikipedia
+						: undefined
+					: artistId === anaLindqvist
+						? nfo
+						: undefined,
 		mbid: (artistId) =>
 			artistId === lowTideChoir ? '6a1b4c2e-0d5f-4c1a-9a3e-1f0b2c3d4e5f' : undefined,
 		extras: (albumId) => {

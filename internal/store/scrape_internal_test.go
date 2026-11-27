@@ -90,13 +90,7 @@ func TestAnAnswerEndsTheFailures(t *testing.T) {
 // pinLogo pins a logo on the artist, as an administrator's choice is stored.
 func pinLogo(t *testing.T, s *Store, artist int64) {
 	t.Helper()
-	pin := testArtwork("pin").Hash[:]
-	if _, err := s.w.ExecContext(t.Context(), "INSERT INTO artwork (hash, width, height, accent, ground, source, alpha) VALUES (?, 1, 1, '#000000', '#000000', 'remote', 0)", pin); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.w.ExecContext(t.Context(), "INSERT INTO artist_images (artist_id, kind, artwork_hash, source, found_at) VALUES (?, 'logo', ?, 'pinned', 1)", artist, pin); err != nil {
-		t.Fatal(err)
-	}
+	pin(t, s, artist, ArtistLogo, "pin")
 }
 
 func TestRemoteArtNeverReplacesAFolderOrAPin(t *testing.T) {
@@ -119,7 +113,7 @@ func TestRemoteArtNeverReplacesAFolderOrAPin(t *testing.T) {
 			{Kind: ArtistLogo, Source: ImageFromFanart, RemoteID: "2", Image: remoteArt("fanart logo")},
 			{Kind: ArtistBackground, Source: ImageFromFanart, RemoteID: "3", Image: remoteArt("fanart bg"), Credit: &Credit{Author: "fanart.tv"}},
 		},
-		Bios: []RemoteBio{{Source: BioFromWikipedia, Bio: &Bio{Summary: "Wiki.", Body: "Wiki.", URL: "https://en.wikipedia.org/wiki/X", License: "CC BY-SA 4.0", Lang: "en"}}},
+		Bios: []RemoteBio{{Source: BioFromWikipedia, Bio: wikiBio()}},
 	}
 	if !mustWriteRemote(t, s, w) || mustWriteRemote(t, s, w) { // A refresh with the same answer changes nothing.
 		t.Error("want the background written once")
@@ -174,15 +168,14 @@ func TestAPinSurvivesRefreshes(t *testing.T) {
 	s := openTest(t)
 	artist := scrapeArtist(t, s)
 	mustWriteRemote(t, s, &RemoteWrite{ArtistID: artist, Images: []RemoteImage{{Kind: ArtistBackground, Source: ImageFromFanart, RemoteID: "1", Image: remoteArt("one")}}})
-	if _, err := s.w.ExecContext(t.Context(), "UPDATE artist_images SET source = 'pinned'"); err != nil {
-		t.Fatal(err)
-	}
+	pinned := pin(t, s, artist, ArtistBackground, "pinned")
 	for _, img := range []RemoteImage{
 		{Kind: ArtistBackground, Source: ImageFromFanart, RemoteID: "2", Image: remoteArt("two")},
 		{Kind: ArtistBackground, Source: ImageFromFanart},
 	} {
-		if mustWriteRemote(t, s, &RemoteWrite{ArtistID: artist, Images: []RemoteImage{img}}) {
-			t.Errorf("refresh %+v changed a pin", img)
+		mustWriteRemote(t, s, &RemoteWrite{ArtistID: artist, Images: []RemoteImage{img}})
+		if got := shownBackground(t, s); got != pinned {
+			t.Errorf("after refresh %+v the background is %x, want the pin", img, got)
 		}
 	}
 	for _, source := range []string{sourcePinned, string(ArtworkFolder)} { // Only a source's own: never a pin or a folder's.
@@ -191,7 +184,7 @@ func TestAPinSurvivesRefreshes(t *testing.T) {
 			t.Errorf("taking away as %s: %v, want ErrInvalidWrite", source, err)
 		}
 	}
-	if n := count(t, s, "SELECT count(*) FROM artist_images WHERE source = 'pinned' AND artwork_hash = ?", remoteArt("one").Hash[:]); n != 1 {
+	if n := count(t, s, "SELECT count(*) FROM artist_pins WHERE artwork_hash = ?", pinned[:]); n != 1 {
 		t.Errorf("%d pins, want the one", n)
 	}
 }

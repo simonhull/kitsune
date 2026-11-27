@@ -39,7 +39,21 @@ func Pick(cands []Candidate, lang string) *Candidate {
 	if len(cands) == 0 {
 		return nil
 	}
-	best := slices.MinFunc(cands, func(a, b Candidate) int {
+	best := slices.MinFunc(cands, choiceOrder(lang))
+	return &best
+}
+
+// Ranked returns cands in the order [Pick] prefers them, best first, as
+// Choose artwork lists them.
+func Ranked(cands []Candidate, lang string) []Candidate {
+	out := slices.Clone(cands)
+	slices.SortStableFunc(out, choiceOrder(lang))
+	return out
+}
+
+// choiceOrder orders candidates as [Pick] chooses among them.
+func choiceOrder(lang string) func(a, b Candidate) int {
+	return func(a, b Candidate) int {
 		return cmp.Or(
 			cmp.Compare(a.Tier, b.Tier),
 			cmp.Compare(langRank(a.Lang, lang), langRank(b.Lang, lang)),
@@ -47,8 +61,7 @@ func Pick(cands []Candidate, lang string) *Candidate {
 			cmp.Compare(b.Width*b.Height, a.Width*a.Height),
 			compareIDs(a.ID, b.ID),
 		)
-	})
-	return &best
+	}
 }
 
 // How languages rank: the one wanted, English, none, the rest.

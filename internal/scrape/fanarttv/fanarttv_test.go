@@ -1,7 +1,10 @@
 package fanarttv_test
 
 import (
+	"bytes"
 	"errors"
+	"image"
+	_ "image/jpeg" // Decodes the stand-in's images.
 	"net/http"
 	"strings"
 	"testing"
@@ -141,6 +144,41 @@ func TestAnImageElsewhereIsNeverFetched(t *testing.T) {
 	if n := len(ft.Calls()); n != 0 {
 		t.Errorf("%d calls for images elsewhere", n)
 	}
+}
+
+func TestPreview(t *testing.T) {
+	t.Parallel()
+	ft := fanarttvtest.New(t, fanarttvtest.Artist{MBID: mbid, Backgrounds4K: []fanarttvtest.Image{{ID: "41", Width: 1600, Height: 900}}})
+	c := fanarttv.New(ft.Options())
+	a, err := c.Artist(t.Context(), keys, mbid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := a.Backgrounds4K[0].URL
+	preview, err := c.Preview(t.Context(), u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := imageSize(t, preview); got != (image.Point{X: 400, Y: 225}) {
+		t.Errorf("preview is %v, want 400 × 225", got)
+	}
+	if calls := ft.Calls(); !strings.Contains(calls[len(calls)-1].Path, "/bigpreview/") {
+		t.Errorf("asked %s, want the bigpreview", calls[len(calls)-1].Path)
+	}
+	for _, bad := range []string{"41.jpg", strings.Replace(u, "/fanart/", "/elsewhere/", 1)} {
+		if _, err = c.Preview(t.Context(), bad); !errors.Is(err, fanarttv.ErrBadAnswer) {
+			t.Errorf("%s: %v, want ErrBadAnswer", bad, err)
+		}
+	}
+}
+
+func imageSize(t *testing.T, b []byte) image.Point {
+	t.Helper()
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return image.Point{X: cfg.Width, Y: cfg.Height}
 }
 
 // timeoutFor is how long a request may take in the failure named: a slow

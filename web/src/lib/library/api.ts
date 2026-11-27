@@ -62,6 +62,7 @@ import {
 	type User
 } from './source.ts';
 
+import { createArtworkApi } from '#lib/choose/api.ts';
 import { createDuplicatesApi } from '#lib/duplicates/api.ts';
 import type { MetadataStatus } from '#lib/metadata/types.ts';
 import { createOrganizeApi } from '#lib/organize/api.ts';
@@ -817,6 +818,8 @@ export function createApiSource({
 		replayGain: createReplayGainApi(call, onUnauthorized),
 
 		metadata: { status: () => read<MetadataStatus>('/admin/metadata') },
+
+		artwork: createArtworkApi(call, onUnauthorized),
 
 		async changeSettings(change) {
 			const response = await call('/admin/settings', {

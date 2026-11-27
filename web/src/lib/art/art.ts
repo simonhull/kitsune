@@ -76,6 +76,19 @@ const sourceNames: Partial<Record<ExtraImage['source'], string>> = {
 	coverartarchive: 'COVER ART ARCHIVE'
 };
 
+/**
+ * The source a credit line names. A pinned picture is named by where it came from (`pinnedFrom`), so
+ * what its source asks to be said stays said; a folder's or an upload asks nothing.
+ */
+function creditName(image: ExtraImage): string | undefined {
+	if (image.source !== 'pinned') {
+		return sourceNames[image.source];
+	}
+	return image.pinnedFrom === 'fanart' || image.pinnedFrom === 'wikimedia'
+		? sourceNames[image.pinnedFrom]
+		: undefined;
+}
+
 const kindWords: Record<'thumb' | 'background' | 'logo', string> = {
 	thumb: 'PHOTO',
 	background: 'BACKDROP',
@@ -99,7 +112,7 @@ export function imageCredits(images: ArtistImages): CreditPart[][] {
 	const bySource = new Map<string, { kinds: string[]; image: ExtraImage }[]>();
 	for (const kind of kinds) {
 		const image = images[kind];
-		const name = image === undefined ? undefined : sourceNames[image.source];
+		const name = image === undefined ? undefined : creditName(image);
 		if (image === undefined || name === undefined) {
 			continue;
 		}
@@ -111,7 +124,7 @@ export function imageCredits(images: ArtistImages): CreditPart[][] {
 	return [...bySource.values()].map((group) => {
 		const { image } = group[0] ?? { image: undefined };
 		const credit = image?.credit;
-		const name = image === undefined ? '' : (sourceNames[image.source] ?? '');
+		const name = image === undefined ? '' : (creditName(image) ?? '');
 		const parts: CreditPart[] = [{ text: listed(group.flatMap(({ kinds: each }) => each)) }];
 		if (credit?.author !== undefined) {
 			parts.push({ text: credit.author.toUpperCase() });

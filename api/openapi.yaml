@@ -2141,6 +2141,303 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+  /admin/artists/{id}/images:
+    get:
+      operationId: getArtistImageCandidates
+      summary: List the images an artist could show, for one kind.
+      description: >-
+        For administrators: Choose artwork's candidates. What is shown now (a
+        pin, a folder's image, or the image the pass chose), then every image
+        fanart.tv lists for the kind, and for `thumb` the Commons portrait
+        Wikidata names, each with a preview the server fetched and rendered
+        into its own artwork cache (`preview`, served by `GET /artwork/{hash}`;
+        absent when it couldn't be fetched), its source, size, language and
+        credit. The client never talks to a source. What the sources say is
+        read from what the pass kept, and asked again at a person's priority
+        only when that is more than a day old; `sources` says how each one
+        stood. With lookups off, or the artist held back by Not this artist,
+        only what Kitsune holds is listed. Candidates are at most 24, what is
+        shown first, then in the order the pass would choose them.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: kind
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/ArtistImageKind" }
+      responses:
+        "200":
+          description: The candidates.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArtistImageCandidates" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: Artist art isn't set up on this server.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /admin/artists/{id}/images/{kind}:
+    put:
+      operationId: putArtistImagePin
+      summary: Pin one of an artist's candidates.
+      description: >-
+        For administrators. The candidate named (an `id` from `GET
+        /admin/artists/{id}/images`) is fetched at a person's priority,
+        rendered into Kitsune's own cache, and pinned: it is shown in place of
+        anything the folders or the sources give, no scan or refresh replaces
+        it, and `DELETE` takes it away. Nothing is written to the library.
+        Publishes `artists`.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: kind
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/ArtistImageKind" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArtistImagePin" }
+      responses:
+        "200":
+          description: The image now shown.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExtraImage" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          description: No candidate of the artist's kind has that ID now.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "503":
+          description: The candidate's source didn't give the image, or artist art isn't set up here.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    delete:
+      operationId: deleteArtistImagePin
+      summary: Unpin an artist's image (Automatic).
+      description: >-
+        For administrators. The kind goes back at once to what the folders and
+        the sources give, and the pass asks the sources about the artist again
+        at a person's priority. Unpinning a kind with no pin changes nothing.
+        Publishes `artists` when a pin went.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: kind
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/ArtistImageKind" }
+      responses:
+        "204":
+          description: The kind holds no pin.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: Artist art isn't set up on this server.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /admin/artists/{id}/images/{kind}/upload:
+    post:
+      operationId: postArtistImageUpload
+      summary: Pin an uploaded image.
+      description: >-
+        For administrators. The body is the image itself, JPEG, PNG or WebP, at
+        most 32 MiB and 64 megapixels, sent as is with its media type: not a
+        form, since there is one file and no field, and a form's parts would
+        spill to temp files a scratch image has nowhere to keep. It is rendered
+        into Kitsune's own cache on the kind's ladder, never into the library,
+        and pinned as `PUT` pins a candidate; its bytes are dropped once
+        rendered. Publishes `artists`.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: kind
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/ArtistImageKind" }
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+          image/webp:
+            schema: { type: string, format: binary }
+      responses:
+        "200":
+          description: The image now shown.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExtraImage" }
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "413":
+          description: The image is larger than 32 MiB.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "415":
+          description: The body isn't JPEG, PNG or WebP.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: The image doesn't decode, or has more than 64 megapixels.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "503":
+          description: Artist art isn't set up on this server.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /admin/artists/{id}/refresh:
+    post:
+      operationId: postArtistRefresh
+      summary: Ask the sources about an artist again now (Look again now).
+      description: >-
+        For administrators. Every source on is asked about the artist again, at
+        a person's priority in each source's gate, whatever its schedule says,
+        and what Choose artwork lists is asked again too. It answers at once;
+        what changes comes in on the `artists` event. A pin stays. A 409 when
+        lookups are off, the artist has no MusicBrainz ID, or Not this artist
+        holds it back.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: The artist is being asked about again.
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: The artist pass isn't set up on this server.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /admin/artists/{id}/reject:
+    post:
+      operationId: postArtistReject
+      summary: Say the art and bio fetched for an artist aren't theirs (Not this artist).
+      description: >-
+        For administrators: the escape hatch when the files' MusicBrainz ID
+        names someone else. In one write, every image and bio the sources gave
+        the artist goes, with any pin of one of them, and the artist is held
+        back: no source is asked about it again until its MusicBrainz ID
+        changes. Art and a bio from the library's own files stay, as does a pin
+        of an uploaded image or a folder's. A 409 when the artist has no
+        MusicBrainz ID, since nothing was fetched by one. Publishes `artists`.
+      parameters:
+        - $ref: "#/components/parameters/KitsuneRequest"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: The artist is held back.
+        "401":
+          description: Credentials are missing, invalid or expired.
+          headers:
+            WWW-Authenticate:
+              schema: { type: string }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: The artist pass isn't set up on this server.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /admin/users:
     get:
       operationId: getUsers
@@ -5258,8 +5555,15 @@ components:
         source:
           type: string
           enum: [folder, fanart, audiodb, wikimedia, pinned, coverartarchive]
-          description: "`folder`: a file in the library's folders."
+          description: "`folder`: a file in the library's folders; `pinned`: an administrator's choice, which `pinnedFrom` says the source of."
         credit: { $ref: "#/components/schemas/Credit" }
+        pinnedFrom:
+          type: string
+          enum: [folder, fanart, wikimedia, upload]
+          description: >-
+            Where a pinned image came from, so its credit line can still name
+            its source; `upload` is an image an administrator sent. Absent for
+            an image no pin chose.
     Credit:
       type: object
       additionalProperties: false
@@ -5283,6 +5587,78 @@ components:
         background: { $ref: "#/components/schemas/ExtraImage" }
         logo: { $ref: "#/components/schemas/ExtraImage" }
         banner: { $ref: "#/components/schemas/ExtraImage" }
+    ArtistImageKind:
+      type: string
+      enum: [thumb, background, logo, banner]
+    ArtistImagePin:
+      type: object
+      additionalProperties: false
+      required: [candidate]
+      properties:
+        candidate:
+          type: string
+          minLength: 1
+          maxLength: 600
+          description: A candidate's `id`, as `GET /admin/artists/{id}/images` gave it.
+    ArtistImageCandidates:
+      type: object
+      additionalProperties: false
+      description: >-
+        Choose artwork's candidates for one kind. `pinned` says the kind holds a
+        pin; `held` that Not this artist holds the artist back, so no source is
+        asked about it; `mbid` is what identifies the artist at the sources.
+      required: [kind, pinned, held, candidates, sources]
+      properties:
+        kind: { $ref: "#/components/schemas/ArtistImageKind" }
+        mbid: { type: string }
+        pinned: { type: boolean }
+        held: { type: boolean }
+        candidates:
+          type: array
+          maxItems: 24
+          items: { $ref: "#/components/schemas/ImageCandidate" }
+        sources:
+          type: array
+          items: { $ref: "#/components/schemas/CandidateSource" }
+    ImageCandidate:
+      type: object
+      additionalProperties: false
+      description: >-
+        One image an artist could show. `id` is opaque: send it back to pin it.
+        `chosen` is the one shown now, and `pinned` says a pin chose it, with
+        who pinned it and when. `width` and `height` are the source image's, 0
+        when its source doesn't say; `lang` its language, absent when it has no
+        words. `preview` is the server's own rendering, at most 400 px, or the
+        image itself for one Kitsune holds.
+      required: [id, source, width, height, chosen, pinned]
+      properties:
+        id: { type: string }
+        source:
+          type: string
+          enum: [folder, fanart, wikimedia, upload]
+          description: "`folder`: a file in the artist's folder; `upload`: an image an administrator uploaded."
+        width: { type: integer, minimum: 0 }
+        height: { type: integer, minimum: 0 }
+        lang: { type: string }
+        credit: { $ref: "#/components/schemas/Credit" }
+        preview: { $ref: "#/components/schemas/Picture" }
+        chosen: { type: boolean }
+        pinned: { type: boolean }
+        pinnedBy: { type: string, description: "The administrator's name; absent once their account is gone." }
+        pinnedAt: { type: string, format: date-time }
+    CandidateSource:
+      type: object
+      additionalProperties: false
+      description: >-
+        How one source stood for these candidates: `answered` (its images are
+        listed, maybe none), `off` (lookups or the source are off, or it lacks
+        a key), `held` (Not this artist), `unavailable` (no MusicBrainz ID to
+        ask by), or `failed`, with why in words, never a key or a URL.
+      required: [source, state]
+      properties:
+        source: { type: string, enum: [fanart, wikimedia] }
+        state: { type: string, enum: [answered, off, held, unavailable, failed] }
+        words: { type: string }
     ArtistBio:
       type: object
       additionalProperties: false

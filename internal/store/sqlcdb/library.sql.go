@@ -342,6 +342,7 @@ DELETE FROM artwork
 WHERE NOT EXISTS (SELECT 1 FROM albums WHERE albums.artwork_hash = artwork.hash)
   AND NOT EXISTS (SELECT 1 FROM artist_images WHERE artist_images.artwork_hash = artwork.hash)
   AND NOT EXISTS (SELECT 1 FROM album_images WHERE album_images.artwork_hash = artwork.hash)
+  AND NOT EXISTS (SELECT 1 FROM artist_pins WHERE artist_pins.artwork_hash = artwork.hash)
 RETURNING hash
 `
 

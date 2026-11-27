@@ -86,6 +86,7 @@ type rig struct {
 	cfg scrape.Config
 
 	scan *scanClaim
+	art  *artwork.Cache
 
 	mu       sync.Mutex
 	notified []string
@@ -147,11 +148,11 @@ func newRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	r := &rig{st: st, ft: fanarttvtest.New(t), wm: wikimediatest.New(t), mb: musicbrainztest.New(t), log: &syncLog{}, now: time.Now(), scan: newScanClaim()}
+	r := &rig{st: st, ft: fanarttvtest.New(t), wm: wikimediatest.New(t), mb: musicbrainztest.New(t), log: &syncLog{}, now: time.Now(), scan: newScanClaim(), art: artwork.NewCache(t.TempDir())}
 	fo, wo, mo := r.ft.Options(), r.wm.Options(), r.mb.Options()
 	fo.HTTP, wo.HTTP, mo.HTTP = guarded(t, fo.HTTP), guarded(t, wo.HTTP), guarded(t, mo.HTTP)
 	r.s = scrape.New(scrape.Options{
-		Store: st, Artwork: artwork.NewCache(t.TempDir()), MusicBrainz: matching.NewMusicBrainz(mo),
+		Store: st, Artwork: r.art, MusicBrainz: matching.NewMusicBrainz(mo),
 		Fanart: fanarttv.New(fo), Wikimedia: wikimedia.New(wo),
 		Notify:  func(ids []string) { r.mu.Lock(); r.notified = append(r.notified, ids...); r.mu.Unlock() },
 		Library: r.scan,

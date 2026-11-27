@@ -419,8 +419,11 @@ type Credit struct {
 type ExtraImage struct {
 	Picture
 
-	Source string  // "folder", or a later source's name.
+	Source string  // "folder", "pinned", or a source's name.
 	Credit *Credit // Nil when the source asks for none, as a folder's file.
+	// PinnedFrom is where a pinned image came from, one of the PinFrom names;
+	// "" for an image no pin chose.
+	PinnedFrom string
 }
 
 // ArtistImages are an artist's chosen images, each nil when it has none.
@@ -487,7 +490,7 @@ func (s *Store) artistArt(ctx context.Context, artistID int64) (ArtistImages, *B
 		r := &rows[i]
 		img := &ExtraImage{
 			Picture: picture(r.Hash, r.Width, r.Height, r.Accent, r.Ground, r.Alpha),
-			Source:  r.Source, Credit: credit(r.Credit),
+			Source:  r.Source, Credit: credit(r.Credit), PinnedFrom: r.PinnedFrom,
 		}
 		switch ArtistImageKind(r.Kind) {
 		case ArtistThumb:

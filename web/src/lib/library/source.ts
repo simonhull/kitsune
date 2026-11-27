@@ -1,5 +1,6 @@
 /** The contract's types, by name: see `api/openapi.yaml`. Real tags are messy, so much is optional. */
 
+import type { ArtworkSource } from '#lib/choose/types.ts';
 import type { DuplicatesSource } from '#lib/duplicates/types.ts';
 import type { MetadataStatusSource } from '#lib/metadata/types.ts';
 import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
@@ -167,9 +168,11 @@ export interface Credit {
 
 /** An artist's image or an album's extra, with where it came from. */
 export interface ExtraImage extends Picture {
-	/** `folder`: a file in the library's folders. */
+	/** `folder`: a file in the library's folders; `pinned`: an administrator's choice. */
 	source: 'folder' | 'fanart' | 'audiodb' | 'wikimedia' | 'pinned' | 'coverartarchive';
 	credit?: Credit;
+	/** Where a pinned image came from, so its credit can still name its source. */
+	pinnedFrom?: 'folder' | 'fanart' | 'wikimedia' | 'upload';
 }
 
 /** One disc's art; `disc` 0 is every disc's. */
@@ -1501,6 +1504,8 @@ export interface LibrarySource {
 	readonly replayGain: ReplayGainSource;
 	/** Health's Metadata card: how the artist pass and its sources stand, for administrators. */
 	readonly metadata: MetadataStatusSource;
+	/** Choose artwork's routes, for administrators: an artist's candidates, pins, uploads and holds. */
+	readonly artwork: ArtworkSource;
 	/**
 	 * Only the fixtures: calls `heard` with the artists whose art arrived, as the server's `artists`
 	 * event says. Returns what stops it.

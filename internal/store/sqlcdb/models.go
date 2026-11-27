@@ -79,6 +79,13 @@ type ArtistHeart struct {
 	HeartedAt int64
 }
 
+type ArtistHold struct {
+	ArtistID int64
+	Mbid     string
+	HeldBy   *int64
+	HeldAt   int64
+}
+
 type ArtistImage struct {
 	ArtistID    int64
 	Kind        string
@@ -94,6 +101,17 @@ type ArtistImage struct {
 	FoundAt     int64
 }
 
+type ArtistPin struct {
+	ArtistID    int64
+	Kind        string
+	ArtworkHash []byte
+	Source      string
+	RemoteID    *string
+	Credit      *string
+	PinnedBy    *int64
+	PinnedAt    int64
+}
+
 type Artwork struct {
 	Hash   []byte
 	Width  int64
@@ -102,6 +120,18 @@ type Artwork struct {
 	Ground string
 	Source string
 	Alpha  int64
+}
+
+type ArtworkPreview struct {
+	Source   string
+	RemoteID string
+	Hash     []byte
+	Width    int64
+	Height   int64
+	Accent   string
+	Ground   string
+	Alpha    int64
+	MadeAt   int64
 }
 
 type DuplicateDismissal struct {
