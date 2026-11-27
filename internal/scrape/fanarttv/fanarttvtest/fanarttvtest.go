@@ -1,7 +1,7 @@
 // Package fanarttvtest is a stand-in fanart.tv for tests and manual checks: an
-// artist's images under /v3.2/music/{mbid}, the latest feed under
-// /v3.2/music/latest, and the images themselves under /fanart/, drawn from
-// their IDs. It can answer 429 with Retry-After, 503, a refused key, bare file
+// artist's images under /v3.2/music/{mbid}, a release group's disc art under
+// /v3.2/music/albums/{mbid}, the latest feed under /v3.2/music/latest, and the
+// images themselves under /fanart/, drawn from their IDs. It can answer 429 with Retry-After, 503, a refused key, bare file
 // names in place of addresses, slowly, and too much. Nothing in a test ever
 // talks to the real fanart.tv.
 package fanarttvtest
@@ -47,6 +47,22 @@ type Artist struct {
 	Thumbs, Backgrounds4K, Backgrounds []Image
 	HDLogos, Logos, Banners            []Image
 }
+
+// Album is what the stand-in has of a release group: its disc art.
+type Album struct {
+	MBID  string // The release group's.
+	Discs []Disc
+}
+
+// Disc is one disc's art: a transparent PNG.
+type Disc struct {
+	Image
+
+	Disc int // From 1; 0 sends no disc.
+}
+
+// kindDisc is fanart.tv's name for disc art.
+const kindDisc = "cdart"
 
 // fanart.tv's names for an artist's kinds of image.
 const (
@@ -96,6 +112,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	artists  map[string]Artist
+	albums   map[string]Album
 	latest   []string
 	key      string
 	failures []int
@@ -121,9 +138,10 @@ func New(tb testing.TB, artists ...Artist) *Server {
 // NewInMemory returns a stand-in that answers only through [Server.RoundTrip],
 // for a [testing/synctest] bubble, or [Server.Handler] for a server of its own.
 func NewInMemory(artists ...Artist) *Server {
-	s := &Server{artists: map[string]Artist{}, key: Key, mux: http.NewServeMux()}
+	s := &Server{artists: map[string]Artist{}, albums: map[string]Album{}, key: Key, mux: http.NewServeMux()}
 	s.Add(artists...)
 	s.mux.HandleFunc("GET /v3.2/music/latest", s.getLatest)
+	s.mux.HandleFunc("GET /v3.2/music/albums/{mbid}", s.getAlbum)
 	s.mux.HandleFunc("GET /v3.2/music/{mbid}", s.getArtist)
 	s.mux.HandleFunc("GET /fanart/music/{mbid}/{kind}/{file}", s.getImage)
 	return s
@@ -160,6 +178,15 @@ func (s *Server) Add(artists ...Artist) {
 	defer s.mu.Unlock()
 	for i := range artists {
 		s.artists[artists[i].MBID] = artists[i]
+	}
+}
+
+// AddAlbum holds more release groups.
+func (s *Server) AddAlbum(albums ...Album) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range albums {
+		s.albums[albums[i].MBID] = albums[i]
 	}
 }
 
@@ -305,6 +332,36 @@ func (s *Server) getArtist(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func (s *Server) getAlbum(w http.ResponseWriter, r *http.Request) {
+	if s.begin(w, r, true) {
+		return
+	}
+	mbid := r.PathValue("mbid")
+	s.mu.Lock()
+	a, ok := s.albums[mbid]
+	bare := s.bare
+	s.mu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"status": "error", "error message": "Not found"})
+		return
+	}
+	discs := make([]map[string]string, len(a.Discs))
+	for i, d := range a.Discs {
+		address := s.root() + "/fanart/music/" + mbid + "/" + kindDisc + "/" + d.ID + ".png"
+		if bare {
+			address = d.ID + ".png"
+		}
+		discs[i] = map[string]string{"id": d.ID, "url": address, "likes": strconv.Itoa(d.Likes), "size": "1000"}
+		if d.Disc > 0 {
+			discs[i]["disc"] = strconv.Itoa(d.Disc)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name": "Artist", "mbid_id": "00000000-0000-0000-0000-000000000000",
+		"albums": map[string]any{mbid: map[string]any{"cdart": discs}},
+	})
+}
+
 func (s *Server) getLatest(w http.ResponseWriter, r *http.Request) {
 	if s.begin(w, r, true) {
 		return
@@ -318,9 +375,9 @@ func (s *Server) getLatest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, list)
 }
 
-// ext is the file extension of a kind's images: logos are PNG.
+// ext is the file extension of a kind's images: logos and disc art are PNG.
 func ext(kind string) string {
-	if kind == kindHDLogo || kind == kindLogo {
+	if kind == kindHDLogo || kind == kindLogo || kind == kindDisc {
 		return ".png"
 	}
 	return ".jpg"
@@ -334,8 +391,13 @@ func (s *Server) getImage(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(file, ext(kind))
 	s.mu.Lock()
 	a, ok := s.artists[mbid]
+	album, isAlbum := s.albums[mbid]
 	s.mu.Unlock()
 	img, small, found := a.find(kind, id)
+	if kind == kindDisc {
+		img, small, found = album.find(id)
+		ok = isAlbum
+	}
 	if !ok || !found {
 		http.NotFound(w, r)
 		return
@@ -361,6 +423,17 @@ func (a *Artist) find(kind, id string) (Image, image.Point, bool) {
 		}
 	}
 	return Image{}, image.Point{}, false
+}
+
+// find returns the disc art with id, and the size to draw it at when it gives
+// none.
+func (a *Album) find(id string) (Image, image.Point, bool) {
+	i := slices.IndexFunc(a.Discs, func(d Disc) bool { return d.ID == id })
+	if i < 0 {
+		return Image{}, image.Point{}, false
+	}
+	const side = 200
+	return a.Discs[i].Image, image.Point{X: side, Y: side}, true
 }
 
 // inset is how far in from each edge, as a share of the side, a drawn image's

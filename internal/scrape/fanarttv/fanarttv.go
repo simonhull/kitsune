@@ -1,6 +1,6 @@
 // Package fanarttv is a client for fanart.tv's music API (v3.2): an artist's
-// images by MusicBrainz ID, the feed of artists with new images, and the
-// images themselves. Keys go in headers, never in a URL. It knows nothing of
+// images by MusicBrainz ID, a release group's disc art, the feed of artists
+// with new images, and the images themselves. Keys go in headers, never in a URL. It knows nothing of
 // the store; the artist pass chooses among what it returns.
 package fanarttv
 
@@ -240,4 +240,46 @@ func lang(s string) string {
 		return ""
 	}
 	return strings.ToLower(s)
+}
+
+// Disc is a disc's art at fanart.tv: a transparent PNG, 1000 × 1000.
+type Disc struct {
+	Image
+
+	Disc int // The disc it is of, from 1; 0 when fanart.tv doesn't say.
+}
+
+// discSide is the side of fanart.tv's disc art, by its rules.
+const discSide = 1000
+
+// Album returns the disc art fanart.tv has of the release group mbid. It
+// returns the errors [Client.Artist] does. fanart.tv's album covers are never
+// read: an album's cover is its files', else the Cover Art Archive's.
+func (c *Client) Album(ctx context.Context, keys Keys, mbid string) ([]Disc, error) {
+	if keys.API == "" {
+		return nil, ErrNoKey
+	}
+	body, err := c.json.Get(ctx, "music/albums/"+mbid, c.base+"music/albums/"+url.PathEscape(mbid), keys.header())
+	if err != nil {
+		return nil, fmt.Errorf("fanart.tv album: %w", err)
+	}
+	var raw albumJSON
+	if err = json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("fanart.tv album: %w: it doesn't parse", ErrBadAnswer)
+	}
+	album, ok := raw.Albums[mbid]
+	if raw.Status == "error" || !ok {
+		return nil, fmt.Errorf("fanart.tv album: %w", remote.ErrNotFound)
+	}
+	out := make([]Disc, 0, len(album.CDArts))
+	for _, d := range album.CDArts {
+		if !c.isAsset(d.URL) {
+			return nil, fmt.Errorf("fanart.tv album: %w", ErrNotALink)
+		}
+		out = append(out, Disc{
+			Image: Image{ID: string(d.ID), URL: d.URL, Lang: lang(d.Lang), Likes: int(d.Likes), Width: discSide, Height: discSide},
+			Disc:  max(int(d.Disc), 0),
+		})
+	}
+	return out, nil
 }
