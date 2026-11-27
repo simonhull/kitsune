@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/simonhull/kitsune/internal/matching"
 	"github.com/simonhull/kitsune/internal/matching/musicbrainztest"
 	"github.com/simonhull/kitsune/internal/scrape/fanarttv/fanarttvtest"
 	"github.com/simonhull/kitsune/internal/scrape/wikimedia/wikimediatest"
@@ -82,6 +83,48 @@ func TestScrapeArtistSpeed(t *testing.T) { //nolint:paralleltest // Timed: a spe
 		}
 		if im := d.Images; im.Background.Width != 3840 || im.Background.Source != store.ImageFromFanart {
 			t.Fatalf("background %+v, want the 4K one", im.Background)
+		}
+	}
+	holdSpeed(t, b, limit, took)
+}
+
+// fullAlbumArt gives the i-th test album everything the album pass fetches at
+// its real size: a release group to look up, the Cover Art Archive's 1200 px
+// front and back, and fanart.tv's 1000 px disc art, drawn now so the pass
+// times Kitsune and not the stand-ins drawing.
+func (ss *scrapeServer) fullAlbumArt(t *testing.T, i int) {
+	t.Helper()
+	release, group := releaseOf(i), musicbrainztest.ID("speed group "+strconv.Itoa(i))
+	ss.mb.Add(matching.Release{ID: release, GroupID: group, Cover: true})
+	ss.mb.AddBack(release)
+	ss.ft.AddAlbum(fanarttvtest.Album{MBID: group, Discs: []fanarttvtest.Disc{{ID: "9", Width: 1000, Height: 1000, Disc: 1}}})
+	base := ss.mb.URL + "/coverart/release/" + release + "/"
+	for _, file := range []string{"1001-1200.jpg", "1002-1200.jpg"} {
+		fetchAll(t, ss.mb.Client(), base+file)
+	}
+	fetchAll(t, ss.ft.Client(), ss.ft.URL+"/fanart/music/"+group+"/cdart/9.png")
+}
+
+// TestScrapeAlbumSpeed times the album pass over one album with every source
+// on and everything to fetch, against stand-ins that answer at once: Kitsune's
+// own cost per album (its JSON, its choices, three renders and its
+// transaction, a library write), without the gates' waits.
+func TestScrapeAlbumSpeed(t *testing.T) { //nolint:paralleltest // Timed: a speed test measures a server alone, never beside another.
+	b, limit := speedBudget(t, "scrape-album")
+	ss := newScrapeServer(t)
+	took := make([]time.Duration, 0, scrapeRuns)
+	for i := range scrapeRuns {
+		id := ss.addAlbum(t, 100+i, nil)
+		ss.fullAlbumArt(t, 100+i)
+		start := time.Now()
+		ss.Scraper.Pass(t.Context())
+		took = append(took, time.Since(start))
+		a, err := ss.Store.Album(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a.Extras.Cover == nil || a.Extras.Back == nil || len(a.Extras.Discs) != 1 {
+			t.Fatalf("album %d: extras %+v, want the archive's front and back and fanart.tv's disc", i, a.Extras)
 		}
 	}
 	holdSpeed(t, b, limit, took)

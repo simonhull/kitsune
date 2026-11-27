@@ -13,6 +13,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"image/jpeg"
 	"image/png"
 	"maps"
 	"math"
@@ -43,7 +44,8 @@ type Server struct {
 	mu       sync.Mutex
 	releases []matching.Release
 	artists  map[string]Artist
-	backs    map[string]bool // Releases with a back cover too.
+	backs    map[string]bool   // Releases with a back cover too.
+	images   map[string][]byte // Drawn once each, so a speed test times Kitsune, not the stand-in.
 	calls    []Call
 	failures []int // Statuses for the next API calls, in order.
 	retry    string
@@ -64,7 +66,7 @@ func New(tb testing.TB, releases ...matching.Release) *Server {
 // opening no listener, for a [testing/synctest] bubble, or [Server.Handler]
 // for a server of its own.
 func NewInMemory(releases ...matching.Release) *Server {
-	s := &Server{releases: releases, artists: map[string]Artist{}, backs: map[string]bool{}, mux: http.NewServeMux()}
+	s := &Server{releases: releases, artists: map[string]Artist{}, backs: map[string]bool{}, images: map[string][]byte{}, mux: http.NewServeMux()}
 	s.mux.HandleFunc("GET /ws/2/release/{id}", s.lookup)
 	s.mux.HandleFunc("GET /ws/2/artist/{id}", s.artist)
 	s.mux.HandleFunc("GET /ws/2/release", s.search)
@@ -254,11 +256,14 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"count": len(hits), "offset": 0, "releases": hits})
 }
 
-// coverSize is the side of a stand-in cover, in pixels, and horizon where its
-// lower band starts.
+// coverSize is the side of a stand-in match preview, in pixels, and
+// archiveSize an archive image's, as the archive's largest thumbnail is.
 const (
-	coverSize = 250
-	horizon   = coverSize * 5 / 8
+	coverSize   = 250
+	archiveSize = 1200
+	// horizonEighths is how far down, in eighths, a cover's lower band starts.
+	horizonEighths = 5
+	eighths        = 8
 )
 
 // The Cover Art Archive's IDs for the stand-in's two images of a release.
@@ -287,8 +292,8 @@ func (s *Server) coverArt(w http.ResponseWriter, r *http.Request) {
 	entry := func(imageID string, front bool) map[string]any {
 		return map[string]any{
 			"id": imageID, "front": front, "back": !front, "approved": true,
-			"image":      root + imageID + ".png",
-			"thumbnails": map[string]string{"250": root + imageID + "-250.png", "1200": root + imageID + "-1200.png"},
+			"image":      root + imageID + ".jpg",
+			"thumbnails": map[string]string{"250": root + imageID + "-250.jpg", "1200": root + imageID + "-1200.jpg"},
 		}
 	}
 	images := []any{}
@@ -303,7 +308,8 @@ func (s *Server) coverArt(w http.ResponseWriter, r *http.Request) {
 
 // cover draws a cover from the release's ID: a ground and a horizon, in colors
 // of their own. A back cover (its image ID, or "back-…") is drawn from the ID
-// and "back".
+// and "back". A match preview ("front-250") is a small PNG; an archive image
+// (an image ID's) a 1200-pixel JPEG, as the archive's are, drawn once.
 func (s *Server) cover(w http.ResponseWriter, r *http.Request) {
 	id, size := r.PathValue("id"), r.PathValue("size")
 	release, ok := s.find(id)
@@ -319,17 +325,41 @@ func (s *Server) cover(w http.ResponseWriter, r *http.Request) {
 	if isBack {
 		seed += " back"
 	}
+	archive := strings.HasSuffix(size, ".jpg")
+	w.Header().Set("Content-Type", "image/png")
+	if archive {
+		w.Header().Set("Content-Type", "image/jpeg")
+	}
+	w.Header().Set("Cache-Control", "max-age=86400")
+	_, _ = w.Write(s.drawn(seed, archive)) // The client may have gone.
+}
+
+// drawn is the cover of seed, drawn once: an archive image or a preview.
+func (s *Server) drawn(seed string, archive bool) []byte {
+	key := seed + strconv.FormatBool(archive)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if b, ok := s.images[key]; ok {
+		return b
+	}
+	side := coverSize
+	if archive {
+		side = archiveSize
+	}
 	sum := sha256.Sum256([]byte(seed))
 	sky := color.RGBA{R: sum[0], G: sum[1], B: sum[2], A: math.MaxUint8}
 	ground := color.RGBA{R: sum[3], G: sum[4], B: sum[5], A: math.MaxUint8}
-	img := image.NewRGBA(image.Rect(0, 0, coverSize, coverSize))
+	img := image.NewRGBA(image.Rect(0, 0, side, side))
 	draw.Draw(img, img.Bounds(), image.NewUniform(sky), image.Point{}, draw.Src)
-	draw.Draw(img, image.Rect(0, horizon, coverSize, coverSize), image.NewUniform(ground), image.Point{}, draw.Src)
+	draw.Draw(img, image.Rect(0, side*horizonEighths/eighths, side, side), image.NewUniform(ground), image.Point{}, draw.Src)
 	var b bytes.Buffer
-	_ = png.Encode(&b, img) // Into memory.
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "max-age=86400")
-	_, _ = w.Write(b.Bytes()) // The client may have gone.
+	if archive {
+		_ = jpeg.Encode(&b, img, nil) // Into memory.
+	} else {
+		_ = png.Encode(&b, img) // Into memory.
+	}
+	s.images[key] = b.Bytes()
+	return b.Bytes()
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

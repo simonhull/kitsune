@@ -32,8 +32,8 @@ const (
 func releaseOf(i int) string { return musicbrainztest.ID("release " + strconv.Itoa(i)) }
 
 // albumWrite is the i-th test album's one track, with its release MBID and,
-// when given, a release group and a cover from its files.
-func albumWrite(i int, group string, cover *store.ArtworkWrite) store.TrackWrite {
+// when given, a cover from its files.
+func albumWrite(i int, cover *store.ArtworkWrite) store.TrackWrite {
 	name := "Pressing " + strconv.Itoa(i)
 	return store.TrackWrite{
 		ULID: fmt.Sprintf("01P%023d", i), Root: musicBase, RelPath: fmt.Sprintf("p/%d.flac", i), Size: 1000,
@@ -41,16 +41,16 @@ func albumWrite(i int, group string, cover *store.ArtworkWrite) store.TrackWrite
 		Format: flacFormat, Codec: flacFormat, Duration: 200 * time.Second, Title: scrapedSong, SortTitle: scrapedSong,
 		Album: store.AlbumWrite{
 			GroupKey: "pressing " + strconv.Itoa(i), ULID: fmt.Sprintf("02P%023d", i), Artist: name,
-			Name: name, SortName: name, MBID: releaseOf(i), ReleaseGroupMBID: group, Artwork: cover,
+			Name: name, SortName: name, MBID: releaseOf(i), Artwork: cover,
 		},
 		Artists: []store.ArtistWrite{{ULID: fmt.Sprintf("%026d", 700+i), MatchKey: strings.ToLower(name), Name: name}},
 	}
 }
 
 // addAlbum writes the i-th test album and returns its public ID.
-func (ss *scrapeServer) addAlbum(t *testing.T, i int, group string, cover *store.ArtworkWrite) string {
+func (ss *scrapeServer) addAlbum(t *testing.T, i int, cover *store.ArtworkWrite) string {
 	t.Helper()
-	w := albumWrite(i, group, cover)
+	w := albumWrite(i, cover)
 	if err := ss.Store.WriteBatch(t.Context(), &store.Batch{Tracks: []store.TrackWrite{w}}); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func filesCover() *store.ArtworkWrite {
 func TestArchiveCoverIsTheAlbumsUntilItsFilesHaveOne(t *testing.T) {
 	t.Parallel()
 	ss := newScrapeServer(t)
-	id := ss.addAlbum(t, 1, "", nil)
+	id := ss.addAlbum(t, 1, nil)
 	ss.mb.Add(matching.Release{ID: releaseOf(1), Cover: true})
 	ss.mb.AddBack(releaseOf(1))
 	tap := ss.Events.Subscribe(events.Viewer{UserID: 99}, "")
@@ -114,7 +114,7 @@ func TestArchiveCoverIsTheAlbumsUntilItsFilesHaveOne(t *testing.T) {
 func (ss *scrapeServer) coverInFiles(t *testing.T) *store.ArtworkWrite {
 	t.Helper()
 	files := filesCover()
-	second := albumWrite(1, "", files)
+	second := albumWrite(1, files)
 	second.ULID, second.RelPath = fmt.Sprintf("01Q%023d", 1), "p/1b.flac"
 	if err := ss.Store.WriteBatch(t.Context(), &store.Batch{Tracks: []store.TrackWrite{second}}); err != nil {
 		t.Fatal(err)
@@ -146,7 +146,7 @@ func TestArchiveNeverReplacesAFilesCover(t *testing.T) {
 	t.Parallel()
 	ss := newScrapeServer(t)
 	files := filesCover()
-	id := ss.addAlbum(t, 2, "", files)
+	id := ss.addAlbum(t, 2, files)
 	ss.mb.Add(matching.Release{ID: releaseOf(2), Cover: true})
 	ss.mb.AddBack(releaseOf(2))
 	ss.Scraper.Pass(t.Context())
@@ -165,7 +165,7 @@ func TestDiscArtByALookedUpReleaseGroup(t *testing.T) {
 	t.Parallel()
 	ss := newScrapeServer(t)
 	group := musicbrainztest.ID("group 3")
-	id := ss.addAlbum(t, 3, "", filesCover())
+	id := ss.addAlbum(t, 3, filesCover())
 	ss.mb.Add(matching.Release{ID: releaseOf(3), GroupID: group})
 	ss.ft.AddAlbum(fanarttvtest.Album{MBID: group, Discs: []fanarttvtest.Disc{{ID: "81", Disc: 1}}})
 	token := ss.tokenFor(t, store.RoleUser)
