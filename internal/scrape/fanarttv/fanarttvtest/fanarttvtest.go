@@ -1,8 +1,9 @@
 // Package fanarttvtest is a stand-in fanart.tv for tests and manual checks: an
 // artist's images under /v3.2/music/{mbid}, a release group's disc art under
 // /v3.2/music/albums/{mbid}, the latest feed under /v3.2/music/latest, and the
-// images themselves under /fanart/, drawn from their IDs. It can answer 429 with Retry-After, 503, a refused key, bare file
-// names in place of addresses, slowly, and too much. Nothing in a test ever
+// images themselves under /fanart/, drawn from their IDs, with their previews
+// (at most 400 px) under /bigpreview/. It can answer 429 with Retry-After, 503,
+// a refused key, bare file names in place of addresses, slowly, and too much. Nothing in a test ever
 // talks to the real fanart.tv.
 package fanarttvtest
 
@@ -150,6 +151,7 @@ func NewInMemory(artists ...Artist) *Server {
 	s.mux.HandleFunc("GET /v3.2/music/albums/{mbid}", s.getAlbum)
 	s.mux.HandleFunc("GET /v3.2/music/{mbid}", s.getArtist)
 	s.mux.HandleFunc("GET /fanart/music/{mbid}/{kind}/{file}", s.getImage)
+	s.mux.HandleFunc("GET /bigpreview/music/{mbid}/{kind}/{file}", s.getPreview)
 	return s
 }
 
@@ -389,7 +391,25 @@ func ext(kind string) string {
 	return ".jpg"
 }
 
-func (s *Server) getImage(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getImage(w http.ResponseWriter, r *http.Request) { s.serveImage(w, r, false) }
+
+// getPreview serves an image as fanart.tv's bigpreview does: at most
+// previewSide pixels on its longest side.
+func (s *Server) getPreview(w http.ResponseWriter, r *http.Request) { s.serveImage(w, r, true) }
+
+// previewSide is the longest side of a bigpreview.
+const previewSide = 400
+
+// fit is size shrunk to at most side on its longest side, never grown.
+func fit(size image.Point, side int) image.Point {
+	longest := max(size.X, size.Y)
+	if longest <= side {
+		return size
+	}
+	return image.Point{X: max(size.X*side/longest, 1), Y: max(size.Y*side/longest, 1)}
+}
+
+func (s *Server) serveImage(w http.ResponseWriter, r *http.Request, preview bool) {
 	if s.begin(w, r, false) {
 		return
 	}
@@ -412,9 +432,12 @@ func (s *Server) getImage(w http.ResponseWriter, r *http.Request) {
 	if size.X == 0 || size.Y == 0 {
 		size = small
 	}
-	alpha := ext(kind) == ".png"
+	alpha, seed := ext(kind) == ".png", mbid+kind+id
+	if preview {
+		size, seed = fit(size, previewSide), seed+" preview"
+	}
 	w.Header().Set("Content-Type", MediaType(alpha))
-	_, _ = w.Write(s.drawn(mbid+kind+id, size, alpha)) //nolint:gosec // G705: an image drawn from a hash of the path, served as an image, never HTML.
+	_, _ = w.Write(s.drawn(seed, size, alpha)) //nolint:gosec // G705: an image drawn from a hash of the path, served as an image, never HTML.
 }
 
 // find returns the image of kind with id, and the size to draw it at when it

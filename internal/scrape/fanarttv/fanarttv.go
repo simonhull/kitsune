@@ -82,6 +82,7 @@ type Keys struct {
 // Client asks fanart.tv. One serves the process; it is safe for concurrent use.
 type Client struct {
 	base, assets string
+	previews     string // Where the assets' previews lie: at their path, under /bigpreview/.
 	json, images *remote.Client
 }
 
@@ -92,10 +93,11 @@ func New(o Options) *Client { //nolint:gocritic // hugeParam: built once, at sta
 	jsonOpts, imageOpts := base, base
 	jsonOpts.Gate, jsonOpts.MaxBody = remote.NewGate(cmp.Or(o.Interval, defaultInterval)), maxJSON
 	imageOpts.Gate, imageOpts.MaxBody = remote.NewGate(cmp.Or(o.ImageInterval, defaultImageInterval)), maxImage
+	assets := withSlash(cmp.Or(o.AssetsURL, DefaultAssetsURL))
 	return &Client{
 		base:   withSlash(cmp.Or(o.BaseURL, DefaultURL)) + "v3.2/",
-		assets: withSlash(cmp.Or(o.AssetsURL, DefaultAssetsURL)) + "fanart/",
-		json:   remote.New(jsonOpts), images: remote.New(imageOpts),
+		assets: assets + "fanart/", previews: assets + "bigpreview/",
+		json: remote.New(jsonOpts), images: remote.New(imageOpts),
 	}
 }
 
@@ -197,6 +199,25 @@ func (c *Client) Download(ctx context.Context, u string) ([]byte, error) {
 		return nil, fmt.Errorf("fanart.tv image: %w", err)
 	}
 	return body, nil
+}
+
+// Preview returns fanart.tv's own small rendition of an image [Client.Artist]
+// returned (its bigpreview, about 400 px, at the same path under /bigpreview/
+// in place of /fanart/), or the image itself when it has none. An address
+// that isn't under the assets root is [ErrBadAnswer], never fetched.
+func (c *Client) Preview(ctx context.Context, u string) ([]byte, error) {
+	if !c.isAsset(u) {
+		return nil, fmt.Errorf("fanart.tv preview: %w", ErrNotALink)
+	}
+	p := c.previews + strings.TrimPrefix(u, c.assets)
+	body, err := c.images.Get(ctx, p, p, nil)
+	switch {
+	case err == nil:
+		return body, nil
+	case errors.Is(err, remote.ErrNotFound):
+		return c.Download(ctx, u)
+	}
+	return nil, fmt.Errorf("fanart.tv preview: %w", err)
 }
 
 // Disc is a disc's art at fanart.tv: a transparent PNG, 1000 × 1000.
