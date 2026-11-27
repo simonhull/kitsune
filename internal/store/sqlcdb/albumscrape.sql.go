@@ -28,6 +28,38 @@ func (q *Queries) AskAgainForAlbum(ctx context.Context, arg AskAgainForAlbumPara
 	return err
 }
 
+const countScrapeAlbums = `-- name: CountScrapeAlbums :one
+SELECT CAST(count(*) AS INTEGER) AS albums,
+       CAST(count(a.mbid) AS INTEGER) AS with_mbid,
+       CAST(count(c.album_id) AS INTEGER) AS from_archive,
+       CAST(coalesce(sum(a.artwork_hash IS NULL), 0) AS INTEGER) AS without_cover
+FROM albums a
+LEFT JOIN album_images c ON c.album_id = a.id AND c.kind = 'cover' AND c.disc = 0
+WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL)
+`
+
+type CountScrapeAlbumsRow struct {
+	Albums       int64
+	WithMbid     int64
+	FromArchive  int64
+	WithoutCover int64
+}
+
+// The library's albums, for Health's card: all with a live track, those with
+// a release MBID, those whose cover is the Cover Art Archive's, and those
+// with no cover at all.
+func (q *Queries) CountScrapeAlbums(ctx context.Context) (CountScrapeAlbumsRow, error) {
+	row := q.db.QueryRowContext(ctx, countScrapeAlbums)
+	var i CountScrapeAlbumsRow
+	err := row.Scan(
+		&i.Albums,
+		&i.WithMbid,
+		&i.FromArchive,
+		&i.WithoutCover,
+	)
+	return i, err
+}
+
 const deleteRemoteAlbumImage = `-- name: DeleteRemoteAlbumImage :execrows
 DELETE FROM album_images WHERE album_id = ? AND kind = ? AND disc = ? AND source = ?
 `

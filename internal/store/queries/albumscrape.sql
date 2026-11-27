@@ -91,3 +91,15 @@ DELETE FROM album_images WHERE album_id = ? AND kind = ? AND disc = ? AND source
 -- name: DeleteRemoteDiscArt :execrows
 -- A folder's disc art puts every source's disc art of the album aside.
 DELETE FROM album_images WHERE album_id = ? AND kind = 'disc' AND source <> 'folder';
+
+-- name: CountScrapeAlbums :one
+-- The library's albums, for Health's card: all with a live track, those with
+-- a release MBID, those whose cover is the Cover Art Archive's, and those
+-- with no cover at all.
+SELECT CAST(count(*) AS INTEGER) AS albums,
+       CAST(count(a.mbid) AS INTEGER) AS with_mbid,
+       CAST(count(c.album_id) AS INTEGER) AS from_archive,
+       CAST(coalesce(sum(a.artwork_hash IS NULL), 0) AS INTEGER) AS without_cover
+FROM albums a
+LEFT JOIN album_images c ON c.album_id = a.id AND c.kind = 'cover' AND c.disc = 0
+WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.missing_since IS NULL);

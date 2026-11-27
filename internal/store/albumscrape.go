@@ -127,36 +127,51 @@ func readAlbumExtras(ctx context.Context, q *sqlcdb.Queries) (*albumExtraRows, e
 	if err != nil {
 		return nil, fmt.Errorf("states: %w", err)
 	}
-	r := &albumExtraRows{
-		plays: make(map[int64]int, len(plays)), discs: map[int64][]int{},
-		held: map[int64]map[AlbumImageKey]HeldAlbumImage{}, states: map[ScrapeSource]map[string]ScrapeState{},
-	}
+	r := &albumExtraRows{plays: make(map[int64]int, len(plays)), discs: discsByAlbum(discs), held: heldByAlbum(held), states: albumStates(states)}
 	for _, p := range plays {
 		r.plays[p.AlbumID] = int(p.Plays)
 	}
-	for _, d := range discs {
-		r.discs[d.AlbumID] = append(r.discs[d.AlbumID], int(d.Disc))
+	return r, nil
+}
+
+// discsByAlbum is every album's discs, sorted.
+func discsByAlbum(rows []sqlcdb.ListAlbumDiscsRow) map[int64][]int {
+	out := map[int64][]int{}
+	for _, d := range rows {
+		out[d.AlbumID] = append(out[d.AlbumID], int(d.Disc))
 	}
-	for id := range r.discs {
-		slices.Sort(r.discs[id])
+	for id := range out {
+		slices.Sort(out[id])
 	}
-	for i := range held {
-		h := &held[i]
-		if r.held[h.AlbumID] == nil {
-			r.held[h.AlbumID] = map[AlbumImageKey]HeldAlbumImage{}
+	return out
+}
+
+// heldByAlbum is what every album holds of its extras.
+func heldByAlbum(rows []sqlcdb.ListHeldAlbumImagesRow) map[int64]map[AlbumImageKey]HeldAlbumImage {
+	out := map[int64]map[AlbumImageKey]HeldAlbumImage{}
+	for i := range rows {
+		h := &rows[i]
+		if out[h.AlbumID] == nil {
+			out[h.AlbumID] = map[AlbumImageKey]HeldAlbumImage{}
 		}
 		key := AlbumImageKey{AlbumID: h.AlbumID, Kind: AlbumImageKind(h.Kind), Disc: int(h.Disc)}
-		r.held[h.AlbumID][key] = HeldAlbumImage{Source: h.Source, RemoteID: strOrEmpty(h.RemoteID)}
+		out[h.AlbumID][key] = HeldAlbumImage{Source: h.Source, RemoteID: strOrEmpty(h.RemoteID)}
 	}
-	for i := range states {
-		st := &states[i]
+	return out
+}
+
+// albumStates is every album state, by source and MBID.
+func albumStates(rows []sqlcdb.ListAlbumScrapeStatesRow) map[ScrapeSource]map[string]ScrapeState {
+	out := map[ScrapeSource]map[string]ScrapeState{}
+	for i := range rows {
+		st := &rows[i]
 		src := ScrapeSource(st.Source)
-		if r.states[src] == nil {
-			r.states[src] = map[string]ScrapeState{}
+		if out[src] == nil {
+			out[src] = map[string]ScrapeState{}
 		}
-		r.states[src][st.Mbid] = scrapeState(st.Status, st.FetchedAt, st.NextAt, st.Failures, st.Error)
+		out[src][st.Mbid] = scrapeState(st.Status, st.FetchedAt, st.NextAt, st.Failures, st.Error)
 	}
-	return r, nil
+	return out
 }
 
 // RemoteAlbumImage sets an album's extra of one kind and disc from a source, or
@@ -190,45 +205,36 @@ type AlbumRemoteWrite struct {
 	Answers   []AlbumAnswer
 }
 
+// albumWritten is what a write changed: anything shown, and the cover.
+type albumWritten struct {
+	shown, cover bool
+}
+
 // WriteAlbumRemote stores w in one transaction and reports whether the album's
 // cover or extras changed: what a library event says. A cover is the index's,
 // so a write that changes one is a library write.
 func (s *Store) WriteAlbumRemote(ctx context.Context, w *AlbumRemoteWrite, now time.Time) (bool, error) {
-	var changed bool
+	var did albumWritten
 	err := s.inLibraryTxIf(ctx, func(q *sqlcdb.Queries, _ *sql.Tx) (bool, error) {
-		var cover bool
 		var err error
-		changed, cover, err = writeAlbumRemote(ctx, q, w, now) // The writer may retry: the last try says.
-		return cover, err
+		did, err = writeAlbumRemote(ctx, q, w, now) // The writer may retry: the last try says.
+		return did.cover, err
 	})
 	if err != nil {
 		return false, fmt.Errorf("write remote art of album %d: %w", w.AlbumID, err)
 	}
-	return changed, nil
+	return did.shown, nil
 }
 
-// writeAlbumRemote reports whether anything shown changed, and whether the
-// album's cover did.
-func writeAlbumRemote(ctx context.Context, q *sqlcdb.Queries, w *AlbumRemoteWrite, now time.Time) (changed, cover bool, err error) {
+func writeAlbumRemote(ctx context.Context, q *sqlcdb.Queries, w *AlbumRemoteWrite, now time.Time) (albumWritten, error) {
 	if w.GroupMBID != "" {
-		if _, err = q.SetLookedUpReleaseGroup(ctx, sqlcdb.SetLookedUpReleaseGroupParams{Mbid: &w.GroupMBID, ID: w.AlbumID}); err != nil {
-			return false, false, fmt.Errorf("release group: %w", err)
+		if _, err := q.SetLookedUpReleaseGroup(ctx, sqlcdb.SetLookedUpReleaseGroupParams{Mbid: &w.GroupMBID, ID: w.AlbumID}); err != nil {
+			return albumWritten{}, fmt.Errorf("release group: %w", err)
 		}
 	}
-	for i := range w.Images {
-		img := &w.Images[i]
-		var n int64
-		var c bool
-		if img.Kind == AlbumCover {
-			n, c, err = writeArchiveCover(ctx, q, w.AlbumID, img, now)
-			cover = cover || c
-		} else {
-			n, err = writeRemoteAlbumImage(ctx, q, w.AlbumID, img, now)
-		}
-		if err != nil {
-			return false, false, err
-		}
-		changed = changed || n > 0
+	did, err := writeAlbumImages(ctx, q, w, now)
+	if err != nil {
+		return albumWritten{}, err
 	}
 	for _, a := range w.Answers {
 		err = q.UpsertAlbumScrapeState(ctx, sqlcdb.UpsertAlbumScrapeStateParams{
@@ -236,16 +242,37 @@ func writeAlbumRemote(ctx context.Context, q *sqlcdb.Queries, w *AlbumRemoteWrit
 			NextAt: ms(a.State.NextAt), Failures: int64(a.State.Failures), Error: orNil(a.State.Error),
 		})
 		if err != nil {
-			return false, false, fmt.Errorf("%s state: %w", a.Source, err)
+			return albumWritten{}, fmt.Errorf("%s state: %w", a.Source, err)
 		}
 	}
-	return changed || cover, cover, nil
+	return did, nil
+}
+
+func writeAlbumImages(ctx context.Context, q *sqlcdb.Queries, w *AlbumRemoteWrite, now time.Time) (albumWritten, error) {
+	var did albumWritten
+	for i := range w.Images {
+		img := &w.Images[i]
+		if img.Kind == AlbumCover {
+			c, err := writeArchiveCover(ctx, q, w.AlbumID, img, now)
+			if err != nil {
+				return albumWritten{}, err
+			}
+			did.shown, did.cover = did.shown || c.shown, did.cover || c.cover
+			continue
+		}
+		n, err := writeRemoteAlbumImage(ctx, q, w.AlbumID, img, now)
+		if err != nil {
+			return albumWritten{}, err
+		}
+		did.shown = did.shown || n > 0
+	}
+	return did, nil
 }
 
 // remoteAlbumSource reports whether source names a source's album image: never
 // a folder's.
 func remoteAlbumSource(source string) bool {
-	return source == ImageFromArchive || source == ImageFromFanart || source == "audiodb"
+	return source == ImageFromArchive || source == ImageFromFanart || source == fromAudioDB
 }
 
 func writeRemoteAlbumImage(ctx context.Context, q *sqlcdb.Queries, albumID int64, img *RemoteAlbumImage, now time.Time) (int64, error) {
@@ -274,47 +301,69 @@ func writeRemoteAlbumImage(ctx context.Context, q *sqlcdb.Queries, albumID int64
 }
 
 // writeArchiveCover sets or takes away the album's cover from the Cover Art
-// Archive, never over a cover of the album's own. It reports the rows it
-// changed, and whether the album's cover did.
-func writeArchiveCover(ctx context.Context, q *sqlcdb.Queries, albumID int64, img *RemoteAlbumImage, now time.Time) (int64, bool, error) {
+// Archive, never over a cover of the album's own.
+func writeArchiveCover(ctx context.Context, q *sqlcdb.Queries, albumID int64, img *RemoteAlbumImage, now time.Time) (albumWritten, error) {
 	if img.Source != ImageFromArchive || img.Disc != AllDiscs {
-		return 0, false, fmt.Errorf("album cover from %q: %w", img.Source, ErrInvalidWrite)
+		return albumWritten{}, fmt.Errorf("album cover from %q: %w", img.Source, ErrInvalidWrite)
 	}
 	cur, err := q.GetAlbumCover(ctx, albumID)
 	if err != nil {
-		return 0, false, fmt.Errorf("album cover: %w", err)
+		return albumWritten{}, fmt.Errorf("album cover: %w", err)
 	}
 	ours := cur.ArchiveHash != nil && bytes.Equal(cur.ArtworkHash, cur.ArchiveHash)
-	if cur.ArtworkHash != nil && !ours {
-		return 0, false, nil // The files gave it one: they win.
-	}
-	if img.Image == nil {
-		if cur.ArchiveHash == nil {
-			return 0, false, nil
-		}
+	switch {
+	case cur.ArtworkHash != nil && !ours:
+		return albumWritten{}, nil // The files gave it one: they win.
+	case img.Image == nil && cur.ArchiveHash == nil:
+		return albumWritten{}, nil
+	case img.Image == nil:
 		// Taking the cover away takes the row with it, by albums_cover_from_files.
-		n, serr := q.SetArchiveCover(ctx, sqlcdb.SetArchiveCoverParams{Hash: nil, ID: albumID, Was: cur.ArtworkHash})
-		if serr != nil {
-			return 0, false, fmt.Errorf("album cover: %w", serr)
-		}
-		return n, n > 0, nil
+		return setArchiveCover(ctx, q, albumID, nil, cur.ArtworkHash)
 	}
-	if err = upsertImage(ctx, q, img.Image); err != nil {
-		return 0, false, fmt.Errorf("album cover: %w", err)
+	return putArchiveCover(ctx, q, albumID, img, cur.ArtworkHash, now)
+}
+
+// putArchiveCover stores img as the album's archive cover and makes it the
+// album's cover while that is still cur.
+func putArchiveCover(ctx context.Context, q *sqlcdb.Queries, albumID int64, img *RemoteAlbumImage, cur []byte, now time.Time) (albumWritten, error) {
+	if err := upsertImage(ctx, q, img.Image); err != nil {
+		return albumWritten{}, fmt.Errorf("album cover: %w", err)
 	}
 	n, err := q.UpsertRemoteAlbumImage(ctx, sqlcdb.UpsertRemoteAlbumImageParams{
 		AlbumID: albumID, Kind: string(AlbumCover), Disc: AllDiscs, ArtworkHash: img.Image.Hash[:], Source: ImageFromArchive,
 		RemoteID: orNil(img.RemoteID), Credit: creditJSON(img.Credit), FoundAt: ms(now),
 	})
 	if err != nil {
-		return 0, false, fmt.Errorf("album cover: %w", err)
+		return albumWritten{}, fmt.Errorf("album cover: %w", err)
 	}
-	if bytes.Equal(cur.ArtworkHash, img.Image.Hash[:]) {
-		return n, false, nil
+	if bytes.Equal(cur, img.Image.Hash[:]) {
+		return albumWritten{shown: n > 0}, nil
 	}
-	set, err := q.SetArchiveCover(ctx, sqlcdb.SetArchiveCoverParams{Hash: img.Image.Hash[:], ID: albumID, Was: cur.ArtworkHash})
+	return setArchiveCover(ctx, q, albumID, img.Image.Hash[:], cur)
+}
+
+// setArchiveCover makes hash (nil for none) the album's cover while it is was.
+func setArchiveCover(ctx context.Context, q *sqlcdb.Queries, albumID int64, hash, was []byte) (albumWritten, error) {
+	n, err := q.SetArchiveCover(ctx, sqlcdb.SetArchiveCoverParams{Hash: hash, ID: albumID, Was: was})
 	if err != nil {
-		return 0, false, fmt.Errorf("album cover: %w", err)
+		return albumWritten{}, fmt.Errorf("album cover: %w", err)
 	}
-	return n + set, set > 0, nil
+	return albumWritten{shown: n > 0, cover: n > 0}, nil
+}
+
+// AlbumCounts counts the library's albums for Health's card.
+type AlbumCounts struct {
+	Albums       int // With a live track.
+	WithMBID     int // With a release MBID, which the Cover Art Archive is asked by.
+	FromArchive  int // Whose cover is the Cover Art Archive's.
+	WithoutCover int // With no cover at all.
+}
+
+// CountAlbums counts the library's albums by their covers.
+func (s *Store) CountAlbums(ctx context.Context) (AlbumCounts, error) {
+	r, err := s.rq.CountScrapeAlbums(ctx)
+	if err != nil {
+		return AlbumCounts{}, fmt.Errorf("count albums: %w", err)
+	}
+	return AlbumCounts{Albums: int(r.Albums), WithMBID: int(r.WithMbid), FromArchive: int(r.FromArchive), WithoutCover: int(r.WithoutCover)}, nil
 }

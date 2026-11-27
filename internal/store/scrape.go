@@ -291,17 +291,18 @@ const (
 	ImageFromFanart    = "fanart"
 	ImageFromWikimedia = "wikimedia"
 	BioFromWikipedia   = "wikipedia"
+	fromAudioDB        = "audiodb" // TheAudioDB, a later phase's.
 )
 
 // remoteImage reports whether source names a source's image: never a folder's
 // or a pin, which a source's write must never take away.
 func remoteImage(source string) bool {
-	return source == ImageFromFanart || source == ImageFromWikimedia || source == "audiodb"
+	return source == ImageFromFanart || source == ImageFromWikimedia || source == fromAudioDB
 }
 
 // remoteBio reports whether source names a source's bio: never an artist.nfo's.
 func remoteBio(source string) bool {
-	return source == BioFromWikipedia || source == "lastfm" || source == "audiodb"
+	return source == BioFromWikipedia || source == BioFromLastfm || source == fromAudioDB
 }
 
 func writeRemoteImage(ctx context.Context, q *sqlcdb.Queries, artistID int64, img *RemoteImage, now time.Time) (int64, error) {
