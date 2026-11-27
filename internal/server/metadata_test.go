@@ -12,6 +12,7 @@ import (
 
 	"github.com/simonhull/kitsune/api"
 	"github.com/simonhull/kitsune/internal/artwork"
+	"github.com/simonhull/kitsune/internal/lastfm/lastfmtest"
 	"github.com/simonhull/kitsune/internal/matching/musicbrainztest"
 	"github.com/simonhull/kitsune/internal/scrape"
 	"github.com/simonhull/kitsune/internal/scrape/fanarttv"
@@ -33,14 +34,16 @@ const (
 type scrapeServer struct {
 	*testServer
 
-	ft *fanarttvtest.Server
-	wm *wikimediatest.Server
-	mb *musicbrainztest.Server
+	ft  *fanarttvtest.Server
+	wm  *wikimediatest.Server
+	mb  *musicbrainztest.Server
+	lf  *lastfmtest.Server
+	cfg scrape.Config
 }
 
 func newScrapeServer(t *testing.T) *scrapeServer {
 	t.Helper()
-	ss := &scrapeServer{ft: fanarttvtest.New(t), wm: wikimediatest.New(t), mb: musicbrainztest.New(t)}
+	ss := &scrapeServer{ft: fanarttvtest.New(t), wm: wikimediatest.New(t), mb: musicbrainztest.New(t), lf: lastfmtest.New(t)}
 	ss.testServer = newTestServer(t, testServerOptions{
 		Artwork: artwork.NewCache(t.TempDir()), MusicBrainz: ss.mb,
 		Scrape: &scrapeStandIns{Fanart: ss.ft, Wikimedia: ss.wm},
@@ -48,10 +51,11 @@ func newScrapeServer(t *testing.T) *scrapeServer {
 	if err := ss.Store.SetScrapeFeedRead(t.Context(), store.ScrapeFanart, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	ss.Scraper.Configure(scrape.Config{
-		Remote: true, Fanart: true, Wikipedia: true, Language: "en",
-		Keys: fanarttv.Keys{API: fanartProjectKey, Client: fanartPersonalKey},
-	})
+	ss.cfg = scrape.Config{
+		Remote: true, Fanart: true, Wikipedia: true, LastfmBios: true, Archive: true, Language: "en",
+		Keys: fanarttv.Keys{API: fanartProjectKey, Client: fanartPersonalKey}, Lastfm: ss.lf.Client(),
+	}
+	ss.Scraper.Configure(ss.cfg)
 	return ss
 }
 
@@ -63,7 +67,7 @@ func (ss *scrapeServer) addArtist(t *testing.T, i int) string {
 	w := store.TrackWrite{
 		ULID: fmt.Sprintf("01S%023d", i), Root: musicBase, RelPath: fmt.Sprintf("s/%d.flac", i), Size: 1000,
 		MTime: time.UnixMilli(1_761_000_000_000), Digest: new(sha256.Sum256([]byte(name))),
-		Format: flacFormat, Codec: flacFormat, Duration: 200 * time.Second, Title: "Song", SortTitle: "Song",
+		Format: flacFormat, Codec: flacFormat, Duration: 200 * time.Second, Title: scrapedSong, SortTitle: scrapedSong,
 		Album: store.AlbumWrite{
 			GroupKey: "scraped " + strconv.Itoa(i), ULID: fmt.Sprintf("02S%023d", i), Artist: name,
 			Name: "Album " + strconv.Itoa(i), SortName: "Album " + strconv.Itoa(i),
@@ -108,7 +112,7 @@ func TestMetadataReportsThePassAndItsSources(t *testing.T) {
 	ss.addArtist(t, 1)
 	token := ss.tokenFor(t, store.RoleAdmin)
 	before := ss.metadata(t, token)
-	if !before.Remote || before.Artists.WithMBID != 1 || before.Artists.LookedUp != 0 || len(before.Sources) != 3 {
+	if !before.Remote || before.Artists.WithMBID != 1 || before.Artists.LookedUp != 0 || len(before.Sources) != 5 {
 		t.Errorf("before = %+v", before)
 	}
 	ss.Scraper.Pass(t.Context())
@@ -124,7 +128,7 @@ func checkAfterAPass(t *testing.T, m *api.MetadataStatus) {
 		t.Errorf("after = %+v", m)
 	}
 	fan := m.Sources[2]
-	if fan.Name != "fanarttv" || fan.State != "on" || fan.Key != "set" || fan.ClientKey != "set" {
+	if fan.Name != "fanarttv" || fan.State != "on" || fan.Key != keyIsSet || fan.ClientKey != keyIsSet {
 		t.Errorf("fanart.tv = %+v", fan)
 	}
 }

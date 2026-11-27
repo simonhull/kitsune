@@ -25,15 +25,25 @@ func (s *Server) getMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 	body := api.MetadataStatus{
 		Remote: rep.Remote, Language: rep.Language,
-		Pass: api.MetadataPass{Running: rep.Pass.Running, Done: rep.Pass.Done, Total: rep.Pass.Total},
+		Pass: api.MetadataPass{Running: rep.Pass.Running, Phase: api.PhaseArtists, Done: rep.Pass.Done, Total: rep.Pass.Total},
 		Artists: api.MetadataArtists{
 			AlbumArtists: rep.AlbumArtists, WithMBID: rep.WithMBID, LookedUp: rep.LookedUp,
 			WithArt: rep.WithArt, FoundNothing: rep.FoundNothing, WithoutMBID: rep.WithoutMBID,
 		},
+		Albums: api.MetadataAlbums{
+			Albums: rep.Albums.Albums, WithMBID: rep.Albums.WithMBID,
+			FromArchive: rep.Albums.FromArchive, WithoutCover: rep.Albums.WithoutCover,
+		},
 		NextRefresh: timeOrNil(rep.NextRefresh),
 		Sources:     make([]api.MetadataSource, len(rep.Sources)),
 	}
-	if rep.Pass.Artist != "" {
+	switch {
+	case rep.Pass.Albums:
+		body.Pass.Phase = api.PhaseAlbums
+		if rep.Pass.Album != "" {
+			body.Pass.Album = &api.AlbumLink{ID: rep.Pass.Album, Name: rep.Pass.Name}
+		}
+	case rep.Pass.Artist != "":
 		body.Pass.Artist = &api.ArtistLink{ID: rep.Pass.Artist, Name: rep.Pass.Name}
 	}
 	for i := range rep.Sources {

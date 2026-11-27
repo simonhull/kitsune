@@ -174,6 +174,10 @@ func (e *LibraryEvents) ArtistsChanged(ids []string) {
 	publishJSON(e.hub, events.Artists, events.Everyone(), &api.EventArtists{IDs: append([]string{}, ids...)}, nil)
 }
 
+// AlbumsChanged is what the album pass calls when it changed albums' covers or
+// extras: everyone hears which, as a library event, as a scan's change is.
+func (e *LibraryEvents) AlbumsChanged(ids []string) { e.LibraryChanged(ids, false) }
+
 // LastfmChanged returns what the scrobbler calls when a person's connection or
 // outbox changed: that person's devices hear it.
 func LastfmChanged(hub *events.Hub) func(userID int64) {
