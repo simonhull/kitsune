@@ -1,4 +1,5 @@
 import { createArtFixture } from './artFixture.ts';
+import { createArtworkFixture, type ArtworkFixture } from '#lib/choose/fixture.ts';
 import { changedSettings, foldersFixture, settingsFixture } from './settingsFixtures.ts';
 import { fnv1a } from '#lib/cover/cover.ts';
 import { letterOf } from '#lib/pages/libraryRows.ts';
@@ -961,6 +962,10 @@ export interface FixtureOptions {
 	metadata?: MetadataFixture | undefined;
 	/** How long each artist of the artist pass takes, in milliseconds. */
 	metadataArtistMs?: number | undefined;
+	/** Where Choose artwork starts: see `createArtworkFixture`. */
+	artwork?: ArtworkFixture | undefined;
+	/** How long Choose artwork's candidates take, in milliseconds. */
+	artworkMs?: number | undefined;
 }
 
 /** A song in a fixture Trash: where it came from, and when. */
@@ -1916,6 +1921,18 @@ export function createFixtureSource(options: FixtureOptions = {}): LibrarySource
 				})
 		}),
 		metadata,
+		artwork: createArtworkFixture({
+			art,
+			mode: options.artwork,
+			candidatesMs: options.artworkMs ?? 0,
+			respond: (answer) =>
+				respond(() => {
+					adminOnly();
+					return answer();
+				}),
+			mbid: (id) => art.mbid(id),
+			exists: (id) => artistLinks.some((artist) => artist.id === id)
+		}),
 		changeSettings: (change) =>
 			respond(() => {
 				adminOnly();

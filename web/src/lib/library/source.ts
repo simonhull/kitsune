@@ -1,5 +1,6 @@
 /** The contract's types, by name: see `api/openapi.yaml`. Real tags are messy, so much is optional. */
 
+import type { ArtworkSource } from '#lib/choose/types.ts';
 import type { DuplicatesSource } from '#lib/duplicates/types.ts';
 import type { MetadataStatusSource } from '#lib/metadata/types.ts';
 import type { OrganizeEvent, OrganizeSource } from '#lib/organize/types.ts';
@@ -1501,6 +1502,8 @@ export interface LibrarySource {
 	readonly replayGain: ReplayGainSource;
 	/** Health's Metadata card: how the artist pass and its sources stand, for administrators. */
 	readonly metadata: MetadataStatusSource;
+	/** Choose artwork's routes, for administrators: an artist's candidates, pins, uploads and holds. */
+	readonly artwork: ArtworkSource;
 	/**
 	 * Only the fixtures: calls `heard` with the artists whose art arrived, as the server's `artists`
 	 * event says. Returns what stops it.
