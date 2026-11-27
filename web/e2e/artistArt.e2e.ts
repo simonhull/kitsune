@@ -340,8 +340,14 @@ test.describe('wherever it is seen', () => {
 		const art = await page.locator('.shell > main .stack .art').boundingBox();
 		expect(art?.x).toBeLessThan(40);
 		expect(art?.width).toBeCloseTo(292, 0);
-		const disc = await page.locator('.shell > main .stack .disc').boundingBox();
-		expect(disc !== null && disc.x + disc.width > 390).toBe(true);
+		// The disc comes out of its sleeve @560 into the moment, after the units land.
+		const disc = page.locator('.shell > main .stack .disc');
+		await expect
+			.poll(async () => {
+				const box = await disc.boundingBox();
+				return box !== null && box.x + box.width > 390;
+			})
+			.toBe(true);
 	});
 
 	test('at 3840 the hero takes the size step', async ({ page }) => {
