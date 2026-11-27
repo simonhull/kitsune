@@ -32,7 +32,8 @@ func subscribe(live *settings.Service) ownerChanges {
 		organize: live.Subscribe(settings.OrganizeTemplate, settings.OrganizeCompilations, settings.OrganizeRoots,
 			settings.OrganizeOnEdit, settings.OrganizeCompanions, settings.OrganizeRewritePlaylists),
 		metadata: live.Subscribe(settings.MetadataRemote, settings.MetadataFanart, settings.MetadataWikipedia,
-			settings.MetadataLanguage, settings.FanartAPIKey, settings.FanartClientKey),
+			settings.MetadataLastfmBios, settings.MetadataArchive, settings.MetadataLanguage,
+			settings.FanartAPIKey, settings.FanartClientKey, settings.LastfmAPIKey),
 	}
 }
 

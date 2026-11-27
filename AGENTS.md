@@ -189,17 +189,20 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   (`summary`, `body`, `source`, and `url`, `license`, `licenseUrl`, `lang` where the source gives
   them) and `mbid`; `ArtistEntry` in `GET /artists` carries `thumb` (a `Picture`), read in one query
   for the whole list. `AlbumDetail.extras` holds `discs` (every disc's art as disc 0, then by disc),
-  `back` and `coverSource`. `GET /artwork/{hash}` takes every ladder's sizes (128, 400, 512, 640, 800,
+  `back` and `coverSource` (`files`, or `coverartarchive` while the album's cover is the Cover Art
+  Archive's). `GET /artwork/{hash}` takes every ladder's sizes (128, 400, 512, 640, 800,
   1024, 1920, 3840) and answers JPEG or, for an image with `alpha`, PNG. No response names a file or a
   root. The `artists` event (ids only) goes to everyone when a scan or the artist pass changes an
   artist's images or bio. `GET /artists/{id}` for an artist with an MBID and no art at all asks the
   pass for it at a person's priority (`Scraper.Want`) and answers at once; the art comes on the event.
-- `GET /admin/metadata` is Health's Metadata card (Phase 2, see Scrape): `remote`, `language`, each
-  source (`musicbrainz`, `wikipedia`, `fanarttv`) with `enabled`, `state` (`on`, `off`, `needsKey`,
-  `refused`, `resting` with `until`), `key` and `clientKey` (`set`, `missing` or `none`, never a value)
-  and its last `failure` in words; `pass` (running, done of total, the artist in hand); `artists`
-  counting album artists (`withMbid`, `lookedUp`, `withArt`, `foundNothing`, `withoutMbid`, which
-  Matching fixes); `nextRefresh`. A 503 without a scraper. Progress is no event: read it again.
+- `GET /admin/metadata` is Health's Metadata card (see Scrape): `remote`, `language`, each source
+  (`musicbrainz`, `wikipedia`, `fanarttv`, `lastfm`, `coverartarchive`) with `enabled`, `state` (`on`,
+  `off`, `needsKey`, `refused`, `resting` with `until`), `key` and `clientKey` (`set`, `missing` or
+  `none`, never a value; Last.fm's `key` says whether `lastfm.api_key` is set) and its last `failure`
+  in words; `pass` (running, `phase` `artists` then `albums`, done of total, the `artist` or `album` in
+  hand); `artists` counting album artists (`withMbid`, `lookedUp`, `withArt`, `foundNothing`,
+  `withoutMbid`, which Matching fixes); `albums` (`albums`, `withMbid`, `fromArchive`, `withoutCover`);
+  `nextRefresh`. A 503 without a scraper. Progress is no event: read it again.
 - Stars are the only like: a song's own rating, ½★ to 5★ in halves, is what every list, filter, sort,
   album average and shuffle weight reads. Nothing is hearted any more. The hearts people kept from
   before (`track_hearts`, `album_hearts`, `artist_hearts`) show and weigh nowhere; they wait for
@@ -384,6 +387,21 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `pinned` row and an `nfo` bio, and its deletes take only the named source's row (a `folder` or
   `pinned` source is `ErrInvalidWrite`). A folder that gives up an image or a bio brings every
   source's `next_at` for that artist forward (`AskAgainForArtist`), as does `AskAgain` for the feed.
+- The album pass's state (`albumscrape.go`, migration `0028`): `scrape_state` rebuilt so `source`
+  also takes `lastfm` (artists' bios), `coverartarchive` and `musicbrainz` (kind `album`: the archive
+  and the release-group lookup by the release MBID, fanart.tv by the release group's);
+  `album_images.remote_id`. A Cover Art Archive front is both an `album_images` row (kind `cover`,
+  disc 0, which says where it came from) and `albums.artwork_hash` (which every list, the index and
+  the album page read, so nothing else changes): `WriteAlbumRemote` is one `inLibraryTxIf`, a library
+  write only when the cover changes, and sets the cover only while it is NULL or still the archive's
+  (`SetArchiveCover ... WHERE artwork_hash IS was`). The trigger `albums_cover_from_files` deletes the
+  `cover` row the moment anything else sets the album's cover (a scan finding one in the files, an
+  edit, a merge, which prefers a files' cover: `MergeAlbumInto`), so the files win at once. A release
+  group looked up is written to `albums.release_group_mbid` only while NULL (never to a file); the
+  scan's `coalesce` keeps it. A folder's disc art deletes every source's disc art of the album
+  (`DeleteRemoteDiscArt`); a folder extra gone brings the album's sources forward
+  (`AskAgainForAlbum`). `ScrapeAlbums` reads every album with a live track, its plays, discs, held
+  extras and states in one transaction; `CountAlbums` is the card's counts.
 
 ## Matching
 - `internal/matching` finds an album's release at a source (MusicBrainz now; Discogs later, as another
@@ -394,7 +412,11 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   second and serves people before prefetch (`matching.Background`, which is `remote.Background`). It
   names itself `Kitsune/<version> ( https://github.com/simonhull/kitsune )` and asks again after a 503
   or a 429. `ArtistLinks` (`artist/{mbid}?inc=url-rels`, kept a week) gives the artist pass an artist's
-  Wikidata item.
+  Wikidata item; `ReleaseGroup` (`release/{mbid}?inc=release-groups`, kept a week in `lookups`) an
+  album's release group. `CoverArt` and `DownloadArt` are the Cover Art Archive (`release/{mbid}`'s
+  listing, the first front and back at their 1200 px thumbnails) through a gate of its own, one a
+  second; an image off the archive (`coverartarchive.org`, `archive.org`, or the stand-in's host) is
+  `ErrBadArt`, never fetched.
 - Confidence is evidence-weighted, and evidence is structured facts the client words, as shuffle's
   `why`. Matching never proposes taking a value away, and never guesses: a field the release lacks is
   left out.
@@ -473,12 +495,14 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `follow.go` hands them to the scanner (`SetOrganize`), which doesn't wait: a run keeps its preview's
   templates.
 - The artist pass's keys (`settings/metadata.go`): `metadata.remote`, the master switch, off on a new
-  server; `metadata.fanarttv` and `metadata.wikipedia` (on, under it); `metadata.language` (two letters,
+  server; `metadata.fanarttv`, `metadata.wikipedia`, `metadata.lastfm_bios` (off whatever it says
+  without `lastfm.api_key`) and `metadata.coverartarchive` (all on, under it); `metadata.language` (two letters,
   `en`); `fanarttv.api_key` (the project key) and `fanarttv.client_key` (a person's own), secrets as
   `lastfm.shared_secret` is, unset by default. Kitsune ships no key and builds none into a release:
   without a project key fanart.tv is off and says so. server.toml doesn't carry them; a variable (or
-  `-set`, keys aside) seeds them. `follow.go` hands them to `Scraper.Configure`, which takes them at
-  once and asks every source again.
+  `-set`, keys aside) seeds them. `follow.go` hands them, and `lastfm.api_key`, to `Scraper.Configure`,
+  which takes them at once and asks every source again. Bios use a Last.fm client of their own made
+  from the API key alone (`scrapeConfig`), so the scrobbler's, which needs the secret too, is untouched.
 
 ## Auth
 - `internal/auth` owns credentials. Passwords are Argon2id in PHC format; the store only
@@ -700,8 +724,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   test seam, `organizeFault`, stops a run at each step as a crash would.
 
 ## Scrape
-- `internal/scrape` is the artist pass (plan 072, Phase 2): images and bios for artists, only ever by
-  the MBID the library holds (`artists.mbid`), never by a name. Not an MBID, Various Artists and
+- `internal/scrape` is the artist and album pass (plan 072, Phases 2 and 3): images and bios for
+  artists, covers and extras for albums, only ever by the MBIDs the library holds (`artists.mbid`,
+  `albums.mbid`, `albums.release_group_mbid`), never by a name. Not an MBID, Various Artists and
   MusicBrainz's special-purpose artists (`Askable`) are never asked about. Turning `metadata.remote` on
   sends MBIDs to the sources and nothing else.
 - Sources, in precedence after pins and the library's own files: fanart.tv (`scrape/fanarttv`:
@@ -714,6 +739,24 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   keeps its own; an image goes only when its own source answered with none and no later one has one
   (then the other sources are asked again). Among one source's images: tier, language (wanted,
   English, none, other), likes, size, the oldest ID. Nothing remote ever removes local art.
+- Last.fm (`scrape/lastfm.go`, `lastfm.Client.ArtistInfo`): `artist.getInfo?mbid=`, an unsigned POST
+  (the key in the body, never a URL) through its own one-a-second gate, asked last and only when a bio
+  is still wanted (`wantsLastfm`: no `nfo` bio, none from Wikipedia now, and no Wikipedia bio kept
+  that Wikipedia wasn't asked to replace; not wanted, it isn't asked and its state says found).
+  `lastfm.Strip` makes its HTML plain paragraphs, links dropped, the "Read more on Last.fm" link kept
+  as the bio's `url` and the license line after it dropped; credited `CC BY-SA` (3.0). An answer naming
+  another MBID is none. Never an image: Last.fm's are placeholders. Code 6 is none, 10 and 26 a
+  refused key.
+- The album pass (`scrape/album.go`) runs after the artists in the same `Pass`, albums by everyone's
+  plays: a release group from MusicBrainz for an album with a release MBID and none (only while
+  fanart.tv is on, since only it asks by one); the Cover Art Archive by the release for a front while
+  the files have no cover and a back while the folder has none (precedence: folder, archive); fanart.tv
+  by the release group for disc art while the folder has none (`cdart`: one for every disc on an album
+  of one, else per disc, `DiscCandidates`), PNG with alpha through `artwork.Disc`. fanart.tv's album
+  covers are never used: an album's cover is its files', else the archive's. One album is one
+  `WriteAlbumRemote` and, when it changed anything shown, one `library` event (`NotifyAlbums`,
+  `LibraryEvents.AlbumsChanged`). An answer that no longer lists an image takes away only that
+  source's.
 - `internal/remote` is every service's client (the gate MusicBrainz used, moved): a gate per service
   with people before `Background` work, one request per key at once, retries on 429 and 503 honoring
   `Retry-After` (a wait past a minute ends the request), a body cap, the User-Agent, and errors that
@@ -735,7 +778,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
 - `describe` words a failure for the card ("fanart.tv refused the key", "fanart.tv answered 503") from
   sentinels and statuses alone. `TestNoErrorQuotesAKey` (`fanarttv`, `scrape`) holds every error,
   log line, stored error and the report to no key against every stand-in fault.
-- Tests use `fanarttvtest`, `wikimediatest` and `musicbrainztest` (`AddArtist`); each answers 429 with
+- Tests use `fanarttvtest` (`AddAlbum` for disc art), `wikimediatest`, `musicbrainztest` (`AddArtist`;
+  `AddBack` and a release's `Cover` for the archive, its images 1200 px JPEGs drawn once) and
+  `lastfmtest` (`AddArtist`, `Bio`, an `Answered` MBID for a mismatch); each answers 429 with
   Retry-After, 503, a refused key, bare file names, slowly and too much. The pass's tests guard their
   transports so a request that would leave httptest fails the test.
 
@@ -945,7 +990,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   a pass goes and the card is on screen, and on `artists` and `settings` events. Server › Settings'
   Artist art and bios section (`art` in `serverForm.ts`) holds the switches, the bio language and
   fanart.tv's two keys, write-only as Last.fm's secret (Add key, Set · never shown, Replace, Clear).
-  The fixtures: `?metadata=off|running|refused|resting|done`, `?metadataArtist=` ms per artist.
+  Last.fm and the Cover Art Archive are rows there too (Last.fm's trouble links `/server#lastfm`), the
+  album phase says `NOW · <album> · n OF m ALBUMS`, and `albumsWords` counts the archive's covers.
+  The fixtures: `?metadata=off|running|refused|resting|albums|done`, `?metadataArtist=` ms per artist.
 - Journeys (`lib/morph/`) keep the In-Front Rule: the page you go to is always drawn in front of the
   page you leave, and nothing leaving moves away to uncover it. The ghost layer is the first thing in
   the shell, under the stages and the page, and a stage left is held there as a picture. A ghost is a
@@ -1047,7 +1094,9 @@ and written through [audiometa](https://github.com/simonhull/audiometa).
   `GET /admin/replaygain` over 50,000 songs with 2,000 to write, an artist's page with all four
   images and a bio, `GET /artists` of 2,000 artists with thumbs, a quick scan beside unchanged
   art, held to the same scan without it, and the artist pass over one artist against the stand-ins
-  (`scrape-artist`: its JSON, choices, a 4K background and three more images rendered, one write). The
+  (`scrape-artist`: its JSON, choices, a 4K background and three more images rendered, one write), and
+  the album pass over one album (`scrape-album`: a release-group lookup, the archive's 1200 px front and
+  back and fanart.tv's disc art rendered, one library write). The
   browser suite also holds that a song plays on while its file moves. Each fails past its budget,
   and CI runs both on every PR: the speed tests in their own job, the browser suite as four shards (each
   library in two, the files split by time in `web/perf/shards.ts`, one worker each), and the `perf` job

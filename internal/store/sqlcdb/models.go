@@ -37,6 +37,7 @@ type AlbumImage struct {
 	FileSize    *int64
 	FileMtime   *int64
 	FoundAt     int64
+	RemoteID    *string
 }
 
 type AlbumLoudness struct {

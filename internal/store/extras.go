@@ -338,6 +338,10 @@ func writeAlbumImage(ctx context.Context, q *sqlcdb.Queries, w *AlbumImageWrite,
 	disc := int64(w.Disc)
 	if w.Image == nil {
 		n, err := q.DeleteFolderAlbumImage(ctx, sqlcdb.DeleteFolderAlbumImageParams{AlbumID: w.AlbumID, Kind: string(w.Kind), Disc: disc})
+		if err == nil && n > 0 {
+			// A source may have what the folder gave up.
+			err = q.AskAgainForAlbum(ctx, sqlcdb.AskAgainForAlbumParams{Now: ms(now), AlbumID: w.AlbumID})
+		}
 		if err != nil {
 			return 0, fmt.Errorf("album %d %s %d: %w", w.AlbumID, w.Kind, w.Disc, err)
 		}
@@ -351,6 +355,12 @@ func writeAlbumImage(ctx context.Context, q *sqlcdb.Queries, w *AlbumImageWrite,
 		AlbumID: w.AlbumID, Kind: string(w.Kind), Disc: disc, ArtworkHash: w.Image.Hash[:],
 		FileRoot: f.root, FilePath: f.path, FileSize: f.size, FileMtime: f.mtime, FoundAt: ms(now),
 	})
+	if err == nil && w.Kind == AlbumDisc {
+		// The folder's disc art puts every source's aside: files come first.
+		var gone int64
+		gone, err = q.DeleteRemoteDiscArt(ctx, w.AlbumID)
+		n += gone
+	}
 	if err != nil {
 		return 0, fmt.Errorf("album %d %s %d: %w", w.AlbumID, w.Kind, w.Disc, err)
 	}
@@ -440,6 +450,9 @@ type DiscImage struct {
 type AlbumExtras struct {
 	Discs []DiscImage // [AllDiscs] first, then by disc.
 	Back  *ExtraImage
+	// Cover is the Cover Art Archive's front while it is the album's cover,
+	// else nil: a cover from the files leaves it nil.
+	Cover *ExtraImage
 }
 
 // picture builds a Picture from an image's columns.
@@ -533,6 +546,8 @@ func (s *Store) albumExtras(ctx context.Context, albumID int64) (AlbumExtras, er
 			ex.Discs = append(ex.Discs, DiscImage{Disc: int(r.Disc), ExtraImage: img})
 		case AlbumBack:
 			ex.Back = &img
+		case AlbumCover:
+			ex.Cover = &img
 		}
 	}
 	return ex, nil

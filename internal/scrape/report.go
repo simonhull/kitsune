@@ -15,7 +15,7 @@ type SourceState string
 const (
 	SourceOn       SourceState = "on"       // Asked as artists fall due.
 	SourceOff      SourceState = "off"      // Its switch, or the master switch, is off.
-	SourceNeedsKey SourceState = "needsKey" // On, but fanart.tv has no project key.
+	SourceNeedsKey SourceState = "needsKey" // On, but its key is missing: fanart.tv's project key, Last.fm's API key.
 	SourceRefused  SourceState = "refused"  // It refused the key: asked no more until a setting changes.
 	SourceResting  SourceState = "resting"  // It was down or busy: asked again at Until.
 )
@@ -32,7 +32,7 @@ const (
 
 // SourceReport is how one source stands.
 type SourceReport struct {
-	Name      string // "musicbrainz", "wikipedia" or "fanarttv".
+	Name      string // "musicbrainz", "wikipedia", "fanarttv", "lastfm" or "coverartarchive".
 	Enabled   bool   // Its switch, under the master switch.
 	State     SourceState
 	Key       KeyState // Its project key.
@@ -54,6 +54,8 @@ type Report struct {
 	AlbumArtists, WithMBID, LookedUp, WithArt, FoundNothing, WithoutMBID int
 	// NextRefresh is when the next artist falls due, zero when none waits.
 	NextRefresh time.Time
+	// Albums counts the library's albums by their covers.
+	Albums store.AlbumCounts
 }
 
 // Report says how the pass and its sources stand, and counts the library's
@@ -65,8 +67,12 @@ func (s *Scraper) Report(ctx context.Context) (Report, error) {
 	if err != nil {
 		return Report{}, fmt.Errorf("artist pass report: %w", err)
 	}
-	r := Report{Remote: cfg.Remote, Language: cfg.Language, Pass: s.Progress(), Sources: s.sourceReports(cfg, now)}
-	on := s.usable(cfg, now)
+	albums, err := s.o.Store.CountAlbums(ctx)
+	if err != nil {
+		return Report{}, fmt.Errorf("artist pass report: %w", err)
+	}
+	r := Report{Remote: cfg.Remote, Language: cfg.Language, Pass: s.Progress(), Sources: s.sourceReports(cfg, now), Albums: albums}
+	on := s.usable(cfg, now, artistSources())
 	for i := range artists {
 		a := &artists[i]
 		if !a.Owner {
@@ -119,19 +125,37 @@ func (r *Report) refreshAt(next, now time.Time) {
 func (s *Scraper) sourceReports(cfg *Config, now time.Time) []SourceReport {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	mb := SourceReport{Name: "musicbrainz", Enabled: cfg.Wikipedia, Key: KeyNone, ClientKey: KeyNone}
+	// MusicBrainz names artists' Wikidata items and albums' release groups.
+	mb := SourceReport{Name: "musicbrainz", Enabled: cfg.Wikipedia || cfg.Fanart, Key: KeyNone, ClientKey: KeyNone}
 	wiki := SourceReport{Name: "wikipedia", Enabled: cfg.Wikipedia, Key: KeyNone, ClientKey: KeyNone}
 	fan := SourceReport{Name: "fanarttv", Enabled: cfg.Fanart, Key: keyState(cfg.Keys.API), ClientKey: keyState(cfg.Keys.Client)}
+	caa := SourceReport{Name: "coverartarchive", Enabled: cfg.Archive, Key: KeyNone, ClientKey: KeyNone}
 	wiki.State, wiki.Until, wiki.Failure = s.stateOf(store.ScrapeWikimedia, cfg.Remote && s.wikimediaOn(cfg), now)
-	mb.State = SourceOff
-	if cfg.Remote && s.wikimediaOn(cfg) {
-		mb.State = SourceOn
-	}
+	mb.State, mb.Until, mb.Failure = s.stateOf(store.ScrapeMusicBrainz, cfg.Remote && (s.wikimediaOn(cfg) || s.groupsOn(cfg)), now)
 	fan.State, fan.Until, fan.Failure = s.stateOf(store.ScrapeFanart, cfg.Remote && s.fanartOn(cfg), now)
-	if cfg.Remote && cfg.Fanart && s.o.Fanart != nil && cfg.Keys.API == "" {
+	if s.fanartNeedsKey(cfg) {
 		fan.State = SourceNeedsKey
 	}
-	return []SourceReport{mb, wiki, fan}
+	caa.State, caa.Until, caa.Failure = s.stateOf(store.ScrapeArchive, cfg.Remote && s.archiveOn(cfg), now)
+	return []SourceReport{mb, wiki, fan, s.lastfmReport(cfg, now), caa}
+}
+
+// fanartNeedsKey reports whether fanart.tv is on but has no project key.
+func (s *Scraper) fanartNeedsKey(cfg *Config) bool {
+	return cfg.Remote && cfg.Fanart && s.o.Fanart != nil && cfg.Keys.API == ""
+}
+
+// lastfmReport is how Last.fm stands under cfg. The caller holds mu.
+func (s *Scraper) lastfmReport(cfg *Config, now time.Time) SourceReport {
+	lfm := SourceReport{Name: "lastfm", Enabled: cfg.LastfmBios, Key: KeyMissing, ClientKey: KeyNone}
+	if cfg.Lastfm != nil {
+		lfm.Key = KeySet
+	}
+	lfm.State, lfm.Until, lfm.Failure = s.stateOf(store.ScrapeLastfm, cfg.Remote && s.lastfmOn(cfg), now)
+	if cfg.Remote && cfg.LastfmBios && cfg.Lastfm == nil {
+		lfm.State = SourceNeedsKey
+	}
+	return lfm
 }
 
 // stateOf is how src stands when on says whether it is switched on. The

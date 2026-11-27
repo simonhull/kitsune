@@ -1,8 +1,9 @@
 /**
  * Health's Metadata card on the boards' library, worked out in the page so e2e needs no server. How
  * the sources stand follows the fixture settings, as the server's report follows its own: turning
- * lookups on starts a pass, a key added takes fanart.tv out of needing one, and a key changed lifts
- * a refusal. A pass goes artist by artist on a clock. The counts are the boards', made up.
+ * lookups on starts a pass, a key added takes fanart.tv (or Last.fm) out of needing one, and a key
+ * changed lifts a refusal. A pass goes artist by artist (or album by album) on a clock. The counts
+ * are the boards', made up.
  */
 
 import type {
@@ -13,6 +14,7 @@ import type {
 	SettingsChange
 } from '#lib/library/source.ts';
 import type {
+	MetadataAlbums,
 	MetadataArtists,
 	MetadataSource,
 	MetadataStatus,
@@ -30,12 +32,18 @@ export type MetadataFixture =
 	| 'refused'
 	/** A pass going while Wikipedia rests after a 503. */
 	| 'resting'
+	/** A pass going through albums, Last.fm waiting for its key. */
+	| 'albums'
 	/** Every key set, every artist asked about: up to date. */
 	| 'done';
 
 /** The `?metadata=` a fixtures page opens with. */
 export function metadataFixture(value: string | null): MetadataFixture {
-	return value === 'running' || value === 'refused' || value === 'resting' || value === 'done'
+	return value === 'running' ||
+		value === 'refused' ||
+		value === 'resting' ||
+		value === 'albums' ||
+		value === 'done'
 		? value
 		: 'off';
 }
@@ -57,6 +65,8 @@ export function metadataSettings(start: MetadataFixture): MetadataSettings {
 		'metadata.remote': start === 'off' ? setting(false) : setting(true, 'web'),
 		'metadata.fanarttv': setting(true),
 		'metadata.wikipedia': setting(true),
+		'metadata.lastfm_bios': setting(true),
+		'metadata.coverartarchive': setting(true),
 		'metadata.language': setting('en'),
 		'fanarttv.api_key': secret(keyed),
 		'fanarttv.client_key':
@@ -71,13 +81,17 @@ const albumArtists = 418;
 const withoutMbid = 67;
 const withMbid = albumArtists - withoutMbid;
 
+/** The boards' albums, by their covers. */
+const albumCount = 931;
+const albumsWithMbid = 805;
+
 const minuteMs = 60_000;
 const dayMs = 86_400_000;
 
 export interface MetadataFixtureOptions {
 	start: MetadataFixture;
-	/** The settings as they are now. */
-	settings: () => MetadataSettings;
+	/** The settings as they are now, Last.fm's key among them. */
+	settings: () => MetadataSettings & { 'lastfm.api_key': Setting<string> };
 	/** Artists a pass names as the one in hand, in turn. */
 	artists: () => readonly ArtistLink[];
 	/** How long each artist of a pass takes, in milliseconds. */
@@ -107,7 +121,11 @@ export function createMetadataFixture(options: MetadataFixtureOptions): Metadata
 			? { at: started, from: 66, total: 140 }
 			: options.start === 'resting'
 				? { at: started, from: 31, total: 140 }
-				: null;
+				: options.start === 'albums'
+					? { at: started, from: 12, total: 96 }
+					: null;
+	/** The pass goes through albums: the artists are done. */
+	const albumPhase = options.start === 'albums';
 	let refused = options.start === 'refused';
 	/** Asked about every artist: the counts are the finished ones. */
 	let finished = options.start === 'refused' || options.start === 'done';
@@ -125,8 +143,18 @@ export function createMetadataFixture(options: MetadataFixtureOptions): Metadata
 		}
 	}
 
+	function albums(at: number): MetadataAlbums {
+		const archived = finished ? 23 : albumPhase ? Math.min(23, Math.floor(done(at) / 4)) : 0;
+		return {
+			albums: albumCount,
+			withMbid: albumsWithMbid,
+			fromArchive: archived,
+			withoutCover: 35 - archived
+		};
+	}
+
 	function artists(at: number): MetadataArtists {
-		if (finished) {
+		if (finished || albumPhase) {
 			return {
 				albumArtists,
 				withMbid,
@@ -148,7 +176,7 @@ export function createMetadataFixture(options: MetadataFixtureOptions): Metadata
 		};
 	}
 
-	function sources(s: MetadataSettings): MetadataSource[] {
+	function sources(s: MetadataSettings & { 'lastfm.api_key': Setting<string> }): MetadataSource[] {
 		const remote = s['metadata.remote'].value;
 		const wiki = s['metadata.wikipedia'].value;
 		const fanart = s['metadata.fanarttv'].value;
@@ -196,8 +224,31 @@ export function createMetadataFixture(options: MetadataFixtureOptions): Metadata
 							}
 						}
 					: {})
+			},
+			lastfmSource(s),
+			{
+				name: 'coverartarchive',
+				enabled: s['metadata.coverartarchive'].value,
+				state: remote && s['metadata.coverartarchive'].value ? 'on' : 'off',
+				key: 'none',
+				clientKey: 'none'
 			}
 		];
+	}
+
+	/** Last.fm, which needs the server's Last.fm API key. */
+	function lastfmSource(
+		s: MetadataSettings & { 'lastfm.api_key': Setting<string> }
+	): MetadataSource {
+		const on = s['metadata.remote'].value && s['metadata.lastfm_bios'].value;
+		const keyed = s['lastfm.api_key'].value !== '';
+		return {
+			name: 'lastfm',
+			enabled: s['metadata.lastfm_bios'].value,
+			state: !on ? 'off' : keyed ? 'on' : 'needsKey',
+			key: keyed ? 'set' : 'missing',
+			clientKey: 'none'
+		};
 	}
 
 	return {
@@ -210,20 +261,28 @@ export function createMetadataFixture(options: MetadataFixtureOptions): Metadata
 				const asked = done(at);
 				const named = options.artists();
 				const artist = pass === null ? undefined : named.at(asked % Math.max(1, named.length));
+				const inHand =
+					artist === undefined
+						? {}
+						: albumPhase
+							? { album: { id: artist.id, name: `${artist.name} · The Record` } }
+							: { artist };
 				return {
 					remote,
 					language: s['metadata.language'].value,
 					pass:
 						pass === null || !remote
-							? { running: false, done: 0, total: 0 }
+							? { running: false, phase: 'artists', done: 0, total: 0 }
 							: {
 									running: true,
+									phase: albumPhase ? 'albums' : 'artists',
 									done: asked,
 									total: pass.total,
-									...(artist === undefined ? {} : { artist })
+									...inHand
 								},
 					sources: sources(s),
 					artists: artists(at),
+					albums: albums(at),
 					...(finished && remote
 						? { nextRefresh: new Date(started + 9 * dayMs).toISOString() }
 						: {})

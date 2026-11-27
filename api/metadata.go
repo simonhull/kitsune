@@ -11,15 +11,38 @@ type MetadataStatus struct {
 	Pass        MetadataPass     `json:"pass"`
 	Sources     []MetadataSource `json:"sources"`
 	Artists     MetadataArtists  `json:"artists"`
+	Albums      MetadataAlbums   `json:"albums"`
 	NextRefresh *time.Time       `json:"nextRefresh,omitzero"`
 }
 
-// MetadataPass is where the artist pass stands.
+// Phases of the pass: artists first, then albums.
+const (
+	PhaseArtists = "artists"
+	PhaseAlbums  = "albums"
+)
+
+// MetadataPass is where the pass stands.
 type MetadataPass struct {
 	Running bool        `json:"running"`
+	Phase   string      `json:"phase"`
 	Done    int         `json:"done"`
 	Total   int         `json:"total"`
 	Artist  *ArtistLink `json:"artist,omitzero"`
+	Album   *AlbumLink  `json:"album,omitzero"`
+}
+
+// AlbumLink names an album.
+type AlbumLink struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// MetadataAlbums counts the library's albums by their covers.
+type MetadataAlbums struct {
+	Albums       int `json:"albums"`
+	WithMBID     int `json:"withMbid"`
+	FromArchive  int `json:"fromArchive"`
+	WithoutCover int `json:"withoutCover"`
 }
 
 // MetadataSource is how one source stands. Neither key is ever sent: only

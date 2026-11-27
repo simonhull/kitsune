@@ -46,3 +46,20 @@ func (n *looseInt) UnmarshalJSON(b []byte) error {
 	*n = looseInt(v)
 	return nil
 }
+
+// albumJSON is a release group as fanart.tv's JSON has it, keyed by its MBID.
+type albumJSON struct {
+	Status string `json:"status"` // "error" when it has none.
+	Albums map[string]struct {
+		CDArts []discJSON `json:"cdart"`
+	} `json:"albums"`
+}
+
+// discJSON is one disc's art: an image, and the disc it is of.
+type discJSON struct {
+	ID    looseString `json:"id"`
+	URL   string      `json:"url"`
+	Lang  string      `json:"lang"`
+	Likes looseInt    `json:"likes"`
+	Disc  looseInt    `json:"disc"`
+}

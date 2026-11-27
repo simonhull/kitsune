@@ -769,6 +769,10 @@ type AlbumDetail struct {
 // files.
 const CoverFromFiles = "files"
 
+// CoverFromArchive is [AlbumExtras.CoverSource] for a front from the Cover Art
+// Archive, which an album with none in its files is given.
+const CoverFromArchive = "coverartarchive"
+
 // AlbumExtras are an album's disc art and back cover.
 type AlbumExtras struct {
 	// Discs is every disc's art first (Disc 0), then by disc.

@@ -17,6 +17,13 @@ const (
 	// MetadataFanart and MetadataWikipedia switch one source each, under it.
 	MetadataFanart    Key = "metadata.fanarttv"
 	MetadataWikipedia Key = "metadata.wikipedia"
+	// MetadataLastfmBios asks Last.fm for the bio of an artist that has none
+	// from its folder or Wikipedia, through lastfm.api_key: without that key it
+	// is off whatever it says.
+	MetadataLastfmBios Key = "metadata.lastfm_bios"
+	// MetadataArchive asks the Cover Art Archive for the front cover of an
+	// album whose files have none, and for a back cover its folder lacks.
+	MetadataArchive Key = "metadata.coverartarchive"
 	// MetadataLanguage is the two-letter language bios and art are wanted in.
 	MetadataLanguage Key = "metadata.language"
 	// FanartAPIKey is the fanart.tv project key, which fanart.tv needs: Kitsune
@@ -51,6 +58,18 @@ func metadataDefs() map[Key]def {
 		MetadataWikipedia: field[bool]{
 			get:       func(v *Values) bool { return v.MetadataWikipedia },
 			set:       func(v *Values, w bool) error { v.MetadataWikipedia = w; return nil },
+			parseText: parseBool,
+			fromFile:  func(*config.Config) bool { return true },
+		},
+		MetadataLastfmBios: field[bool]{
+			get:       func(v *Values) bool { return v.MetadataLastfmBios },
+			set:       func(v *Values, w bool) error { v.MetadataLastfmBios = w; return nil },
+			parseText: parseBool,
+			fromFile:  func(*config.Config) bool { return true },
+		},
+		MetadataArchive: field[bool]{
+			get:       func(v *Values) bool { return v.MetadataArchive },
+			set:       func(v *Values, w bool) error { v.MetadataArchive = w; return nil },
 			parseText: parseBool,
 			fromFile:  func(*config.Config) bool { return true },
 		},

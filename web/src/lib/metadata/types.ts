@@ -2,12 +2,14 @@
 
 import type { ArtistLink } from '#lib/library/source.ts';
 
-/** The sources the artist pass asks, in the order the server lists them. */
-export type MetadataSourceName = 'musicbrainz' | 'wikipedia' | 'fanarttv';
+/** The sources the pass asks, in the order the server lists them. */
+export type MetadataSourceName =
+	'musicbrainz' | 'wikipedia' | 'fanarttv' | 'lastfm' | 'coverartarchive';
 
 /**
- * `on` (asked as artists fall due), `off` (its switch or the master switch), `needsKey` (fanart.tv
- * without its project key), `refused` (it refused the key) or `resting` (down or busy, until `until`).
+ * `on` (asked as artists and albums fall due), `off` (its switch or the master switch), `needsKey`
+ * (fanart.tv without its project key, Last.fm without its API key), `refused` (it refused the key)
+ * or `resting` (down or busy, until `until`).
  */
 export type SourceState = 'on' | 'off' | 'needsKey' | 'refused' | 'resting';
 
@@ -31,12 +33,32 @@ export interface MetadataSource {
 	failure?: MetadataFailure;
 }
 
-/** The artist pass: `done` of `total`, and the artist in hand. All zero while none runs. */
+/** An album the pass has in hand. */
+export interface AlbumLink {
+	id: string;
+	name: string;
+}
+
+/**
+ * The pass: `done` of `total` artists, then albums (`phase`), and the one in hand. All zero while
+ * none runs.
+ */
 export interface MetadataPass {
 	running: boolean;
+	phase: 'artists' | 'albums';
 	done: number;
 	total: number;
 	artist?: ArtistLink;
+	album?: AlbumLink;
+}
+
+/** The library's albums by their covers. */
+export interface MetadataAlbums {
+	albums: number;
+	withMbid: number;
+	/** Whose cover is the Cover Art Archive's, as their files have none. */
+	fromArchive: number;
+	withoutCover: number;
 }
 
 /** The library's album artists, by what the pass has of them. */
@@ -56,6 +78,7 @@ export interface MetadataStatus {
 	pass: MetadataPass;
 	sources: MetadataSource[];
 	artists: MetadataArtists;
+	albums: MetadataAlbums;
 	nextRefresh?: string;
 }
 

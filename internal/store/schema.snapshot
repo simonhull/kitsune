@@ -28,7 +28,7 @@ CREATE TABLE album_images (
 	file_path    TEXT,
 	file_size    INTEGER,
 	file_mtime   INTEGER,
-	found_at     INTEGER NOT NULL,
+	found_at     INTEGER NOT NULL, remote_id TEXT,
 	PRIMARY KEY (album_id, kind, disc),
 	CHECK (kind = 'disc' OR disc = 0),
 	CHECK ((source = 'folder') = (file_path IS NOT NULL)),
@@ -45,6 +45,7 @@ CREATE TABLE album_images (
 --   column cid=8 name=file_size type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
 --   column cid=9 name=file_mtime type=INTEGER notnull=0 dflt_value=<nil> pk=0 hidden=0
 --   column cid=10 name=found_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
+--   column cid=11 name=remote_id type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
 --   foreign key id=0 seq=0 table=artwork from=artwork_hash to=hash on_update=NO ACTION on_delete=NO ACTION match=NONE
 --   foreign key id=1 seq=0 table=albums from=album_id to=id on_update=NO ACTION on_delete=CASCADE match=NONE
 
@@ -97,6 +98,14 @@ CREATE TABLE albums (
 --   column cid=10 name=added_at type=INTEGER notnull=1 dflt_value=<nil> pk=0 hidden=0
 --   column cid=11 name=release_group_mbid type=TEXT notnull=0 dflt_value=<nil> pk=0 hidden=0
 --   foreign key id=0 seq=0 table=artwork from=artwork_hash to=hash on_update=NO ACTION on_delete=NO ACTION match=NONE
+
+-- trigger albums_cover_from_files
+CREATE TRIGGER albums_cover_from_files AFTER UPDATE OF artwork_hash ON albums
+WHEN new.artwork_hash IS NOT old.artwork_hash
+BEGIN
+	DELETE FROM album_images
+	WHERE album_id = new.id AND kind = 'cover' AND artwork_hash IS NOT new.artwork_hash;
+END;
 
 -- index albums_added
 CREATE INDEX albums_added ON albums (added_at DESC, id DESC);
@@ -738,7 +747,7 @@ CREATE TABLE scrape_feeds (
 
 -- table scrape_state
 CREATE TABLE scrape_state (
-	source     TEXT    NOT NULL CHECK (source IN ('fanarttv', 'wikimedia')),
+	source     TEXT    NOT NULL CHECK (source IN ('fanarttv', 'wikimedia', 'lastfm', 'coverartarchive', 'musicbrainz')),
 	kind       TEXT    NOT NULL CHECK (kind IN ('artist', 'album')),
 	mbid       TEXT    NOT NULL CHECK (length(mbid) = 36),
 	status     TEXT    NOT NULL CHECK (status IN ('found', 'none', 'failed')),

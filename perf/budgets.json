@@ -230,6 +230,10 @@
     "scrape-artist": {
       "interaction": "The artist pass over one artist, every source on, against stand-ins: JSON, choices, a 1000 px thumb, a 4K background, a logo and a banner rendered, a bio, one write",
       "p95Ms": 850
+    },
+    "scrape-album": {
+      "interaction": "The album pass over one album, every source on, against stand-ins: a release-group lookup, the Cover Art Archive's 1200 px front and back and fanart.tv's 1000 px disc art rendered, one library write",
+      "p95Ms": 500
     }
   }
 }

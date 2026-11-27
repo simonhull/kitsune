@@ -665,8 +665,30 @@
 									<span class="name">fanart.tv</span>
 									<span class="hint"
 										>{keyWillBeSet(s['fanarttv.api_key'].set, draft.fanartKey)
-											? 'Thumbs, backdrops, logos and banners.'
+											? 'Thumbs, backdrops, logos, banners and disc art.'
 											: 'Needs a project key. Off until it has one.'}</span
+									>
+								</span>
+							</label>
+							<label class="switch">
+								<input type="checkbox" bind:checked={draft.lastfmBios} />
+								<span class="track" aria-hidden="true"><span class="knob"></span></span>
+								<span class="words">
+									<span class="name">Last.fm</span>
+									<span class="hint"
+										>{draft.apiKey.trim() !== ''
+											? 'Bios Wikipedia doesn’t have, with the Last.fm key above.'
+											: 'Needs the Last.fm API key above. Off until it has one.'}</span
+									>
+								</span>
+							</label>
+							<label class="switch">
+								<input type="checkbox" bind:checked={draft.archive} />
+								<span class="track" aria-hidden="true"><span class="knob"></span></span>
+								<span class="words">
+									<span class="name">Cover Art Archive</span>
+									<span class="hint"
+										>Covers for albums with none in their files, and back covers. No key.</span
 									>
 								</span>
 							</label>

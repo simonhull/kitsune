@@ -26,6 +26,7 @@ import (
 	"github.com/simonhull/kitsune/internal/matching"
 	"github.com/simonhull/kitsune/internal/matching/musicbrainztest"
 	"github.com/simonhull/kitsune/internal/openapitest"
+	"github.com/simonhull/kitsune/internal/remote"
 	"github.com/simonhull/kitsune/internal/scrape"
 	"github.com/simonhull/kitsune/internal/scrape/fanarttv"
 	"github.com/simonhull/kitsune/internal/scrape/fanarttv/fanarttvtest"
@@ -252,7 +253,10 @@ func testScraper(o *testServerOptions, st *store.Store, hub *events.Hub, scanner
 	if o.Scrape == nil {
 		return nil
 	}
-	so := scrape.Options{Store: st, Artwork: o.Artwork, Library: scanner, Notify: NewLibraryEvents(hub).ArtistsChanged}
+	so := scrape.Options{
+		Store: st, Artwork: o.Artwork, Library: scanner, Notify: NewLibraryEvents(hub).ArtistsChanged,
+		NotifyAlbums: NewLibraryEvents(hub).AlbumsChanged, LastfmGate: remote.NewGate(time.Nanosecond),
+	}
 	if f := o.Scrape.Fanart; f != nil {
 		so.Fanart = fanarttv.New(f.Options())
 	}

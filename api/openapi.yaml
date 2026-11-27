@@ -2109,13 +2109,17 @@ paths:
         For administrators: Health's Metadata card. Whether lookups are on
         (`metadata.remote`, off on a new server) and the language wanted; how
         each source stands (`musicbrainz`, which names an artist's Wikidata
-        item; `wikipedia`, which is Wikipedia, Wikidata and Commons; and
-        `fanarttv`), with whether its keys are set, never their values, and
-        its last failure in words; where the artist pass stands; and the
-        library's album artists by what it has of them, `withoutMbid` being
-        those only Matching can give art (by matching their albums). Lookups
-        send MusicBrainz IDs and nothing else. Progress isn't an event: read
-        this again while `pass.running`.
+        item and an album's release group; `wikipedia`, which is Wikipedia,
+        Wikidata and Commons; `fanarttv`, artists' art and albums' disc art;
+        `lastfm`, the bio of an artist no one else gave one, through
+        `lastfm.api_key`; and `coverartarchive`, the front cover of an album
+        whose files have none and a back cover its folder lacks), with whether
+        its keys are set, never their values, and its last failure in words;
+        where the pass stands, artists first, then albums; the library's album
+        artists by what it has of them, `withoutMbid` being those only Matching
+        can give art (by matching their albums); and its albums by their
+        covers. Lookups send MusicBrainz IDs and nothing else. Progress isn't
+        an event: read this again while `pass.running`.
       responses:
         "200":
           description: The status.
@@ -5196,7 +5200,10 @@ components:
       description: >-
         What the album has beside its cover: disc art and a back cover, read
         from `cdart`, `discart` or `disc` (every disc), `cd2` and the like (one
-        disc) and `back` in the album's folder.
+        disc) and `back` in the album's folder; while lookups are on, disc art
+        from fanart.tv (by the release group) for an album whose folder has
+        none, and a back cover from the Cover Art Archive (by the release) for
+        one whose folder has none. Each says where it came from.
       required: [discs]
       properties:
         discs:
@@ -5206,10 +5213,13 @@ components:
         back: { $ref: "#/components/schemas/ExtraImage" }
         coverSource:
           type: string
-          enum: [files]
+          enum: [files, coverartarchive]
           description: >-
             Where `artwork` came from, so a credit can say: `files`, the
-            album's own. Absent with no cover.
+            album's own, or `coverartarchive`, the Cover Art Archive's front
+            for the album's release, which an album with no cover in its files
+            is given while lookups are on (and loses the moment its files have
+            one). Absent with no cover.
     DiscArt:
       type: object
       additionalProperties: false
@@ -5945,6 +5955,8 @@ components:
             - metadata.remote
             - metadata.fanarttv
             - metadata.wikipedia
+            - metadata.lastfm_bios
+            - metadata.coverartarchive
             - metadata.language
             - fanarttv.api_key
             - fanarttv.client_key
@@ -5967,6 +5979,8 @@ components:
             metadata.remote: { $ref: "#/components/schemas/BoolSetting" }
             metadata.fanarttv: { $ref: "#/components/schemas/BoolSetting" }
             metadata.wikipedia: { $ref: "#/components/schemas/BoolSetting" }
+            metadata.lastfm_bios: { $ref: "#/components/schemas/BoolSetting" }
+            metadata.coverartarchive: { $ref: "#/components/schemas/BoolSetting" }
             metadata.language: { $ref: "#/components/schemas/StringSetting" }
             fanarttv.api_key: { $ref: "#/components/schemas/SecretSetting" }
             fanarttv.client_key: { $ref: "#/components/schemas/SecretSetting" }
@@ -6123,6 +6137,8 @@ components:
             sources and nothing else.
         metadata.fanarttv: { type: [boolean, "null"], description: "fanart.tv, under metadata.remote; it also needs fanarttv.api_key." }
         metadata.wikipedia: { type: [boolean, "null"], description: "Wikipedia, Wikidata and Wikimedia Commons, under metadata.remote." }
+        metadata.lastfm_bios: { type: [boolean, "null"], description: "Last.fm's bio of an artist with none from its folder or Wikipedia, under metadata.remote; it also needs lastfm.api_key." }
+        metadata.coverartarchive: { type: [boolean, "null"], description: "The Cover Art Archive's front cover for an album with none in its files, and its back cover for one whose folder has none, under metadata.remote." }
         metadata.language: { type: [string, "null"], description: 'A two-letter code, in any case, such as "en": the bios and art wanted.' }
         fanarttv.api_key: { type: [string, "null"], maxLength: 256, description: "The fanart.tv project key. Kitsune ships none." }
         fanarttv.client_key: { type: [string, "null"], maxLength: 256, description: "A person's own fanart.tv key, which brings new art sooner." }
@@ -6663,7 +6679,7 @@ components:
       description: >-
         `nextRefresh` is when the next artist falls due, absent when none
         waits.
-      required: [remote, language, pass, sources, artists]
+      required: [remote, language, pass, sources, artists, albums]
       properties:
         remote: { type: boolean, description: "metadata.remote: off, nothing is asked." }
         language: { type: string, description: The two-letter language bios and art are wanted in. }
@@ -6672,32 +6688,37 @@ components:
           type: array
           items: { $ref: "#/components/schemas/MetadataSource" }
         artists: { $ref: "#/components/schemas/MetadataArtists" }
+        albums: { $ref: "#/components/schemas/MetadataAlbums" }
         nextRefresh: { type: string, format: date-time }
     MetadataPass:
       type: object
       additionalProperties: false
       description: >-
-        The artist pass: `done` of the `total` artists it set out to ask about,
-        and the one in hand. All zero while none runs.
-      required: [running, done, total]
+        The pass: `done` of the `total` artists, then albums (`phase`), it set
+        out to ask about, and the one in hand (`artist` or `album`). All zero
+        while none runs.
+      required: [running, phase, done, total]
       properties:
         running: { type: boolean }
+        phase: { type: string, enum: [artists, albums] }
         done: { type: integer }
         total: { type: integer }
         artist: { $ref: "#/components/schemas/ArtistLink" }
+        album: { $ref: "#/components/schemas/AlbumLink" }
     MetadataSource:
       type: object
       additionalProperties: false
       description: >-
-        `state`: `on` (asked as artists fall due), `off` (its switch or the
-        master switch), `needsKey` (fanart.tv without its project key, which
-        Kitsune doesn't ship), `refused` (it refused the key: asked no more
+        `state`: `on` (asked as artists and albums fall due), `off` (its
+        switch or the master switch), `needsKey` (fanart.tv without its project
+        key, which Kitsune doesn't ship, or Last.fm without lastfm.api_key),
+        `refused` (it refused the key: asked no more
         until a setting changes) or `resting` (down or busy: asked again at
         `until`). `key` and `clientKey` are `set`, `missing`, or `none` for a
         source that takes none; a key's value is never sent.
       required: [name, enabled, state, key, clientKey]
       properties:
-        name: { type: string, enum: [musicbrainz, wikipedia, fanarttv] }
+        name: { type: string, enum: [musicbrainz, wikipedia, fanarttv, lastfm, coverartarchive] }
         enabled: { type: boolean, description: Its own switch, under the master switch. }
         state: { type: string, enum: [on, "off", needsKey, refused, resting] }
         key: { $ref: "#/components/schemas/KeyState" }
@@ -6733,6 +6754,26 @@ components:
         withArt: { type: integer }
         foundNothing: { type: integer }
         withoutMbid: { type: integer }
+    MetadataAlbums:
+      type: object
+      additionalProperties: false
+      description: >-
+        The library's albums: all of them; those with a release MusicBrainz ID,
+        which the Cover Art Archive is asked by; those whose cover is the Cover
+        Art Archive's; and those with no cover at all.
+      required: [albums, withMbid, fromArchive, withoutCover]
+      properties:
+        albums: { type: integer }
+        withMbid: { type: integer }
+        fromArchive: { type: integer }
+        withoutCover: { type: integer }
+    AlbumLink:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
     ReplayGainStatus:
       type: object
       additionalProperties: false

@@ -712,6 +712,8 @@ export type MetadataKey =
 	| 'metadata.remote'
 	| 'metadata.fanarttv'
 	| 'metadata.wikipedia'
+	| 'metadata.lastfm_bios'
+	| 'metadata.coverartarchive'
 	| 'metadata.language'
 	| 'fanarttv.api_key'
 	| 'fanarttv.client_key';
@@ -1098,6 +1100,10 @@ export interface MetadataSettings {
 	'metadata.remote': Setting<boolean>;
 	'metadata.fanarttv': Setting<boolean>;
 	'metadata.wikipedia': Setting<boolean>;
+	/** Last.fm's bio of an artist no one else gave one; it needs `lastfm.api_key`. */
+	'metadata.lastfm_bios': Setting<boolean>;
+	/** The Cover Art Archive's covers for albums whose files have none. */
+	'metadata.coverartarchive': Setting<boolean>;
 	/** A two-letter code. */
 	'metadata.language': Setting<string>;
 	/** The project key. Kitsune ships none. */
@@ -1126,6 +1132,8 @@ export type SettingsChange = Partial<{
 	'metadata.remote': boolean | null;
 	'metadata.fanarttv': boolean | null;
 	'metadata.wikipedia': boolean | null;
+	'metadata.lastfm_bios': boolean | null;
+	'metadata.coverartarchive': boolean | null;
 	'metadata.language': string | null;
 	'fanarttv.api_key': string | null;
 	'fanarttv.client_key': string | null;

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/simonhull/kitsune/internal/lastfm"
 	"github.com/simonhull/kitsune/internal/library"
 	"github.com/simonhull/kitsune/internal/matching"
 	"github.com/simonhull/kitsune/internal/scrape"
@@ -63,27 +64,41 @@ func newScraper(l *launch, a *app, mb *matching.MusicBrainz, log *slog.Logger) (
 	if wikimediaRoot != "" {
 		log.Warn("talking to stand-in Wikimedia sites, not the real ones", "env", wikimediaURLEnv, "url", wikimediaRoot)
 	}
+	events := server.NewLibraryEvents(a.events)
 	return scrape.New(scrape.Options{
 		Store: a.store, Artwork: a.covers, MusicBrainz: mb, Fanart: fanarttv.New(fo), Wikimedia: wikimedia.New(wo),
-		Library: a.scanner, Notify: server.NewLibraryEvents(a.events).ArtistsChanged, Logger: log,
+		Library: a.scanner, Notify: events.ArtistsChanged, NotifyAlbums: events.AlbumsChanged, Logger: log,
 	}), nil
 }
 
-// scrapeConfig is the artist pass's part of snap.
-func scrapeConfig(snap *settings.Snapshot) scrape.Config {
-	return scrape.Config{
+// scrapeConfig is the artist pass's part of snap, with Last.fm asked through
+// lastfmURL's stand-in when that is set.
+func scrapeConfig(snap *settings.Snapshot, lastfmURL string) scrape.Config {
+	c := scrape.Config{
 		Remote: snap.MetadataRemote, Fanart: snap.MetadataFanart, Wikipedia: snap.MetadataWikipedia,
+		LastfmBios: snap.MetadataLastfmBios, Archive: snap.MetadataArchive,
 		Language: snap.MetadataLanguage, Keys: fanarttv.Keys{API: snap.FanartAPIKey, Client: snap.FanartClientKey},
 	}
+	if snap.LastfmAPIKey != "" {
+		// Bios need the API key alone: the call is unsigned. Its own client,
+		// so the scrobbler's, which needs the secret too, is untouched.
+		bios := lastfm.New(snap.LastfmAPIKey, "")
+		if root, err := standInRoot(lastfmURL, errBadLastfmURL); err == nil && root != "" {
+			bios.APIBase = root + "/2.0/"
+		}
+		c.Lastfm = bios
+	}
+	return c
 }
 
 // applyMetadata gives the artist pass the live settings. It logs what is on,
 // never a key.
 func (a *app) applyMetadata(ctx context.Context) {
-	c := scrapeConfig(a.live.Snapshot())
+	c := scrapeConfig(a.live.Snapshot(), a.lastfmURL)
 	a.scraper.Configure(c)
 	a.log.InfoContext(ctx, "artist lookups applied", "remote", c.Remote, "fanarttv", c.Fanart,
-		"fanarttvKey", c.Keys.API != "", "wikipedia", c.Wikipedia, "language", c.Language)
+		"fanarttvKey", c.Keys.API != "", "wikipedia", c.Wikipedia, "lastfmBios", c.LastfmBios,
+		"lastfmKey", c.Lastfm != nil, "coverartarchive", c.Archive, "language", c.Language)
 }
 
 // kickOnLibrary is the scanner's notifier, which also asks the artist pass to

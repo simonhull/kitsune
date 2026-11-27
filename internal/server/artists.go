@@ -111,13 +111,16 @@ func toAPIBio(b *store.Bio) *api.ArtistBio {
 }
 
 // toAPIAlbumExtras is an album's extras on the wire; hasCover says it has a
-// cover of its own.
+// cover, its own or the Cover Art Archive's.
 func toAPIAlbumExtras(ex *store.AlbumExtras, hasCover bool) api.AlbumExtras {
 	out := api.AlbumExtras{Discs: make([]api.DiscArt, 0, len(ex.Discs)), Back: toAPIExtraImage(ex.Back)}
 	for i := range ex.Discs {
 		out.Discs = append(out.Discs, api.DiscArt{Disc: ex.Discs[i].Disc, Image: *toAPIExtraImage(&ex.Discs[i].ExtraImage)})
 	}
-	if hasCover {
+	switch {
+	case hasCover && ex.Cover != nil:
+		out.CoverSource = api.CoverFromArchive
+	case hasCover:
 		out.CoverSource = api.CoverFromFiles
 	}
 	return out

@@ -27,7 +27,7 @@ func TestScrapeConfigCarriesTheKeys(t *testing.T) {
 	snap := &settings.Snapshot{
 		MetadataRemote: true, MetadataFanart: true, MetadataLanguage: "de", FanartAPIKey: "p", FanartClientKey: "c",
 	}
-	c := scrapeConfig(snap)
+	c := scrapeConfig(snap, "")
 	if !c.Remote || !c.Fanart || c.Wikipedia || c.Language != "de" || c.Keys.API != "p" || c.Keys.Client != "c" {
 		t.Errorf("config = %+v", c)
 	}

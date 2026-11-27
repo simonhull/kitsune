@@ -36,16 +36,61 @@ const (
 
 // sourceName is a source as a person reads it.
 func sourceName(src store.ScrapeSource) string {
-	if src == store.ScrapeFanart {
+	switch src {
+	case store.ScrapeFanart:
 		return "fanart.tv"
+	case store.ScrapeLastfm:
+		return "Last.fm"
+	case store.ScrapeArchive:
+		return "The Cover Art Archive"
+	case store.ScrapeMusicBrainz:
+		return "MusicBrainz"
+	case store.ScrapeWikimedia:
 	}
 	return "Wikipedia"
 }
 
+// artistSources are the sources asked about an artist, in the order they're
+// asked: Last.fm last, since it is asked only for a bio no one else gave.
+func artistSources() []store.ScrapeSource {
+	return []store.ScrapeSource{store.ScrapeFanart, store.ScrapeWikimedia, store.ScrapeLastfm}
+}
+
+// albumSources are the sources asked about an album, in the order they're
+// asked: MusicBrainz first, since its release group is what fanart.tv is asked by.
+func albumSources() []store.ScrapeSource {
+	return []store.ScrapeSource{store.ScrapeMusicBrainz, store.ScrapeArchive, store.ScrapeFanart}
+}
+
 // anyOn reports whether cfg turns on any source the pass has a client for.
 func (s *Scraper) anyOn(cfg *Config) bool {
-	return s.fanartOn(cfg) || s.wikimediaOn(cfg)
+	return s.fanartOn(cfg) || s.wikimediaOn(cfg) || s.lastfmOn(cfg) || s.archiveOn(cfg)
 }
+
+// on reports whether cfg turns src on, with a client for it.
+func (s *Scraper) on(cfg *Config, src store.ScrapeSource) bool {
+	switch src {
+	case store.ScrapeFanart:
+		return s.fanartOn(cfg)
+	case store.ScrapeWikimedia:
+		return s.wikimediaOn(cfg)
+	case store.ScrapeLastfm:
+		return s.lastfmOn(cfg)
+	case store.ScrapeArchive:
+		return s.archiveOn(cfg)
+	case store.ScrapeMusicBrainz:
+		return s.groupsOn(cfg)
+	}
+	return false
+}
+
+func (s *Scraper) lastfmOn(cfg *Config) bool { return cfg.LastfmBios && cfg.Lastfm != nil }
+
+func (s *Scraper) archiveOn(cfg *Config) bool { return cfg.Archive && s.o.MusicBrainz != nil }
+
+// groupsOn reports whether albums' release groups are looked up: only
+// fanart.tv's album art is asked for by one.
+func (s *Scraper) groupsOn(cfg *Config) bool { return s.fanartOn(cfg) && s.o.MusicBrainz != nil }
 
 func (s *Scraper) fanartOn(cfg *Config) bool {
 	return cfg.Fanart && s.o.Fanart != nil && cfg.Keys.API != ""
@@ -55,17 +100,13 @@ func (s *Scraper) wikimediaOn(cfg *Config) bool {
 	return cfg.Wikipedia && s.o.Wikimedia != nil && s.o.MusicBrainz != nil
 }
 
-// usable are the sources on in cfg that neither refused nor rest at now.
-func (s *Scraper) usable(cfg *Config, now time.Time) []store.ScrapeSource {
+// usable are those of sources on in cfg that neither refused nor rest at now.
+func (s *Scraper) usable(cfg *Config, now time.Time, sources []store.ScrapeSource) []store.ScrapeSource {
 	var out []store.ScrapeSource
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, src := range []store.ScrapeSource{store.ScrapeFanart, store.ScrapeWikimedia} {
-		on := s.fanartOn(cfg)
-		if src == store.ScrapeWikimedia {
-			on = s.wikimediaOn(cfg)
-		}
-		if h := s.sources[src]; on && (h == nil || (!h.refused && !h.restUntil.After(now))) {
+	for _, src := range sources {
+		if h := s.sources[src]; s.on(cfg, src) && (h == nil || (!h.refused && !h.restUntil.After(now))) {
 			out = append(out, src)
 		}
 	}
@@ -140,7 +181,7 @@ func describe(src store.ScrapeSource, err error, at time.Time) *Failure {
 		f.Words = name + " asked Kitsune to slow down"
 	case f.Status != 0:
 		f.Words = fmt.Sprintf("%s answered %d", name, f.Status)
-	case errors.Is(err, matching.ErrUnavailable) || errors.Is(err, matching.ErrRejected):
+	case src != store.ScrapeMusicBrainz && (errors.Is(err, matching.ErrUnavailable) || errors.Is(err, matching.ErrRejected)):
 		f.Words = "MusicBrainz didn't answer"
 	default:
 		f.Words = name + " didn't answer"
@@ -155,13 +196,13 @@ func sentinelWords(src store.ScrapeSource, err error) string {
 	switch {
 	case errors.Is(err, fanarttv.ErrNoKey):
 		return name + " needs a project key"
-	case errors.Is(err, remote.ErrRefused) && src == store.ScrapeFanart:
+	case errors.Is(err, remote.ErrRefused) && (src == store.ScrapeFanart || src == store.ScrapeLastfm):
 		return name + " refused the key"
 	case errors.Is(err, remote.ErrRefused):
 		return name + " refused Kitsune's requests"
 	case errors.Is(err, fanarttv.ErrNotALink):
 		return name + " sent file names, not links"
-	case errors.Is(err, fanarttv.ErrBadAnswer), errors.Is(err, wikimedia.ErrBadAnswer):
+	case errors.Is(err, fanarttv.ErrBadAnswer), errors.Is(err, wikimedia.ErrBadAnswer), errors.Is(err, matching.ErrBadArt):
 		return name + " sent an answer Kitsune can't read"
 	case errors.Is(err, remote.ErrTooLarge):
 		return name + " sent more than Kitsune takes"
@@ -324,7 +365,7 @@ func (s *Scraper) readFeed(ctx context.Context, cfg *Config) {
 
 // feedDue says whether fanart.tv's feed is due at now, and since when to read it.
 func (s *Scraper) feedDue(ctx context.Context, cfg *Config, now time.Time) (time.Time, bool) {
-	if !slices.Contains(s.usable(cfg, now), store.ScrapeFanart) {
+	if !slices.Contains(s.usable(cfg, now, artistSources()), store.ScrapeFanart) {
 		return time.Time{}, false
 	}
 	last, read, err := s.o.Store.ScrapeFeedRead(ctx, store.ScrapeFanart)
