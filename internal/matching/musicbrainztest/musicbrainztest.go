@@ -1,6 +1,7 @@
 // Package musicbrainztest is a stand-in MusicBrainz for tests and manual
 // checks: release lookups and searches under /ws/2/, in MusicBrainz's own JSON,
-// and front covers under /coverart/. Nothing in a test ever talks to the real
+// and the Cover Art Archive under /coverart/: a release's listing, and its
+// front and back covers. Nothing in a test ever talks to the real
 // MusicBrainz.
 package musicbrainztest
 
@@ -42,6 +43,7 @@ type Server struct {
 	mu       sync.Mutex
 	releases []matching.Release
 	artists  map[string]Artist
+	backs    map[string]bool // Releases with a back cover too.
 	calls    []Call
 	failures []int // Statuses for the next API calls, in order.
 	retry    string
@@ -62,10 +64,11 @@ func New(tb testing.TB, releases ...matching.Release) *Server {
 // opening no listener, for a [testing/synctest] bubble, or [Server.Handler]
 // for a server of its own.
 func NewInMemory(releases ...matching.Release) *Server {
-	s := &Server{releases: releases, artists: map[string]Artist{}, mux: http.NewServeMux()}
+	s := &Server{releases: releases, artists: map[string]Artist{}, backs: map[string]bool{}, mux: http.NewServeMux()}
 	s.mux.HandleFunc("GET /ws/2/release/{id}", s.lookup)
 	s.mux.HandleFunc("GET /ws/2/artist/{id}", s.artist)
 	s.mux.HandleFunc("GET /ws/2/release", s.search)
+	s.mux.HandleFunc("GET /coverart/release/{id}", s.coverArt)
 	s.mux.HandleFunc("GET /coverart/release/{id}/{size}", s.cover)
 	return s
 }
@@ -83,7 +86,7 @@ func (s *Server) RoundTrip(req *http.Request) (*http.Response, error) {
 // Options returns client options aimed at the stand-in: its listener when it has
 // one, else memory, with no wait between requests and no retry delay.
 func (s *Server) Options() matching.MusicBrainzOptions {
-	o := matching.MusicBrainzOptions{Version: "test", Interval: time.Nanosecond, Backoff: time.Nanosecond}
+	o := matching.MusicBrainzOptions{Version: "test", Interval: time.Nanosecond, ArtInterval: time.Nanosecond, Backoff: time.Nanosecond}
 	if s.Server != nil {
 		o.BaseURL, o.CoverURL, o.HTTP = s.URL+"/ws/2/", s.URL+"/coverart/", s.Client()
 	} else {
@@ -97,6 +100,16 @@ func (s *Server) Add(releases ...matching.Release) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.releases = append(s.releases, releases...)
+}
+
+// AddBack gives the releases ids a back cover at the Cover Art Archive, beside
+// the front a release's Cover gives it.
+func (s *Server) AddBack(ids ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, id := range ids {
+		s.backs[id] = true
+	}
 }
 
 // Artist is an artist the stand-in knows, with its links elsewhere.
@@ -248,15 +261,65 @@ const (
 	horizon   = coverSize * 5 / 8
 )
 
+// The Cover Art Archive's IDs for the stand-in's two images of a release.
+const (
+	frontID = "1001"
+	backID  = "1002"
+)
+
+// coverArt is the archive's listing of a release: its front, as its Cover
+// says, and its back, as [Server.AddBack] says, with thumbnails as the archive
+// gives them, at the host asked.
+func (s *Server) coverArt(w http.ResponseWriter, r *http.Request) {
+	if s.fail(w, r) {
+		return
+	}
+	id := r.PathValue("id")
+	release, ok := s.find(id)
+	s.mu.Lock()
+	back := s.backs[id]
+	s.mu.Unlock()
+	if !ok || (!release.Cover && !back) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Not Found"})
+		return
+	}
+	root := "http://" + r.Host + "/coverart/release/" + id + "/"
+	image := func(imageID string, front bool) map[string]any {
+		return map[string]any{
+			"id": imageID, "front": front, "back": !front, "approved": true,
+			"image":      root + imageID + ".png",
+			"thumbnails": map[string]string{"250": root + imageID + "-250.png", "1200": root + imageID + "-1200.png"},
+		}
+	}
+	images := []any{}
+	if release.Cover {
+		images = append(images, image(frontID, true))
+	}
+	if back {
+		images = append(images, image(backID, false))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"images": images, "release": "https://musicbrainz.org/release/" + id})
+}
+
 // cover draws a cover from the release's ID: a ground and a horizon, in colors
-// of their own.
+// of their own. A back cover (its image ID, or "back-…") is drawn from the ID
+// and "back".
 func (s *Server) cover(w http.ResponseWriter, r *http.Request) {
-	release, ok := s.find(r.PathValue("id"))
-	if !ok || !release.Cover {
+	id, size := r.PathValue("id"), r.PathValue("size")
+	release, ok := s.find(id)
+	s.mu.Lock()
+	hasBack := s.backs[id]
+	s.mu.Unlock()
+	isBack := strings.HasPrefix(size, backID) || strings.HasPrefix(size, "back")
+	if !ok || (isBack && !hasBack) || (!isBack && !release.Cover) {
 		http.NotFound(w, r)
 		return
 	}
-	sum := sha256.Sum256([]byte(release.ID))
+	seed := release.ID
+	if isBack {
+		seed += " back"
+	}
+	sum := sha256.Sum256([]byte(seed))
 	sky := color.RGBA{R: sum[0], G: sum[1], B: sum[2], A: math.MaxUint8}
 	ground := color.RGBA{R: sum[3], G: sum[4], B: sum[5], A: math.MaxUint8}
 	img := image.NewRGBA(image.Rect(0, 0, coverSize, coverSize))

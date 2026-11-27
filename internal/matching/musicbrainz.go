@@ -95,6 +95,9 @@ type MusicBrainzOptions struct {
 	Backoff time.Duration
 	// Logger notes retries. Nil discards.
 	Logger *slog.Logger
+	// ArtInterval is the least time between two requests to the Cover Art
+	// Archive, which has a gate of its own. 0 means a second.
+	ArtInterval time.Duration
 }
 
 // MusicBrainz is a client for MusicBrainz's web service. One serves the whole
@@ -109,6 +112,7 @@ type MusicBrainz struct {
 	retries      int
 	backoff      time.Duration
 	log          *slog.Logger
+	art          *remote.Client // The Cover Art Archive, through its own gate.
 
 	mu     sync.Mutex
 	flying map[string]*flight // Requests under way, by key: a second asker waits for the first.
@@ -144,6 +148,10 @@ func NewMusicBrainz(o MusicBrainzOptions) *MusicBrainz { //nolint:gocritic // hu
 	if c.log == nil {
 		c.log = slog.New(slog.DiscardHandler)
 	}
+	c.art = remote.New(remote.Options{
+		Agent: c.agent, HTTP: c.http, Gate: remote.NewGate(cmp.Or(o.ArtInterval, defaultArtInterval)),
+		Retries: o.Retries, Backoff: o.Backoff, MaxBody: maxArt, Logger: c.log, Name: "the Cover Art Archive",
+	})
 	return c
 }
 
