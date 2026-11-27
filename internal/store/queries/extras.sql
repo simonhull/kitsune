@@ -91,20 +91,37 @@ ON CONFLICT (artist_id) DO UPDATE SET
 DELETE FROM artist_bios WHERE artist_id = ? AND source = 'nfo';
 
 -- name: ListArtistImages :many
-SELECT ai.kind, ai.source, ai.credit, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
-FROM artist_images ai
-JOIN artwork w ON w.hash = ai.artwork_hash
-WHERE ai.artist_id = ?
-ORDER BY ai.kind;
+-- What the artist shows of each kind: a pin, else what the folders and the
+-- sources gave, which goes on being kept beneath it.
+SELECT shown.kind, shown.source, shown.credit, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
+FROM (
+    SELECT p.kind, 'pinned' AS source, p.credit, p.artwork_hash
+    FROM artist_pins p
+    WHERE p.artist_id = sqlc.arg(artist_id)
+    UNION ALL
+    SELECT ai.kind, ai.source, ai.credit, ai.artwork_hash
+    FROM artist_images ai
+    WHERE ai.artist_id = sqlc.arg(artist_id)
+      AND NOT EXISTS (SELECT 1 FROM artist_pins p WHERE p.artist_id = ai.artist_id AND p.kind = ai.kind)
+) shown
+JOIN artwork w ON w.hash = shown.artwork_hash
+ORDER BY shown.kind;
 
 -- name: GetArtistBio :one
 SELECT source, lang, summary, body, url, license, license_url FROM artist_bios WHERE artist_id = ?;
 
 -- name: ListArtistThumbs :many
-SELECT ai.artist_id, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
-FROM artist_images ai
-JOIN artwork w ON w.hash = ai.artwork_hash
-WHERE ai.kind = 'thumb';
+-- Every artist's thumb: a pin, else what the folders and the sources gave.
+SELECT shown.artist_id, w.hash, w.width, w.height, w.accent, w.ground, w.alpha
+FROM (
+    SELECT p.artist_id, p.artwork_hash FROM artist_pins p WHERE p.kind = 'thumb'
+    UNION ALL
+    SELECT ai.artist_id, ai.artwork_hash
+    FROM artist_images ai
+    WHERE ai.kind = 'thumb'
+      AND NOT EXISTS (SELECT 1 FROM artist_pins p WHERE p.artist_id = ai.artist_id AND p.kind = 'thumb')
+) shown
+JOIN artwork w ON w.hash = shown.artwork_hash;
 
 -- name: ListAlbumImages :many
 SELECT ai.kind, ai.disc, ai.source, ai.credit, w.hash, w.width, w.height, w.accent, w.ground, w.alpha

@@ -2,8 +2,10 @@
 -- each source last said, and what it chose of their images and bios.
 
 -- name: ListScrapeArtists :many
--- Every artist with a live track, with or without a MusicBrainz ID.
-SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid
+-- Every artist with a live track, with or without a MusicBrainz ID; held says
+-- Not this artist holds back the ID it has now.
+SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid,
+    CAST(EXISTS (SELECT 1 FROM artist_holds h WHERE h.artist_id = ar.id AND h.mbid = ar.mbid) AS INTEGER) AS held
 FROM artists ar
 WHERE EXISTS (
     SELECT 1 FROM track_artists ta
@@ -12,7 +14,9 @@ WHERE EXISTS (
 
 -- name: GetScrapeArtist :one
 -- One artist by its public ID, as ListScrapeArtists has it, its MBID maybe NULL.
-SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid FROM artists ar WHERE ar.ulid = ?;
+SELECT ar.id, ar.ulid, ar.name, ar.match_key, ar.mbid,
+    CAST(EXISTS (SELECT 1 FROM artist_holds h WHERE h.artist_id = ar.id AND h.mbid = ar.mbid) AS INTEGER) AS held
+FROM artists ar WHERE ar.ulid = ?;
 
 -- name: ListOwnersByPlays :many
 -- Every artist who owns an album, owners as queries/artists.sql has them, with
@@ -69,8 +73,17 @@ INSERT INTO scrape_feeds (source, read_at) VALUES (?, ?)
 ON CONFLICT (source) DO UPDATE SET read_at = excluded.read_at;
 
 -- name: ListHeldImages :many
--- What an artist holds of each kind: where it came from and the source's ID.
-SELECT kind, source, remote_id, artwork_hash FROM artist_images WHERE artist_id = ?;
+-- What an artist holds of each kind: where it came from and the source's ID. A
+-- pin is held as 'pinned', over what lies beneath it, so no source is asked to
+-- fill a kind an administrator chose.
+SELECT p.kind, 'pinned' AS source, p.remote_id, p.artwork_hash
+FROM artist_pins p
+WHERE p.artist_id = sqlc.arg(artist_id)
+UNION ALL
+SELECT ai.kind, ai.source, ai.remote_id, ai.artwork_hash
+FROM artist_images ai
+WHERE ai.artist_id = sqlc.arg(artist_id)
+  AND NOT EXISTS (SELECT 1 FROM artist_pins p WHERE p.artist_id = ai.artist_id AND p.kind = ai.kind);
 
 -- name: GetHeldBio :one
 SELECT source, url, lang FROM artist_bios WHERE artist_id = ?;
@@ -122,4 +135,5 @@ DELETE FROM artist_bios WHERE artist_id = ? AND source = ?;
 -- name: ListArtedArtists :many
 -- Every artist with an image or a bio.
 SELECT artist_id FROM artist_images
+UNION SELECT artist_id FROM artist_pins
 UNION SELECT artist_id FROM artist_bios;

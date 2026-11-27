@@ -50,7 +50,10 @@ type ScrapeArtist struct {
 	Owner      bool   // Owns an album.
 	Plays      int    // Everyone's plays of the albums it owns.
 	Arted      bool   // Holds an image or a bio, from anywhere.
-	States     map[ScrapeSource]ScrapeState
+	// Held says Not this artist holds back its MBID: no source is asked
+	// about it until the MBID changes.
+	Held   bool
+	States map[ScrapeSource]ScrapeState
 }
 
 // ScrapeArtists returns every artist with a live track, Various Artists left
@@ -77,7 +80,7 @@ func (s *Store) ScrapeArtists(ctx context.Context) ([]ScrapeArtist, error) {
 		p, owner := r.plays[a.ID]
 		out = append(out, ScrapeArtist{
 			ID: a.ID, ULID: a.Ulid, Name: a.Name, MBID: mbid, Owner: owner, Plays: p,
-			Arted: r.arted[a.ID], States: r.states[mbid],
+			Arted: r.arted[a.ID], Held: a.Held != 0, States: r.states[mbid],
 		})
 	}
 	return out, nil
@@ -95,7 +98,7 @@ func (s *Store) ScrapeArtistByID(ctx context.Context, id string) (ScrapeArtist, 
 	if err != nil {
 		return ScrapeArtist{}, fmt.Errorf("scrape artist %s: %w", id, err)
 	}
-	a := ScrapeArtist{ID: r.ID, ULID: r.Ulid, Name: r.Name, MBID: strOrEmpty(r.Mbid)}
+	a := ScrapeArtist{ID: r.ID, ULID: r.Ulid, Name: r.Name, MBID: strOrEmpty(r.Mbid), Held: r.Held != 0}
 	if a.MBID == "" {
 		return a, nil
 	}
