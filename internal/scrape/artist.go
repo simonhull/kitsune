@@ -37,6 +37,7 @@ type found struct {
 	asked   bool // Asked and answered, with art or with none.
 	status  store.ScrapeStatus
 	failure *Failure // Why it failed, when it did.
+	skipped bool     // Not asked: nothing it gives was wanted. Counts as asked for its state.
 	images  map[store.ArtistImageKind][]Candidate
 	bio     *store.Bio
 }
@@ -59,10 +60,7 @@ func (s *Scraper) artist(ctx context.Context, cfg *Config, a *store.ScrapeArtist
 	if background {
 		ask = remote.Background(ctx)
 	}
-	answers := make([]*found, 0, len(due))
-	for _, src := range due {
-		answers = append(answers, s.ask(ask, cfg, src, a.MBID, &held))
-	}
+	answers := s.askAll(ask, cfg, due, a.MBID, &held)
 	if ctx.Err() != nil {
 		return
 	}
@@ -86,6 +84,20 @@ func (s *Scraper) logFailure(ctx context.Context, msg string, a *store.ScrapeArt
 	}
 }
 
+// askAll asks each source in due about the artist mbid, in order: Last.fm
+// last, for a bio the others left wanting.
+func (s *Scraper) askAll(ctx context.Context, cfg *Config, due []store.ScrapeSource, mbid string, held *store.HeldArt) []*found {
+	answers := make([]*found, 0, len(due))
+	for _, src := range due {
+		if src == store.ScrapeLastfm {
+			answers = append(answers, s.askLastfm(ctx, cfg, mbid, held, answers))
+			continue
+		}
+		answers = append(answers, s.ask(ctx, cfg, src, mbid, held))
+	}
+	return answers
+}
+
 // ask asks src about the artist mbid, for what held leaves to fill.
 func (s *Scraper) ask(ctx context.Context, cfg *Config, src store.ScrapeSource, mbid string, held *store.HeldArt) *found {
 	f := &found{source: src, images: map[store.ArtistImageKind][]Candidate{}}
@@ -103,6 +115,7 @@ func (s *Scraper) ask(ctx context.Context, cfg *Config, src store.ScrapeSource, 
 			return f
 		}
 		err = s.askWikimedia(ctx, cfg, mbid, held, f)
+	case store.ScrapeLastfm, store.ScrapeArchive, store.ScrapeMusicBrainz: // Asked elsewhere, or of albums.
 	}
 	s.settle(ctx, f, err)
 	return f
@@ -306,20 +319,28 @@ func imageAnswers(kind store.ArtistImageKind, answers []*found) []Answer {
 	return out
 }
 
-// bioAnswers are the answers about the bio: Wikipedia's.
+// bioAnswers are the answers about the bio, in precedence order: Wikipedia's,
+// then Last.fm's. Last.fm not asked because another bio stands is no answer.
 func bioAnswers(answers []*found) []BioAnswer {
-	a := BioAnswer{Source: store.BioFromWikipedia}
-	if f := answerOf(answers, store.ScrapeWikimedia); f != nil && f.asked {
-		a.Answered, a.Bio = true, f.bio
+	out := make([]BioAnswer, 0, 2) //nolint:mnd // The two sources of a bio.
+	for _, o := range []struct {
+		src  store.ScrapeSource
+		name string
+	}{{store.ScrapeWikimedia, store.BioFromWikipedia}, {store.ScrapeLastfm, store.BioFromLastfm}} {
+		a := BioAnswer{Source: o.name}
+		if f := answerOf(answers, o.src); f != nil && f.asked && !f.skipped {
+			a.Answered, a.Bio = true, f.bio
+		}
+		out = append(out, a)
 	}
-	return []BioAnswer{a}
+	return out
 }
 
 // dueSources are the sources to ask about a now: on, not refused or resting,
 // and due.
 func (s *Scraper) dueSources(cfg *Config, a *store.ScrapeArtist, now time.Time) []store.ScrapeSource {
 	var out []store.ScrapeSource
-	for _, src := range s.usable(cfg, now) {
+	for _, src := range s.usable(cfg, now, artistSources()) {
 		if Due(stateOf(a, src), now) {
 			out = append(out, src)
 		}

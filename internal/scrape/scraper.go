@@ -1,10 +1,13 @@
-// Package scrape is the artist pass (plan 072): it fetches artists' images and
-// bios from fanart.tv and from Wikipedia, Wikidata and Wikimedia Commons, by the
-// MusicBrainz IDs the library holds, and stores what it chooses as Kitsune's
-// own, beside what the library's folders give. It never searches by a name,
-// never touches a file under a root, and never takes away an image or a bio a
-// folder or an administrator gave. The sources' clients live beneath it
-// (fanarttv, wikimedia); MusicBrainz's is the process's one, through matching.
+// Package scrape is the artist and album pass (plan 072): it fetches artists'
+// images and bios from fanart.tv, from Wikipedia, Wikidata and Wikimedia
+// Commons and, for bios no one else has, from Last.fm; and albums' covers and
+// extras from the Cover Art Archive and fanart.tv. It asks by the MusicBrainz
+// IDs the library holds, and stores what it chooses as Kitsune's own, beside
+// what the library's folders give. It never searches by a name, never touches
+// a file under a root, and never takes away an image or a bio a folder or an
+// administrator gave, nor a cover the files hold. The sources' clients live
+// beneath it (fanarttv, wikimedia); MusicBrainz's (with the Cover Art Archive)
+// is the process's one, through matching, and Last.fm's is internal/lastfm.
 package scrape
 
 import (
@@ -18,16 +21,28 @@ import (
 	"time"
 
 	"github.com/simonhull/kitsune/internal/artwork"
+	"github.com/simonhull/kitsune/internal/lastfm"
 	"github.com/simonhull/kitsune/internal/matching"
+	"github.com/simonhull/kitsune/internal/remote"
 	"github.com/simonhull/kitsune/internal/scrape/fanarttv"
 	"github.com/simonhull/kitsune/internal/scrape/wikimedia"
 	"github.com/simonhull/kitsune/internal/store"
 )
 
-// Links is what the pass asks MusicBrainz: an artist's Wikidata item. The
+// Links is what the pass asks MusicBrainz: an artist's Wikidata item, an
+// album's release group, and the Cover Art Archive's covers of a release. The
 // process's one [matching.MusicBrainz] client is it.
 type Links interface {
 	ArtistLinks(ctx context.Context, mbid string) (matching.ArtistLinks, error)
+	ReleaseGroup(ctx context.Context, id string) (string, error)
+	CoverArt(ctx context.Context, id string) (matching.CoverArt, error)
+	DownloadArt(ctx context.Context, u string) ([]byte, error)
+}
+
+// Bios is what the pass asks Last.fm: an artist's bio. A [lastfm.Client] made
+// with the server's API key is it.
+type Bios interface {
+	ArtistInfo(ctx context.Context, mbid, lang string) (lastfm.Bio, error)
 }
 
 // Library is what the pass waits on: a scan's claim, so a scan's covers render
@@ -42,24 +57,34 @@ type Options struct {
 	// Artwork renders what is fetched, sharing its renders with the scan. Nil
 	// fetches bios alone.
 	Artwork     *artwork.Cache
-	MusicBrainz Links             // Nil: Wikimedia is never asked, since only MusicBrainz names an artist's item.
+	MusicBrainz Links             // Nil: Wikimedia and the Cover Art Archive are never asked, nor release groups.
 	Fanart      *fanarttv.Client  // Nil: fanart.tv is never asked.
 	Wikimedia   *wikimedia.Client // Nil: Wikimedia is never asked.
 	Library     Library           // Nil: the pass never waits for a scan.
 	// Notify hears the public IDs of artists whose images or bio changed: the
 	// artists event. Nil hears nothing.
 	Notify func(ids []string)
-	Logger *slog.Logger     // Nil discards.
-	Now    func() time.Time // Nil means time.Now.
+	// NotifyAlbums hears the public IDs of albums whose cover or extras
+	// changed: a library event. Nil hears nothing.
+	NotifyAlbums func(ids []string)
+	// LastfmGate spaces the requests to Last.fm. Nil means one a second.
+	LastfmGate *remote.Gate
+	Logger     *slog.Logger     // Nil discards.
+	Now        func() time.Time // Nil means time.Now.
 }
 
 // Config is what the settings say of the pass, live.
 type Config struct {
-	Remote    bool // The master switch: off, nothing is asked.
-	Fanart    bool
-	Wikipedia bool
-	Language  string        // Two letters; "" means English.
-	Keys      fanarttv.Keys // The project key, which fanart.tv needs, and a person's own.
+	Remote     bool // The master switch: off, nothing is asked.
+	Fanart     bool
+	Wikipedia  bool
+	LastfmBios bool
+	Archive    bool          // The Cover Art Archive.
+	Language   string        // Two letters; "" means English.
+	Keys       fanarttv.Keys // The project key, which fanart.tv needs, and a person's own.
+	// Lastfm asks Last.fm with the server's API key: nil while lastfm.api_key
+	// is unset, which leaves Last.fm off whatever LastfmBios says.
+	Lastfm Bios
 }
 
 // Scraper is the artist pass. One serves the process; it is safe for
@@ -69,6 +94,7 @@ type Scraper struct {
 	log *slog.Logger
 	now func() time.Time
 
+	lastfm   *remote.Gate
 	config   atomic.Pointer[Config]
 	progress atomic.Pointer[Progress]
 	wake     chan struct{} // Holds one signal: something to do.
@@ -93,13 +119,15 @@ type Failure struct {
 	At     time.Time
 }
 
-// Progress is where the pass stands: Done of the Total artists it set out to
-// ask about, and the one in hand. All zero while none runs.
+// Progress is where the pass stands: Done of the Total artists, then albums,
+// it set out to ask about, and the one in hand. All zero while none runs.
 type Progress struct {
 	Running     bool
+	Albums      bool // Working through albums; artists come first.
 	Done, Total int
 	Artist      string // The public ID of the artist in hand, or "".
-	Name        string // Its name.
+	Album       string // The public ID of the album in hand, or "".
+	Name        string // The name of the one in hand.
 }
 
 // New returns a scraper set up by o, with lookups off until [Scraper.Configure].
@@ -110,6 +138,10 @@ func New(o Options) *Scraper { //nolint:gocritic // hugeParam: built once, at st
 	}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	s.lastfm = o.LastfmGate
+	if s.lastfm == nil {
+		s.lastfm = remote.NewGate(time.Second)
 	}
 	s.config.Store(&Config{})
 	s.progress.Store(&Progress{})
@@ -200,7 +232,26 @@ func (s *Scraper) Pass(ctx context.Context) time.Time {
 	if !s.work(ctx, cfg, s.queue(cfg, artists)) {
 		return s.now()
 	}
-	return s.nextDue(cfg, artists)
+	next := s.albumPass(ctx, cfg)
+	if artistNext := s.nextDue(cfg, artists); artistNext.Before(next) {
+		return artistNext
+	}
+	return next
+}
+
+// albumPass asks about every album due, and returns when the next is due.
+func (s *Scraper) albumPass(ctx context.Context, cfg *Config) time.Time {
+	albums, err := s.o.Store.ScrapeAlbums(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.log.ErrorContext(ctx, "album pass: reading albums failed", "err", err)
+		}
+		return s.now().Add(time.Hour)
+	}
+	if !s.albumWork(ctx, cfg, s.albumQueue(cfg, albums)) {
+		return s.now()
+	}
+	return s.nextAlbumDue(cfg, albums)
 }
 
 // work asks about each artist in queue, people's first whenever they open
@@ -293,7 +344,7 @@ func (s *Scraper) nextDue(cfg *Config, artists []store.ScrapeArtist) time.Time {
 		if !Askable(a.MBID) {
 			continue
 		}
-		for _, src := range s.usable(cfg, now) {
+		for _, src := range s.usable(cfg, now, artistSources()) {
 			// One due before this pass has been asked since, so only what
 			// waits counts; an artist never asked was asked by it.
 			if st, ok := a.States[src]; ok && st.NextAt.After(now) && st.NextAt.Before(next) {
