@@ -77,27 +77,16 @@ const sourceNames: Partial<Record<ExtraImage['source'], string>> = {
 };
 
 /**
- * The source a credit line names. A pin says only that it is pinned, so a pinned picture that came
- * from a source is named by the page its credit links: what that source asks to be said stays said.
+ * The source a credit line names. A pinned picture is named by where it came from (`pinnedFrom`), so
+ * what its source asks to be said stays said; a folder's or an upload asks nothing.
  */
 function creditName(image: ExtraImage): string | undefined {
-	const named = sourceNames[image.source];
-	if (named !== undefined || image.source !== 'pinned' || image.credit === undefined) {
-		return named;
+	if (image.source !== 'pinned') {
+		return sourceNames[image.source];
 	}
-	const host = URL.canParse(image.credit.pageUrl ?? '')
-		? new URL(image.credit.pageUrl ?? '').hostname
+	return image.pinnedFrom === 'fanart' || image.pinnedFrom === 'wikimedia'
+		? sourceNames[image.pinnedFrom]
 		: undefined;
-	if (host === undefined) {
-		return image.credit.license === undefined ? undefined : 'PINNED';
-	}
-	if (host === 'fanart.tv' || host.endsWith('.fanart.tv')) {
-		return 'FANART.TV';
-	}
-	if (host.endsWith('wikimedia.org') || host.endsWith('wikipedia.org')) {
-		return 'COMMONS';
-	}
-	return 'PINNED';
 }
 
 const kindWords: Record<'thumb' | 'background' | 'logo', string> = {

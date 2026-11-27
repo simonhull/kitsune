@@ -268,6 +268,7 @@ export function createArtworkFixture(o: ArtworkFixtureOptions): ArtworkSource {
 					width: stage.width,
 					height: stage.height,
 					source: 'pinned',
+					pinnedFrom: 'fanart',
 					...(stage.credit === undefined ? {} : { credit: stage.credit })
 				},
 				candidate: stage.id,
@@ -377,8 +378,9 @@ export function createArtworkFixture(o: ArtworkFixtureOptions): ArtworkSource {
 	}
 
 	function pinWith(artistId: string, kind: ArtistImageKind, pin: FixturePin): ExtraImage {
-		o.art.pin(artistId, kind, pin);
-		return pin.image;
+		const shown = { ...pin, image: { ...pin.image, pinnedFrom: pin.from } };
+		o.art.pin(artistId, kind, shown);
+		return shown.image;
 	}
 
 	return {

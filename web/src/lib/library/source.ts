@@ -168,9 +168,11 @@ export interface Credit {
 
 /** An artist's image or an album's extra, with where it came from. */
 export interface ExtraImage extends Picture {
-	/** `folder`: a file in the library's folders. */
+	/** `folder`: a file in the library's folders; `pinned`: an administrator's choice. */
 	source: 'folder' | 'fanart' | 'audiodb' | 'wikimedia' | 'pinned' | 'coverartarchive';
 	credit?: Credit;
+	/** Where a pinned image came from, so its credit can still name its source. */
+	pinnedFrom?: 'folder' | 'fanart' | 'wikimedia' | 'upload';
 }
 
 /** One disc's art; `disc` 0 is every disc's. */

@@ -102,27 +102,27 @@ describe('imageCredits', () => {
 		expect(imageCredits({ thumb: image('folder'), background: image('folder') })).toEqual([]);
 	});
 
-	it('still credits a pinned picture by where its credit says it came from', () => {
-		const pinned = image('pinned', { pageUrl: 'https://fanart.tv/x' });
-		expect(
-			imageCredits({
-				background: pinned,
-				thumb: image('fanart', { pageUrl: 'https://fanart.tv/x' })
-			})
-		).toEqual([
-			[{ text: 'PHOTO AND BACKDROP' }, { text: 'FANART.TV ›', href: 'https://fanart.tv/x' }]
+	it('still credits a pinned picture by where it came from', () => {
+		const pinned: ExtraImage = { ...image('pinned'), pinnedFrom: 'fanart' };
+		expect(imageCredits({ background: pinned, thumb: image('fanart') })).toEqual([
+			[{ text: 'PHOTO AND BACKDROP' }, { text: 'FANART.TV' }]
 		]);
-		const commons = image('pinned', {
-			author: 'J. Rowe',
-			license: 'CC BY-SA 4.0',
-			pageUrl: 'https://commons.wikimedia.org/x'
-		});
+		const commons: ExtraImage = {
+			...image('pinned', {
+				author: 'J. Rowe',
+				license: 'CC BY-SA 4.0',
+				pageUrl: 'https://commons.wikimedia.org/x'
+			}),
+			pinnedFrom: 'wikimedia'
+		};
 		expect(imageCredits({ thumb: commons })[0]?.at(-1)).toEqual({
 			text: 'COMMONS ›',
 			href: 'https://commons.wikimedia.org/x'
 		});
-		// An upload asks nothing to be said.
-		expect(imageCredits({ thumb: image('pinned') })).toEqual([]);
+		// An upload and a folder's picture ask nothing to be said.
+		for (const from of ['upload', 'folder'] as const) {
+			expect(imageCredits({ thumb: { ...image('pinned'), pinnedFrom: from } })).toEqual([]);
+		}
 	});
 
 	it('lists three kinds with commas', () => {
